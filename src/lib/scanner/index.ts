@@ -1,5 +1,4 @@
 import { BungieClient, BungieAPIError } from '../bungie/client';
-import { RateLimiter } from '../utils/rate-limiter';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
 import { insertFullPGCR, hasPGCR } from '../db/queries';
@@ -61,8 +60,6 @@ let state: ScannerState = {
 
 // Separate client and rate limiter for the scanner
 let scannerClient: BungieClient | null = null;
-let scannerRateLimiter: RateLimiter | null = null;
-
 // =====================
 // CLIENT SETUP
 // =====================
@@ -74,10 +71,9 @@ function getScannerClient(config: ScannerConfig): BungieClient {
             throw new Error('No API key available for scanner. Set BUNGIE_SCANNER_API_KEY or BUNGIE_API_KEY.');
         }
 
-        scannerRateLimiter = new RateLimiter(config.requestsPerSecond);
+        const rps = parseInt(process.env.SCANNER_REQUESTS_PER_SECOND || '25', 10);
 
-        // Create a new BungieClient instance with the scanner's own key and rate limiter
-        scannerClient = new BungieClient(apiKey, scannerRateLimiter);
+        scannerClient = new BungieClient(apiKey, rps);
     }
     return scannerClient;
 }

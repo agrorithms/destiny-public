@@ -80,7 +80,7 @@ export async function checkPlayerActivity(
 
         const effectivePartyMembers = partyMembers.length > 0
             ? partyMembers
-            : [{ membershipId: player.membershipId, displayName, status: 1 }];
+            : [{ membershipId: player.membershipId, displayName, status: 1, emblemHash: 0, }];
 
         upsertActiveSession({
             membershipId: player.membershipId,

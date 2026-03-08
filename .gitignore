@@ -53,3 +53,6 @@ data/*.db-shm
 
 #cleanup
 scripts/cleanup-membership-types.ts
+
+#seeds
+seeds.txt

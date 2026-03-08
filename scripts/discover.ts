@@ -15,30 +15,18 @@ import { isoToUnix } from '../src/lib/utils/helpers';
 // Add your seed players here
 // You can find membership IDs on bungie.net or raid.report
 // membershipType: 1 = Xbox, 2 = PSN, 3 = Steam
-const SEED_PLAYERS = [
-    { membershipId: '4611686018469615924', membershipType: 1 },
-    { membershipId: '4611686018461098605', membershipType: 2 }, //Soldier
-    { membershipId: '4611686018554196330', membershipType: 3 }, //Dova
-    { membershipId: '4611686018525503627', membershipType: 3 }, //Raven
-    { membershipId: '4611686018471725925', membershipType: 2 }, //Lumis
-    { membershipId: '4611686018530726821', membershipType: 1 }, //L
-    { membershipId: '4611686018475332605', membershipType: 3 }, //frosty#1270
-    { membershipId: '4611686018430910666', membershipType: 2 }, //wombat#5871
-    { membershipId: '4611686018533113181', membershipType: 3 },
-    { membershipId: '4611686018437585442', membershipType: 1 },
-    { membershipId: '4611686018431717403', membershipType: 1 },
-    { membershipId: '4611686018452637862', membershipType: 2 }, //3mr
-    { membershipId: '4611686018441319193', membershipType: 1 },
-    { membershipId: '4611686018501949714', membershipType: 2 },
-    { membershipId: '4611686018530726821', membershipType: 1 },
-    { membershipId: '4611686018506277701', membershipType: 3 },
-    { membershipId: '4611686018521358615', membershipType: 1 }, //Wisp#4653
-    { membershipId: '4611686018444299777', membershipType: 2 }, //Rhyme#8032
-    { membershipId: '4611686018436929273', membershipType: 2 }, //Macca#3177
-    { membershipId: '4611686018460347295', membershipType: 2 }, //Accessner#3340
-    { membershipId: '4611686018513949048', membershipType: 3 }, //Aegis#2771
-    { membershipId: '4611686018513261063', membershipType: 1 } //Alesia#8610
-];
+const SEED_PLAYERS = process.env.SEED_PLAYERS?.split(',').map((entry) => {
+    const [membershipId, membershipType] = entry.trim().split(':');
+    return {
+        membershipId,
+        membershipType: parseInt(membershipType, 10),
+    };
+}) || [];
+
+if (SEED_PLAYERS.length === 0) {
+    console.error('No seed players configured. Set SEED_PLAYERS in .env');
+    process.exit(1);
+}
 
 // How far back to look for PGCRs during discovery
 const DISCOVERY_HOURS_BACK = parseInt(process.env.DISCOVERY_HOURS_BACK || '48', 10);

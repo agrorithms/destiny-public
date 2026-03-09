@@ -21,15 +21,17 @@ export interface ScannerConfig {
     maxConsecutiveMisses: number;
     apiKey?: string;
     enabled: boolean;
+    workers: number;
 }
 
 const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
-    requestsPerSecond: parseInt(process.env.SCANNER_REQUESTS_PER_SECOND || '20', 10),
-    batchSize: parseInt(process.env.SCANNER_BATCH_SIZE || '50', 10),
-    pauseOnCatchupMs: parseInt(process.env.SCANNER_PAUSE_ON_CATCHUP_MS || '10000', 10),
+    requestsPerSecond: parseInt(process.env.SCANNER_REQUESTS_PER_SECOND || '25', 10),
+    batchSize: parseInt(process.env.SCANNER_BATCH_SIZE || '75', 10),
+    pauseOnCatchupMs: parseInt(process.env.SCANNER_PAUSE_ON_CATCHUP_MS || '20000', 10),
     maxConsecutiveMisses: parseInt(process.env.SCANNER_MAX_CONSECUTIVE_MISSES || '50', 10),
     apiKey: process.env.BUNGIE_SCANNER_API_KEY || undefined,
     enabled: true,
+    workers: parseInt(process.env.SCANNER_WORKERS || '15', 10),
 };
 
 // =====================
@@ -60,6 +62,7 @@ let state: ScannerState = {
 
 // Separate client and rate limiter for the scanner
 let scannerClient: BungieClient | null = null;
+
 // =====================
 // CLIENT SETUP
 // =====================
@@ -82,11 +85,6 @@ function getScannerClient(config: ScannerConfig): BungieClient {
 // STATE PERSISTENCE
 // =====================
 
-/**
- * Save the scanner's current position to the database.
- * Only updates if our position is AHEAD of what's in the database,
- * so we don't overwrite jumps from the backward scanner.
- */
 function saveScannerPosition(instanceId: bigint): void {
     const db = getDb();
 
@@ -94,9 +92,8 @@ function saveScannerPosition(instanceId: bigint): void {
         "SELECT value FROM crawler_state WHERE key = 'scanner_position'"
     ).get() as { value: string } | undefined;
 
-    // Only write if we're ahead of the stored position
     if (current && BigInt(current.value) > instanceId) {
-        return; // Someone else (backward scan) moved it ahead — don't overwrite
+        return;
     }
 
     db.prepare(`
@@ -108,15 +105,9 @@ function saveScannerPosition(instanceId: bigint): void {
   `).run(instanceId.toString());
 }
 
-
-/**
- * Load the scanner's last known position from the database.
- * Falls back to the highest instance ID in the pgcrs table.
- */
 function loadScannerPosition(): bigint {
     const db = getDb();
 
-    // First try the saved position
     const saved = db.prepare(
         "SELECT value FROM crawler_state WHERE key = 'scanner_position'"
     ).get() as { value: string } | undefined;
@@ -126,7 +117,6 @@ function loadScannerPosition(): bigint {
         return BigInt(saved.value);
     }
 
-    // Fall back to highest instance ID in the database
     const highest = db.prepare(
         'SELECT MAX(CAST(instance_id AS INTEGER)) as max_id FROM pgcrs'
     ).get() as { max_id: number | null } | undefined;
@@ -136,17 +126,11 @@ function loadScannerPosition(): bigint {
         return BigInt(highest.max_id);
     }
 
-    // If database is empty, we need a starting point
-    // This is a recent instance ID — you may need to update this
     const fallback = BigInt('16795700000');
     console.log(`[SCANNER] No PGCRs in database. Starting from fallback: ${fallback}`);
     return fallback;
 }
 
-/**
- * Load the scanner position from the database without any fallback logic.
- * Used for checking if another process has updated the position.
- */
 function loadScannerPositionRaw(): bigint {
     const db = getDb();
     const saved = db.prepare(
@@ -159,10 +143,6 @@ function loadScannerPositionRaw(): bigint {
     return BigInt(0);
 }
 
-
-/**
- * Write scanner stats to the database for the web UI.
- */
 function writeScannerStats(): void {
     const db = getDb();
     const stats = JSON.stringify({
@@ -191,17 +171,12 @@ function writeScannerStats(): void {
 // PGCR PROCESSING
 // =====================
 
-/**
- * Attempt to fetch and process a single PGCR by instance ID.
- * Returns: 'raid' | 'not_raid' | 'not_found' | 'error'
- */
 async function scanSinglePGCR(
     client: BungieClient,
     instanceId: string
-): Promise<'raid' | 'not_raid' | 'not_found' | 'error'> {
-    // Skip if we already have it
+): Promise<'raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable'> {
     if (hasPGCR(instanceId)) {
-        return 'not_raid'; // We already have it, treat as scanned
+        return 'not_raid';
     }
 
     try {
@@ -215,12 +190,10 @@ async function scanSinglePGCR(
         const activityHash = pgcrData.activityDetails.directorActivityHash
             || pgcrData.activityDetails.referenceId;
 
-        // Check if this is a raid
         if (!isRaidActivityHash(activityHash)) {
             return 'not_raid';
         }
 
-        // It's a raid! Process and store it.
         const raidKey = getRaidKeyFromHash(activityHash);
 
         const anyoneCompleted = pgcrData.entries?.some(
@@ -256,7 +229,6 @@ async function scanSinglePGCR(
             playerEntries
         );
 
-        // Also add discovered players to the players table
         const db = getDb();
         const upsertPlayer = db.prepare(`
       INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code, discovered_at, is_active)
@@ -284,96 +256,196 @@ async function scanSinglePGCR(
 
         return 'raid';
     } catch (error) {
-        if (error instanceof BungieAPIError) {
-            // PGCR doesn't exist
-            if (
-                error.errorCode === 1653 || // DestinyPGCRNotFound
-                error.errorStatus === 'DestinyPGCRNotFound' ||
-                error.errorCode === 7 // ParameterParseFailure (invalid ID)
-            ) {
-                return 'not_found';
-            }
+        const errorMessage = (error as Error).message || '';
 
-            // System disabled — stop scanning temporarily
-            if (error.errorStatus === 'SystemDisabled') {
-                console.error('[SCANNER] Bungie API is disabled. Pausing...');
-                return 'error';
-            }
+        // Check for PGCR not found — whether it's a BungieAPIError or regular Error
+        if (
+            (error instanceof BungieAPIError && (
+                error.errorCode === 1653 ||
+                error.errorStatus === 'DestinyPGCRNotFound' ||
+                error.errorCode === 7
+            )) ||
+            errorMessage.includes('DestinyPGCRNotFound') ||
+            errorMessage.includes('1653')
+        ) {
+            return 'not_found';
         }
 
-        // Log unexpected errors but continue scanning
-        console.error(`[SCANNER] Error fetching PGCR ${instanceId}:`, (error as Error).message);
+        // System disabled
+        if (
+            (error instanceof BungieAPIError && error.errorStatus === 'SystemDisabled') ||
+            errorMessage.includes('SystemDisabled')
+        ) {
+            console.error('[SCANNER] Bungie API is disabled. Pausing...');
+            return 'error';
+        }
+
+        // Detect Cloudflare/HTTP server errors (502, 503, 504)
+        if (
+            errorMessage.includes('502') ||
+            errorMessage.includes('503') ||
+            errorMessage.includes('504') ||
+            errorMessage.includes('Bad gateway') ||
+            errorMessage.includes('<!DOCTYPE html>')
+        ) {
+            console.warn(`[SCANNER] ⚠️ Bungie API server error for PGCR ${instanceId} — will retry`);
+            return 'error_retryable';
+        }
+
+        // Log unexpected errors (truncated) but continue scanning
+        console.error(`[SCANNER] Error fetching PGCR ${instanceId}:`, errorMessage.substring(0, 150));
         return 'error';
     }
 }
 
 // =====================
-// SCAN LOOP
+// SCAN BATCH (CONCURRENT)
 // =====================
 
-/**
- * Scan a batch of sequential instance IDs.
- */
+
 async function scanBatch(
     client: BungieClient,
     startId: bigint,
-    batchSize: number
+    batchSize: number,
+    workerCount: number
 ): Promise<{
     scanned: number;
     raidsFound: number;
     misses: number;
     consecutiveMisses: number;
     lastId: bigint;
+    missedIds: string[];
 }> {
     let raidsFound = 0;
     let misses = 0;
-    let consecutiveMisses = 0;
     let scanned = 0;
-    let currentId = startId;
 
+    // Build the list of instance IDs for this batch
+    const instanceIds: string[] = [];
     for (let i = 0; i < batchSize; i++) {
-        if (state.shouldStop) break;
+        instanceIds.push((startId + BigInt(i)).toString());
+    }
 
-        currentId = startId + BigInt(i);
-        const instanceId = currentId.toString();
+    // Shared index — each worker grabs the next available ID
+    let nextIndex = 0;
 
-        const result = await scanSinglePGCR(client, instanceId);
-        scanned++;
+    // Track results in order for consecutive miss calculation
+    const results: ('raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable')[] = new Array(batchSize);
 
-        switch (result) {
-            case 'raid':
-                raidsFound++;
-                consecutiveMisses = 0;
-                break;
-            case 'not_raid':
-                consecutiveMisses = 0;
-                break;
-            case 'not_found':
-                misses++;
-                consecutiveMisses++;
-                break;
-            case 'error':
-                consecutiveMisses++;
-                break;
+    async function worker() {
+        while (true) {
+            const myIndex = nextIndex++;
+            if (myIndex >= batchSize || state.shouldStop) break;
+
+            const result = await scanSinglePGCR(client, instanceIds[myIndex]);
+            results[myIndex] = result;
+
+            switch (result) {
+                case 'raid':
+                    raidsFound++;
+                    scanned++;
+                    break;
+                case 'not_raid':
+                    scanned++;
+                    break;
+                case 'not_found':
+                    misses++;
+                    scanned++;
+                    break;
+                case 'error':
+                    scanned++;
+                    break;
+                case 'error_retryable':
+                    break;
+            }
         }
     }
+
+    const workers = Array.from(
+        { length: Math.min(workerCount, batchSize) },
+        () => worker()
+    );
+    await Promise.all(workers);
+
+    // *** THIS IS THE KEY PART ***
+    // Collect ALL IDs that were not_found or error_retryable for retry
+    const missedIds: string[] = [];
+    for (let i = 0; i < results.length; i++) {
+        if (results[i] === 'not_found' || results[i] === 'error_retryable') {
+            missedIds.push(instanceIds[i]);
+        }
+    }
+
+    // Calculate consecutive misses from the END of the batch
+    let consecutiveMisses = 0;
+    for (let i = results.length - 1; i >= 0; i--) {
+        if (results[i] === 'not_found' || results[i] === 'error') {
+            consecutiveMisses++;
+        } else {
+            break;
+        }
+    }
+
+    const lastId = startId + BigInt(batchSize - 1);
 
     return {
         scanned,
         raidsFound,
         misses,
         consecutiveMisses,
-        lastId: currentId,
+        lastId,
+        missedIds,
     };
+}
+
+
+// =====================
+// RETRY MISSED IDs
+// =====================
+
+async function retryMissedIds(
+    client: BungieClient,
+    missedIds: string[],
+    workerCount: number
+): Promise<{ retryRaidsFound: number; stillMissing: number }> {
+    let retryRaidsFound = 0;
+    let stillMissing = 0;
+    let nextIndex = 0;
+
+    async function worker() {
+        while (true) {
+            const myIndex = nextIndex++;
+            if (myIndex >= missedIds.length || state.shouldStop) break;
+
+            const result = await scanSinglePGCR(client, missedIds[myIndex]);
+
+            switch (result) {
+                case 'raid':
+                    retryRaidsFound++;
+                    break;
+                case 'not_found':
+                case 'error':
+                case 'error_retryable':
+                    stillMissing++;
+                    break;
+                // 'not_raid' means it exists now but isn't a raid — that's fine
+            }
+        }
+    }
+
+    const workers = Array.from(
+        { length: Math.min(workerCount, missedIds.length) },
+        () => worker()
+    );
+    await Promise.all(workers);
+
+    return { retryRaidsFound, stillMissing };
 }
 
 // =====================
 // PUBLIC API
 // =====================
 
-/**
- * Start the PGCR scanner.
- */
 export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<void> {
     const config = { ...DEFAULT_SCANNER_CONFIG, ...overrides };
 
@@ -400,6 +472,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
     console.log('[SCANNER] Starting PGCR scanner');
     console.log(`  Rate limit:    ${config.requestsPerSecond} req/s`);
     console.log(`  Batch size:    ${config.batchSize}`);
+    console.log(`  Workers:       ${config.workers}`);
     console.log(`  Catchup pause: ${config.pauseOnCatchupMs}ms`);
     console.log(`  Max misses:    ${config.maxConsecutiveMisses}`);
     console.log(`  Starting at:   ${state.currentInstanceId}`);
@@ -415,7 +488,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             return;
         }
 
-        // Check if another process (e.g., backward scan) has moved the position ahead
+        // Check if another process has moved the position ahead
         const dbPosition = loadScannerPositionRaw();
         if (dbPosition > state.currentInstanceId) {
             const jump = dbPosition - state.currentInstanceId;
@@ -427,8 +500,17 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         }
 
         const batchStart = state.currentInstanceId + BigInt(1);
+        const result = await scanBatch(client, batchStart, config.batchSize, config.workers);
 
-        const result = await scanBatch(client, batchStart, config.batchSize);
+        // TEMPORARY DEBUG — remove after confirming it works
+        console.log(`[SCANNER DEBUG] Batch results: ${JSON.stringify({
+            scanned: result.scanned,
+            raidsFound: result.raidsFound,
+            misses: result.misses,
+            consecutiveMisses: result.consecutiveMisses,
+            missedIdsCount: result.missedIds.length,
+            firstFewMissed: result.missedIds.slice(0, 5),
+        })}`);
 
         state.totalScanned += result.scanned;
         state.totalRaidsFound += result.raidsFound;
@@ -436,7 +518,6 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         state.consecutiveMisses = result.consecutiveMisses;
         state.currentInstanceId = result.lastId;
 
-        // Save position every batch
         saveScannerPosition(state.currentInstanceId);
 
         // Log progress
@@ -453,48 +534,67 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             );
         }
 
-        // Write stats periodically (every 5 batches)
         if (state.totalScanned % (config.batchSize * 5) === 0) {
             writeScannerStats();
         }
 
-        // Check if we've caught up to the present (too many consecutive misses)
+        // Caught up to present — pause then retry missed IDs
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
                 `[SCANNER] Caught up to present (${state.consecutiveMisses} consecutive misses). ` +
+                `${result.missedIds.length} missed IDs to retry. ` +
                 `Pausing for ${config.pauseOnCatchupMs / 1000}s...`
             );
             state.consecutiveMisses = 0;
             writeScannerStats();
-            setTimeout(scanLoop, config.pauseOnCatchupMs);
+
+            // Pause, then retry missed IDs
+            setTimeout(async () => {
+                if (result.missedIds.length > 0 && !state.shouldStop) {
+                    console.log(`[SCANNER] 🔄 Retrying ${result.missedIds.length} missed IDs...`);
+
+                    const retryResult = await retryMissedIds(
+                        client,
+                        result.missedIds,
+                        config.workers
+                    );
+
+                    state.totalRaidsFound += retryResult.retryRaidsFound;
+
+                    if (retryResult.retryRaidsFound > 0) {
+                        console.log(
+                            `[SCANNER] 🔄 Retry found ${retryResult.retryRaidsFound} raids! ` +
+                            `(${retryResult.stillMissing} still missing)`
+                        );
+                    } else {
+                        console.log(
+                            `[SCANNER] 🔄 Retry complete. No new raids found. ` +
+                            `(${retryResult.stillMissing} still missing)`
+                        );
+                    }
+                }
+
+                scanLoop();
+            }, config.pauseOnCatchupMs);
             return;
         }
 
-        // Small delay between batches to avoid hammering
+        // Small delay between batches
         setTimeout(scanLoop, 100);
     }
 
     scanLoop();
 }
 
-/**
- * Stop the scanner gracefully.
- */
 export function stopScanner(): void {
     console.log('[SCANNER] Stopping scanner...');
     state.shouldStop = true;
 }
 
-/**
- * Check if the scanner is running.
- */
 export function isScannerRunning(): boolean {
     return state.isRunning;
 }
 
-/**
- * Get current scanner stats.
- */
 export function getScannerStats(): {
     isRunning: boolean;
     currentInstanceId: string;

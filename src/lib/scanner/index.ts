@@ -502,16 +502,6 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         const batchStart = state.currentInstanceId + BigInt(1);
         const result = await scanBatch(client, batchStart, config.batchSize, config.workers);
 
-        // TEMPORARY DEBUG — remove after confirming it works
-        console.log(`[SCANNER DEBUG] Batch results: ${JSON.stringify({
-            scanned: result.scanned,
-            raidsFound: result.raidsFound,
-            misses: result.misses,
-            consecutiveMisses: result.consecutiveMisses,
-            missedIdsCount: result.missedIds.length,
-            firstFewMissed: result.missedIds.slice(0, 5),
-        })}`);
-
         state.totalScanned += result.scanned;
         state.totalRaidsFound += result.raidsFound;
         state.totalMisses += result.misses;

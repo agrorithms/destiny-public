@@ -299,6 +299,7 @@ async function runBackwardScan(client: BungieClient): Promise<{
                     activityWasStartedFromBeginning: pgcrData.activityWasStartedFromBeginning || false,
                     completed: anyoneCompleted,
                     playerCount: (pgcrData.entries || []).length,
+                    source: 'discover backscan' //tell db how this record was found
                 },
                 playerEntries
             );

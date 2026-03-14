@@ -116,7 +116,7 @@ export async function runDiscovery(
                     }
 
                     // Fetch and store the PGCR
-                    const processed = await fetchAndStorePGCR(activity.instanceId);
+                    const processed = await fetchAndStorePGCR(activity.instanceId, 'discover');
 
                     if (processed) {
                         depthNewPGCRs++;

@@ -61,7 +61,7 @@ export function processPGCR(pgcr: DestinyPostGameCarnageReportData): ProcessedPG
  * Fetch a PGCR from the API, process it, and store it in the database.
  * Returns the processed PGCR if it was new, or null if we already had it.
  */
-export async function fetchAndStorePGCR(instanceId: string): Promise<ProcessedPGCR | null> {
+export async function fetchAndStorePGCR(instanceId: string, callSource: string): Promise<ProcessedPGCR | null> {
     // Skip if we already have this PGCR
     if (hasPGCR(instanceId)) {
         return null;
@@ -108,6 +108,7 @@ export async function fetchAndStorePGCR(instanceId: string): Promise<ProcessedPG
                 activityWasStartedFromBeginning: pgcrData.activityWasStartedFromBeginning || false,
                 completed: processed.completed,
                 playerCount: pgcrData.entries.length,
+                source: callSource,
             },
             playerEntries
         );

@@ -177,6 +177,7 @@ export function insertFullPGCR(
         activityWasStartedFromBeginning: boolean;
         completed: boolean;
         playerCount: number;
+        source?: string;  // NEW
     },
     players: Array<{
         instanceId: string;
@@ -198,8 +199,9 @@ export function insertFullPGCR(
     const insertPGCRStmt = db.prepare(`
     INSERT OR IGNORE INTO pgcrs 
     (instance_id, activity_hash, raid_key, period, starting_phase_index, 
-     activity_was_started_from_beginning, completed, player_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     activity_was_started_from_beginning, completed, player_count, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(instance_id) DO NOTHING
   `);
 
     const insertPlayerStmt = db.prepare(`
@@ -219,7 +221,8 @@ export function insertFullPGCR(
             pgcrData.startingPhaseIndex,
             pgcrData.activityWasStartedFromBeginning ? 1 : 0,
             pgcrData.completed ? 1 : 0,
-            pgcrData.playerCount
+            pgcrData.playerCount,
+            pgcrData.source || 'unknown'
         );
 
         for (const player of players) {

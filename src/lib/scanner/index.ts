@@ -1,3 +1,4 @@
+import { MissingSlotContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { BungieClient, BungieAPIError } from '../bungie/client';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
@@ -5,6 +6,9 @@ import { insertFullPGCR, hasPGCR } from '../db/queries';
 import { isoToUnix } from '../utils/helpers';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
+// Global queue for missed IDs
+const missedIdsQueue: string[] = [];
+const RETRY_THRESHOLD = 50; // Retry when 50 missed IDs are collected
 
 function isValidMembershipType(type: any): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
@@ -225,6 +229,7 @@ async function scanSinglePGCR(
                 activityWasStartedFromBeginning: pgcrData.activityWasStartedFromBeginning || false,
                 completed: anyoneCompleted,
                 playerCount: (pgcrData.entries || []).length,
+                source: 'scanner',  // tell db where this came from
             },
             playerEntries
         );
@@ -314,7 +319,6 @@ async function scanBatch(
     misses: number;
     consecutiveMisses: number;
     lastId: bigint;
-    missedIds: string[];
 }> {
     let raidsFound = 0;
     let misses = 0;
@@ -369,13 +373,15 @@ async function scanBatch(
 
     // *** THIS IS THE KEY PART ***
     // Collect ALL IDs that were not_found or error_retryable for retry
-    const missedIds: string[] = [];
     for (let i = 0; i < results.length; i++) {
         if (results[i] === 'not_found' || results[i] === 'error_retryable') {
-            missedIds.push(instanceIds[i]);
+            missedIdsQueue.push(instanceIds[i]);
         }
     }
-
+    // Log the current size of the missed IDs queue
+    if (missedIdsQueue.length > 0) {
+        console.log(`[SCANNER] Missed IDs queue size: ${missedIdsQueue.length}`);
+    }
     // Calculate consecutive misses from the END of the batch
     let consecutiveMisses = 0;
     for (let i = results.length - 1; i >= 0; i--) {
@@ -394,7 +400,6 @@ async function scanBatch(
         misses,
         consecutiveMisses,
         lastId,
-        missedIds,
     };
 }
 
@@ -407,10 +412,11 @@ async function retryMissedIds(
     client: BungieClient,
     missedIds: string[],
     workerCount: number
-): Promise<{ retryRaidsFound: number; stillMissing: number }> {
+): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[] }> {
     let retryRaidsFound = 0;
     let stillMissing = 0;
     let nextIndex = 0;
+    const stillMissingIds: string[] = [];
 
     async function worker() {
         while (true) {
@@ -422,13 +428,17 @@ async function retryMissedIds(
             switch (result) {
                 case 'raid':
                     retryRaidsFound++;
+                    // Successfully found — do NOT put back in queue
+                    break;
+                case 'not_raid':
+                    // Exists but isn't a raid — do NOT put back in queue
                     break;
                 case 'not_found':
                 case 'error':
                 case 'error_retryable':
                     stillMissing++;
+                    stillMissingIds.push(missedIds[myIndex]);
                     break;
-                // 'not_raid' means it exists now but isn't a raid — that's fine
             }
         }
     }
@@ -439,8 +449,9 @@ async function retryMissedIds(
     );
     await Promise.all(workers);
 
-    return { retryRaidsFound, stillMissing };
+    return { retryRaidsFound, stillMissing, stillMissingIds };
 }
+
 
 // =====================
 // PUBLIC API
@@ -532,7 +543,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
                 `[SCANNER] Caught up to present (${state.consecutiveMisses} consecutive misses). ` +
-                `${result.missedIds.length} missed IDs to retry. ` +
+                `${missedIdsQueue.length} missed IDs to retry. ` +
                 `Pausing for ${config.pauseOnCatchupMs / 1000}s...`
             );
             state.consecutiveMisses = 0;
@@ -540,28 +551,17 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
             // Pause, then retry missed IDs
             setTimeout(async () => {
-                if (result.missedIds.length > 0 && !state.shouldStop) {
-                    console.log(`[SCANNER] 🔄 Retrying ${result.missedIds.length} missed IDs...`);
-
-                    const retryResult = await retryMissedIds(
-                        client,
-                        result.missedIds,
-                        config.workers
-                    );
+                if (missedIdsQueue.length >= RETRY_THRESHOLD) {
+                    console.log(`[SCANNER] 🔄 Missed IDs queue reached ${missedIdsQueue.length}. Retrying...`);
+                    const idstoRetry = missedIdsQueue.splice(0, missedIdsQueue.length)
+                    const retryResult = await retryMissedIds(client, idstoRetry, config.workers);
 
                     state.totalRaidsFound += retryResult.retryRaidsFound;
 
-                    if (retryResult.retryRaidsFound > 0) {
-                        console.log(
-                            `[SCANNER] 🔄 Retry found ${retryResult.retryRaidsFound} raids! ` +
-                            `(${retryResult.stillMissing} still missing)`
-                        );
-                    } else {
-                        console.log(
-                            `[SCANNER] 🔄 Retry complete. No new raids found. ` +
-                            `(${retryResult.stillMissing} still missing)`
-                        );
-                    }
+                    console.log(
+                        `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found. ` +
+                        `${retryResult.stillMissing} still missing. Queue size: ${missedIdsQueue.length}`
+                    );
                 }
 
                 scanLoop();

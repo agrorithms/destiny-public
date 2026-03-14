@@ -134,7 +134,7 @@ export async function crawlPlayer(
 
         // Fetch and store each new PGCR
         for (const [instanceId] of uniqueActivities) {
-            const processed = await fetchAndStorePGCR(instanceId);
+            const processed = await fetchAndStorePGCR(instanceId, 'crawler');
 
             if (processed) {
                 newPGCRs++;

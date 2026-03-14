@@ -103,7 +103,7 @@ async function processPlayer(
 
     // Fetch each new PGCR
     for (const activity of activityInstanceIds) {
-        const processed = await fetchAndStorePGCR(activity.instanceId);
+        const processed = await fetchAndStorePGCR(activity.instanceId, 'discover');
 
         if (processed) {
             newPGCRs++;

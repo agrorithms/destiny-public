@@ -53,11 +53,13 @@ export async function GET(request: NextRequest) {
 
         // Batch lookup display names from the players table
         const nameMap = new Map<string, string>();
+        const membershipTypeMap = new Map<string, number>();
         if (allMembershipIds.size > 0) {
             const placeholders = [...allMembershipIds].map(() => '?').join(',');
             const rows = db.prepare(`
         SELECT 
           membership_id,
+          membership_type,
           bungie_global_display_name,
           bungie_global_display_name_code,
           display_name
@@ -66,6 +68,7 @@ export async function GET(request: NextRequest) {
       `).all(...allMembershipIds) as any[];
 
             for (const row of rows) {
+                membershipTypeMap.set(row.membership_id, row.membership_type);
                 // Prefer "Name#1234" format if we have both parts
                 if (row.bungie_global_display_name && row.bungie_global_display_name_code) {
                     nameMap.set(
@@ -93,6 +96,7 @@ export async function GET(request: NextRequest) {
 
                 return {
                     membershipId: member.membershipId,
+                    membershipType: membershipTypeMap.get(member.membershipId),
                     displayName,
                     status: member.status,
                 };

@@ -103,11 +103,23 @@ export class BungieClient {
         displayName: string,
         displayNameCode: number
     ): Promise<BungieResponse<any>> {
-        const url = BungieEndpoints.searchByGlobalName(displayName);
+        const url = BungieEndpoints.searchByGlobalName(0);
         return this.request<any>(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ displayName, displayNameCode }),
+        });
+    }
+
+    async searchByBungieNamePrefix(
+        displayNamePrefix: string,
+        page: number = 0
+    ): Promise<BungieResponse<any>> {
+        const url = BungieEndpoints.searchByGlobalName(page);
+        return this.request<any>(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayNamePrefix }),
         });
     }
 
@@ -118,6 +130,7 @@ export class BungieClient {
 
 // Singleton instance
 let clientInstance: BungieClient | null = null;
+let discoveryClientInstance: BungieClient | null = null;
 
 export function getBungieClient(): BungieClient {
     if (!clientInstance) {
@@ -128,4 +141,19 @@ export function getBungieClient(): BungieClient {
         clientInstance = new BungieClient(apiKey, maxRps);
     }
     return clientInstance;
+}
+
+export function getDiscoveryBungieClient(): BungieClient {
+    if (!discoveryClientInstance) {
+        const apiKey = process.env.BUNGIE_DISCOVERY_API_KEY || process.env.BUNGIE_API_KEY;
+        if (!apiKey) throw new Error('BUNGIE_DISCOVERY_API_KEY/BUNGIE_API_KEY not set in environment');
+
+        const maxRps = parseInt(
+            process.env.DISCOVERY_REQUESTS_PER_SECOND || process.env.BUNGIE_MAX_REQUESTS_PER_SECOND || '20',
+            10
+        );
+
+        discoveryClientInstance = new BungieClient(apiKey, maxRps);
+    }
+    return discoveryClientInstance;
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import PlayerSearch from '@/components/PlayerSearch';
 
 export const metadata: Metadata = {
   title: 'Destiny Farm Finder',
@@ -15,11 +16,12 @@ export default function RootLayout({
     <html lang="en">
       <body className="bg-gray-900 text-white min-h-screen">
         <nav className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-            <a href="/" className="text-lg font-bold text-white hover:text-blue-400 transition-colors">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <a href="/" className="text-lg font-bold text-white hover:text-blue-400 transition-colors shrink-0">
               Destiny Farm Finder
             </a>
-            <div className="flex gap-6">
+            <PlayerSearch />
+            <div className="flex gap-6 shrink-0">
               <a
                 href="/leaderboard"
                 className="text-sm text-gray-400 hover:text-white transition-colors"

@@ -75,14 +75,23 @@ export default function LeaderboardTable({
                                     )}
                                 </td>
                                 <td className="py-2.5 px-2">
-                                    <a
-                                        href={`https://raid.report/${getMembershipPrefix(entry.membershipType)}/${entry.membershipId}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-gray-200 hover:text-blue-400 transition-colors"
-                                    >
-                                        {entry.displayName}
-                                    </a>
+                                    <div className="flex items-center gap-2">
+                                        <a
+                                            href={`/player/${entry.membershipType}/${entry.membershipId}`}
+                                            className="text-gray-200 hover:text-blue-400 transition-colors"
+                                        >
+                                            {entry.displayName}
+                                        </a>
+                                        <a
+                                            href={`https://raid.report/${getMembershipPrefix(entry.membershipType)}/${entry.membershipId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                                            title="Open raid.report"
+                                        >
+                                            RR
+                                        </a>
+                                    </div>
                                 </td>
                                 {showRaidColumn && (
                                     <td className="py-2.5 px-2 text-gray-400">{raidName}</td>

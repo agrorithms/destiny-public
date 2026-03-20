@@ -26,6 +26,6 @@ export const BungieEndpoints = {
     searchPlayer: (membershipType: number, displayName: string) =>
         `${BASE_URL}/Destiny2/SearchDestinyPlayer/${membershipType}/${encodeURIComponent(displayName)}/`,
 
-    searchByGlobalName: (displayName: string, page: number = 0) =>
+    searchByGlobalName: (page: number = 0) =>
         `${BASE_URL}/Destiny2/SearchDestinyPlayerByBungieName/${page}/`,
 };

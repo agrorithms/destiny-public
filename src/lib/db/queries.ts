@@ -157,6 +157,166 @@ export function getPlayerCount(): number {
     return row.count;
 }
 
+export interface PlayerSearchResult {
+    membershipId: string;
+    membershipType: number;
+    displayName: string | null;
+    bungieGlobalDisplayName: string | null;
+    bungieGlobalDisplayNameCode: number | null;
+}
+
+export function searchPlayersByName(query: string, limit: number = 10): PlayerSearchResult[] {
+    const db = getDb();
+    const normalized = query.trim().toLowerCase();
+    const nameOnly = normalized.includes('#') ? normalized.split('#')[0] : normalized;
+
+    if (!nameOnly) return [];
+
+    const rows = db.prepare(`
+    SELECT
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      bungie_global_display_name as bungieGlobalDisplayName,
+      bungie_global_display_name_code as bungieGlobalDisplayNameCode
+    FROM players
+    WHERE LOWER(COALESCE(bungie_global_display_name, display_name, '')) LIKE ?
+    ORDER BY discovered_at DESC
+    LIMIT 100
+  `).all(`%${nameOnly}%`) as PlayerSearchResult[];
+
+    const withRank = rows.map((row) => {
+        const baseName = (row.bungieGlobalDisplayName || row.displayName || '').toLowerCase();
+        const fullName = row.bungieGlobalDisplayName && row.bungieGlobalDisplayNameCode !== null
+            ? `${row.bungieGlobalDisplayName}#${String(row.bungieGlobalDisplayNameCode).padStart(4, '0')}`.toLowerCase()
+            : '';
+
+        let rank = 4;
+        if (fullName && fullName === normalized) rank = 0;
+        else if (baseName === nameOnly) rank = 1;
+        else if (baseName.startsWith(nameOnly)) rank = 2;
+        else if (baseName.includes(nameOnly)) rank = 3;
+
+        return { row, rank };
+    });
+
+    withRank.sort((a, b) => a.rank - b.rank);
+
+    return withRank.slice(0, limit).map((x) => x.row);
+}
+
+export interface PlayerIdentity {
+    membershipId: string;
+    membershipType: number;
+    displayName: string | null;
+    bungieGlobalDisplayName: string | null;
+    bungieGlobalDisplayNameCode: number | null;
+}
+
+export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
+    const db = getDb();
+    const row = db.prepare(`
+    SELECT
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      bungie_global_display_name as bungieGlobalDisplayName,
+      bungie_global_display_name_code as bungieGlobalDisplayNameCode
+    FROM players
+    WHERE membership_id = ?
+  `).get(membershipId) as PlayerIdentity | undefined;
+
+    return row || null;
+}
+
+export interface PlayerRaidCompletionSummary {
+    raidKey: string;
+    completions: number;
+}
+
+export function getPlayerRaidCompletionSummary(
+    membershipId: string,
+    hoursBack: number
+): PlayerRaidCompletionSummary[] {
+    const db = getDb();
+    const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
+
+    return db.prepare(`
+    SELECT
+      p.raid_key as raidKey,
+      COUNT(DISTINCT pp.instance_id) as completions
+    FROM pgcr_players pp
+    JOIN pgcrs p ON pp.instance_id = p.instance_id
+    WHERE pp.membership_id = ?
+      AND p.period >= ?
+      AND pp.completed = 1
+      AND p.completed = 1
+      AND p.raid_key IS NOT NULL
+      AND p.activity_was_started_from_beginning = 1
+    GROUP BY p.raid_key
+    ORDER BY completions DESC, p.raid_key ASC
+  `).all(membershipId, cutoffTimestamp) as PlayerRaidCompletionSummary[];
+}
+
+export interface PlayerRecentCompletion {
+    instanceId: string;
+    raidKey: string | null;
+    period: number;
+    activityHash: number;
+}
+
+export function getPlayerRecentCompletions(
+    membershipId: string,
+    hoursBack: number,
+    limit: number = 100
+): PlayerRecentCompletion[] {
+    const db = getDb();
+    const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
+
+    return db.prepare(`
+    SELECT
+      p.instance_id as instanceId,
+      p.raid_key as raidKey,
+      p.period as period,
+      p.activity_hash as activityHash
+    FROM pgcr_players pp
+    JOIN pgcrs p ON pp.instance_id = p.instance_id
+    WHERE pp.membership_id = ?
+      AND p.period >= ?
+      AND pp.completed = 1
+      AND p.completed = 1
+      AND p.raid_key IS NOT NULL
+      AND p.activity_was_started_from_beginning = 1
+    GROUP BY p.instance_id
+    ORDER BY p.period DESC
+    LIMIT ?
+  `).all(membershipId, cutoffTimestamp, limit) as PlayerRecentCompletion[];
+}
+
+export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: number = 600): any | null {
+    const db = getDb();
+    const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;
+
+    const row = db.prepare(`
+    SELECT
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      activity_hash as activityHash,
+      raid_key as raidKey,
+      started_at as startedAt,
+      party_members_json as partyMembersJson,
+      player_count as playerCount,
+      checked_at as checkedAt
+    FROM active_sessions
+    WHERE membership_id = ?
+      AND checked_at >= ?
+    LIMIT 1
+  `).get(membershipId, cutoff) as any;
+
+    return row || null;
+}
+
 // =====================
 // PGCR QUERIES
 // =====================
@@ -435,6 +595,11 @@ export function clearStaleActiveSessions(maxAgeSeconds: number = 600): void {
     const db = getDb();
     const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;
     db.prepare('DELETE FROM active_sessions WHERE checked_at < ?').run(cutoff);
+}
+
+export function deleteActiveSessionForPlayer(membershipId: string): void {
+    const db = getDb();
+    db.prepare('DELETE FROM active_sessions WHERE membership_id = ?').run(membershipId);
 }
 
 // =====================

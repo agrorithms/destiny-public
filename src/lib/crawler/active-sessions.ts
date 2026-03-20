@@ -8,16 +8,17 @@ import type { PlayerInfo, RaidSession } from '../bungie/types';
 const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
 
 // How long before a session is force-deleted even if re-verification fails
-const MAX_SESSION_AGE_SECONDS = 7200; // 2 hours (no raid takes longer than this)
+const MAX_SESSION_AGE_SECONDS = 7200; // 2 hours (no raid we want to show takes longer than this)
 
 /**
  * Check if a player is currently in a raid activity and store the session.
  * Uses both Component 204 (CharacterActivities) and Component 1000 (Transitory).
  */
 export async function checkPlayerActivity(
-    player: PlayerInfo
+    player: PlayerInfo,
+    clientOverride?: ReturnType<typeof getBungieClient>
 ): Promise<RaidSession | null> {
-    const client = getBungieClient();
+    const client = clientOverride || getBungieClient();
 
     try {
         const profile = await client.getProfile(
@@ -26,30 +27,33 @@ export async function checkPlayerActivity(
             [204, 1000]
         );
 
-        // Strategy 1: Check Component 204 (CharacterActivities)
+        // Strategy 1 (authoritative): Component 1000 (Transitory)
+        // `characterActivities.currentActivityHash` can remain populated after the activity ends.
+        // For "currently active" status, trust transitory first whenever it is present.
         let currentActivityHash: number | null = null;
         let activityStartedAt: string | null = null;
 
-        const charActivities = profile.Response.characterActivities?.data;
-        if (charActivities) {
-            for (const [charId, activity] of Object.entries(charActivities) as any[]) {
-                const hash = activity.currentActivityHash;
-                if (hash && hash !== 0 && isRaidActivityHash(hash)) {
-                    currentActivityHash = hash;
-                    activityStartedAt = activity.dateActivityStarted || null;
-                    break;
-                }
+        const transitory = profile.Response.profileTransitoryData?.data;
+        if (transitory) {
+            const hash = transitory.currentActivity?.currentActivityHash;
+            if (hash && hash !== 0 && isRaidActivityHash(hash)) {
+                currentActivityHash = hash;
+                activityStartedAt = transitory.currentActivity.startTime || null;
+            } else {
+                // Transitory is present and says no current raid activity.
+                return null;
             }
-        }
-
-        // Strategy 2: Check Component 1000 (Transitory) as fallback
-        if (!currentActivityHash) {
-            const transitory = profile.Response.profileTransitoryData?.data;
-            if (transitory?.currentActivity) {
-                const hash = transitory.currentActivity.currentActivityHash;
-                if (hash && hash !== 0 && isRaidActivityHash(hash)) {
-                    currentActivityHash = hash;
-                    activityStartedAt = transitory.currentActivity.startTime || null;
+        } else {
+            // Strategy 2 (fallback): Component 204 when transitory is unavailable.
+            const charActivities = profile.Response.characterActivities?.data;
+            if (charActivities) {
+                for (const activity of Object.values(charActivities) as any[]) {
+                    const hash = activity.currentActivityHash;
+                    if (hash && hash !== 0 && isRaidActivityHash(hash)) {
+                        currentActivityHash = hash;
+                        activityStartedAt = activity.dateActivityStarted || null;
+                        break;
+                    }
                 }
             }
         }
@@ -62,7 +66,6 @@ export async function checkPlayerActivity(
         const raidName = getRaidNameFromHash(currentActivityHash);
 
         // Get party members from Transitory if available
-        const transitory = profile.Response.profileTransitoryData?.data;
         const partyMembers = transitory?.partyMembers || [];
 
         let sessionKey: string;

@@ -8,6 +8,7 @@ import { useRaidFilter } from '@/hooks/useRaidFilter';
 
 interface PartyMember {
     membershipId: string;
+    membershipType?: number;
     displayName: string;
     status: number;
 }

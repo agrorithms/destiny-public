@@ -11,6 +11,7 @@ const CRAWLER_CONFIG = {
     intervalMs: parseInt(process.env.CRAWLER_INTERVAL_MS || '90000', 10),
     maxPlayersPerCycle: parseInt(process.env.CRAWLER_MAX_PLAYERS_PER_CYCLE || '50', 10),
     hoursBack: parseInt(process.env.CRAWLER_HOURS_BACK || '24', 10),
+    crawlConcurrency: parseInt(process.env.CRAWLER_CONCURRENCY || '5', 10),
     enableActiveSessionPolling: true,
     activeSessionIntervalMs: 120000, // 5 minutes
     cleanupIntervalMs: 1800000, // 30 minutes

@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+tmp-check-aegis-profile.js
 
 
 # debug

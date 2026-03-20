@@ -2,6 +2,7 @@ import { getPlayersForSessionPolling, getPlayersToCrawl, getPlayerCount, bulkUps
 import { crawlPlayer } from './players';
 import { pollActiveSessions } from './active-sessions';
 import { getDb } from '../db';
+import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo } from '../bungie/types';
 
 function writeCrawlerHeartbeat(): void {
@@ -30,6 +31,7 @@ export interface CrawlerConfig {
     intervalMs: number;
     maxPlayersPerCycle: number;
     hoursBack: number;
+    crawlConcurrency: number;
     enableActiveSessionPolling: boolean;
     activeSessionIntervalMs: number;
     cleanupIntervalMs: number;
@@ -40,6 +42,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     intervalMs: parseInt(process.env.CRAWLER_INTERVAL_MS || '90000', 10),
     maxPlayersPerCycle: parseInt(process.env.CRAWLER_MAX_PLAYERS_PER_CYCLE || '50', 10),
     hoursBack: parseInt(process.env.CRAWLER_HOURS_BACK || '24', 10),
+    crawlConcurrency: parseInt(process.env.CRAWLER_CONCURRENCY || '5', 10),
     enableActiveSessionPolling: true,
     activeSessionIntervalMs: 120000, // 2 minutes
     cleanupIntervalMs: 1800000, // 30 minutes
@@ -67,13 +70,31 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
 
     let totalNewPGCRs = 0;
     const allDiscoveredPlayers: PlayerInfo[] = [];
+    let crawledCount = 0;
 
-    for (const player of players) {
-        if (shouldStop) break;
+    const results = await processWithConcurrency(
+        players,
+        config.crawlConcurrency,
+        async (player) => {
+            if (shouldStop) {
+                return { newPGCRs: 0, discoveredPlayers: [] as PlayerInfo[], skipped: true };
+            }
+            const result = await crawlPlayer(player, config.hoursBack);
+            return { ...result, skipped: false };
+        },
+        (completed, total) => {
+            if (completed % 10 === 0 || completed === total) {
+                console.log(`[CRAWLER] Progress: ${completed}/${total} players`);
+            }
+        }
+    );
 
-        const result = await crawlPlayer(player, config.hoursBack);
-        totalNewPGCRs += result.newPGCRs;
-        allDiscoveredPlayers.push(...result.discoveredPlayers);
+    for (const result of results) {
+        if (!result.success) continue;
+        if (result.result.skipped) continue;
+        crawledCount++;
+        totalNewPGCRs += result.result.newPGCRs;
+        allDiscoveredPlayers.push(...result.result.discoveredPlayers);
     }
 
     // Bulk insert newly discovered players
@@ -82,7 +103,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     }
 
     return {
-        playersCrawled: players.length,
+        playersCrawled: crawledCount,
         newPGCRs: totalNewPGCRs,
         newPlayersDiscovered: allDiscoveredPlayers.length,
     };
@@ -108,6 +129,7 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         intervalMs: config.intervalMs,
         maxPlayersPerCycle: config.maxPlayersPerCycle,
         hoursBack: config.hoursBack,
+        crawlConcurrency: config.crawlConcurrency,
     });
 
     // Print initial stats

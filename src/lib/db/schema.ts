@@ -22,6 +22,7 @@ export function initializeSchema(db: Database.Database): void {
       starting_phase_index INTEGER DEFAULT 0,
       activity_was_started_from_beginning INTEGER DEFAULT 0,
       completed INTEGER DEFAULT 0,
+      source TEXT DEFAULT 'unknown',
       player_count INTEGER DEFAULT 0,
       fetched_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
@@ -71,4 +72,11 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_players_priority ON players(priority DESC, last_crawled_at ASC);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_raid ON active_sessions(raid_key);
   `);
+
+    // Migration guard for existing DBs created before "source" was added.
+    try {
+        db.prepare(`ALTER TABLE pgcrs ADD COLUMN source TEXT DEFAULT 'unknown'`).run();
+    } catch {
+        // Column already exists.
+    }
 }

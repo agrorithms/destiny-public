@@ -2,6 +2,7 @@
 
 interface PartyMember {
     membershipId: string;
+    membershipType?: number;
     displayName: string;
     status: number;
 }
@@ -75,9 +76,18 @@ export default function ActiveSessionCard({ session }: ActiveSessionCardProps) {
                             className={`w-1.5 h-1.5 rounded-full ${member.status === 1 ? 'bg-green-500' : 'bg-gray-500'
                                 }`}
                         />
-                        <span className="text-gray-300 truncate">
-                            {member.displayName || member.membershipId}
-                        </span>
+                        {typeof member.membershipType === 'number' ? (
+                            <a
+                                href={`/player/${member.membershipType}/${member.membershipId}`}
+                                className="text-gray-300 truncate hover:text-blue-400 transition-colors"
+                            >
+                                {member.displayName || member.membershipId}
+                            </a>
+                        ) : (
+                            <span className="text-gray-300 truncate">
+                                {member.displayName || member.membershipId}
+                            </span>
+                        )}
                     </div>
                 ))}
             </div>

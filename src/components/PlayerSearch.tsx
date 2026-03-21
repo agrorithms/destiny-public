@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface SearchResult {
@@ -8,6 +8,7 @@ interface SearchResult {
     membershipType: number;
     displayName: string;
     baseName: string;
+    secondaryDisplayName: string;
     isExactFullMatch: boolean;
     isExactNameMatch: boolean;
 }
@@ -21,6 +22,7 @@ export default function PlayerSearch() {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
 
     const trimmed = query.trim();
 
@@ -41,6 +43,7 @@ export default function PlayerSearch() {
             setResults([]);
             setOpen(false);
             setError(null);
+            setSelectedIndex(-1);
             return;
         }
 
@@ -54,8 +57,10 @@ export default function PlayerSearch() {
                 const data = await res.json();
                 setResults(data.results || []);
                 setOpen(true);
+                setSelectedIndex((data.results || []).length > 0 ? 0 : -1);
             } catch (err) {
                 setError((err as Error).message);
+                setSelectedIndex(-1);
             } finally {
                 setLoading(false);
             }
@@ -77,6 +82,11 @@ export default function PlayerSearch() {
     const onSubmit = (event: FormEvent) => {
         event.preventDefault();
 
+        if (selectedIndex >= 0 && selectedIndex < results.length) {
+            goToPlayer(results[selectedIndex]);
+            return;
+        }
+
         if (results.length === 1) {
             goToPlayer(results[0]);
             return;
@@ -91,6 +101,34 @@ export default function PlayerSearch() {
         setOpen(true);
     };
 
+    const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (!open || results.length === 0) {
+            if (event.key === 'ArrowDown' && results.length > 0) {
+                setOpen(true);
+                setSelectedIndex(0);
+            }
+            return;
+        }
+
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            setSelectedIndex((prev) => (prev + 1) % results.length);
+            return;
+        }
+
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            setSelectedIndex((prev) => (prev <= 0 ? results.length - 1 : prev - 1));
+            return;
+        }
+
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setOpen(false);
+            return;
+        }
+    };
+
     return (
         <div ref={containerRef} className="relative w-full max-w-md">
             <form onSubmit={onSubmit} className="flex items-center gap-2">
@@ -100,8 +138,9 @@ export default function PlayerSearch() {
                     onFocus={() => {
                         if (results.length > 0) setOpen(true);
                     }}
+                    onKeyDown={onInputKeyDown}
                     type="text"
-                    placeholder="Search player (e.g. Aegis or Aegis#4237)"
+                    placeholder="Search player"
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
                 />
                 <button
@@ -136,14 +175,25 @@ export default function PlayerSearch() {
                                 </div>
                             )}
                             <div className="max-h-72 overflow-y-auto">
-                                {results.map((result) => (
+                                {results.map((result, index) => (
                                     <button
                                         key={`${result.membershipType}:${result.membershipId}`}
+                                        type="button"
                                         onClick={() => goToPlayer(result)}
-                                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-800 transition-colors"
+                                        onMouseEnter={() => setSelectedIndex(index)}
+                                        className={`w-full text-left px-3 py-2 text-sm transition-colors ${selectedIndex === index
+                                            ? 'bg-gray-800'
+                                            : 'hover:bg-gray-800'
+                                            }`}
                                     >
                                         <div className="text-gray-100">{result.displayName}</div>
-                                        <div className="text-xs text-gray-500 font-mono">{result.membershipId}</div>
+                                        <div className="text-xs text-gray-500">
+                                            {getMembershipTypeLabel(result.membershipType)}
+                                            {(result.secondaryDisplayName || result.baseName)
+                                                && (result.secondaryDisplayName || result.baseName).toLowerCase() !== result.displayName.toLowerCase()
+                                                ? ` • ${result.secondaryDisplayName || result.baseName}`
+                                                : ''}
+                                        </div>
                                     </button>
                                 ))}
                             </div>
@@ -153,4 +203,15 @@ export default function PlayerSearch() {
             )}
         </div>
     );
+}
+
+function getMembershipTypeLabel(membershipType: number): string {
+    switch (membershipType) {
+        case 1: return 'Xbox';
+        case 2: return 'PlayStation';
+        case 3: return 'Steam';
+        case 5: return 'Stadia';
+        case 6: return 'Epic';
+        default: return 'Unknown Platform';
+    }
 }

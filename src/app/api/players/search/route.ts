@@ -126,12 +126,14 @@ export async function GET(request: NextRequest) {
         const results = localResults.map((row) => {
             const baseName = row.bungieGlobalDisplayName || row.displayName || '';
             const fullName = formatDisplayName(row);
+            const secondaryDisplayName = row.displayName || baseName || row.membershipId;
 
             return {
                 membershipId: row.membershipId,
                 membershipType: row.membershipType,
                 displayName: fullName,
                 baseName,
+                secondaryDisplayName,
                 isExactFullMatch: fullName.toLowerCase() === lowerQuery,
                 isExactNameMatch: baseName.toLowerCase() === nameOnly,
             };

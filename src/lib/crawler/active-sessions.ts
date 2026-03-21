@@ -1,6 +1,6 @@
 import { getBungieClient, BungieAPIError } from '../bungie/client';
-import { isRaidActivityHash, getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { upsertActiveSession, clearStaleActiveSessions, getActiveSessions } from '../db/queries';
+import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
+import { deleteSessionsContainingPlayer, upsertActiveSession } from '../db/queries';
 import { getDb } from '../db';
 import type { PlayerInfo, RaidSession } from '../bungie/types';
 
@@ -27,43 +27,49 @@ export async function checkPlayerActivity(
             [204, 1000]
         );
 
-        // Strategy 1 (authoritative): Component 1000 (Transitory)
-        // `characterActivities.currentActivityHash` can remain populated after the activity ends.
-        // For "currently active" status, trust transitory first whenever it is present.
-        let currentActivityHash: number | null = null;
-        let activityStartedAt: string | null = null;
-
+        // Authoritative online/activity signal: component 1000 (transitory).
+        // If absent, treat as offline and clear any stored session for this player upstream.
         const transitory = profile.Response.profileTransitoryData?.data;
-        if (transitory) {
-            const hash = transitory.currentActivity?.currentActivityHash;
-            if (hash && hash !== 0 && isRaidActivityHash(hash)) {
-                currentActivityHash = hash;
-                activityStartedAt = transitory.currentActivity.startTime || null;
-            } else {
-                // Transitory is present and says no current raid activity.
-                return null;
-            }
-        } else {
-            // Strategy 2 (fallback): Component 204 when transitory is unavailable.
-            const charActivities = profile.Response.characterActivities?.data;
-            if (charActivities) {
-                for (const activity of Object.values(charActivities) as any[]) {
-                    const hash = activity.currentActivityHash;
-                    if (hash && hash !== 0 && isRaidActivityHash(hash)) {
-                        currentActivityHash = hash;
-                        activityStartedAt = activity.dateActivityStarted || null;
-                        break;
-                    }
-                }
-            }
+        if (!transitory) {
+            return null;
         }
 
-        if (!currentActivityHash) {
+        // Use component 204 to get current activity metadata from the most recently started character activity.
+        const charActivities = Object.values(profile.Response.characterActivities?.data || {}) as any[];
+        charActivities.sort((a, b) => {
+            const aTs = Date.parse(a?.dateActivityStarted || '') || 0;
+            const bTs = Date.parse(b?.dateActivityStarted || '') || 0;
+            return bTs - aTs;
+        });
+        const mostRecent = charActivities[0];
+
+        const currentActivityHash = Number(
+            mostRecent?.currentActivityHash
+            || transitory.currentActivity?.currentActivityHash
+            || 0
+        );
+        const currentActivityModeHash = Number(
+            mostRecent?.currentActivityModeHash
+            || transitory.currentActivity?.currentActivityModeHash
+            || 0
+        );
+        const currentActivityModeType = Number(
+            mostRecent?.currentActivityModeType
+            || transitory.currentActivity?.currentActivityModeType
+            || 0
+        );
+
+        const activityStartedAt =
+            mostRecent?.dateActivityStarted
+            || transitory.currentActivity?.startTime
+            || null;
+
+        if (!currentActivityHash || !currentActivityModeType) {
             return null;
         }
 
         const raidKey = getRaidKeyFromHash(currentActivityHash);
-        const raidName = getRaidNameFromHash(currentActivityHash);
+        const activityName = getRaidNameFromHash(currentActivityHash);
 
         // Get party members from Transitory if available
         const partyMembers = transitory?.partyMembers || [];
@@ -83,13 +89,15 @@ export async function checkPlayerActivity(
 
         const effectivePartyMembers = partyMembers.length > 0
             ? partyMembers
-            : [{ membershipId: player.membershipId, displayName, status: 1, emblemHash: 0, }];
+            : [{ membershipId: player.membershipId, displayName, status: 1, emblemHash: 0 }];
 
         upsertActiveSession({
             membershipId: player.membershipId,
             membershipType: player.membershipType,
             displayName,
             activityHash: currentActivityHash,
+            activityModeHash: currentActivityModeHash || null,
+            activityModeType: currentActivityModeType || null,
             raidKey,
             startedAt: activityStartedAt || new Date().toISOString(),
             partyMembersJson: JSON.stringify(effectivePartyMembers),
@@ -99,7 +107,7 @@ export async function checkPlayerActivity(
         return {
             sessionKey,
             activityHash: currentActivityHash,
-            raidName,
+            raidName: activityName,
             raidKey: raidKey || 'unknown',
             players: effectivePartyMembers,
             startedAt: activityStartedAt || new Date().toISOString(),
@@ -173,7 +181,7 @@ export async function refreshStaleSessions(): Promise<{
             refreshed++;
         } else {
             // No longer in a raid — remove the session
-            db.prepare('DELETE FROM active_sessions WHERE membership_id = ?').run(session.membership_id);
+            deleteSessionsContainingPlayer(session.membership_id);
             removed++;
         }
     }

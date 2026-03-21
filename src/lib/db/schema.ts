@@ -49,6 +49,8 @@ export function initializeSchema(db: Database.Database): void {
       membership_type INTEGER NOT NULL,
       display_name TEXT,
       activity_hash INTEGER,
+      activity_mode_hash INTEGER,
+      activity_mode_type INTEGER,
       raid_key TEXT,
       started_at TEXT,
       party_members_json TEXT,
@@ -76,6 +78,18 @@ export function initializeSchema(db: Database.Database): void {
     // Migration guard for existing DBs created before "source" was added.
     try {
         db.prepare(`ALTER TABLE pgcrs ADD COLUMN source TEXT DEFAULT 'unknown'`).run();
+    } catch {
+        // Column already exists.
+    }
+
+    // Migration guards for active session mode metadata.
+    try {
+        db.prepare(`ALTER TABLE active_sessions ADD COLUMN activity_mode_hash INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
+    try {
+        db.prepare(`ALTER TABLE active_sessions ADD COLUMN activity_mode_type INTEGER`).run();
     } catch {
         // Column already exists.
     }

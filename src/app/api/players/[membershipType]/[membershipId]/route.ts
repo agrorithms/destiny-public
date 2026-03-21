@@ -3,14 +3,16 @@ import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifes
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
 import { runConcurrentDiscovery } from '@/lib/discovery/snowball-concurrent';
 import { checkPlayerActivity } from '@/lib/crawler/active-sessions';
+import { getDb } from '@/lib/db';
 import {
-    deleteActiveSessionForPlayer,
+    deleteSessionsContainingPlayer,
     getPlayerIdentity,
     getPlayerRaidCompletionSummary,
     getPlayerRecentCompletions,
     getActiveSessionForPlayer,
     upsertPlayer,
 } from '@/lib/db/queries';
+import { getActivityDisplayName } from '@/lib/utils/activity';
 
 const refreshInFlight = new Map<string, Promise<void>>();
 const recentRefresh = new Map<string, number>();
@@ -26,6 +28,10 @@ function formatDisplayName(player: {
         return `${player.bungieGlobalDisplayName}#${String(player.bungieGlobalDisplayNameCode).padStart(4, '0')}`;
     }
     return player.bungieGlobalDisplayName || player.displayName || player.membershipId;
+}
+
+function isLikelyMembershipId(str: string): boolean {
+    return /^\d{16,}$/.test(str);
 }
 
 async function ensurePlayerIdentity(membershipType: number, membershipId: string) {
@@ -149,7 +155,7 @@ export async function GET(
         }, discoveryClient);
 
         if (!liveSession) {
-            deleteActiveSessionForPlayer(membershipId);
+            deleteSessionsContainingPlayer(membershipId);
         }
 
         const summary = getPlayerRaidCompletionSummary(membershipId, hours);
@@ -164,6 +170,61 @@ export async function GET(
             } catch {
                 partyMembers = [];
             }
+        }
+
+        if (partyMembers.length > 0) {
+            const db = getDb();
+            const ids = [...new Set(
+                partyMembers
+                    .map((m: any) => String(m?.membershipId || ''))
+                    .filter(Boolean)
+            )];
+
+            const nameMap = new Map<string, string>();
+            const typeMap = new Map<string, number>();
+
+            if (ids.length > 0) {
+                const placeholders = ids.map(() => '?').join(',');
+                const rows = db.prepare(`
+                SELECT
+                  membership_id,
+                  membership_type,
+                  bungie_global_display_name,
+                  bungie_global_display_name_code,
+                  display_name
+                FROM players
+                WHERE membership_id IN (${placeholders})
+              `).all(...ids) as any[];
+
+                for (const row of rows) {
+                    typeMap.set(row.membership_id, row.membership_type);
+                    if (row.bungie_global_display_name && row.bungie_global_display_name_code !== null) {
+                        nameMap.set(
+                            row.membership_id,
+                            `${row.bungie_global_display_name}#${String(row.bungie_global_display_name_code).padStart(4, '0')}`
+                        );
+                    } else if (row.bungie_global_display_name) {
+                        nameMap.set(row.membership_id, row.bungie_global_display_name);
+                    } else if (row.display_name) {
+                        nameMap.set(row.membership_id, row.display_name);
+                    }
+                }
+            }
+
+            partyMembers = partyMembers.map((member: any) => {
+                const id = String(member?.membershipId || '');
+                const knownName = nameMap.get(id);
+                const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
+                    ? member.displayName
+                    : null;
+
+                return {
+                    ...member,
+                    membershipId: id,
+                    membershipType: member?.membershipType ?? typeMap.get(id),
+                    displayName: knownName || fallbackApiName || id,
+                };
+            });
         }
 
         return NextResponse.json({
@@ -192,8 +253,10 @@ export async function GET(
                     membershipType: activeSession.membershipType,
                     displayName: formatDisplayName(identity),
                     activityHash: activeSession.activityHash,
+                    activityModeHash: activeSession.activityModeHash,
+                    activityModeType: activeSession.activityModeType,
                     raidKey: activeSession.raidKey,
-                    raidName: getRaidNameFromHash(activeSession.activityHash),
+                    raidName: getActivityDisplayName(activeSession.activityHash, activeSession.activityModeType),
                     startedAt: activeSession.startedAt,
                     playerCount: activeSession.playerCount,
                     partyMembers,

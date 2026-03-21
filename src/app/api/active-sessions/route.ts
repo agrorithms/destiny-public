@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getActiveSessions } from '@/lib/db/queries';
-import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifest';
+import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { getDb } from '@/lib/db';
+import { getActivityDisplayName } from '@/lib/utils/activity';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const rawSessions = getActiveSessions(raidKey, limit);
+        const rawSessions = getActiveSessions(raidKey, limit, true);
         const db = getDb();
 
         // Build a set of all membership IDs across all sessions
@@ -110,8 +111,10 @@ export async function GET(request: NextRequest) {
                 membershipType: raw.membershipType,
                 displayName: hostName,
                 activityHash: raw.activityHash,
+                activityModeHash: raw.activityModeHash,
+                activityModeType: raw.activityModeType,
                 raidKey: raw.raidKey,
-                raidName: getRaidNameFromHash(raw.activityHash),
+                raidName: getActivityDisplayName(raw.activityHash, raw.activityModeType),
                 startedAt: raw.startedAt,
                 playerCount: enrichedMembers.length,
                 partyMembers: enrichedMembers,

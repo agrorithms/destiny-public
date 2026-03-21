@@ -303,6 +303,8 @@ export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: n
       membership_type as membershipType,
       display_name as displayName,
       activity_hash as activityHash,
+      activity_mode_hash as activityModeHash,
+      activity_mode_type as activityModeType,
       raid_key as raidKey,
       started_at as startedAt,
       party_members_json as partyMembersJson,
@@ -527,6 +529,8 @@ export function upsertActiveSession(session: {
     membershipType: number;
     displayName: string;
     activityHash: number;
+    activityModeHash?: number | null;
+    activityModeType?: number | null;
     raidKey: string | undefined;
     startedAt: string;
     partyMembersJson: string;
@@ -535,11 +539,13 @@ export function upsertActiveSession(session: {
     const db = getDb();
     db.prepare(`
     INSERT INTO active_sessions 
-    (membership_id, membership_type, display_name, activity_hash, raid_key, 
+    (membership_id, membership_type, display_name, activity_hash, activity_mode_hash, activity_mode_type, raid_key, 
      started_at, party_members_json, player_count, checked_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, unixepoch())
     ON CONFLICT(membership_id) DO UPDATE SET
       activity_hash = excluded.activity_hash,
+      activity_mode_hash = excluded.activity_mode_hash,
+      activity_mode_type = excluded.activity_mode_type,
       raid_key = excluded.raid_key,
       started_at = excluded.started_at,
       party_members_json = excluded.party_members_json,
@@ -550,6 +556,8 @@ export function upsertActiveSession(session: {
         session.membershipType,
         session.displayName,
         session.activityHash,
+        session.activityModeHash ?? null,
+        session.activityModeType ?? null,
         session.raidKey || null,
         session.startedAt,
         session.partyMembersJson,
@@ -557,11 +565,11 @@ export function upsertActiveSession(session: {
     );
 }
 
-export function getActiveSessions(raidKey?: string, limit: number = 50): any[] {
+export function getActiveSessions(raidKey?: string, limit: number = 50, onlyRaidMode: boolean = true): any[] {
     const db = getDb();
 
-    // Only show sessions checked within the last 10 minutes
-    const freshnessCutoff = Math.floor(Date.now() / 1000) - 4000;
+    // Only show sessions checked within the last 15 minutes
+    const freshnessCutoff = Math.floor(Date.now() / 1000) - 900;
 
     let query = `
     SELECT 
@@ -569,6 +577,8 @@ export function getActiveSessions(raidKey?: string, limit: number = 50): any[] {
       membership_type as membershipType,
       display_name as displayName,
       activity_hash as activityHash,
+      activity_mode_hash as activityModeHash,
+      activity_mode_type as activityModeType,
       raid_key as raidKey,
       started_at as startedAt,
       party_members_json as partyMembersJson,
@@ -579,6 +589,10 @@ export function getActiveSessions(raidKey?: string, limit: number = 50): any[] {
   `;
 
     const queryParams: any[] = [freshnessCutoff];
+
+    if (onlyRaidMode) {
+        query += ` AND (activity_mode_type = 4 OR raid_key IS NOT NULL)`;
+    }
 
     if (raidKey) {
         query += ` AND raid_key = ?`;
@@ -600,6 +614,16 @@ export function clearStaleActiveSessions(maxAgeSeconds: number = 600): void {
 export function deleteActiveSessionForPlayer(membershipId: string): void {
     const db = getDb();
     db.prepare('DELETE FROM active_sessions WHERE membership_id = ?').run(membershipId);
+}
+
+export function deleteSessionsContainingPlayer(membershipId: string): void {
+    const db = getDb();
+    const likePattern = `%\"membershipId\":\"${membershipId}\"%`;
+    db.prepare(`
+    DELETE FROM active_sessions
+    WHERE membership_id = ?
+       OR party_members_json LIKE ?
+  `).run(membershipId, likePattern);
 }
 
 // =====================

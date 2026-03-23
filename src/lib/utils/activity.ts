@@ -64,15 +64,26 @@ const ACTIVITY_MODE_NAMES: Record<number, string> = {
     85: 'Dares of Eternity',
 };
 
+const IN_ORBIT_MODE_HASHES = new Set<number>([
+    2166136261, // Transitory mode hash observed for in-orbit players
+]);
+
 export function getActivityModeName(modeType?: number | null): string {
     if (!modeType) return 'Unknown Activity';
     return ACTIVITY_MODE_NAMES[modeType] || `Activity Mode ${modeType}`;
 }
 
-export function getActivityDisplayName(activityHash: number, modeType?: number | null): string {
+export function getActivityDisplayName(
+    activityHash: number,
+    modeType?: number | null,
+    modeHash?: number | null
+): string {
     const raidName = getRaidNameFromHash(activityHash);
     if (raidName !== 'Unknown Raid') {
         return raidName;
+    }
+    if (!modeType && modeHash && IN_ORBIT_MODE_HASHES.has(modeHash)) {
+        return 'In Orbit';
     }
     return getActivityModeName(modeType);
 }

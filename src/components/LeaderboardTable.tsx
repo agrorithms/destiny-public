@@ -75,23 +75,13 @@ export default function LeaderboardTable({
                                     )}
                                 </td>
                                 <td className="py-2.5 px-2">
-                                    <div className="flex items-center gap-2">
-                                        <a
-                                            href={`/player/${entry.membershipType}/${entry.membershipId}`}
-                                            className="text-gray-200 hover:text-blue-400 transition-colors"
-                                        >
-                                            {entry.displayName}
-                                        </a>
-                                        <a
-                                            href={`https://raid.report/${getMembershipPrefix(entry.membershipType)}/${entry.membershipId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                                            title="Open raid.report"
-                                        >
-                                            RR
-                                        </a>
-                                    </div>
+                                    <a
+                                        href={`/player/${entry.membershipType}/${entry.membershipId}`}
+                                        className="text-gray-200 hover:text-blue-400 transition-colors"
+                                        title={entry.displayName}
+                                    >
+                                        {truncateDisplayName(entry.displayName, 25)}
+                                    </a>
                                 </td>
                                 {showRaidColumn && (
                                     <td className="py-2.5 px-2 text-gray-400">{raidName}</td>
@@ -108,13 +98,7 @@ export default function LeaderboardTable({
     );
 }
 
-function getMembershipPrefix(membershipType: number): string {
-    switch (membershipType) {
-        case 1: return 'xb';
-        case 2: return 'ps';
-        case 3: return 'pc';
-        case 5: return 'stadia';
-        case 6: return 'epic';
-        default: return 'pc';
-    }
+function truncateDisplayName(name: string, maxLength: number): string {
+    if (name.length <= maxLength) return name;
+    return `${name.slice(0, maxLength - 1)}...`;
 }

@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
                 activityModeHash: raw.activityModeHash,
                 activityModeType: raw.activityModeType,
                 raidKey: raw.raidKey,
-                raidName: getActivityDisplayName(raw.activityHash, raw.activityModeType),
+                raidName: getActivityDisplayName(raw.activityHash, raw.activityModeType, raw.activityModeHash),
                 startedAt: raw.startedAt,
                 playerCount: enrichedMembers.length,
                 partyMembers: enrichedMembers,

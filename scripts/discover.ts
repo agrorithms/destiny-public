@@ -104,7 +104,7 @@ function updateScannerPosition(newPosition: bigint): void {
 async function findPresentInstanceId(client: BungieClient): Promise<bigint> {
     const scannerPos = getScannerPosition();
     const highestPGCR = getHighestPGCRId();
-    let startId = scannerPos > highestPGCR ? scannerPos : highestPGCR;
+    const startId = scannerPos > highestPGCR ? scannerPos : highestPGCR;
 
     console.log(`  🔍 Probing for present... starting from ${startId}`);
 

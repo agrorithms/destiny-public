@@ -54,15 +54,10 @@ const AVAILABLE_RAIDS: RaidOption[] = [
     { key: 'last_wish', name: 'Last Wish' },
 ];
 
-// 1 to 8 hours in 0.5 hour increments
-const HOUR_MARKS: number[] = [];
-for (let h = 1; h <= 8; h += 0.5) {
-    HOUR_MARKS.push(h);
-}
+const HOUR_MARKS = Array.from({ length: 48 }, (_, i) => i + 1);
 
 function formatHours(h: number): string {
     if (h === 1) return '1 hour';
-    if (h % 1 === 0) return `${h} hours`;
     return `${h} hours`;
 }
 
@@ -202,17 +197,22 @@ export default function LeaderboardPage() {
                         onChange={(e) => setHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
                         className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
-                    <div className="flex justify-between mt-1">
-                        {HOUR_MARKS.filter((h) => h % 1 === 0).map((h) => (
-                            <span
-                                key={h}
-                                className={`text-xs cursor-pointer ${h === hours ? 'text-blue-400 font-medium' : 'text-gray-600'
-                                    }`}
-                                onClick={() => setHours(h)}
-                            >
-                                {h}h
-                            </span>
-                        ))}
+                    <div className="relative mt-2 h-4">
+                        {[1, 6, 12, 24, 36, 48].map((h) => {
+                            const pct = ((h - 1) / (HOUR_MARKS.length - 1)) * 100;
+                            const offsetClass = h === 1 ? 'translate-x-0' : h === 48 ? '-translate-x-full' : '-translate-x-1/2';
+
+                            return (
+                                <span
+                                    key={h}
+                                    className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === hours ? 'text-blue-400 font-medium' : 'text-gray-600'}`}
+                                    style={{ left: `${pct}%` }}
+                                    onClick={() => setHours(h)}
+                                >
+                                    {h}h
+                                </span>
+                            );
+                        })}
                     </div>
                 </div>
             </div>

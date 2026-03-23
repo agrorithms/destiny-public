@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import './globals.css';
 import PlayerSearch from '@/components/PlayerSearch';
 
@@ -17,23 +18,23 @@ export default function RootLayout({
       <body className="bg-gray-900 text-white min-h-screen">
         <nav className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <a href="/" className="text-lg font-bold text-white hover:text-blue-400 transition-colors shrink-0">
+            <Link href="/" className="text-lg font-bold text-white hover:text-blue-400 transition-colors shrink-0">
               Destiny Farm Finder
-            </a>
+            </Link>
             <PlayerSearch />
             <div className="flex gap-6 shrink-0">
-              <a
+              <Link
                 href="/leaderboard"
                 className="text-sm text-gray-400 hover:text-white transition-colors"
               >
                 Leaderboard
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/active-sessions"
                 className="text-sm text-gray-400 hover:text-white transition-colors"
               >
                 Active Sessions
-              </a>
+              </Link>
             </div>
           </div>
         </nav>

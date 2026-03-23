@@ -65,8 +65,8 @@ const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
     },
 };
 
-let raidDefinitions: Record<string, RaidDefinition> = RAID_DEFINITIONS;
-let hashToRaidMap: Map<number, string> = new Map();
+const raidDefinitions: Record<string, RaidDefinition> = RAID_DEFINITIONS;
+const hashToRaidMap: Map<number, string> = new Map();
 
 function buildHashMap() {
     hashToRaidMap.clear();

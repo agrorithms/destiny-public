@@ -53,7 +53,7 @@ interface ScannerState {
     startedAt: number;
 }
 
-let state: ScannerState = {
+const state: ScannerState = {
     currentInstanceId: BigInt(0),
     totalScanned: 0,
     totalRaidsFound: 0,

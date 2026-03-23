@@ -64,7 +64,9 @@ export async function checkPlayerActivity(
             || transitory.currentActivity?.startTime
             || null;
 
-        if (!currentActivityHash || !currentActivityModeType) {
+        // Some valid transitory states (for example in-orbit) report an activity hash
+        // while omitting mode type. Keep these sessions instead of dropping them.
+        if (!currentActivityHash) {
             return null;
         }
 

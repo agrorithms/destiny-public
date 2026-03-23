@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 const VIEW_MODE_KEY = 'destiny-farm-finder-view-mode';
 const TIME_RANGE_KEY = 'destiny-farm-finder-time-range';
@@ -10,66 +10,62 @@ const TIME_RANGE_KEY = 'destiny-farm-finder-time-range';
  * Defaults to 'individual' (Per Raid).
  */
 export function useViewMode(): ['aggregate' | 'individual', (mode: 'aggregate' | 'individual') => void] {
-    const [mode, setMode] = useState<'aggregate' | 'individual'>('individual');
-    const [initialized, setInitialized] = useState(false);
-
-    useEffect(() => {
+    const [mode, setMode] = useState<'aggregate' | 'individual'>(() => {
+        if (typeof window === 'undefined') {
+            return 'individual';
+        }
         try {
             const stored = localStorage.getItem(VIEW_MODE_KEY);
             if (stored === 'aggregate' || stored === 'individual') {
-                setMode(stored);
+                return stored;
             }
         } catch {
             // Ignore
         }
-        setInitialized(true);
-    }, []);
+        return 'individual';
+    });
 
     useEffect(() => {
-        if (initialized) {
-            try {
-                localStorage.setItem(VIEW_MODE_KEY, mode);
-            } catch {
-                // Ignore
-            }
+        try {
+            localStorage.setItem(VIEW_MODE_KEY, mode);
+        } catch {
+            // Ignore
         }
-    }, [mode, initialized]);
+    }, [mode]);
 
     return [mode, setMode];
 }
 
 /**
  * Persisted time range slider value.
- * Defaults to 4 hours.
+ * Defaults to 48 hours.
  */
 export function useTimeRange(): [number, (hours: number) => void] {
-    const [hours, setHours] = useState(4);
-    const [initialized, setInitialized] = useState(false);
-
-    useEffect(() => {
+    const [hours, setHours] = useState(() => {
+        if (typeof window === 'undefined') {
+            return 48;
+        }
         try {
             const stored = localStorage.getItem(TIME_RANGE_KEY);
             if (stored) {
                 const parsed = parseFloat(stored);
-                if (!isNaN(parsed) && parsed >= 1 && parsed <= 8) {
-                    setHours(parsed);
+                if (!isNaN(parsed)) {
+                    return Math.min(48, Math.max(1, Math.round(parsed)));
                 }
             }
         } catch {
             // Ignore
         }
-        setInitialized(true);
-    }, []);
+        return 48;
+    });
 
     useEffect(() => {
-        if (initialized) {
-            try {
-                localStorage.setItem(TIME_RANGE_KEY, hours.toString());
-            } catch {
-                // Ignore
-            }
+        try {
+            localStorage.setItem(TIME_RANGE_KEY, hours.toString());
+        } catch {
+            // Ignore
         }
-    }, [hours, initialized]);
+    }, [hours]);
 
     return [hours, setHours];
 }

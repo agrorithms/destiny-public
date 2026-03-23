@@ -232,6 +232,7 @@ export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
 export interface PlayerRaidCompletionSummary {
     raidKey: string;
     completions: number;
+    avgCompletionSeconds: number | null;
 }
 
 export function getPlayerRaidCompletionSummary(
@@ -242,11 +243,21 @@ export function getPlayerRaidCompletionSummary(
     const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
 
     return db.prepare(`
+    WITH run_durations AS (
+      SELECT
+        instance_id,
+        MAX(time_played_seconds) as pgcrDurationSeconds
+      FROM pgcr_players
+      WHERE completed = 1
+      GROUP BY instance_id
+    )
     SELECT
       p.raid_key as raidKey,
-      COUNT(DISTINCT pp.instance_id) as completions
+      COUNT(DISTINCT pp.instance_id) as completions,
+      CAST(ROUND(AVG(d.pgcrDurationSeconds)) AS INTEGER) as avgCompletionSeconds
     FROM pgcr_players pp
     JOIN pgcrs p ON pp.instance_id = p.instance_id
+    JOIN run_durations d ON d.instance_id = p.instance_id
     WHERE pp.membership_id = ?
       AND p.period >= ?
       AND pp.completed = 1
@@ -263,6 +274,7 @@ export interface PlayerRecentCompletion {
     raidKey: string | null;
     period: number;
     activityHash: number;
+    timePlayedSeconds: number;
 }
 
 export function getPlayerRecentCompletions(
@@ -274,23 +286,99 @@ export function getPlayerRecentCompletions(
     const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
 
     return db.prepare(`
+    WITH run_durations AS (
+      SELECT
+        instance_id,
+        MAX(time_played_seconds) as pgcrDurationSeconds
+      FROM pgcr_players
+      WHERE completed = 1
+      GROUP BY instance_id
+    )
     SELECT
       p.instance_id as instanceId,
       p.raid_key as raidKey,
       p.period as period,
-      p.activity_hash as activityHash
+      p.activity_hash as activityHash,
+      d.pgcrDurationSeconds as timePlayedSeconds
     FROM pgcr_players pp
     JOIN pgcrs p ON pp.instance_id = p.instance_id
+    JOIN run_durations d ON d.instance_id = p.instance_id
     WHERE pp.membership_id = ?
       AND p.period >= ?
       AND pp.completed = 1
       AND p.completed = 1
       AND p.raid_key IS NOT NULL
       AND p.activity_was_started_from_beginning = 1
-    GROUP BY p.instance_id
     ORDER BY p.period DESC
     LIMIT ?
   `).all(membershipId, cutoffTimestamp, limit) as PlayerRecentCompletion[];
+}
+
+export interface PlayerRaidTeammateSummary {
+    raidKey: string;
+    teammateMembershipId: string;
+    teammateMembershipType: number;
+    teammateDisplayName: string;
+    completions: number;
+    avgCompletionSeconds: number | null;
+}
+
+export function getPlayerRaidTeammateSummary(
+    membershipId: string,
+    hoursBack: number
+): PlayerRaidTeammateSummary[] {
+    const db = getDb();
+    const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
+
+    return db.prepare(`
+    WITH run_durations AS (
+      SELECT
+        instance_id,
+        MAX(time_played_seconds) as pgcrDurationSeconds
+      FROM pgcr_players
+      WHERE completed = 1
+      GROUP BY instance_id
+    ),
+    player_runs AS (
+      SELECT
+        p.instance_id,
+        p.raid_key
+      FROM pgcr_players self
+      JOIN pgcrs p ON self.instance_id = p.instance_id
+      WHERE self.membership_id = ?
+        AND p.period >= ?
+        AND self.completed = 1
+        AND p.completed = 1
+        AND p.raid_key IS NOT NULL
+        AND p.activity_was_started_from_beginning = 1
+    )
+    SELECT
+      pr.raid_key as raidKey,
+      mate.membership_id as teammateMembershipId,
+      mate.membership_type as teammateMembershipType,
+      COALESCE(
+        CASE
+          WHEN pl.bungie_global_display_name IS NOT NULL AND pl.bungie_global_display_name_code IS NOT NULL
+            THEN pl.bungie_global_display_name || '#' || substr('0000' || pl.bungie_global_display_name_code, -4, 4)
+          ELSE NULL
+        END,
+        pl.bungie_global_display_name,
+        pl.display_name,
+        mate.bungie_global_display_name,
+        mate.display_name,
+        mate.membership_id
+      ) as teammateDisplayName,
+      COUNT(DISTINCT pr.instance_id) as completions,
+      CAST(ROUND(AVG(d.pgcrDurationSeconds)) AS INTEGER) as avgCompletionSeconds
+    FROM player_runs pr
+    JOIN pgcr_players mate ON mate.instance_id = pr.instance_id
+    JOIN run_durations d ON d.instance_id = pr.instance_id
+    LEFT JOIN players pl ON pl.membership_id = mate.membership_id
+    WHERE mate.membership_id <> ?
+      AND mate.completed = 1
+    GROUP BY pr.raid_key, mate.membership_id, mate.membership_type
+    ORDER BY pr.raid_key ASC, completions DESC, teammateDisplayName ASC
+  `).all(membershipId, cutoffTimestamp, membershipId) as PlayerRaidTeammateSummary[];
 }
 
 export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: number = 600): any | null {

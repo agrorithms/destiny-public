@@ -73,6 +73,7 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_players_last_crawled ON players(last_crawled_at);
     CREATE INDEX IF NOT EXISTS idx_players_priority ON players(priority DESC, last_crawled_at ASC);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_raid ON active_sessions(raid_key);
+    CREATE INDEX IF NOT EXISTS idx_active_sessions_checked_at ON active_sessions(checked_at);
   `);
 
     // Migration guard for existing DBs created before "source" was added.

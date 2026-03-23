@@ -2,6 +2,7 @@ import { getBungieClient, BungieAPIError } from '../bungie/client';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
 import { deleteSessionsContainingPlayer, upsertActiveSession } from '../db/queries';
 import { getDb } from '../db';
+import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo, RaidSession } from '../bungie/types';
 
 // How long before a session is considered "stale" and needs re-verification
@@ -9,6 +10,19 @@ const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
 
 // How long before a session is force-deleted even if re-verification fails
 const MAX_SESSION_AGE_SECONDS = 7200; // 2 hours (no raid we want to show takes longer than this)
+
+const DEFAULT_ACTIVE_SESSION_CONCURRENCY = Math.max(
+    1,
+    parseInt(process.env.ACTIVE_SESSION_CONCURRENCY || process.env.CRAWLER_CONCURRENCY || '4', 10)
+);
+const DEFAULT_STALE_SESSION_CONCURRENCY = Math.max(
+    1,
+    parseInt(process.env.ACTIVE_SESSION_STALE_CONCURRENCY || String(DEFAULT_ACTIVE_SESSION_CONCURRENCY), 10)
+);
+const DEFAULT_STALE_SESSION_REVERIFY_LIMIT = Math.max(
+    1,
+    parseInt(process.env.ACTIVE_SESSION_STALE_REVERIFY_LIMIT || '200', 10)
+);
 
 /**
  * Check if a player is currently in a raid activity and store the session.
@@ -140,8 +154,21 @@ export async function refreshStaleSessions(): Promise<{
     refreshed: number;
     removed: number;
 }> {
+    return refreshStaleSessionsWithOptions();
+}
+
+export async function refreshStaleSessionsWithOptions(options?: {
+    concurrency?: number;
+    limit?: number;
+}): Promise<{
+    refreshed: number;
+    removed: number;
+}> {
     const db = getDb();
     const now = Math.floor(Date.now() / 1000);
+    const concurrency = Math.max(1, options?.concurrency || DEFAULT_STALE_SESSION_CONCURRENCY);
+    const limit = Math.max(1, options?.limit || DEFAULT_STALE_SESSION_REVERIFY_LIMIT);
+    const client = getBungieClient();
 
     // Find sessions that are stale (not checked recently) but not ancient
     const staleSessions = db.prepare(`
@@ -155,9 +182,12 @@ export async function refreshStaleSessions(): Promise<{
     FROM active_sessions
     WHERE checked_at < ?
       AND checked_at >= ?
+    ORDER BY checked_at ASC
+    LIMIT ?
   `).all(
         now - STALE_THRESHOLD_SECONDS,
-        now - MAX_SESSION_AGE_SECONDS
+        now - MAX_SESSION_AGE_SECONDS,
+        limit
     ) as any[];
 
     if (staleSessions.length === 0) {
@@ -166,24 +196,34 @@ export async function refreshStaleSessions(): Promise<{
 
     console.log(`[SESSIONS] Re-verifying ${staleSessions.length} stale sessions...`);
 
+    const results = await processWithConcurrency(
+        staleSessions,
+        concurrency,
+        async (session) => {
+            const player: PlayerInfo = {
+                membershipId: session.membership_id,
+                membershipType: session.membership_type,
+                displayName: session.display_name,
+            };
+
+            const result = await checkPlayerActivity(player, client);
+
+            if (!result) {
+                deleteSessionsContainingPlayer(session.membership_id);
+                return false;
+            }
+
+            return true;
+        }
+    );
+
     let refreshed = 0;
     let removed = 0;
-
-    for (const session of staleSessions) {
-        const player: PlayerInfo = {
-            membershipId: session.membership_id,
-            membershipType: session.membership_type,
-            displayName: session.display_name,
-        };
-
-        const result = await checkPlayerActivity(player);
-
-        if (result) {
-            // Still in a raid — checkPlayerActivity already updated checked_at via upsertActiveSession
+    for (const result of results) {
+        if (!result.success) continue;
+        if (result.result) {
             refreshed++;
         } else {
-            // No longer in a raid — remove the session
-            deleteSessionsContainingPlayer(session.membership_id);
             removed++;
         }
     }
@@ -209,34 +249,60 @@ export async function refreshStaleSessions(): Promise<{
  */
 export async function pollActiveSessions(
     players: PlayerInfo[],
-    maxToCheck: number = 200
+    maxToCheck: number = 200,
+    options?: {
+        playerCheckConcurrency?: number;
+        staleCheckConcurrency?: number;
+        staleReverifyLimit?: number;
+    }
 ): Promise<RaidSession[]> {
+    const playerCheckConcurrency = Math.max(
+        1,
+        options?.playerCheckConcurrency || DEFAULT_ACTIVE_SESSION_CONCURRENCY
+    );
+    const staleCheckConcurrency = Math.max(
+        1,
+        options?.staleCheckConcurrency || DEFAULT_STALE_SESSION_CONCURRENCY
+    );
+    const staleReverifyLimit = Math.max(
+        1,
+        options?.staleReverifyLimit || DEFAULT_STALE_SESSION_REVERIFY_LIMIT
+    );
+
+    const toCheck = players.slice(0, maxToCheck);
     const sessions = new Map<string, RaidSession>();
-    let checked = 0;
+    const client = getBungieClient();
 
     // Step 1: Re-verify stale sessions instead of blindly deleting
-    await refreshStaleSessions();
+    await refreshStaleSessionsWithOptions({
+        concurrency: staleCheckConcurrency,
+        limit: staleReverifyLimit,
+    });
 
     // Step 2: Check new players for active sessions
-    for (const player of players) {
-        if (checked >= maxToCheck) break;
+    const sessionResults = await processWithConcurrency(
+        toCheck,
+        playerCheckConcurrency,
+        async (player) => checkPlayerActivity(player, client),
+        (checked, total) => {
+            if (checked % 50 === 0 || checked === total) {
+                console.log(`[SESSIONS] Checked ${checked}/${total} players...`);
+            }
+        }
+    );
 
-        const session = await checkPlayerActivity(player);
+    let checked = 0;
+    for (const result of sessionResults) {
+        if (!result.success) continue;
         checked++;
-
+        const session = result.result;
         if (session && !sessions.has(session.sessionKey)) {
             sessions.set(session.sessionKey, session);
-        }
-
-        if (checked % 50 === 0) {
-            console.log(
-                `[SESSIONS] Checked ${checked}/${Math.min(players.length, maxToCheck)} players, found ${sessions.size} active raid sessions`
-            );
         }
     }
 
     console.log(
-        `[SESSIONS] Active session poll complete: ${checked} players checked, ${sessions.size} sessions found`
+        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length} players checked, ${sessions.size} sessions found`
     );
 
     return [...sessions.values()];

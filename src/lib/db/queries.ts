@@ -111,9 +111,10 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     FROM players p
     INNER JOIN pgcr_players pp ON p.membership_id = pp.membership_id
     INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
+    LEFT JOIN active_sessions s ON s.membership_id = p.membership_id
     WHERE pg.period >= ?
       AND p.is_active = 1
-    ORDER BY pg.period DESC
+    ORDER BY COALESCE(s.checked_at, 0) ASC, pg.period DESC
     LIMIT ?
   `).all(
         Math.floor((Date.now() - 6 * 60 * 60 * 1000) / 1000),
@@ -135,9 +136,10 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
       membership_type as membershipType,
       display_name as displayName,
       bungie_global_display_name as bungieGlobalDisplayName
-    FROM players
+    FROM players p
+    LEFT JOIN active_sessions s ON s.membership_id = p.membership_id
     WHERE is_active = 1
-    ORDER BY priority DESC, discovered_at DESC
+    ORDER BY COALESCE(s.checked_at, 0) ASC, priority DESC, discovered_at DESC
     LIMIT ?
   `).all(remaining + existingIds.size) as PlayerInfo[];
 

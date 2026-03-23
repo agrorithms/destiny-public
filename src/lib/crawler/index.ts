@@ -34,6 +34,9 @@ export interface CrawlerConfig {
     crawlConcurrency: number;
     enableActiveSessionPolling: boolean;
     activeSessionIntervalMs: number;
+    activeSessionConcurrency: number;
+    activeSessionStaleConcurrency: number;
+    activeSessionStaleReverifyLimit: number;
     cleanupIntervalMs: number;
     cleanupMaxAgeHours: number;
 }
@@ -44,7 +47,25 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     hoursBack: parseInt(process.env.CRAWLER_HOURS_BACK || '24', 10),
     crawlConcurrency: parseInt(process.env.CRAWLER_CONCURRENCY || '5', 10),
     enableActiveSessionPolling: true,
-    activeSessionIntervalMs: 120000, // 2 minutes
+    activeSessionIntervalMs: parseInt(process.env.CRAWLER_ACTIVE_SESSION_INTERVAL_MS || '120000', 10), // 2 minutes
+    activeSessionConcurrency: Math.max(
+        1,
+        parseInt(process.env.ACTIVE_SESSION_CONCURRENCY || process.env.CRAWLER_CONCURRENCY || '4', 10)
+    ),
+    activeSessionStaleConcurrency: Math.max(
+        1,
+        parseInt(
+            process.env.ACTIVE_SESSION_STALE_CONCURRENCY
+            || process.env.ACTIVE_SESSION_CONCURRENCY
+            || process.env.CRAWLER_CONCURRENCY
+            || '4',
+            10
+        )
+    ),
+    activeSessionStaleReverifyLimit: Math.max(
+        1,
+        parseInt(process.env.ACTIVE_SESSION_STALE_REVERIFY_LIMIT || '200', 10)
+    ),
     cleanupIntervalMs: 1800000, // 30 minutes
     cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '24', 10),
 };
@@ -146,6 +167,10 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         maxPlayersPerCycle: config.maxPlayersPerCycle,
         hoursBack: config.hoursBack,
         crawlConcurrency: config.crawlConcurrency,
+        activeSessionIntervalMs: config.activeSessionIntervalMs,
+        activeSessionConcurrency: config.activeSessionConcurrency,
+        activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,
+        activeSessionStaleReverifyLimit: config.activeSessionStaleReverifyLimit,
     });
 
     // Print initial stats
@@ -188,12 +213,17 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
     async function activeSessionLoop() {
         if (shouldStop || !config.enableActiveSessionPolling) return;
 
+        const startTime = Date.now();
         console.log(`\n👁️ Polling active sessions...`);
 
         try {
             const players = getPlayersForSessionPolling(200); // Check more players for sessions
             console.log(`[SESSIONS] Checking ${players.length} recently active players...`);
-            const sessions = await pollActiveSessions(players, 200);
+            const sessions = await pollActiveSessions(players, 200, {
+                playerCheckConcurrency: config.activeSessionConcurrency,
+                staleCheckConcurrency: config.activeSessionStaleConcurrency,
+                staleReverifyLimit: config.activeSessionStaleReverifyLimit,
+            });
 
             // Log summary by raid
             const byRaid = new Map<string, number>();
@@ -208,7 +238,10 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
             console.error('❌ Active session poll error:', error);
         }
 
-        setTimeout(activeSessionLoop, config.activeSessionIntervalMs);
+        const elapsed = Date.now() - startTime;
+        const waitTime = Math.max(0, config.activeSessionIntervalMs - elapsed);
+        console.log(`[SESSIONS] Poll took ${(elapsed / 1000).toFixed(1)}s, waiting ${(waitTime / 1000).toFixed(1)}s`);
+        setTimeout(activeSessionLoop, waitTime);
     }
 
     // Cleanup loop

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import StatsBar from '@/components/StatsBar';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
 
@@ -445,7 +446,9 @@ export default function PlayerProfilePage() {
                                                 {profile.recentCompletions.map((row) => (
                                                     <tr key={row.instanceId} className="border-b border-gray-800">
                                                         <td className="py-2 text-gray-200">{row.raidName}</td>
-                                                        <td className="py-2 text-right text-gray-300">{formatCompletionDate(row.completedAt)}</td>
+                                                        <td className="py-2 text-right text-gray-300" title={formatCompletionDate(row.completedAt)}>
+                                                            {formatRelativeTime(row.completedAt)}
+                                                        </td>
                                                         <td className="py-2 text-right text-gray-300">{formatDuration(row.timePlayedSeconds)}</td>
                                                     </tr>
                                                 ))}
@@ -493,7 +496,12 @@ export default function PlayerProfilePage() {
                                                                 {raidGroup.rows.map((row) => (
                                                                     <tr key={`${row.raidKey}:${row.teammateMembershipId}`} className="border-b border-gray-800">
                                                                         <td className="py-2 text-gray-200" title={row.teammateDisplayName}>
-                                                                            {truncateDisplayName(row.teammateDisplayName, 25)}
+                                                                            <Link
+                                                                                href={`/player/${row.teammateMembershipType}/${row.teammateMembershipId}`}
+                                                                                className="text-gray-200 hover:text-blue-400 transition-colors"
+                                                                            >
+                                                                                {truncateDisplayName(row.teammateDisplayName, 25)}
+                                                                            </Link>
                                                                         </td>
                                                                         <td className="py-2 text-right font-mono font-bold text-gray-200">{row.completions}</td>
                                                                         <td className="py-2 text-right text-gray-300">{formatDuration(row.avgCompletionSeconds)}</td>
@@ -558,6 +566,27 @@ function formatCompletionDate(dateIso: string): string {
         hour: 'numeric',
         minute: '2-digit',
     });
+}
+
+function formatRelativeTime(dateIso: string): string {
+    const now = Date.now();
+    const target = new Date(dateIso).getTime();
+    const diffSeconds = Math.max(0, Math.floor((now - target) / 1000));
+
+    const days = Math.floor(diffSeconds / 86400);
+    const hours = Math.floor((diffSeconds % 86400) / 3600);
+    const minutes = Math.floor((diffSeconds % 3600) / 60);
+
+    if (days > 0) {
+        return `${days}d ${hours}h ago`;
+    }
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ago`;
+    }
+    if (minutes > 0) {
+        return `${minutes}m ago`;
+    }
+    return 'just now';
 }
 
 function sortRaidSummary(rows: RaidSummaryRow[], sortBy: SortBy): RaidSummaryRow[] {

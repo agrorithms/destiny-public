@@ -372,7 +372,7 @@ export async function GET(
                 instanceId: row.instanceId,
                 raidKey: row.raidKey,
                 raidName: getRaidNameFromHash(row.activityHash),
-                completedAt: new Date(row.period * 1000).toISOString(),
+                completedAt: new Date((row.period + row.timePlayedSeconds) * 1000).toISOString(),
                 period: row.period,
                 timePlayedSeconds: row.timePlayedSeconds,
             })),

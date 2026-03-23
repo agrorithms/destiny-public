@@ -43,6 +43,7 @@ export interface ScannerConfig {
     batchSize: number;
     pauseOnCatchupMs: number;
     maxConsecutiveMisses: number;
+    progressLogEvery: number;
     apiKey?: string;
     enabled: boolean;
     workers: number;
@@ -53,6 +54,7 @@ const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
     batchSize: parseInt(process.env.SCANNER_BATCH_SIZE || '75', 10),
     pauseOnCatchupMs: parseInt(process.env.SCANNER_PAUSE_ON_CATCHUP_MS || '20000', 10),
     maxConsecutiveMisses: parseInt(process.env.SCANNER_MAX_CONSECUTIVE_MISSES || '50', 10),
+    progressLogEvery: parseInt(process.env.SCANNER_PROGRESS_LOG_EVERY || '1000', 10),
     apiKey: process.env.BUNGIE_SCANNER_API_KEY || undefined,
     enabled: true,
     workers: parseInt(process.env.SCANNER_WORKERS || '15', 10),
@@ -351,6 +353,8 @@ async function scanBatch(
     raidsFound: number;
     misses: number;
     consecutiveMisses: number;
+    missedIdsAdded: number;
+    missedIdsDropped: number;
     lastId: bigint;
 }> {
     let raidsFound = 0;
@@ -417,14 +421,6 @@ async function scanBatch(
             if (missedIdsDroppedDueToCap > droppedBefore) droppedThisBatch++;
         }
     }
-    // Log the current size of the missed IDs set
-    if (missedIdsSet.size > 0) {
-        console.log(
-            `[SCANNER] Missed IDs set size: ${missedIdsSet.size}` +
-            ` (+${addedThisBatch} added` +
-            `${droppedThisBatch > 0 ? `, ${droppedThisBatch} dropped due to cap` : ''})`
-        );
-    }
     // Calculate consecutive misses from the END of the batch
     let consecutiveMisses = 0;
     for (let i = results.length - 1; i >= 0; i--) {
@@ -442,6 +438,8 @@ async function scanBatch(
         raidsFound,
         misses,
         consecutiveMisses,
+        missedIdsAdded: addedThisBatch,
+        missedIdsDropped: droppedThisBatch,
         lastId,
     };
 }
@@ -529,6 +527,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
     console.log(`  Workers:       ${config.workers}`);
     console.log(`  Catchup pause: ${config.pauseOnCatchupMs}ms`);
     console.log(`  Max misses:    ${config.maxConsecutiveMisses}`);
+    console.log(`  Progress log:  every ${config.progressLogEvery} scanned`);
     console.log(`  Starting at:   ${state.currentInstanceId}`);
     console.log(`  API key:       ${config.apiKey ? 'dedicated scanner key' : 'shared main key'}`);
     console.log('');
@@ -555,6 +554,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
         const batchStart = state.currentInstanceId + BigInt(1);
         const result = await scanBatch(client, batchStart, config.batchSize, config.workers);
+        const previousTotalScanned = state.totalScanned;
 
         state.totalScanned += result.scanned;
         state.totalRaidsFound += result.raidsFound;
@@ -564,16 +564,25 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
         saveScannerPosition(state.currentInstanceId);
 
-        // Log progress
+        // Log periodic progress
         const elapsed = ((Date.now() - state.startedAt) / 1000).toFixed(0);
         const hitRate = state.totalScanned > 0
             ? ((state.totalRaidsFound / state.totalScanned) * 100).toFixed(1)
             : '0';
+        const progressLogEvery =
+            Number.isFinite(config.progressLogEvery) && config.progressLogEvery > 0
+                ? config.progressLogEvery
+                : 1000;
+        const crossedProgressBoundary =
+            Math.floor(previousTotalScanned / progressLogEvery) <
+            Math.floor(state.totalScanned / progressLogEvery);
 
-        if (result.raidsFound > 0) {
+        if (crossedProgressBoundary) {
             console.log(
-                `[SCANNER] Batch complete: ${result.raidsFound} raids found in ${result.scanned} PGCRs | ` +
-                `Total: ${state.totalRaidsFound} raids / ${state.totalScanned} scanned (${hitRate}% hit rate) | ` +
+                `[SCANNER] Progress: ${state.totalRaidsFound} raids / ${state.totalScanned} scanned (${hitRate}% hit rate) | ` +
+                `Missed queue: ${missedIdsSet.size}` +
+                `${result.missedIdsAdded > 0 ? ` (+${result.missedIdsAdded} this batch)` : ''}` +
+                `${result.missedIdsDropped > 0 ? `, +${result.missedIdsDropped} dropped (cap)` : ''} | ` +
                 `Position: ${state.currentInstanceId} | ${elapsed}s elapsed`
             );
         }

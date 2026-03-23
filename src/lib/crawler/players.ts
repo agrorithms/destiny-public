@@ -5,6 +5,25 @@ import { fetchAndStorePGCR } from './pgcr';
 import { isoToUnix, hoursAgo } from '../utils/helpers';
 import type { PlayerInfo } from '../bungie/types';
 
+function extractBungieMessage(rawMessage: string): string | null {
+    const jsonStart = rawMessage.indexOf('{');
+    if (jsonStart === -1) {
+        return null;
+    }
+
+    const jsonPart = rawMessage.slice(jsonStart);
+    try {
+        const parsed = JSON.parse(jsonPart) as { Message?: unknown };
+        if (typeof parsed.Message === 'string' && parsed.Message.trim().length > 0) {
+            return parsed.Message.trim().replace(/\s+/g, ' ');
+        }
+    } catch {
+        return null;
+    }
+
+    return null;
+}
+
 /**
  * Get all character IDs for a player
  */
@@ -73,6 +92,7 @@ export async function getRecentRaidActivities(
                 period: isoToUnix(activity.period),
             }));
     } catch (error) {
+        const errorMessage = (error as Error).message || '';
         if (error instanceof BungieAPIError) {
             if (
                 error.errorStatus === 'DestinyPrivacyRestriction' ||
@@ -82,6 +102,14 @@ export async function getRecentRaidActivities(
                 // Already logged in getCharacterIds, no need to log again
                 return [];
             }
+        }
+        if (
+            errorMessage.includes('DestinyPrivacyRestriction') ||
+            errorMessage.includes('"ErrorCode":1665')
+        ) {
+            const bungieMessage = extractBungieMessage(errorMessage) || 'The user has chosen for this data to be private. No peeking!';
+            console.log(`🔒 ${membershipId} : Bungie API Error - ${bungieMessage}`);
+            return [];
         }
         console.error(`[ERROR] Failed to fetch activity history for ${membershipId}/${characterId}:`, (error as Error).message);
         return [];
@@ -155,11 +183,6 @@ export async function crawlPlayer(
         // Update last crawled timestamp
         updateLastCrawled(player.membershipId);
 
-        if (newPGCRs > 0) {
-            console.log(
-                `✅ ${player.displayName}: ${newPGCRs} new PGCRs, ${discoveredPlayers.length} new players discovered`
-            );
-        }
     } catch (error) {
         if (error instanceof BungieAPIError && error.errorStatus === 'DestinyPrivacyRestriction') {
             console.log(`[SKIP] Private profile: ${player.displayName} (${player.membershipId})`);

@@ -3,8 +3,70 @@ import type { PlayerInfo, LeaderboardEntry } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 
+let playerUpsertDbRef: ReturnType<typeof getDb> | null = null;
+let playerUpsertStmt: any = null;
+let bulkUpsertPlayersTx: ((players: PlayerInfo[]) => void) | null = null;
+
+let pgcrInsertDbRef: ReturnType<typeof getDb> | null = null;
+let insertPGCRStmt: any = null;
+let insertPGCRPlayerStmt: any = null;
+let insertFullPGCRTx: ((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => void) | null = null;
+
 function isValidMembershipType(type: any): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
+}
+
+function getPlayerUpsertResources(): {
+    upsertStmt: any;
+    bulkTx: (players: PlayerInfo[]) => void;
+} {
+    const db = getDb();
+
+    if (!playerUpsertStmt || !bulkUpsertPlayersTx || playerUpsertDbRef !== db) {
+        playerUpsertDbRef = db;
+        playerUpsertStmt = db.prepare(`
+    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(membership_id) DO UPDATE SET
+      display_name = excluded.display_name,
+      bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, bungie_global_display_name),
+      bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, bungie_global_display_name_code)
+  `);
+
+        bulkUpsertPlayersTx = db.transaction((players: PlayerInfo[]) => {
+            let skipped = 0;
+            const invalidSamples: string[] = [];
+            const SAMPLE_LIMIT = 5;
+            for (const p of players) {
+                if (!isValidMembershipType(p.membershipType)) {
+                    skipped += 1;
+                    if (invalidSamples.length < SAMPLE_LIMIT && Number(p.membershipType) !== 0) {
+                        invalidSamples.push(`${p.membershipId}(${String(p.membershipType)})`);
+                    }
+                    continue;
+                }
+
+                playerUpsertStmt.run(
+                    p.membershipId,
+                    p.membershipType,
+                    p.displayName,
+                    p.bungieGlobalDisplayName || null,
+                    p.bungieGlobalDisplayNameCode || null
+                );
+            }
+            if (skipped > 0) {
+                const sampleSuffix = invalidSamples.length > 0
+                    ? ` | samples: ${invalidSamples.join(', ')}`
+                    : '';
+                console.log(`  ⚠️ Skipped ${skipped} players with invalid membership types${sampleSuffix}`);
+            }
+        });
+    }
+
+    return {
+        upsertStmt: playerUpsertStmt,
+        bulkTx: bulkUpsertPlayersTx,
+    };
 }
 
 
@@ -13,15 +75,8 @@ function isValidMembershipType(type: any): boolean {
 // =====================
 
 export function upsertPlayer(player: PlayerInfo): void {
-    const db = getDb();
-    db.prepare(`
-    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(membership_id) DO UPDATE SET
-      display_name = excluded.display_name,
-      bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, bungie_global_display_name),
-      bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, bungie_global_display_name_code)
-  `).run(
+    const { upsertStmt } = getPlayerUpsertResources();
+    upsertStmt.run(
         player.membershipId,
         player.membershipType,
         player.displayName,
@@ -31,38 +86,8 @@ export function upsertPlayer(player: PlayerInfo): void {
 }
 
 export function bulkUpsertPlayers(players: PlayerInfo[]): void {
-    const db = getDb();
-    const stmt = db.prepare(`
-    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(membership_id) DO UPDATE SET
-      display_name = excluded.display_name,
-      bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, bungie_global_display_name),
-      bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, bungie_global_display_name_code)
-  `);
-
-    const insertMany = db.transaction((players: PlayerInfo[]) => {
-        let skipped = 0
-        for (const p of players) {
-            if (!isValidMembershipType(p.membershipType)) {
-                skipped += 1
-                continue;
-            }
-
-            stmt.run(
-                p.membershipId,
-                p.membershipType,
-                p.displayName,
-                p.bungieGlobalDisplayName || null,
-                p.bungieGlobalDisplayNameCode || null
-            );
-        }
-        if (skipped > 0) {
-            console.log(`  ⚠️ Skipped ${skipped} players with invalid membership types`);
-        }
-    });
-
-    insertMany(players);
+    const { bulkTx } = getPlayerUpsertResources();
+    bulkTx(players);
 }
 
 /**
@@ -417,36 +442,39 @@ export function hasPGCR(instanceId: string): boolean {
     return !!row;
 }
 
-export function insertFullPGCR(
-    pgcrData: {
-        instanceId: string;
-        activityHash: number;
-        raidKey: string | undefined;
-        period: number;
-        startingPhaseIndex: number;
-        activityWasStartedFromBeginning: boolean;
-        completed: boolean;
-        playerCount: number;
-        source?: string;  // NEW
-    },
-    players: Array<{
-        instanceId: string;
-        membershipId: string;
-        membershipType: number;
-        displayName: string;
-        bungieGlobalDisplayName?: string;
-        characterClass: string;
-        lightLevel: number;
-        completed: boolean;
-        kills: number;
-        deaths: number;
-        assists: number;
-        timePlayedSeconds: number;
-    }>
-): void {
+export interface InsertFullPGCRData {
+    instanceId: string;
+    activityHash: number;
+    raidKey: string | undefined;
+    period: number;
+    startingPhaseIndex: number;
+    activityWasStartedFromBeginning: boolean;
+    completed: boolean;
+    playerCount: number;
+    source?: string;
+}
+
+export interface InsertFullPGCRPlayer {
+    instanceId: string;
+    membershipId: string;
+    membershipType: number;
+    displayName: string;
+    bungieGlobalDisplayName?: string;
+    characterClass: string;
+    lightLevel: number;
+    completed: boolean;
+    kills: number;
+    deaths: number;
+    assists: number;
+    timePlayedSeconds: number;
+}
+
+function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => void {
     const db = getDb();
 
-    const insertPGCRStmt = db.prepare(`
+    if (!insertPGCRStmt || !insertPGCRPlayerStmt || !insertFullPGCRTx || pgcrInsertDbRef !== db) {
+        pgcrInsertDbRef = db;
+        insertPGCRStmt = db.prepare(`
     INSERT OR IGNORE INTO pgcrs 
     (instance_id, activity_hash, raid_key, period, starting_phase_index, 
      activity_was_started_from_beginning, completed, player_count, source)
@@ -454,7 +482,7 @@ export function insertFullPGCR(
     ON CONFLICT(instance_id) DO NOTHING
   `);
 
-    const insertPlayerStmt = db.prepare(`
+        insertPGCRPlayerStmt = db.prepare(`
     INSERT OR IGNORE INTO pgcr_players 
     (instance_id, membership_id, membership_type, display_name, 
      bungie_global_display_name, character_class, light_level, 
@@ -462,38 +490,47 @@ export function insertFullPGCR(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-    const transaction = db.transaction(() => {
-        insertPGCRStmt.run(
-            pgcrData.instanceId,
-            pgcrData.activityHash,
-            pgcrData.raidKey || null,
-            pgcrData.period,
-            pgcrData.startingPhaseIndex,
-            pgcrData.activityWasStartedFromBeginning ? 1 : 0,
-            pgcrData.completed ? 1 : 0,
-            pgcrData.playerCount,
-            pgcrData.source || 'unknown'
-        );
-
-        for (const player of players) {
-            insertPlayerStmt.run(
-                player.instanceId,
-                player.membershipId,
-                player.membershipType,
-                player.displayName,
-                player.bungieGlobalDisplayName || null,
-                player.characterClass,
-                player.lightLevel,
-                player.completed ? 1 : 0,
-                player.kills,
-                player.deaths,
-                player.assists,
-                player.timePlayedSeconds
+        insertFullPGCRTx = db.transaction((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => {
+            insertPGCRStmt.run(
+                pgcrData.instanceId,
+                pgcrData.activityHash,
+                pgcrData.raidKey || null,
+                pgcrData.period,
+                pgcrData.startingPhaseIndex,
+                pgcrData.activityWasStartedFromBeginning ? 1 : 0,
+                pgcrData.completed ? 1 : 0,
+                pgcrData.playerCount,
+                pgcrData.source || 'unknown'
             );
-        }
-    });
 
-    transaction();
+            for (const player of players) {
+                insertPGCRPlayerStmt.run(
+                    player.instanceId,
+                    player.membershipId,
+                    player.membershipType,
+                    player.displayName,
+                    player.bungieGlobalDisplayName || null,
+                    player.characterClass,
+                    player.lightLevel,
+                    player.completed ? 1 : 0,
+                    player.kills,
+                    player.deaths,
+                    player.assists,
+                    player.timePlayedSeconds
+                );
+            }
+        });
+    }
+
+    return insertFullPGCRTx;
+}
+
+export function insertFullPGCR(
+    pgcrData: InsertFullPGCRData,
+    players: InsertFullPGCRPlayer[]
+): void {
+    const tx = getInsertFullPGCRTransaction();
+    tx(pgcrData, players);
 }
 
 export function getPGCRCount(): number {

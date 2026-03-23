@@ -71,6 +71,9 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     let totalNewPGCRs = 0;
     const allDiscoveredPlayers: PlayerInfo[] = [];
     let crawledCount = 0;
+    const halfMilestone = Math.max(1, Math.floor(config.maxPlayersPerCycle / 2));
+    const fullMilestone = config.maxPlayersPerCycle;
+    const reachedMilestones = new Set<number>();
 
     const results = await processWithConcurrency(
         players,
@@ -83,7 +86,20 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
             return { ...result, skipped: false };
         },
         (completed, total) => {
-            if (completed % 10 === 0 || completed === total) {
+            const milestones = [
+                Math.min(halfMilestone, total),
+                Math.min(fullMilestone, total),
+            ];
+
+            for (const milestone of milestones) {
+                if (completed >= milestone && !reachedMilestones.has(milestone)) {
+                    reachedMilestones.add(milestone);
+                    console.log(`[CRAWLER] Progress: ${completed}/${total} players`);
+                }
+            }
+
+            if (completed === total && !reachedMilestones.has(total)) {
+                reachedMilestones.add(total);
                 console.log(`[CRAWLER] Progress: ${completed}/${total} players`);
             }
         }

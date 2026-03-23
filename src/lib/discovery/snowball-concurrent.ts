@@ -8,9 +8,43 @@ import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
+let discoveryUpsertDbRef: ReturnType<typeof getDb> | null = null;
+let discoveryUpsertStmt: any = null;
+let discoveryBulkUpsertTx: ((players: PlayerInfo[]) => void) | null = null;
 
 function isValidMembershipType(type: any): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
+}
+
+function getDiscoveryBulkUpsertTransaction(): (players: PlayerInfo[]) => void {
+    const db = getDb();
+
+    if (!discoveryUpsertStmt || !discoveryBulkUpsertTx || discoveryUpsertDbRef !== db) {
+        discoveryUpsertDbRef = db;
+        discoveryUpsertStmt = db.prepare(`
+    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code, discovered_at, is_active)
+    VALUES (?, ?, ?, ?, ?, unixepoch(), 1)
+    ON CONFLICT(membership_id) DO UPDATE SET
+      display_name = COALESCE(excluded.display_name, players.display_name),
+      bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, players.bungie_global_display_name),
+      bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, players.bungie_global_display_name_code)
+  `);
+
+        discoveryBulkUpsertTx = db.transaction((entries: PlayerInfo[]) => {
+            for (const p of entries) {
+                if (!isValidMembershipType(p.membershipType)) continue;
+                discoveryUpsertStmt.run(
+                    p.membershipId,
+                    p.membershipType,
+                    p.displayName,
+                    p.bungieGlobalDisplayName || null,
+                    p.bungieGlobalDisplayNameCode || null
+                );
+            }
+        });
+    }
+
+    return discoveryBulkUpsertTx;
 }
 
 
@@ -136,41 +170,11 @@ async function processPlayer(
  * Uses a transaction for efficiency.
  */
 function bulkUpsertDiscoveredPlayers(
-    players: Array<{
-        membershipId: string;
-        membershipType: number;
-        displayName: string;
-        bungieGlobalDisplayName?: string;
-        bungieGlobalDisplayNameCode?: number;
-    }>
+    players: PlayerInfo[]
 ): void {
     if (players.length === 0) return;
-
-    const db = getDb();
-    const upsert = db.prepare(`
-    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code, discovered_at, is_active)
-    VALUES (?, ?, ?, ?, ?, unixepoch(), 1)
-    ON CONFLICT(membership_id) DO UPDATE SET
-      display_name = COALESCE(excluded.display_name, players.display_name),
-      bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, players.bungie_global_display_name),
-      bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, players.bungie_global_display_name_code)
-  `);
-
-    const insertMany = db.transaction((entries: typeof players) => {
-        for (const p of entries) {
-            if (!isValidMembershipType(p.membershipType)) continue;
-            upsert.run(
-                p.membershipId,
-                p.membershipType,
-                p.displayName,
-                p.bungieGlobalDisplayName || null,
-                p.bungieGlobalDisplayNameCode || null
-            );
-        }
-    });
-
+    const insertMany = getDiscoveryBulkUpsertTransaction();
     insertMany(players);
-
 }
 
 // =====================

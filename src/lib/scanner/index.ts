@@ -1,4 +1,3 @@
-import { MissingSlotContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { BungieClient, BungieAPIError } from '../bungie/client';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
@@ -6,9 +5,30 @@ import { insertFullPGCR, hasPGCR } from '../db/queries';
 import { isoToUnix } from '../utils/helpers';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
-// Global queue for missed IDs
-const missedIdsQueue: string[] = [];
+// Global set for missed IDs (deduped, capped)
+const missedIdsSet = new Set<string>();
 const RETRY_THRESHOLD = 50; // Retry when 50 missed IDs are collected
+const MAX_MISSED_IDS = parseInt(process.env.SCANNER_MAX_MISSED_IDS || '20000', 10);
+let missedIdsDroppedDueToCap = 0;
+
+function addMissedId(instanceId: string): void {
+    if (missedIdsSet.has(instanceId)) {
+        return;
+    }
+
+    if (missedIdsSet.size >= MAX_MISSED_IDS) {
+        missedIdsDroppedDueToCap++;
+        return;
+    }
+
+    missedIdsSet.add(instanceId);
+}
+
+function addMissedIds(instanceIds: string[]): void {
+    for (const instanceId of instanceIds) {
+        addMissedId(instanceId);
+    }
+}
 
 function isValidMembershipType(type: any): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
@@ -66,6 +86,9 @@ const state: ScannerState = {
 
 // Separate client and rate limiter for the scanner
 let scannerClient: BungieClient | null = null;
+let scannerStmtDbRef: ReturnType<typeof getDb> | null = null;
+let scannerUpsertPlayerStmt: any = null;
+let scannerInsertManyPlayersTx: ((entries: any[]) => void) | null = null;
 
 // =====================
 // CLIENT SETUP
@@ -83,6 +106,38 @@ function getScannerClient(config: ScannerConfig): BungieClient {
         scannerClient = new BungieClient(apiKey, rps);
     }
     return scannerClient;
+}
+
+function getScannerPlayerUpsertTransaction(): (entries: any[]) => void {
+    const db = getDb();
+
+    // Rebuild prepared statements if DB instance changes (for safety in long-lived runtimes).
+    if (!scannerInsertManyPlayersTx || !scannerUpsertPlayerStmt || scannerStmtDbRef !== db) {
+        scannerStmtDbRef = db;
+        scannerUpsertPlayerStmt = db.prepare(`
+      INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code, discovered_at, is_active)
+      VALUES (?, ?, ?, ?, ?, unixepoch(), 1)
+      ON CONFLICT(membership_id) DO UPDATE SET
+        display_name = COALESCE(excluded.display_name, players.display_name),
+        bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, players.bungie_global_display_name),
+        bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, players.bungie_global_display_name_code)
+    `);
+
+        scannerInsertManyPlayersTx = db.transaction((entries: any[]) => {
+            for (const entry of entries) {
+                if (!isValidMembershipType(entry.membershipType)) continue;
+                scannerUpsertPlayerStmt!.run(
+                    entry.membershipId,
+                    entry.membershipType,
+                    entry.displayName,
+                    entry.bungieGlobalDisplayName || null,
+                    entry.bungieGlobalDisplayNameCode || null
+                );
+            }
+        });
+    }
+
+    return scannerInsertManyPlayersTx;
 }
 
 // =====================
@@ -234,29 +289,7 @@ async function scanSinglePGCR(
             playerEntries
         );
 
-        const db = getDb();
-        const upsertPlayer = db.prepare(`
-      INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code, discovered_at, is_active)
-      VALUES (?, ?, ?, ?, ?, unixepoch(), 1)
-      ON CONFLICT(membership_id) DO UPDATE SET
-        display_name = COALESCE(excluded.display_name, players.display_name),
-        bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, players.bungie_global_display_name),
-        bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, players.bungie_global_display_name_code)
-    `);
-
-        const insertMany = db.transaction((entries: any[]) => {
-            for (const entry of entries) {
-                if (!isValidMembershipType(entry.membershipType)) continue;
-                upsertPlayer.run(
-                    entry.membershipId,
-                    entry.membershipType,
-                    entry.displayName,
-                    entry.bungieGlobalDisplayName || null,
-                    entry.bungieGlobalDisplayNameCode || null
-                );
-            }
-        });
-
+        const insertMany = getScannerPlayerUpsertTransaction();
         insertMany(playerEntries);
 
         return 'raid';
@@ -373,14 +406,24 @@ async function scanBatch(
 
     // *** THIS IS THE KEY PART ***
     // Collect ALL IDs that were not_found or error_retryable for retry
+    let addedThisBatch = 0;
+    let droppedThisBatch = 0;
     for (let i = 0; i < results.length; i++) {
         if (results[i] === 'not_found' || results[i] === 'error_retryable') {
-            missedIdsQueue.push(instanceIds[i]);
+            const sizeBefore = missedIdsSet.size;
+            const droppedBefore = missedIdsDroppedDueToCap;
+            addMissedId(instanceIds[i]);
+            if (missedIdsSet.size > sizeBefore) addedThisBatch++;
+            if (missedIdsDroppedDueToCap > droppedBefore) droppedThisBatch++;
         }
     }
-    // Log the current size of the missed IDs queue
-    if (missedIdsQueue.length > 0) {
-        console.log(`[SCANNER] Missed IDs queue size: ${missedIdsQueue.length}`);
+    // Log the current size of the missed IDs set
+    if (missedIdsSet.size > 0) {
+        console.log(
+            `[SCANNER] Missed IDs set size: ${missedIdsSet.size}` +
+            ` (+${addedThisBatch} added` +
+            `${droppedThisBatch > 0 ? `, ${droppedThisBatch} dropped due to cap` : ''})`
+        );
     }
     // Calculate consecutive misses from the END of the batch
     let consecutiveMisses = 0;
@@ -543,7 +586,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
                 `[SCANNER] Caught up to present (${state.consecutiveMisses} consecutive misses). ` +
-                `${missedIdsQueue.length} missed IDs to retry. ` +
+                `${missedIdsSet.size} missed IDs to retry. ` +
                 `Pausing for ${config.pauseOnCatchupMs / 1000}s...`
             );
             state.consecutiveMisses = 0;
@@ -551,16 +594,19 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
             // Pause, then retry missed IDs
             setTimeout(async () => {
-                if (missedIdsQueue.length >= RETRY_THRESHOLD) {
-                    console.log(`[SCANNER] 🔄 Missed IDs queue reached ${missedIdsQueue.length}. Retrying...`);
-                    const idstoRetry = missedIdsQueue.splice(0, missedIdsQueue.length)
-                    const retryResult = await retryMissedIds(client, idstoRetry, config.workers);
+                if (missedIdsSet.size >= RETRY_THRESHOLD) {
+                    console.log(`[SCANNER] 🔄 Missed IDs set reached ${missedIdsSet.size}. Retrying...`);
+                    const idsToRetry = Array.from(missedIdsSet);
+                    missedIdsSet.clear();
+                    const retryResult = await retryMissedIds(client, idsToRetry, config.workers);
 
                     state.totalRaidsFound += retryResult.retryRaidsFound;
+                    addMissedIds(retryResult.stillMissingIds);
 
                     console.log(
                         `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found. ` +
-                        `${retryResult.stillMissing} still missing. Queue size: ${missedIdsQueue.length}`
+                        `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
+                        `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}`
                     );
                 }
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import Link from 'next/link';
 import StatsBar from '@/components/StatsBar';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
@@ -253,9 +254,12 @@ export default function PlayerProfilePage() {
                                 title="Open on raid.report"
                                 className="text-blue-400 hover:text-blue-300"
                             >
-                                <img
+                                <Image
                                     src="https://raid.report/favicon.ico"
                                     alt="Raid Report logo"
+                                    width={16}
+                                    height={16}
+                                    unoptimized
                                     className="w-4 h-4 rounded-sm"
                                 />
                             </a>
@@ -267,9 +271,12 @@ export default function PlayerProfilePage() {
                                 title="Open on RaidHub"
                                 className="text-blue-400 hover:text-blue-300"
                             >
-                                <img
+                                <Image
                                     src="https://raidhub.io/favicon.ico"
                                     alt="RaidHub logo"
+                                    width={16}
+                                    height={16}
+                                    unoptimized
                                     className="w-4 h-4 rounded-sm"
                                 />
                             </a>

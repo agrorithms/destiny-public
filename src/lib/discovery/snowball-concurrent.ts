@@ -1,6 +1,5 @@
-import { getBungieClient, BungieAPIError } from '../bungie/client';
-import { isRaidActivityHash, getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { hasPGCR, getPlayerCount } from '../db/queries';
+import { getRaidKeyFromHash } from '../bungie/manifest';
+import { getPlayerCount } from '../db/queries';
 import { getDb } from '../db';
 import { getCharacterIds, getRecentRaidActivities } from '../crawler/players';
 import { fetchAndStorePGCR } from '../crawler/pgcr';
@@ -12,7 +11,7 @@ let discoveryUpsertDbRef: ReturnType<typeof getDb> | null = null;
 let discoveryUpsertStmt: any = null;
 let discoveryBulkUpsertTx: ((players: PlayerInfo[]) => void) | null = null;
 
-function isValidMembershipType(type: any): boolean {
+function isValidMembershipType(type: number): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
 }
 

@@ -1,6 +1,5 @@
-import { getBungieClient } from '../bungie/client';
-import { isRaidActivityHash, getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { hasPGCR, bulkUpsertPlayers, getPlayerCount } from '../db/queries';
+import { getRaidKeyFromHash } from '../bungie/manifest';
+import { bulkUpsertPlayers, getPlayerCount } from '../db/queries';
 import { fetchAndStorePGCR } from '../crawler/pgcr';
 import { getCharacterIds, getRecentRaidActivities } from '../crawler/players';
 import type { PlayerInfo } from '../bungie/types';

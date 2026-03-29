@@ -1,6 +1,6 @@
 import { getBungieClient, BungieAPIError } from '../bungie/client';
 import { isRaidActivityHash } from '../bungie/manifest';
-import { updateLastCrawled, upsertPlayer } from '../db/queries';
+import { updateLastCrawled } from '../db/queries';
 import { fetchAndStorePGCR } from './pgcr';
 import { isoToUnix, hoursAgo } from '../utils/helpers';
 import type { PlayerInfo } from '../bungie/types';

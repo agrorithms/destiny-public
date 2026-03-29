@@ -1,7 +1,6 @@
 import {
     getPlayersForSessionPolling,
     getPlayersToCrawl,
-    getPlayerCount,
     bulkUpsertPlayers,
     cleanupOldPGCRs,
     getDbStats,

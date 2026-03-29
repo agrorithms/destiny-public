@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifest';
+import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;

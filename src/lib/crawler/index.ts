@@ -45,6 +45,7 @@ export interface CrawlerConfig {
     activeSessionConcurrency: number;
     activeSessionStaleConcurrency: number;
     activeSessionStaleReverifyLimit: number;
+    sessionPollingLimit: number;
     cleanupIntervalMs: number;
     cleanupMaxAgeHours: number;
 }
@@ -73,6 +74,10 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     activeSessionStaleReverifyLimit: Math.max(
         1,
         parseInt(process.env.ACTIVE_SESSION_STALE_REVERIFY_LIMIT || '200', 10)
+    ),
+    sessionPollingLimit: Math.max(
+        1,
+        parseInt(process.env.CRAWLER_SESSION_POLLING_LIMIT || '200', 10)
     ),
     cleanupIntervalMs: 1800000, // 30 minutes
     cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '24', 10),
@@ -159,8 +164,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
  */
 export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<void> {
     const config = { ...DEFAULT_CONFIG, ...overrides };
-    const sessionPollingLimit = 200;
-    const effectiveSessionPollingCandidateLimit = getSessionPollingCandidateLimit(sessionPollingLimit);
+    const effectiveSessionPollingCandidateLimit = getSessionPollingCandidateLimit(config.sessionPollingLimit);
 
     if (isRunning) {
         console.warn('⚠️ Crawler is already running');
@@ -181,7 +185,7 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         activeSessionConcurrency: config.activeSessionConcurrency,
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,
         activeSessionStaleReverifyLimit: config.activeSessionStaleReverifyLimit,
-        sessionPollingLimit,
+        sessionPollingLimit: config.sessionPollingLimit,
         sessionPollingCandidateLimit: effectiveSessionPollingCandidateLimit,
     });
 
@@ -229,9 +233,9 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         console.log(`\n👁️ Polling active sessions...`);
 
         try {
-            const players = getPlayersForSessionPolling(200); // Check more players for sessions
+            const players = getPlayersForSessionPolling(config.sessionPollingLimit);
             console.log(`[SESSIONS] Checking ${players.length} recently active players...`);
-            const sessions = await pollActiveSessions(players, 200, {
+            const sessions = await pollActiveSessions(players, config.sessionPollingLimit, {
                 playerCheckConcurrency: config.activeSessionConcurrency,
                 staleCheckConcurrency: config.activeSessionStaleConcurrency,
                 staleReverifyLimit: config.activeSessionStaleReverifyLimit,

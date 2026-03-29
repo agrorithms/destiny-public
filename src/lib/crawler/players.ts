@@ -66,7 +66,10 @@ export async function getRecentRaidActivities(
     characterId: string,
     hoursBack: number = 4,
     count: number = 25
-): Promise<Array<{ instanceId: string; activityHash: number; period: number }>> {
+): Promise<{
+    activities: Array<{ instanceId: string; activityHash: number; period: number }>;
+    isPrivacyRestricted: boolean;
+}> {
     const client = getBungieClient();
     const cutoff = hoursAgo(hoursBack);
 
@@ -80,7 +83,8 @@ export async function getRecentRaidActivities(
 
         const activities = response.Response.activities || [];
 
-        return activities
+        return {
+            activities: activities
             .filter((activity) => {
                 const period = isoToUnix(activity.period);
                 const hash = activity.activityDetails.directorActivityHash || activity.activityDetails.referenceId;
@@ -90,7 +94,9 @@ export async function getRecentRaidActivities(
                 instanceId: activity.activityDetails.instanceId,
                 activityHash: activity.activityDetails.directorActivityHash || activity.activityDetails.referenceId,
                 period: isoToUnix(activity.period),
-            }));
+            })),
+            isPrivacyRestricted: false,
+        };
     } catch (error) {
         const errorMessage = (error as Error).message || '';
         if (error instanceof BungieAPIError) {
@@ -99,8 +105,9 @@ export async function getRecentRaidActivities(
                 error.errorCode === 217 ||
                 error.errorCode === 1601
             ) {
-                // Already logged in getCharacterIds, no need to log again
-                return [];
+                const bungieMessage = error.message || 'The user has chosen for this data to be private. No peeking!';
+                console.log(`🔒 ${membershipId} : Bungie API Error - ${bungieMessage}`);
+                return { activities: [], isPrivacyRestricted: true };
             }
         }
         if (
@@ -109,10 +116,10 @@ export async function getRecentRaidActivities(
         ) {
             const bungieMessage = extractBungieMessage(errorMessage) || 'The user has chosen for this data to be private. No peeking!';
             console.log(`🔒 ${membershipId} : Bungie API Error - ${bungieMessage}`);
-            return [];
+            return { activities: [], isPrivacyRestricted: true };
         }
         console.error(`[ERROR] Failed to fetch activity history for ${membershipId}/${characterId}:`, (error as Error).message);
-        return [];
+        return { activities: [], isPrivacyRestricted: false };
     }
 }
 
@@ -143,15 +150,25 @@ export async function crawlPlayer(
 
         // Get recent raid activities across all characters
         const allActivities: Array<{ instanceId: string; activityHash: number; period: number }> = [];
+        let privacyRestricted = false;
 
         for (const characterId of characterIds) {
-            const activities = await getRecentRaidActivities(
+            const result = await getRecentRaidActivities(
                 player.membershipType,
                 player.membershipId,
                 characterId,
                 hoursBack
             );
-            allActivities.push(...activities);
+            if (result.isPrivacyRestricted) {
+                privacyRestricted = true;
+                break;
+            }
+            allActivities.push(...result.activities);
+        }
+
+        if (privacyRestricted) {
+            updateLastCrawled(player.membershipId);
+            return { newPGCRs, discoveredPlayers };
         }
 
         // Deduplicate by instance ID (same activity can appear on multiple characters)

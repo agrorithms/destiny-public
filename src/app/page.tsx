@@ -14,7 +14,7 @@ export default function Home() {
 
       <StatsBar />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <a
           href="/leaderboard"
           className="block bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-blue-500 transition-colors group"
@@ -38,6 +38,19 @@ export default function Home() {
           <p className="text-gray-400 text-sm">
             Browse fireteams currently running raids. See who is in each
             session and how long they have been going.
+          </p>
+        </a>
+
+        <a
+          href="/fireteam-finder"
+          className="block bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-blue-500 transition-colors group"
+        >
+          <h2 className="text-xl font-bold mb-2 group-hover:text-blue-400 transition-colors">
+            Fireteam Finder
+          </h2>
+          <p className="text-gray-400 text-sm">
+            Browse public Fireteam Finder posts from Bungie&apos;s API and filter
+            them by activity using manifest-backed activity names.
           </p>
         </a>
       </div>

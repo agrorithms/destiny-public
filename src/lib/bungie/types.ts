@@ -158,3 +158,25 @@ export interface LeaderboardEntry {
     completions: number;
     raidName: string;
 }
+
+// ---- Fireteam Finder ----
+export interface DestinyFireteamFinderSearchListingsByFiltersRequest {
+    pageSize?: number;
+    pageToken?: string | null;
+    filters?: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+}
+
+export interface DestinyFireteamFinderSearchListingsByFiltersResponse {
+    listings?: DestinyFireteamFinderListing[];
+    results?: DestinyFireteamFinderListing[];
+    nextPageToken?: string | null;
+    [key: string]: unknown;
+}
+
+export interface DestinyFireteamFinderListing {
+    listingId?: string | number;
+    id?: string | number;
+    activityHash?: number;
+    [key: string]: unknown;
+}

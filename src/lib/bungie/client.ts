@@ -5,6 +5,8 @@ import type {
     DestinyProfileResponse,
     DestinyActivityHistoryResults,
     DestinyPostGameCarnageReportData,
+    DestinyFireteamFinderSearchListingsByFiltersRequest,
+    DestinyFireteamFinderSearchListingsByFiltersResponse,
 } from './types';
 
 export class BungieAPIError extends Error {
@@ -22,10 +24,12 @@ export class BungieAPIError extends Error {
 export class BungieClient {
     private apiKey: string;
     private rateLimiter: RateLimiter;
+    private authToken?: string;
 
-    constructor(apiKey: string, maxRequestsPerSecond: number = 20) {
+    constructor(apiKey: string, maxRequestsPerSecond: number = 20, authToken?: string) {
         this.apiKey = apiKey;
         this.rateLimiter = new RateLimiter(maxRequestsPerSecond);
+        this.authToken = authToken;
     }
 
     private async request<T>(url: string, options?: RequestInit): Promise<BungieResponse<T>> {
@@ -35,6 +39,7 @@ export class BungieClient {
             ...options,
             headers: {
                 'X-API-Key': this.apiKey,
+                ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
                 ...options?.headers,
             },
         });
@@ -99,6 +104,14 @@ export class BungieClient {
         return this.request<any>(url);
     }
 
+    async getEntityDefinition<T = any>(
+        entityType: string,
+        hashIdentifier: string | number
+    ): Promise<BungieResponse<T>> {
+        const url = BungieEndpoints.getEntityDefinition(entityType, hashIdentifier);
+        return this.request<T>(url);
+    }
+
     async searchByGlobalName(
         displayName: string,
         displayNameCode: number
@@ -123,6 +136,40 @@ export class BungieClient {
         });
     }
 
+    async searchFireteamListingsByFilters(
+        membershipType: number,
+        membershipId: string,
+        characterId: string,
+        payload: DestinyFireteamFinderSearchListingsByFiltersRequest,
+        overrideOfflineFilter?: boolean
+    ): Promise<BungieResponse<DestinyFireteamFinderSearchListingsByFiltersResponse>> {
+        const candidateUrls = BungieEndpoints.searchFireteamListingsByFiltersCandidates(
+            membershipType,
+            membershipId,
+            characterId,
+            overrideOfflineFilter
+        );
+
+        let lastError: Error | null = null;
+
+        for (const url of candidateUrls) {
+            try {
+                return await this.request<DestinyFireteamFinderSearchListingsByFiltersResponse>(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            } catch (error) {
+                lastError = error as Error;
+                if (!(lastError.message.includes('404') || lastError.message.includes('400'))) {
+                    throw error;
+                }
+            }
+        }
+
+        throw lastError || new Error('Unable to reach Fireteam Finder listings endpoint');
+    }
+
     getRateLimiterStatus(): number {
         return this.rateLimiter.getAvailableTokens();
     }
@@ -132,13 +179,17 @@ export class BungieClient {
 let clientInstance: BungieClient | null = null;
 let discoveryClientInstance: BungieClient | null = null;
 
+export function createBungieClient(authToken?: string): BungieClient {
+    const apiKey = process.env.BUNGIE_API_KEY;
+    if (!apiKey) throw new Error('BUNGIE_API_KEY not set in environment');
+
+    const maxRps = parseInt(process.env.BUNGIE_MAX_REQUESTS_PER_SECOND || '20', 10);
+    return new BungieClient(apiKey, maxRps, authToken);
+}
+
 export function getBungieClient(): BungieClient {
     if (!clientInstance) {
-        const apiKey = process.env.BUNGIE_API_KEY;
-        if (!apiKey) throw new Error('BUNGIE_API_KEY not set in environment');
-
-        const maxRps = parseInt(process.env.BUNGIE_MAX_REQUESTS_PER_SECOND || '20', 10);
-        clientInstance = new BungieClient(apiKey, maxRps);
+        clientInstance = createBungieClient(process.env.BUNGIE_ACCESS_TOKEN);
     }
     return clientInstance;
 }
@@ -147,13 +198,14 @@ export function getDiscoveryBungieClient(): BungieClient {
     if (!discoveryClientInstance) {
         const apiKey = process.env.BUNGIE_DISCOVERY_API_KEY || process.env.BUNGIE_API_KEY;
         if (!apiKey) throw new Error('BUNGIE_DISCOVERY_API_KEY/BUNGIE_API_KEY not set in environment');
+        const authToken = process.env.BUNGIE_ACCESS_TOKEN;
 
         const maxRps = parseInt(
             process.env.DISCOVERY_REQUESTS_PER_SECOND || process.env.BUNGIE_MAX_REQUESTS_PER_SECOND || '20',
             10
         );
 
-        discoveryClientInstance = new BungieClient(apiKey, maxRps);
+        discoveryClientInstance = new BungieClient(apiKey, maxRps, authToken);
     }
     return discoveryClientInstance;
 }

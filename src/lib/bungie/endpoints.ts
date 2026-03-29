@@ -1,6 +1,8 @@
 const BASE_URL = 'https://www.bungie.net/Platform';
 
 export const BungieEndpoints = {
+    baseUrl: BASE_URL,
+
     getProfile: (membershipType: number, membershipId: string, components: number[]) =>
         `${BASE_URL}/Destiny2/${membershipType}/Profile/${membershipId}/?components=${components.join(',')}`,
 
@@ -23,9 +25,31 @@ export const BungieEndpoints = {
     getManifest: () =>
         `${BASE_URL}/Destiny2/Manifest/`,
 
+    getEntityDefinition: (entityType: string, hashIdentifier: string | number) =>
+        `${BASE_URL}/Destiny2/Manifest/${entityType}/${hashIdentifier}/`,
+
     searchPlayer: (membershipType: number, displayName: string) =>
         `${BASE_URL}/Destiny2/SearchDestinyPlayer/${membershipType}/${encodeURIComponent(displayName)}/`,
 
     searchByGlobalName: (page: number = 0) =>
         `${BASE_URL}/Destiny2/SearchDestinyPlayerByBungieName/${page}/`,
+
+    searchFireteamListingsByFiltersCandidates: (
+        membershipType: number,
+        membershipId: string,
+        characterId: string,
+        overrideOfflineFilter?: boolean
+    ) => {
+        const query = new URLSearchParams();
+        if (overrideOfflineFilter !== undefined) {
+            query.set('overrideOfflineFilter', String(overrideOfflineFilter));
+        }
+
+        const suffix = query.size > 0 ? `?${query.toString()}` : '';
+
+        return [
+            `${BASE_URL}/FireteamFinder/Search/Listings/Filters/Browse/${membershipType}/${membershipId}/${characterId}/${suffix}`,
+            `${BASE_URL}/FireteamFinder/Search/Listings/Filters/Browse/${suffix}`,
+        ];
+    },
 };

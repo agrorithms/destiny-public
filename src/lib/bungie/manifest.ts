@@ -4,6 +4,13 @@ import { getBungieClient } from './client';
 
 const MANIFEST_CACHE_PATH = path.join(process.cwd(), 'data', 'manifest-cache.json');
 
+export interface ManifestActivityDefinition {
+    hash: number;
+    name: string;
+    description?: string;
+    directActivityModeType?: number;
+}
+
 export interface RaidDefinition {
     name: string;
     slug: string;
@@ -67,6 +74,7 @@ const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
 
 const raidDefinitions: Record<string, RaidDefinition> = RAID_DEFINITIONS;
 const hashToRaidMap: Map<number, string> = new Map();
+let manifestActivitiesCache: Record<string, ManifestActivityDefinition> | null = null;
 
 function buildHashMap() {
     hashToRaidMap.clear();
@@ -102,6 +110,82 @@ export function getRaidNameFromHash(hash: number): string {
     return raidDefinitions[key]?.name || 'Unknown Raid';
 }
 
+function readManifestCache(): {
+    updatedAt?: string;
+    raidActivities?: Record<string, ManifestActivityDefinition>;
+    allActivities?: Record<string, ManifestActivityDefinition>;
+} | null {
+    if (manifestActivitiesCache) {
+        return {
+            allActivities: manifestActivitiesCache,
+            raidActivities: Object.fromEntries(
+                Object.entries(manifestActivitiesCache).filter(([hash]) => isRaidActivityHash(Number(hash)))
+            ),
+        };
+    }
+
+    if (!fs.existsSync(MANIFEST_CACHE_PATH)) {
+        return null;
+    }
+
+    try {
+        const raw = fs.readFileSync(MANIFEST_CACHE_PATH, 'utf8');
+        const parsed = JSON.parse(raw);
+        manifestActivitiesCache = parsed.allActivities || parsed.raidActivities || {};
+        return parsed;
+    } catch (error) {
+        console.error('[WARN] Failed to read manifest cache:', error);
+        return null;
+    }
+}
+
+export function getActivityDefinitionFromManifest(hash: number): ManifestActivityDefinition | null {
+    const cache = readManifestCache();
+    const key = String(hash);
+    const activity =
+        cache?.allActivities?.[key]
+        || cache?.raidActivities?.[key];
+
+    return activity || null;
+}
+
+export function getActivityNameFromManifest(hash: number): string | null {
+    const activity = getActivityDefinitionFromManifest(hash);
+    return activity?.name || null;
+}
+
+export function getActivityNameFromHash(hash: number): string {
+    const manifestName = getActivityNameFromManifest(hash);
+    if (manifestName) return manifestName;
+    if (isRaidActivityHash(hash)) return getRaidNameFromHash(hash);
+    return `Activity ${hash}`;
+}
+
+export function getManifestActivityOptions(): Array<{
+    hash: number;
+    name: string;
+}> {
+    const cache = readManifestCache();
+    const entries = Object.values(cache?.allActivities || cache?.raidActivities || {});
+
+    if (entries.length > 0) {
+        return entries
+            .filter((activity) => activity?.hash && activity?.name)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((activity) => ({
+                hash: activity.hash,
+                name: activity.name,
+            }));
+    }
+
+    return Object.values(raidDefinitions)
+        .flatMap((raid) => raid.hashes.map((hash) => ({
+            hash,
+            name: raid.name,
+        })))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export async function updateManifestCache(): Promise<void> {
     console.log('📦 Fetching Destiny 2 manifest...');
     const client = getBungieClient();
@@ -116,9 +200,19 @@ export async function updateManifestCache(): Promise<void> {
     const response = await fetch(activityDefUrl);
     const activityDefs: Record<string, any> = await response.json();
 
+    const allActivities: Record<string, ManifestActivityDefinition> = {};
     // Find all raid activities
     const raidActivities: Record<string, any> = {};
     for (const [hash, def] of Object.entries(activityDefs)) {
+        if (def.displayProperties?.name) {
+            allActivities[hash] = {
+                hash: Number(hash),
+                name: def.displayProperties.name,
+                description: def.displayProperties.description,
+                directActivityModeType: def.directActivityModeType,
+            };
+        }
+
         if (
             def.activityTypeHash === 2043403989 ||
             (def.activityModeTypes && def.activityModeTypes.includes(4))
@@ -134,11 +228,13 @@ export async function updateManifestCache(): Promise<void> {
 
     const cacheData = {
         updatedAt: new Date().toISOString(),
+        allActivities,
         raidActivities,
     };
 
     fs.mkdirSync(path.dirname(MANIFEST_CACHE_PATH), { recursive: true });
     fs.writeFileSync(MANIFEST_CACHE_PATH, JSON.stringify(cacheData, null, 2));
+    manifestActivitiesCache = allActivities;
     console.log(
         `✅ Cached ${Object.keys(raidActivities).length} raid activities to ${MANIFEST_CACHE_PATH}`
     );

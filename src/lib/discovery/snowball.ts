@@ -97,15 +97,18 @@ export async function runDiscovery(
 
             // Get recent raid activities across all characters
             for (const characterId of characterIds) {
-                const activities = await getRecentRaidActivities(
+                const result = await getRecentRaidActivities(
                     seed.membershipType,
                     seed.membershipId,
                     characterId,
                     hoursBack,
                     50
                 );
+                if (result.isPrivacyRestricted) {
+                    break;
+                }
 
-                for (const activity of activities) {
+                for (const activity of result.activities) {
                     if (processedPGCRs.has(activity.instanceId)) continue;
                     processedPGCRs.add(activity.instanceId);
 

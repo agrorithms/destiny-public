@@ -109,15 +109,18 @@ async function processPlayer(
     const activityInstanceIds: Array<{ instanceId: string; activityHash: number }> = [];
 
     for (const characterId of characterIds) {
-        const activities = await getRecentRaidActivities(
+        const result = await getRecentRaidActivities(
             player.membershipType,
             player.membershipId,
             characterId,
             hoursBack,
             50
         );
+        if (result.isPrivacyRestricted) {
+            break;
+        }
 
-        for (const activity of activities) {
+        for (const activity of result.activities) {
             // Check raid filter
             if (raidFilter) {
                 const raidKey = getRaidKeyFromHash(activity.activityHash);

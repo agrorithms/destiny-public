@@ -188,6 +188,7 @@ export default function PlayerProfilePage() {
     const totalCompletions = useMemo(() => {
         return (profile?.summary || []).reduce((sum, row) => sum + row.completions, 0);
     }, [profile]);
+    const currentPlayer = profile?.player || headerPlayer;
 
     const sortedSummary = useMemo(() => {
         return sortRaidSummary(profile?.summary || [], sortBy);
@@ -239,13 +240,45 @@ export default function PlayerProfilePage() {
                 </div>
             )}
 
-            {(headerPlayer || profile?.player) && (
-                <>
-                    <h1 className="text-3xl font-bold text-white mb-2">{(profile?.player || headerPlayer)?.displayName}</h1>
-                    <p className="text-gray-400 mb-6">
+            {currentPlayer && (
+                <div className="mb-6">
+                    <div className="flex flex-wrap items-center gap-3 mb-2">
+                        <h1 className="text-3xl font-bold text-white">{currentPlayer.displayName}</h1>
+                        <div className="flex items-center gap-3">
+                            <a
+                                href={`https://raid.report/${getMembershipPrefix(currentPlayer.membershipType)}/${currentPlayer.membershipId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Open on raid.report"
+                                title="Open on raid.report"
+                                className="text-blue-400 hover:text-blue-300"
+                            >
+                                <img
+                                    src="https://raid.report/favicon.ico"
+                                    alt="Raid Report logo"
+                                    className="w-4 h-4 rounded-sm"
+                                />
+                            </a>
+                            <a
+                                href={`https://raidhub.io/profile/${currentPlayer.membershipId}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Open on RaidHub"
+                                title="Open on RaidHub"
+                                className="text-blue-400 hover:text-blue-300"
+                            >
+                                <img
+                                    src="https://raidhub.io/favicon.ico"
+                                    alt="RaidHub logo"
+                                    className="w-4 h-4 rounded-sm"
+                                />
+                            </a>
+                        </div>
+                    </div>
+                    <p className="text-gray-400">
                         Raid completions in the last {formatHours(hours)}
                     </p>
-                </>
+                </div>
             )}
 
             {(activeLoading || activeSession) && (
@@ -284,36 +317,6 @@ export default function PlayerProfilePage() {
                                 </button>
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <a
-                                    href={`https://raid.report/${getMembershipPrefix(profile.player.membershipType)}/${profile.player.membershipId}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label="Open on raid.report"
-                                    title="Open on raid.report"
-                                    className="text-blue-400 hover:text-blue-300"
-                                >
-                                    <img
-                                        src="https://raid.report/favicon.ico"
-                                        alt="Raid Report logo"
-                                        className="w-4 h-4 rounded-sm"
-                                    />
-                                </a>
-                                <a
-                                    href={`https://raidhub.io/profile/${profile.player.membershipId}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    aria-label="Open on RaidHub"
-                                    title="Open on RaidHub"
-                                    className="text-blue-400 hover:text-blue-300"
-                                >
-                                    <img
-                                        src="https://raidhub.io/favicon.ico"
-                                        alt="RaidHub logo"
-                                        className="w-4 h-4 rounded-sm"
-                                    />
-                                </a>
-                            </div>
                         </div>
 
                         <div className="border-t border-gray-700 pt-4">

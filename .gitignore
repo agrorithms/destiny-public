@@ -58,3 +58,7 @@ scripts/cleanup-membership-types.ts
 #seeds
 seeds.txt
 dist/
+
+#dev host
+localhost.key
+localhost.crt

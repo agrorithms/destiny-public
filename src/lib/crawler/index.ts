@@ -1,4 +1,12 @@
-import { getPlayersForSessionPolling, getPlayersToCrawl, getPlayerCount, bulkUpsertPlayers, cleanupOldPGCRs, getDbStats } from '../db/queries';
+import {
+    getPlayersForSessionPolling,
+    getPlayersToCrawl,
+    getPlayerCount,
+    bulkUpsertPlayers,
+    cleanupOldPGCRs,
+    getDbStats,
+    getSessionPollingCandidateLimit,
+} from '../db/queries';
 import { crawlPlayer } from './players';
 import { pollActiveSessions } from './active-sessions';
 import { getDb } from '../db';
@@ -151,6 +159,8 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
  */
 export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<void> {
     const config = { ...DEFAULT_CONFIG, ...overrides };
+    const sessionPollingLimit = 200;
+    const effectiveSessionPollingCandidateLimit = getSessionPollingCandidateLimit(sessionPollingLimit);
 
     if (isRunning) {
         console.warn('⚠️ Crawler is already running');
@@ -171,6 +181,8 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         activeSessionConcurrency: config.activeSessionConcurrency,
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,
         activeSessionStaleReverifyLimit: config.activeSessionStaleReverifyLimit,
+        sessionPollingLimit,
+        sessionPollingCandidateLimit: effectiveSessionPollingCandidateLimit,
     });
 
     // Print initial stats

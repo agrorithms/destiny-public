@@ -90,6 +90,20 @@ export function bulkUpsertPlayers(players: PlayerInfo[]): void {
     bulkTx(players);
 }
 
+export function getSessionPollingCandidateLimit(limit: number): number {
+    const configuredCandidateLimit = parseInt(
+        process.env.CRAWLER_SESSION_POLLING_CANDIDATE_LIMIT || '',
+        10
+    );
+    const defaultCandidateLimit = Math.max(limit * 4, 400);
+
+    if (Number.isFinite(configuredCandidateLimit) && configuredCandidateLimit > 0) {
+        return Math.max(configuredCandidateLimit, limit);
+    }
+
+    return defaultCandidateLimit;
+}
+
 /**
  * Get players most likely to be online for active session polling.
  * Prioritizes:
@@ -99,25 +113,37 @@ export function bulkUpsertPlayers(players: PlayerInfo[]): void {
  */
 export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     const db = getDb();
+    const recentWindowSeconds = Math.floor((Date.now() - 6 * 60 * 60 * 1000) / 1000);
+    const candidateLimit = getSessionPollingCandidateLimit(limit);
 
     // Strategy: Get players who appeared in recent PGCRs (last 6 hours)
     // These are the most likely to still be online and raiding
     const recentlyActive = db.prepare(`
-    SELECT DISTINCT
+    WITH recent_players AS (
+      SELECT
+        pp.membership_id as membershipId,
+        MAX(pg.period) as lastSeenPeriod
+      FROM pgcr_players pp
+      INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
+      WHERE pg.period >= ?
+      GROUP BY pp.membership_id
+      ORDER BY lastSeenPeriod DESC
+      LIMIT ?
+    )
+    SELECT
       p.membership_id as membershipId,
       p.membership_type as membershipType,
       p.display_name as displayName,
       p.bungie_global_display_name as bungieGlobalDisplayName
-    FROM players p
-    INNER JOIN pgcr_players pp ON p.membership_id = pp.membership_id
-    INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-    LEFT JOIN active_sessions s ON s.membership_id = p.membership_id
-    WHERE pg.period >= ?
-      AND p.is_active = 1
-    ORDER BY COALESCE(s.checked_at, 0) ASC, pg.period DESC
+    FROM recent_players rp
+    INNER JOIN players p ON p.membership_id = rp.membershipId
+    LEFT JOIN active_sessions s ON s.membership_id = rp.membershipId
+    WHERE p.is_active = 1
+    ORDER BY COALESCE(s.checked_at, 0) ASC, rp.lastSeenPeriod DESC
     LIMIT ?
   `).all(
-        Math.floor((Date.now() - 6 * 60 * 60 * 1000) / 1000),
+        recentWindowSeconds,
+        candidateLimit,
         limit
     ) as PlayerInfo[];
 

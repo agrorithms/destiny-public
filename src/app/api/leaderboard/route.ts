@@ -43,6 +43,14 @@ export async function GET(request: NextRequest) {
 
             for (const raidKey of raidKeys) {
                 let query = `
+          WITH run_durations AS (
+            SELECT
+              instance_id,
+              MAX(time_played_seconds) as pgcrDurationSeconds
+            FROM pgcr_players
+            WHERE completed = 1
+            GROUP BY instance_id
+          )
           SELECT
             pp.membership_id as membershipId,
             pp.membership_type as membershipType,
@@ -52,8 +60,9 @@ export async function GET(request: NextRequest) {
             COUNT(DISTINCT pp.instance_id) as completions
           FROM pgcr_players pp
           JOIN pgcrs p ON pp.instance_id = p.instance_id
+          JOIN run_durations d ON d.instance_id = p.instance_id
           LEFT JOIN players pl ON pp.membership_id = pl.membership_id
-          WHERE p.period >= ?
+          WHERE (p.period + d.pgcrDurationSeconds) >= ?
             AND pp.completed = 1
             AND p.completed = 1
             AND p.raid_key = ?
@@ -99,6 +108,14 @@ export async function GET(request: NextRequest) {
         } else {
             // Aggregate mode — total clears across all selected raids
             let query = `
+        WITH run_durations AS (
+          SELECT
+            instance_id,
+            MAX(time_played_seconds) as pgcrDurationSeconds
+          FROM pgcr_players
+          WHERE completed = 1
+          GROUP BY instance_id
+        )
         SELECT
           pp.membership_id as membershipId,
           pp.membership_type as membershipType,
@@ -108,8 +125,9 @@ export async function GET(request: NextRequest) {
           COUNT(DISTINCT pp.instance_id) as completions
         FROM pgcr_players pp
         JOIN pgcrs p ON pp.instance_id = p.instance_id
+        JOIN run_durations d ON d.instance_id = p.instance_id
         LEFT JOIN players pl ON pp.membership_id = pl.membership_id
-        WHERE p.period >= ?
+        WHERE (p.period + d.pgcrDurationSeconds) >= ?
           AND pp.completed = 1
           AND p.completed = 1
       `;

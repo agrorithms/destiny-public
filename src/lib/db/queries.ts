@@ -122,10 +122,18 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     WITH recent_players AS (
       SELECT
         pp.membership_id as membershipId,
-        MAX(pg.period) as lastSeenPeriod
+        MAX(pg.period + d.pgcrDurationSeconds) as lastSeenPeriod
       FROM pgcr_players pp
       INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      WHERE pg.period >= ?
+      INNER JOIN (
+        SELECT
+          instance_id,
+          MAX(time_played_seconds) as pgcrDurationSeconds
+        FROM pgcr_players
+        WHERE completed = 1
+        GROUP BY instance_id
+      ) d ON d.instance_id = pg.instance_id
+      WHERE (pg.period + d.pgcrDurationSeconds) >= ?
       GROUP BY pp.membership_id
       ORDER BY lastSeenPeriod DESC
       LIMIT ?
@@ -312,7 +320,7 @@ export function getPlayerRaidCompletionSummary(
     JOIN pgcrs p ON pp.instance_id = p.instance_id
     JOIN run_durations d ON d.instance_id = p.instance_id
     WHERE pp.membership_id = ?
-      AND p.period >= ?
+      AND (p.period + d.pgcrDurationSeconds) >= ?
       AND pp.completed = 1
       AND p.completed = 1
       AND p.raid_key IS NOT NULL
@@ -357,12 +365,12 @@ export function getPlayerRecentCompletions(
     JOIN pgcrs p ON pp.instance_id = p.instance_id
     JOIN run_durations d ON d.instance_id = p.instance_id
     WHERE pp.membership_id = ?
-      AND p.period >= ?
+      AND (p.period + d.pgcrDurationSeconds) >= ?
       AND pp.completed = 1
       AND p.completed = 1
       AND p.raid_key IS NOT NULL
       AND p.activity_was_started_from_beginning = 1
-    ORDER BY p.period DESC
+    ORDER BY (p.period + d.pgcrDurationSeconds) DESC
     LIMIT ?
   `).all(membershipId, cutoffTimestamp, limit) as PlayerRecentCompletion[];
 }
@@ -398,8 +406,9 @@ export function getPlayerRaidTeammateSummary(
         p.raid_key
       FROM pgcr_players self
       JOIN pgcrs p ON self.instance_id = p.instance_id
+      JOIN run_durations d ON d.instance_id = p.instance_id
       WHERE self.membership_id = ?
-        AND p.period >= ?
+        AND (p.period + d.pgcrDurationSeconds) >= ?
         AND self.completed = 1
         AND p.completed = 1
         AND p.raid_key IS NOT NULL
@@ -592,7 +601,15 @@ export function getLeaderboard(params: {
       COALESCE(p.raid_key, 'unknown') as raidName
     FROM pgcr_players pp
     JOIN pgcrs p ON pp.instance_id = p.instance_id
-    WHERE p.period >= ?
+    JOIN (
+      SELECT
+        instance_id,
+        MAX(time_played_seconds) as pgcrDurationSeconds
+      FROM pgcr_players
+      WHERE completed = 1
+      GROUP BY instance_id
+    ) d ON d.instance_id = p.instance_id
+    WHERE (p.period + d.pgcrDurationSeconds) >= ?
       AND pp.completed = 1
       AND p.completed = 1
   `;
@@ -640,7 +657,15 @@ export function getLeaderboardByRaid(params: {
       p.raid_key as raidKey
     FROM pgcr_players pp
     JOIN pgcrs p ON pp.instance_id = p.instance_id
-    WHERE p.period >= ?
+    JOIN (
+      SELECT
+        instance_id,
+        MAX(time_played_seconds) as pgcrDurationSeconds
+      FROM pgcr_players
+      WHERE completed = 1
+      GROUP BY instance_id
+    ) d ON d.instance_id = p.instance_id
+    WHERE (p.period + d.pgcrDurationSeconds) >= ?
       AND pp.completed = 1
       AND p.completed = 1
       AND p.raid_key IS NOT NULL

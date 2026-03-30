@@ -102,7 +102,12 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     }
 
     let totalNewPGCRs = 0;
-    const allDiscoveredPlayers: PlayerInfo[] = [];
+    const discoveredFlushSize = Math.max(
+        1,
+        parseInt(process.env.CRAWLER_DISCOVERED_PLAYERS_FLUSH_SIZE || '500', 10)
+    );
+    const discoveredPlayersBuffer: PlayerInfo[] = [];
+    let totalNewPlayersDiscovered = 0;
     let crawledCount = 0;
     const halfMilestone = Math.max(1, Math.floor(config.maxPlayersPerCycle / 2));
     const fullMilestone = config.maxPlayersPerCycle;
@@ -143,18 +148,27 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
         if (result.result.skipped) continue;
         crawledCount++;
         totalNewPGCRs += result.result.newPGCRs;
-        allDiscoveredPlayers.push(...result.result.discoveredPlayers);
+        if (result.result.discoveredPlayers.length > 0) {
+            totalNewPlayersDiscovered += result.result.discoveredPlayers.length;
+            discoveredPlayersBuffer.push(...result.result.discoveredPlayers);
+
+            if (discoveredPlayersBuffer.length >= discoveredFlushSize) {
+                bulkUpsertPlayers(discoveredPlayersBuffer);
+                discoveredPlayersBuffer.length = 0;
+            }
+        }
     }
 
-    // Bulk insert newly discovered players
-    if (allDiscoveredPlayers.length > 0) {
-        bulkUpsertPlayers(allDiscoveredPlayers);
+    // Flush any remaining discovered players
+    if (discoveredPlayersBuffer.length > 0) {
+        bulkUpsertPlayers(discoveredPlayersBuffer);
+        discoveredPlayersBuffer.length = 0;
     }
 
     return {
         playersCrawled: crawledCount,
         newPGCRs: totalNewPGCRs,
-        newPlayersDiscovered: allDiscoveredPlayers.length,
+        newPlayersDiscovered: totalNewPlayersDiscovered,
     };
 }
 

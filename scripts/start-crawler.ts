@@ -12,8 +12,8 @@ const CRAWLER_CONFIG = {
     maxPlayersPerCycle: parseInt(process.env.CRAWLER_MAX_PLAYERS_PER_CYCLE || '50', 10),
     hoursBack: parseInt(process.env.CRAWLER_HOURS_BACK || '24', 10),
     crawlConcurrency: parseInt(process.env.CRAWLER_CONCURRENCY || '5', 10),
-    enableActiveSessionPolling: true,
-    activeSessionIntervalMs: 120000, // 5 minutes
+    enableActiveSessionPolling: process.env.CRAWLER_ENABLE_ACTIVE_SESSION_POLLING !== 'false',
+    activeSessionIntervalMs: parseInt(process.env.CRAWLER_ACTIVE_SESSION_INTERVAL_MS || '120000', 10), // 2 minutes
     cleanupIntervalMs: 1800000, // 30 minutes
     cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '48', 10),
 };

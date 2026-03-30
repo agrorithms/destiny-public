@@ -148,8 +148,8 @@ export async function crawlPlayer(
             return { newPGCRs, discoveredPlayers };
         }
 
-        // Get recent raid activities across all characters
-        const allActivities: Array<{ instanceId: string; activityHash: number; period: number }> = [];
+        // Get recent raid activities across all characters and dedupe on the fly
+        const uniqueInstanceIds = new Set<string>();
         let privacyRestricted = false;
 
         for (const characterId of characterIds) {
@@ -163,7 +163,9 @@ export async function crawlPlayer(
                 privacyRestricted = true;
                 break;
             }
-            allActivities.push(...result.activities);
+            for (const activity of result.activities) {
+                uniqueInstanceIds.add(activity.instanceId);
+            }
         }
 
         if (privacyRestricted) {
@@ -171,14 +173,8 @@ export async function crawlPlayer(
             return { newPGCRs, discoveredPlayers };
         }
 
-        // Deduplicate by instance ID (same activity can appear on multiple characters)
-        const uniqueActivities = new Map<string, typeof allActivities[0]>();
-        for (const activity of allActivities) {
-            uniqueActivities.set(activity.instanceId, activity);
-        }
-
         // Fetch and store each new PGCR
-        for (const [instanceId] of uniqueActivities) {
+        for (const instanceId of uniqueInstanceIds) {
             const processed = await fetchAndStorePGCR(instanceId, 'crawler');
 
             if (processed) {

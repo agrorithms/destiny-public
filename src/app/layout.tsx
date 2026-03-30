@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import Script from 'next/script';
 import './globals.css';
 import PlayerSearch from '@/components/PlayerSearch';
 
@@ -15,6 +16,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <Script
+          src="https://cloud.umami.is/script.js"
+          data-website-id="ac99ded7-08b1-405d-9438-b3e03c1a7339"
+          strategy="afterInteractive"
+        />
+      </head>
       <body className="bg-gray-900 text-white min-h-screen">
         <nav className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

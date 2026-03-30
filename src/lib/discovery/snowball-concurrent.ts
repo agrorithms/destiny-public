@@ -252,7 +252,7 @@ export async function runConcurrentDiscovery(
         let depthNewPGCRsCounter = 0;
         let depthNewPlayersCounter = 0;
 
-        const results = await processWithConcurrency(
+        await processWithConcurrency(
             cappedWave,
             concurrency,
             async (player) => {
@@ -271,52 +271,53 @@ export async function runConcurrentDiscovery(
                         `${depthNewPGCRsCounter} new PGCRs, ${depthNewPlayersCounter} new players, ${elapsed}s elapsed`
                     );
                 }
+            },
+            {
+                collectResults: false,
+                onResult: (result) => {
+                    if (!result.success) return;
+
+                    const {
+                        newPGCRs,
+                        discoveredPlayers,
+                        completionsByRaid: playerRaidCompletions,
+                        playerCompletions,
+                    } = result.result;
+
+                    depthNewPGCRs += newPGCRs;
+                    totalNewPGCRs += newPGCRs;
+
+                    // Merge raid completion counts
+                    for (const [raid, count] of playerRaidCompletions) {
+                        const existing = completionsByRaid.get(raid) || 0;
+                        completionsByRaid.set(raid, existing + count);
+                    }
+
+                    // Merge discovered players
+                    for (const player of discoveredPlayers) {
+                        if (!allPlayers.has(player.membershipId)) {
+                            allPlayers.set(player.membershipId, {
+                                ...player,
+                                completions: 0,
+                            });
+                            depthNewPlayers++;
+
+                            nextWave.push({
+                                membershipId: player.membershipId,
+                                membershipType: player.membershipType,
+                            });
+                        }
+
+                        // Update completion count
+                        const completionCount = playerCompletions.get(player.membershipId) || 0;
+                        if (completionCount > 0) {
+                            const existing = allPlayers.get(player.membershipId)!;
+                            existing.completions += completionCount;
+                        }
+                    }
+                },
             }
         );
-
-        // Merge results from all workers
-        for (const result of results) {
-            if (!result.success) continue;
-
-            const {
-                newPGCRs,
-                discoveredPlayers,
-                completionsByRaid: playerRaidCompletions,
-                playerCompletions,
-            } = result.result;
-
-            depthNewPGCRs += newPGCRs;
-            totalNewPGCRs += newPGCRs;
-
-            // Merge raid completion counts
-            for (const [raid, count] of playerRaidCompletions) {
-                const existing = completionsByRaid.get(raid) || 0;
-                completionsByRaid.set(raid, existing + count);
-            }
-
-            // Merge discovered players
-            for (const player of discoveredPlayers) {
-                if (!allPlayers.has(player.membershipId)) {
-                    allPlayers.set(player.membershipId, {
-                        ...player,
-                        completions: 0,
-                    });
-                    depthNewPlayers++;
-
-                    nextWave.push({
-                        membershipId: player.membershipId,
-                        membershipType: player.membershipType,
-                    });
-                }
-
-                // Update completion count
-                const completionCount = playerCompletions.get(player.membershipId) || 0;
-                if (completionCount > 0) {
-                    const existing = allPlayers.get(player.membershipId)!;
-                    existing.completions += completionCount;
-                }
-            }
-        }
 
         // Store discovered players in the database after each depth
         const newPlayersForDb = [...allPlayers.values()]

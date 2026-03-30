@@ -113,7 +113,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     const fullMilestone = config.maxPlayersPerCycle;
     const reachedMilestones = new Set<number>();
 
-    const results = await processWithConcurrency(
+    await processWithConcurrency(
         players,
         config.crawlConcurrency,
         async (player) => {
@@ -140,24 +140,27 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
                 reachedMilestones.add(total);
                 console.log(`[CRAWLER] Progress: ${completed}/${total} players`);
             }
+        },
+        {
+            collectResults: false,
+            onResult: (result) => {
+                if (!result.success) return;
+                if (result.result.skipped) return;
+
+                crawledCount++;
+                totalNewPGCRs += result.result.newPGCRs;
+                if (result.result.discoveredPlayers.length > 0) {
+                    totalNewPlayersDiscovered += result.result.discoveredPlayers.length;
+                    discoveredPlayersBuffer.push(...result.result.discoveredPlayers);
+
+                    if (discoveredPlayersBuffer.length >= discoveredFlushSize) {
+                        bulkUpsertPlayers(discoveredPlayersBuffer);
+                        discoveredPlayersBuffer.length = 0;
+                    }
+                }
+            },
         }
     );
-
-    for (const result of results) {
-        if (!result.success) continue;
-        if (result.result.skipped) continue;
-        crawledCount++;
-        totalNewPGCRs += result.result.newPGCRs;
-        if (result.result.discoveredPlayers.length > 0) {
-            totalNewPlayersDiscovered += result.result.discoveredPlayers.length;
-            discoveredPlayersBuffer.push(...result.result.discoveredPlayers);
-
-            if (discoveredPlayersBuffer.length >= discoveredFlushSize) {
-                bulkUpsertPlayers(discoveredPlayersBuffer);
-                discoveredPlayersBuffer.length = 0;
-            }
-        }
-    }
 
     // Flush any remaining discovered players
     if (discoveredPlayersBuffer.length > 0) {

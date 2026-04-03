@@ -141,7 +141,7 @@ export default function PlayerSearch() {
                     onKeyDown={onInputKeyDown}
                     type="text"
                     placeholder="Search player"
-                    className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
+                    className="w-full rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:placeholder:text-gray-500"
                 />
                 <button
                     type="submit"
@@ -152,9 +152,9 @@ export default function PlayerSearch() {
             </form>
 
             {open && (
-                <div className="absolute top-full mt-2 w-full rounded-lg border border-gray-700 bg-gray-900 shadow-xl z-50 overflow-hidden">
+                <div className="absolute top-full mt-2 w-full rounded-lg border border-gray-200 bg-white shadow-xl z-50 overflow-hidden dark:border-gray-700 dark:bg-gray-900">
                     {loading && (
-                        <div className="px-3 py-2 text-sm text-gray-400">Searching...</div>
+                        <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">Searching...</div>
                     )}
 
                     {!loading && error && (
@@ -162,7 +162,7 @@ export default function PlayerSearch() {
                     )}
 
                     {!loading && !error && results.length === 0 && (
-                        <div className="px-3 py-2 text-sm text-gray-400">
+                        <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
                             No matches found in local player database.
                         </div>
                     )}
@@ -170,7 +170,7 @@ export default function PlayerSearch() {
                     {!loading && !error && results.length > 0 && (
                         <>
                             {!hasExact && (
-                                <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-800">
+                                <div className="px-3 py-2 text-xs text-gray-600 border-b border-gray-200 dark:text-gray-500 dark:border-gray-800">
                                     Multiple players can share the same base name. Select the exact profile.
                                 </div>
                             )}
@@ -182,12 +182,12 @@ export default function PlayerSearch() {
                                         onClick={() => goToPlayer(result)}
                                         onMouseEnter={() => setSelectedIndex(index)}
                                         className={`w-full text-left px-3 py-2 text-sm transition-colors ${selectedIndex === index
-                                            ? 'bg-gray-800'
-                                            : 'hover:bg-gray-800'
+                                            ? 'bg-gray-100 dark:bg-gray-800'
+                                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
                                             }`}
                                     >
-                                        <div className="text-gray-100">{result.displayName}</div>
-                                        <div className="text-xs text-gray-500">
+                                        <div className="text-gray-900 dark:text-gray-100">{result.displayName}</div>
+                                        <div className="text-xs text-gray-600 dark:text-gray-500">
                                             {getMembershipTypeLabel(result.membershipType)}
                                             {(result.secondaryDisplayName || result.baseName)
                                                 && (result.secondaryDisplayName || result.baseName).toLowerCase() !== result.displayName.toLowerCase()

@@ -22,7 +22,7 @@ export default async function AdminStatsPage() {
 
     return (
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-            <h1 className="text-3xl font-bold text-white">Admin Stats</h1>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin Stats</h1>
 
             <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-300">
                 <div className="flex flex-wrap items-center gap-4">

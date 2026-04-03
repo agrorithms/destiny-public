@@ -41,18 +41,18 @@ function getElapsedTime(startedAt: string): string {
 
 export default function ActiveSessionCard({ session }: ActiveSessionCardProps) {
     return (
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+        <div className="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600">
             <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-blue-400">
                     {session.raidName}
                 </h3>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                     {getElapsedTime(session.startedAt)} elapsed
                 </span>
             </div>
 
             <div className="flex items-center justify-between mb-3">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-600 dark:text-gray-500">
                     {session.playerCount} / 6 players
                 </span>
                 <div className="flex gap-1">
@@ -79,12 +79,12 @@ export default function ActiveSessionCard({ session }: ActiveSessionCardProps) {
                         {typeof member.membershipType === 'number' ? (
                             <a
                                 href={`/player/${member.membershipType}/${member.membershipId}`}
-                                className="text-gray-300 truncate hover:text-blue-400 transition-colors"
+                                className="text-gray-800 truncate hover:text-blue-600 transition-colors dark:text-gray-300 dark:hover:text-blue-400"
                             >
                                 {member.displayName || member.membershipId}
                             </a>
                         ) : (
-                            <span className="text-gray-300 truncate">
+                            <span className="text-gray-800 truncate dark:text-gray-300">
                                 {member.displayName || member.membershipId}
                             </span>
                         )}

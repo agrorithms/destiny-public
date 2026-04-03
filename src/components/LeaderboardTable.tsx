@@ -25,9 +25,9 @@ export default function LeaderboardTable({
     if (loading) {
         return (
             <div className="space-y-2">
-                {title && <h3 className="text-lg font-bold text-gray-200 mb-3">{title}</h3>}
+                {title && <h3 className="text-lg font-bold text-gray-900 dark:text-gray-200 mb-3">{title}</h3>}
                 {Array.from({ length: 10 }).map((_, i) => (
-                    <div key={i} className="h-10 bg-gray-800 rounded animate-pulse" />
+                    <div key={i} className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
                 ))}
             </div>
         );
@@ -35,8 +35,8 @@ export default function LeaderboardTable({
 
     if (entries.length === 0) {
         return (
-            <div className="text-center py-12 text-gray-400">
-                {title && <h3 className="text-lg font-bold text-gray-200 mb-3">{title}</h3>}
+            <div className="text-center py-12 text-gray-600 dark:text-gray-400">
+                {title && <h3 className="text-lg font-bold text-gray-900 dark:text-gray-200 mb-3">{title}</h3>}
                 <p className="text-lg">No completions found</p>
                 <p className="text-sm mt-1">Try adjusting the time range or raid filter</p>
             </div>
@@ -45,11 +45,11 @@ export default function LeaderboardTable({
 
     return (
         <div>
-            {title && <h3 className="text-lg font-bold text-gray-200 mb-3">{title}</h3>}
+            {title && <h3 className="text-lg font-bold text-gray-900 dark:text-gray-200 mb-3">{title}</h3>}
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="border-b border-gray-700 text-gray-400">
+                        <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400">
                             <th className="text-left py-3 px-2 w-12">#</th>
                             <th className="text-left py-3 px-2">Player</th>
                             {showRaidColumn && <th className="text-left py-3 px-2">Raid</th>}
@@ -60,12 +60,12 @@ export default function LeaderboardTable({
                         {entries.map((entry, index) => (
                             <tr
                                 key={entry.membershipId}
-                                className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors"
+                                className="border-b border-gray-100 hover:bg-gray-50 transition-colors dark:border-gray-800 dark:hover:bg-gray-800/50"
                             >
-                                <td className="py-2.5 px-2 text-gray-500">
+                                <td className="py-2.5 px-2 text-gray-600 dark:text-gray-500">
                                     {index < 3 ? (
                                         <span className={`font-bold ${index === 0 ? 'text-yellow-400' :
-                                                index === 1 ? 'text-gray-300' :
+                                                index === 1 ? 'text-gray-500 dark:text-gray-300' :
                                                     'text-amber-600'
                                             }`}>
                                             {index + 1}
@@ -77,16 +77,16 @@ export default function LeaderboardTable({
                                 <td className="py-2.5 px-2">
                                     <a
                                         href={`/player/${entry.membershipType}/${entry.membershipId}`}
-                                        className="text-gray-200 hover:text-blue-400 transition-colors"
+                                        className="text-gray-900 hover:text-blue-600 transition-colors dark:text-gray-200 dark:hover:text-blue-400"
                                         title={entry.displayName}
                                     >
                                         {truncateDisplayName(entry.displayName, 25)}
                                     </a>
                                 </td>
                                 {showRaidColumn && (
-                                    <td className="py-2.5 px-2 text-gray-400">{raidName}</td>
+                                    <td className="py-2.5 px-2 text-gray-500 dark:text-gray-400">{raidName}</td>
                                 )}
-                                <td className="py-2.5 px-2 text-right font-mono font-bold text-gray-200">
+                                <td className="py-2.5 px-2 text-right font-mono font-bold text-gray-900 dark:text-gray-200">
                                     {entry.completions}
                                 </td>
                             </tr>

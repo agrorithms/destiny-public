@@ -23,23 +23,23 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
       </head>
-      <body className="bg-gray-900 text-white min-h-screen">
-        <nav className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
+      <body className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white">
+        <nav className="border-b border-gray-200 bg-white/85 backdrop-blur-sm sticky top-0 z-50 dark:border-gray-800 dark:bg-gray-900/80">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <Link href="/" className="text-lg font-bold text-white hover:text-blue-400 transition-colors shrink-0">
+            <Link href="/" className="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors shrink-0 dark:text-white dark:hover:text-blue-400">
               Destiny Farm Finder
             </Link>
             <PlayerSearch />
             <div className="flex gap-6 shrink-0">
               <Link
                 href="/leaderboard"
-                className="text-sm text-gray-400 hover:text-white transition-colors"
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white"
               >
                 Leaderboard
               </Link>
               <Link
                 href="/active-sessions"
-                className="text-sm text-gray-400 hover:text-white transition-colors"
+                className="text-sm text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white"
               >
                 Active Sessions
               </Link>

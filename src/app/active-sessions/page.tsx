@@ -101,19 +101,19 @@ export default function ActiveSessionsPage() {
             </div>
 
             <div className="flex items-center justify-between mb-6">
-                <h1 className="text-3xl font-bold text-white">Active Raid Sessions</h1>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Active Raid Sessions</h1>
                 {lastUpdated && (
-                    <span className="text-sm text-gray-500">
+                    <span className="text-sm text-gray-600 dark:text-gray-500">
                         Last updated: {lastUpdated.toLocaleTimeString()}
                     </span>
                 )}
             </div>
 
             {/* Controls Card */}
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 mb-6">
+            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 dark:bg-gray-800 dark:border-gray-700">
                 <div className="flex flex-wrap items-end gap-4">
                     <div>
-                        <label className="block text-xs text-gray-500 mb-1">Raid</label>
+                        <label className="block text-xs text-gray-600 dark:text-gray-500 mb-1">Raid</label>
                         <RaidMultiSelect
                             raids={AVAILABLE_RAIDS}
                             selected={selectedRaids}
@@ -137,15 +137,15 @@ export default function ActiveSessionsPage() {
             {loading && sessions.length === 0 && (
                 <div className="space-y-4">
                     {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="h-32 bg-gray-800 rounded-lg animate-pulse" />
+                        <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-lg animate-pulse" />
                     ))}
                 </div>
             )}
 
             {/* Empty State */}
             {!loading && filteredSessions.length === 0 && (
-                <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-                    <div className="text-center py-12 text-gray-400">
+                <div className="bg-white/80 border border-gray-200 rounded-lg p-4 dark:bg-gray-800/50 dark:border-gray-700">
+                    <div className="text-center py-12 text-gray-600 dark:text-gray-400">
                         <p className="text-lg">No active raid sessions found</p>
                         <p className="text-sm mt-1">
                             {selectedRaids.length > 0
@@ -160,8 +160,8 @@ export default function ActiveSessionsPage() {
             {sortedRaidGroups.map(([raidName, raidSessions]) => (
                 <div key={raidName} className="mb-8">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-xl font-bold text-white">{raidName}</h2>
-                        <span className="text-sm text-gray-500">
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">{raidName}</h2>
+                        <span className="text-sm text-gray-600 dark:text-gray-500">
                             {raidSessions.length} {raidSessions.length === 1 ? 'session' : 'sessions'}
                         </span>
                     </div>

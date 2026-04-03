@@ -166,13 +166,13 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
 
     const fallback = db.prepare(`
     SELECT
-      membership_id as membershipId,
-      membership_type as membershipType,
-      display_name as displayName,
-      bungie_global_display_name as bungieGlobalDisplayName
+      p.membership_id as membershipId,
+      p.membership_type as membershipType,
+      p.display_name as displayName,
+      p.bungie_global_display_name as bungieGlobalDisplayName
     FROM players p
     LEFT JOIN active_sessions s ON s.membership_id = p.membership_id
-    WHERE is_active = 1
+    WHERE p.is_active = 1
     ORDER BY COALESCE(s.checked_at, 0) ASC, priority DESC, discovered_at DESC
     LIMIT ?
   `).all(remaining + existingIds.size) as PlayerInfo[];

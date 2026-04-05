@@ -5,7 +5,7 @@ import RaidMultiSelect from '@/components/RaidMultiSelect';
 import LeaderboardTable from '@/components/LeaderboardTable';
 // import StatsBar from '@/components/StatsBar';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
-import { useViewMode, useTimeRange } from '@/hooks/useLeaderboardPrefs';
+import { useViewMode, useTimeRange, useLeaderboardSize } from '@/hooks/useLeaderboardPrefs';
 
 interface RaidOption {
     key: string;
@@ -55,6 +55,7 @@ const AVAILABLE_RAIDS: RaidOption[] = [
 ];
 
 const HOUR_MARKS = Array.from({ length: 48 }, (_, i) => i + 1);
+const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100];
 
 function formatHours(h: number): string {
     if (h === 1) return '1 hour';
@@ -66,6 +67,7 @@ export default function LeaderboardPage() {
     const [hours, setHours] = useTimeRange();
     const [pendingHours, setPendingHours] = useState(hours);
     const [mode, setMode] = useViewMode();
+    const [leaderboardSize, setLeaderboardSize] = useLeaderboardSize();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<LeaderboardResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export default function LeaderboardPage() {
                 hours: hours.toString(),
                 fullClearsOnly: 'true',
                 mode,
-                limit: '100',
+                limit: leaderboardSize.toString(),
             });
 
             if (selectedRaids.length > 0) {
@@ -118,7 +120,7 @@ export default function LeaderboardPage() {
                 setLoading(false);
             }
         }
-    }, [selectedRaids, hours, mode]);
+    }, [selectedRaids, hours, mode, leaderboardSize]);
 
     useEffect(() => {
         setPendingHours(hours);
@@ -201,6 +203,22 @@ export default function LeaderboardPage() {
                                 Total Clears
                             </button>
                         </div>
+                    </div>
+
+                    {/* Leaderboard Size */}
+                    <div>
+                        <label className="block text-xs ui-text-muted mb-1">Players</label>
+                        <select
+                            value={leaderboardSize}
+                            onChange={(e) => setLeaderboardSize(parseInt(e.target.value, 10))}
+                            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 ui-toggle-idle"
+                        >
+                            {LEADERBOARD_SIZE_OPTIONS.map((size) => (
+                                <option key={size} value={size}>
+                                    {size}
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     {/* Refresh Button */}

@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     // Support comma-separated raid keys: ?raids=garden_of_salvation,salvations_edge,vow_of_the_disciple
     const raidsParam = searchParams.get('raids') || '';
     const hours = parseInt(searchParams.get('hours') || '4', 10);
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
     const fullClearsOnly = searchParams.get('fullClearsOnly') !== 'false';
     const mode = searchParams.get('mode') || 'aggregate'; // 'aggregate' or 'individual'
 

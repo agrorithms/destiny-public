@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 
 const VIEW_MODE_KEY = 'destiny-farm-finder-view-mode';
 const TIME_RANGE_KEY = 'destiny-farm-finder-time-range';
+const LEADERBOARD_SIZE_KEY = 'destiny-farm-finder-leaderboard-size';
+const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100] as const;
 
 /**
  * Persisted view mode toggle (aggregate vs individual).
@@ -68,4 +70,38 @@ export function useTimeRange(): [number, (hours: number) => void] {
     }, [hours]);
 
     return [hours, setHours];
+}
+
+/**
+ * Persisted leaderboard size.
+ * Defaults to 50 players.
+ */
+export function useLeaderboardSize(): [number, (size: number) => void] {
+    const [size, setSize] = useState(() => {
+        if (typeof window === 'undefined') {
+            return 50;
+        }
+        try {
+            const stored = localStorage.getItem(LEADERBOARD_SIZE_KEY);
+            if (stored) {
+                const parsed = parseInt(stored, 10);
+                if (LEADERBOARD_SIZE_OPTIONS.includes(parsed as (typeof LEADERBOARD_SIZE_OPTIONS)[number])) {
+                    return parsed;
+                }
+            }
+        } catch {
+            // Ignore
+        }
+        return 50;
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(LEADERBOARD_SIZE_KEY, size.toString());
+        } catch {
+            // Ignore
+        }
+    }, [size]);
+
+    return [size, setSize];
 }

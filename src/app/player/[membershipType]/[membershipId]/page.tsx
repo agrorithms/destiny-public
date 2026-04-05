@@ -69,7 +69,10 @@ interface ProfileResponse {
 }
 
 type SectionKey = 'summary' | 'completions' | 'teammates';
-type SortBy = 'clears' | 'avgTime';
+type SortDirection = 'asc' | 'desc';
+type SummarySortKey = 'raid' | 'clears' | 'avgTime';
+type CompletionSortKey = 'raid' | 'completed' | 'time';
+type TeammateSortKey = 'teammate' | 'clearsTogether' | 'avgTime';
 
 interface ActiveSessionResponse {
     player: ProfilePlayer;
@@ -77,6 +80,21 @@ interface ActiveSessionResponse {
 }
 
 const HOUR_MARKS = Array.from({ length: 48 }, (_, i) => i + 1);
+const SUMMARY_FIRST_DIRECTIONS: Record<SummarySortKey, SortDirection> = {
+    raid: 'asc',
+    clears: 'desc',
+    avgTime: 'asc',
+};
+const COMPLETION_FIRST_DIRECTIONS: Record<CompletionSortKey, SortDirection> = {
+    raid: 'asc',
+    completed: 'asc',
+    time: 'asc',
+};
+const TEAMMATE_FIRST_DIRECTIONS: Record<TeammateSortKey, SortDirection> = {
+    teammate: 'asc',
+    clearsTogether: 'desc',
+    avgTime: 'asc',
+};
 
 function formatHours(hours: number): string {
     return hours === 1 ? '1 hour' : `${hours} hours`;
@@ -98,7 +116,18 @@ export default function PlayerProfilePage() {
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
     const [activeLoading, setActiveLoading] = useState(true);
     const [visibleSections, setVisibleSections] = useState<SectionKey[]>(['summary', 'completions', 'teammates']);
-    const [sortBy, setSortBy] = useState<SortBy>('clears');
+    const [summarySort, setSummarySort] = useState<{ key: SummarySortKey | null; direction: SortDirection }>({
+        key: null,
+        direction: 'asc',
+    });
+    const [completionSort, setCompletionSort] = useState<{ key: CompletionSortKey | null; direction: SortDirection }>({
+        key: null,
+        direction: 'asc',
+    });
+    const [teammateSort, setTeammateSort] = useState<{ key: TeammateSortKey | null; direction: SortDirection }>({
+        key: null,
+        direction: 'asc',
+    });
     const [expandedTeammateRaids, setExpandedTeammateRaids] = useState<Set<string>>(new Set());
     const hasRefreshedOnIdentity = useRef<string | null>(null);
 
@@ -197,12 +226,16 @@ export default function PlayerProfilePage() {
     const currentPlayer = profile?.player || headerPlayer;
 
     const sortedSummary = useMemo(() => {
-        return sortRaidSummary(profile?.summary || [], sortBy);
-    }, [profile?.summary, sortBy]);
+        return sortRaidSummary(profile?.summary || [], summarySort);
+    }, [profile?.summary, summarySort]);
+
+    const sortedCompletions = useMemo(() => {
+        return sortRecentCompletions(profile?.recentCompletions || [], completionSort);
+    }, [profile?.recentCompletions, completionSort]);
 
     const teammateGroups = useMemo(() => {
-        return groupTeammatesByRaid(profile?.teammates || [], sortBy);
-    }, [profile?.teammates, sortBy]);
+        return groupTeammatesByRaid(profile?.teammates || [], teammateSort);
+    }, [profile?.teammates, teammateSort]);
 
     const toggleSection = (section: SectionKey) => {
         setVisibleSections((current) => {
@@ -226,6 +259,18 @@ export default function PlayerProfilePage() {
             }
             return next;
         });
+    };
+
+    const onSummarySort = (key: SummarySortKey) => {
+        setSummarySort((current) => getNextSortState(current, key, SUMMARY_FIRST_DIRECTIONS));
+    };
+
+    const onCompletionSort = (key: CompletionSortKey) => {
+        setCompletionSort((current) => getNextSortState(current, key, COMPLETION_FIRST_DIRECTIONS));
+    };
+
+    const onTeammateSort = (key: TeammateSortKey) => {
+        setTeammateSort((current) => getNextSortState(current, key, TEAMMATE_FIRST_DIRECTIONS));
     };
 
     const commitPendingHours = useCallback(() => {
@@ -414,17 +459,6 @@ export default function PlayerProfilePage() {
                                     Teammates
                                 </button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <label className="text-sm ui-text-secondary">Sort</label>
-                                <select
-                                    value={sortBy}
-                                    onChange={(e) => setSortBy(e.target.value as SortBy)}
-                                    className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-md px-2 py-1.5 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-                                >
-                                    <option value="clears">Total Clears</option>
-                                    <option value="avgTime">Avg Time</option>
-                                </select>
-                            </div>
                         </div>
                         <p className="text-xs ui-text-muted mt-2">Toggle 1-3 sections. At least one section stays visible.</p>
                     </div>
@@ -444,9 +478,33 @@ export default function PlayerProfilePage() {
                                         <table className="w-full text-sm">
                                             <thead>
                                                 <tr className="border-b ui-divider ui-text-muted">
-                                                    <th className="text-left py-2">Raid</th>
-                                                    <th className="text-right py-2">Clears</th>
-                                                    <th className="text-right py-2">Avg Time</th>
+                                                    <th className="text-left py-2">
+                                                        <SortHeaderButton
+                                                            label="Raid"
+                                                            align="left"
+                                                            active={summarySort.key === 'raid'}
+                                                            direction={summarySort.direction}
+                                                            onClick={() => onSummarySort('raid')}
+                                                        />
+                                                    </th>
+                                                    <th className="text-right py-2">
+                                                        <SortHeaderButton
+                                                            label="Clears"
+                                                            align="right"
+                                                            active={summarySort.key === 'clears'}
+                                                            direction={summarySort.direction}
+                                                            onClick={() => onSummarySort('clears')}
+                                                        />
+                                                    </th>
+                                                    <th className="text-right py-2">
+                                                        <SortHeaderButton
+                                                            label="Avg Time"
+                                                            align="right"
+                                                            active={summarySort.key === 'avgTime'}
+                                                            direction={summarySort.direction}
+                                                            onClick={() => onSummarySort('avgTime')}
+                                                        />
+                                                    </th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -478,13 +536,37 @@ export default function PlayerProfilePage() {
                                         <table className="w-full text-sm">
                                             <thead>
                                                 <tr className="border-b ui-divider ui-text-muted">
-                                                    <th className="text-left py-2">Raid</th>
-                                                    <th className="text-right py-2">Completed</th>
-                                                    <th className="text-right py-2">Time</th>
+                                                    <th className="text-left py-2">
+                                                        <SortHeaderButton
+                                                            label="Raid"
+                                                            align="left"
+                                                            active={completionSort.key === 'raid'}
+                                                            direction={completionSort.direction}
+                                                            onClick={() => onCompletionSort('raid')}
+                                                        />
+                                                    </th>
+                                                    <th className="text-right py-2">
+                                                        <SortHeaderButton
+                                                            label="Completed"
+                                                            align="right"
+                                                            active={completionSort.key === 'completed'}
+                                                            direction={completionSort.direction}
+                                                            onClick={() => onCompletionSort('completed')}
+                                                        />
+                                                    </th>
+                                                    <th className="text-right py-2">
+                                                        <SortHeaderButton
+                                                            label="Time"
+                                                            align="right"
+                                                            active={completionSort.key === 'time'}
+                                                            direction={completionSort.direction}
+                                                            onClick={() => onCompletionSort('time')}
+                                                        />
+                                                    </th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {profile.recentCompletions.map((row) => (
+                                                {sortedCompletions.map((row) => (
                                                     <tr key={row.instanceId} className="border-b border-gray-100 dark:border-gray-800">
                                                         <td className="py-2 ui-text-primary">{row.raidName}</td>
                                                         <td className="py-2 text-right ui-text-secondary" title={formatCompletionDate(row.completedAt)}>
@@ -528,9 +610,33 @@ export default function PlayerProfilePage() {
                                                         <table className="w-full text-sm">
                                                             <thead>
                                                                 <tr className="border-b ui-divider ui-text-muted">
-                                                                    <th className="text-left py-2">Teammate</th>
-                                                                    <th className="text-right py-2">Clears Together</th>
-                                                                    <th className="text-right py-2">Avg Time</th>
+                                                                    <th className="text-left py-2">
+                                                                        <SortHeaderButton
+                                                                            label="Teammate"
+                                                                            align="left"
+                                                                            active={teammateSort.key === 'teammate'}
+                                                                            direction={teammateSort.direction}
+                                                                            onClick={() => onTeammateSort('teammate')}
+                                                                        />
+                                                                    </th>
+                                                                    <th className="text-right py-2">
+                                                                        <SortHeaderButton
+                                                                            label="Clears Together"
+                                                                            align="right"
+                                                                            active={teammateSort.key === 'clearsTogether'}
+                                                                            direction={teammateSort.direction}
+                                                                            onClick={() => onTeammateSort('clearsTogether')}
+                                                                        />
+                                                                    </th>
+                                                                    <th className="text-right py-2">
+                                                                        <SortHeaderButton
+                                                                            label="Avg Time"
+                                                                            align="right"
+                                                                            active={teammateSort.key === 'avgTime'}
+                                                                            direction={teammateSort.direction}
+                                                                            onClick={() => onTeammateSort('avgTime')}
+                                                                        />
+                                                                    </th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
@@ -630,25 +736,81 @@ function formatRelativeTime(dateIso: string): string {
     return 'just now';
 }
 
-function sortRaidSummary(rows: RaidSummaryRow[], sortBy: SortBy): RaidSummaryRow[] {
+function sortRaidSummary(
+    rows: RaidSummaryRow[],
+    sort: { key: SummarySortKey | null; direction: SortDirection },
+): RaidSummaryRow[] {
     return [...rows].sort((a, b) => {
-        if (sortBy === 'avgTime') {
-            const aAvg = a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-            const bAvg = b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-            if (aAvg !== bAvg) return aAvg - bAvg;
-            if (a.completions !== b.completions) return b.completions - a.completions;
-            return a.raidName.localeCompare(b.raidName);
+        if (sort.key === null) return 0;
+        if (sort.key === 'raid') {
+            return compareValues(a.raidName, b.raidName, sort.direction);
         }
 
-        if (a.completions !== b.completions) return b.completions - a.completions;
-        const aAvg = a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-        const bAvg = b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-        if (aAvg !== bAvg) return aAvg - bAvg;
-        return a.raidName.localeCompare(b.raidName);
+        if (sort.key === 'clears') {
+            return compareValues(
+                a.completions,
+                b.completions,
+                sort.direction,
+                compareValues(
+                    a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+                    b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+                    'asc',
+                    compareValues(a.raidName, b.raidName, 'asc'),
+                ),
+            );
+        }
+
+        return compareValues(
+            a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+            b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+            sort.direction,
+            compareValues(a.completions, b.completions, 'desc', compareValues(a.raidName, b.raidName, 'asc')),
+        );
     });
 }
 
-function groupTeammatesByRaid(rows: TeammateSummaryRow[], sortBy: SortBy): Array<{
+function sortRecentCompletions(
+    rows: RecentCompletion[],
+    sort: { key: CompletionSortKey | null; direction: SortDirection },
+): RecentCompletion[] {
+    return [...rows].sort((a, b) => {
+        if (sort.key === null) return 0;
+        if (sort.key === 'raid') {
+            return compareValues(
+                a.raidName,
+                b.raidName,
+                sort.direction,
+                compareValues(new Date(a.completedAt).getTime(), new Date(b.completedAt).getTime(), 'desc'),
+            );
+        }
+
+        if (sort.key === 'completed') {
+            return compareValues(
+                new Date(a.completedAt).getTime(),
+                new Date(b.completedAt).getTime(),
+                sort.direction,
+                compareValues(a.timePlayedSeconds, b.timePlayedSeconds, 'asc', compareValues(a.raidName, b.raidName, 'asc')),
+            );
+        }
+
+        return compareValues(
+            a.timePlayedSeconds,
+            b.timePlayedSeconds,
+            sort.direction,
+            compareValues(
+                new Date(a.completedAt).getTime(),
+                new Date(b.completedAt).getTime(),
+                'desc',
+                compareValues(a.raidName, b.raidName, 'asc'),
+            ),
+        );
+    });
+}
+
+function groupTeammatesByRaid(
+    rows: TeammateSummaryRow[],
+    sort: { key: TeammateSortKey | null; direction: SortDirection },
+): Array<{
     raidKey: string;
     raidName: string;
     rows: TeammateSummaryRow[];
@@ -666,65 +828,115 @@ function groupTeammatesByRaid(rows: TeammateSummaryRow[], sortBy: SortBy): Array
         grouped.get(row.raidKey)!.rows.push(row);
     }
 
-    const groups = Array.from(grouped.values()).map((group) => ({
-        ...group,
-        rows: [...group.rows].sort((a, b) => {
-            if (sortBy === 'avgTime') {
-                const aAvg = a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-                const bAvg = b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-                if (aAvg !== bAvg) return aAvg - bAvg;
-                if (a.completions !== b.completions) return b.completions - a.completions;
-                return a.teammateDisplayName.localeCompare(b.teammateDisplayName);
-            }
+    return Array.from(grouped.values())
+        .map((group) => ({
+            ...group,
+            rows: [...group.rows].sort((a, b) => {
+                if (sort.key === null) return 0;
+                if (sort.key === 'teammate') {
+                    return compareValues(
+                        a.teammateDisplayName,
+                        b.teammateDisplayName,
+                        sort.direction,
+                        compareValues(
+                            a.completions,
+                            b.completions,
+                            'desc',
+                            compareValues(a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER, b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER, 'asc'),
+                        ),
+                    );
+                }
 
-            if (a.completions !== b.completions) return b.completions - a.completions;
-            const aAvg = a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-            const bAvg = b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER;
-            if (aAvg !== bAvg) return aAvg - bAvg;
-            return a.teammateDisplayName.localeCompare(b.teammateDisplayName);
-        }),
-    }));
+                if (sort.key === 'clearsTogether') {
+                    return compareValues(
+                        a.completions,
+                        b.completions,
+                        sort.direction,
+                        compareValues(
+                            a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+                            b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+                            'asc',
+                            compareValues(a.teammateDisplayName, b.teammateDisplayName, 'asc'),
+                        ),
+                    );
+                }
 
-    return groups.sort((a, b) => {
-        const clearsA = a.rows.reduce((sum, row) => sum + row.completions, 0);
-        const clearsB = b.rows.reduce((sum, row) => sum + row.completions, 0);
-
-        const avgA = calculateWeightedAverage(a.rows);
-        const avgB = calculateWeightedAverage(b.rows);
-
-        if (sortBy === 'avgTime') {
-            const aSort = avgA ?? Number.MAX_SAFE_INTEGER;
-            const bSort = avgB ?? Number.MAX_SAFE_INTEGER;
-            if (aSort !== bSort) return aSort - bSort;
-            if (clearsA !== clearsB) return clearsB - clearsA;
-            return a.raidName.localeCompare(b.raidName);
-        }
-
-        if (clearsA !== clearsB) return clearsB - clearsA;
-        const aSort = avgA ?? Number.MAX_SAFE_INTEGER;
-        const bSort = avgB ?? Number.MAX_SAFE_INTEGER;
-        if (aSort !== bSort) return aSort - bSort;
-        return a.raidName.localeCompare(b.raidName);
-    });
+                return compareValues(
+                    a.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+                    b.avgCompletionSeconds ?? Number.MAX_SAFE_INTEGER,
+                    sort.direction,
+                    compareValues(a.completions, b.completions, 'desc', compareValues(a.teammateDisplayName, b.teammateDisplayName, 'asc')),
+                );
+            }),
+        }))
+        .sort((a, b) => compareValues(a.raidName, b.raidName, 'asc'));
 }
 
-function calculateWeightedAverage(rows: TeammateSummaryRow[]): number | null {
-    let weightedSum = 0;
-    let weight = 0;
+function compareValues(
+    a: number | string,
+    b: number | string,
+    direction: SortDirection,
+    tieBreaker = 0,
+): number {
+    if (a === b) return tieBreaker;
 
-    for (const row of rows) {
-        if (row.avgCompletionSeconds === null || row.avgCompletionSeconds === undefined) {
-            continue;
-        }
-        weightedSum += row.avgCompletionSeconds * row.completions;
-        weight += row.completions;
+    if (typeof a === 'string' && typeof b === 'string') {
+        const value = a.localeCompare(b);
+        return direction === 'asc' ? value : -value;
     }
 
-    if (weight === 0) return null;
-    return weightedSum / weight;
+    const value = (a as number) - (b as number);
+    return direction === 'asc' ? value : -value;
+}
+
+function getNextSortState<TSortKey extends string>(
+    current: { key: TSortKey | null; direction: SortDirection },
+    clickedKey: TSortKey,
+    firstDirections: Record<TSortKey, SortDirection>,
+): { key: TSortKey | null; direction: SortDirection } {
+    if (current.key === clickedKey) {
+        return {
+            key: clickedKey,
+            direction: current.direction === 'asc' ? 'desc' : 'asc',
+        };
+    }
+
+    return {
+        key: clickedKey,
+        direction: firstDirections[clickedKey],
+    };
+}
+
+function getSortIcon(direction: SortDirection): string {
+    return direction === 'asc' ? '↑' : '↓';
 }
 
 function truncateDisplayName(name: string, maxLength: number): string {
     if (name.length <= maxLength) return name;
     return `${name.slice(0, maxLength - 1)}...`;
+}
+
+function SortHeaderButton({
+    label,
+    align,
+    active,
+    direction,
+    onClick,
+}: {
+    label: string;
+    align: 'left' | 'right';
+    active: boolean;
+    direction: SortDirection;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`inline-flex items-center gap-1 hover:ui-text-primary transition-colors ${align === 'right' ? 'justify-end w-full' : ''} ${active ? 'ui-text-primary' : ''}`}
+        >
+            <span>{label}</span>
+            <span className="text-xs" aria-hidden="true">{active ? getSortIcon(direction) : '↕'}</span>
+        </button>
+    );
 }

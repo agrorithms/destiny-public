@@ -89,6 +89,7 @@ export default function PlayerProfilePage() {
     const membershipId = params?.membershipId;
 
     const [hours, setHours] = useState(48);
+    const [pendingHours, setPendingHours] = useState(48);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -186,6 +187,10 @@ export default function PlayerProfilePage() {
         fetchProfile({ refresh: false });
     }, [fetchProfile, membershipId, membershipType]);
 
+    useEffect(() => {
+        setPendingHours(hours);
+    }, [hours]);
+
     const totalCompletions = useMemo(() => {
         return (profile?.summary || []).reduce((sum, row) => sum + row.completions, 0);
     }, [profile]);
@@ -222,6 +227,12 @@ export default function PlayerProfilePage() {
             return next;
         });
     };
+
+    const commitPendingHours = useCallback(() => {
+        if (pendingHours !== hours) {
+            setHours(pendingHours);
+        }
+    }, [pendingHours, hours]);
 
     if (!membershipType || !membershipId) {
         return (
@@ -330,15 +341,32 @@ export default function PlayerProfilePage() {
                             <div className="flex items-center justify-between mb-3">
                                 <label className="text-sm ui-text-secondary">Time Range</label>
                                 <span className="text-sm font-medium ui-text-primary">
-                                    Last {formatHours(hours)}
+                                    Last {formatHours(pendingHours)}
                                 </span>
                             </div>
                             <input
                                 type="range"
                                 min={0}
                                 max={HOUR_MARKS.length - 1}
-                                value={HOUR_MARKS.indexOf(hours)}
-                                onChange={(e) => setHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
+                                value={HOUR_MARKS.indexOf(pendingHours)}
+                                onChange={(e) => setPendingHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
+                                onMouseUp={commitPendingHours}
+                                onTouchEnd={commitPendingHours}
+                                onBlur={commitPendingHours}
+                                onKeyUp={(e) => {
+                                    if (
+                                        e.key === 'ArrowLeft' ||
+                                        e.key === 'ArrowRight' ||
+                                        e.key === 'ArrowUp' ||
+                                        e.key === 'ArrowDown' ||
+                                        e.key === 'Home' ||
+                                        e.key === 'End' ||
+                                        e.key === 'PageUp' ||
+                                        e.key === 'PageDown'
+                                    ) {
+                                        commitPendingHours();
+                                    }
+                                }}
                                 className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer ui-range-accent dark:bg-gray-700"
                             />
                             <div className="relative mt-2 h-4">
@@ -349,9 +377,12 @@ export default function PlayerProfilePage() {
                                     return (
                                         <span
                                             key={h}
-                                            className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === hours ? 'text-[var(--ui-accent)] font-medium' : 'ui-text-muted'}`}
+                                            className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === pendingHours ? 'text-[var(--ui-accent)] font-medium' : 'ui-text-muted'}`}
                                             style={{ left: `${pct}%` }}
-                                            onClick={() => setHours(h)}
+                                            onClick={() => {
+                                                setPendingHours(h);
+                                                setHours(h);
+                                            }}
                                         >
                                             {h}h
                                         </span>

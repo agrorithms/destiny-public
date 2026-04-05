@@ -1,4 +1,4 @@
-import StatsBar from '@/components/StatsBar';
+// import StatsBar from '@/components/StatsBar';
 
 export default function Home() {
   return (
@@ -12,17 +12,17 @@ export default function Home() {
         </p>
       </div>
 
-      <StatsBar />
+      {/* <StatsBar /> */}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <a
           href="/leaderboard"
-          className="block bg-white border border-gray-200 rounded-lg p-6 hover:border-blue-500 transition-colors group dark:bg-gray-800 dark:border-gray-700"
+          className="block ui-card ui-card-warm-hover p-6 transition-colors group"
         >
-          <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-white group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">
+          <h2 className="text-xl font-bold mb-2 ui-text-primary group-hover:text-[var(--ui-accent)] transition-colors">
             Leaderboard
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
+          <p className="ui-text-secondary text-sm">
             See which players have completed the most raid clears in the past
             few hours. Filter by raid and adjust the time window.
           </p>
@@ -30,12 +30,12 @@ export default function Home() {
 
         <a
           href="/active-sessions"
-          className="block bg-white border border-gray-200 rounded-lg p-6 hover:border-blue-500 transition-colors group dark:bg-gray-800 dark:border-gray-700"
+          className="block ui-card ui-card-warm-hover p-6 transition-colors group"
         >
-          <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-white group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">
+          <h2 className="text-xl font-bold mb-2 ui-text-primary group-hover:text-[var(--ui-accent)] transition-colors">
             Active Sessions
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-sm">
+          <p className="ui-text-secondary text-sm">
             Browse fireteams currently running raids. See who is in each
             session and how long they have been going.
           </p>

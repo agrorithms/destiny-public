@@ -35,12 +35,12 @@ export default function StatsBar() {
 
     if (!stats) {
         return (
-            <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+            <div className="h-8 ui-skeleton rounded animate-pulse" />
         );
     }
 
     return (
-        <div className="flex items-center gap-4 text-xs text-gray-600 bg-white/80 border border-gray-200 rounded-lg px-4 py-2 dark:text-gray-400 dark:bg-gray-800/50 dark:border-gray-700">
+        <div className="ui-card flex items-center gap-4 text-xs ui-text-muted bg-white/80 dark:bg-gray-800/50 px-4 py-2">
             <div className="flex items-center gap-2">
                 <span>Scanner</span>
                 <div
@@ -49,7 +49,7 @@ export default function StatsBar() {
                     title={`Scanner ${stats.scannerRunning ? 'running' : stats.scannerStatus === 'unknown' ? 'unknown' : 'stopped'}`}
                 />
             </div>
-            <span className="text-gray-300 dark:text-gray-600">|</span>
+            <span className="ui-text-subtle">|</span>
             <div className="flex items-center gap-2">
                 <span>Crawler</span>
                 <div

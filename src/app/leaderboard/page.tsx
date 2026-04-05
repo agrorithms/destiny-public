@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
 import LeaderboardTable from '@/components/LeaderboardTable';
-import StatsBar from '@/components/StatsBar';
+// import StatsBar from '@/components/StatsBar';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useViewMode, useTimeRange } from '@/hooks/useLeaderboardPrefs';
 
@@ -64,12 +64,20 @@ function formatHours(h: number): string {
 export default function LeaderboardPage() {
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
     const [hours, setHours] = useTimeRange();
+    const [pendingHours, setPendingHours] = useState(hours);
     const [mode, setMode] = useViewMode();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<LeaderboardResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const requestIdRef = useRef(0);
+    const activeControllerRef = useRef<AbortController | null>(null);
 
     const fetchLeaderboard = useCallback(async () => {
+        const requestId = ++requestIdRef.current;
+        activeControllerRef.current?.abort();
+        const controller = new AbortController();
+        activeControllerRef.current = controller;
+
         setLoading(true);
         setError(null);
 
@@ -85,19 +93,40 @@ export default function LeaderboardPage() {
                 params.set('raids', selectedRaids.join(','));
             }
 
-            const response = await fetch(`/api/leaderboard?${params}`);
+            const response = await fetch(`/api/leaderboard?${params}`, {
+                signal: controller.signal,
+            });
             if (!response.ok) {
                 throw new Error(`API error: ${response.status}`);
             }
 
             const result = await response.json();
+            if (requestId !== requestIdRef.current) {
+                return;
+            }
             setData(result);
         } catch (err) {
+            if ((err as Error).name === 'AbortError') {
+                return;
+            }
+            if (requestId !== requestIdRef.current) {
+                return;
+            }
             setError((err as Error).message);
         } finally {
-            setLoading(false);
+            if (requestId === requestIdRef.current) {
+                setLoading(false);
+            }
         }
     }, [selectedRaids, hours, mode]);
+
+    useEffect(() => {
+        setPendingHours(hours);
+    }, [hours]);
+
+    useEffect(() => {
+        return () => activeControllerRef.current?.abort();
+    }, []);
 
     useEffect(() => {
         fetchLeaderboard();
@@ -116,26 +145,32 @@ export default function LeaderboardPage() {
             ? AVAILABLE_RAIDS.find((r) => r.key === selectedRaids[0])?.name || ''
             : `${selectedRaids.length} Raids`;
 
+    const commitPendingHours = useCallback(() => {
+        if (pendingHours !== hours) {
+            setHours(pendingHours);
+        }
+    }, [pendingHours, hours, setHours]);
+
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
             {/* Stats Bar */}
-            <div className="mb-6">
+            {/* <div className="mb-6">
                 <StatsBar />
-            </div>
+            </div> */}
 
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Raid Leaderboard</h1>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+            <h1 className="text-3xl font-bold ui-text-primary mb-2">Raid Leaderboard</h1>
+            <p className="ui-text-secondary mb-6">
                 Top raiders by full clears in the last {formatHours(hours)}
                 {raidFilterLabel !== 'All Raids' && ` — ${raidFilterLabel}`}
             </p>
 
             {/* Controls + Time Slider Card (combined) */}
-            <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 dark:bg-gray-800 dark:border-gray-700">
+            <div className="ui-card p-4 mb-6">
                 {/* Top row: Raid filter, View toggle, Refresh */}
                 <div className="flex flex-wrap items-end gap-4 mb-4">
                     {/* Raid Multi-Select */}
                     <div>
-                        <label className="block text-xs text-gray-600 dark:text-gray-500 mb-1">Raids</label>
+                        <label className="block text-xs ui-text-muted mb-1">Raids</label>
                         <RaidMultiSelect
                             raids={AVAILABLE_RAIDS}
                             selected={selectedRaids}
@@ -145,13 +180,13 @@ export default function LeaderboardPage() {
 
                     {/* View Mode Toggle */}
                     <div>
-                        <label className="block text-xs text-gray-600 dark:text-gray-500 mb-1">View</label>
+                        <label className="block text-xs ui-text-muted mb-1">View</label>
                         <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
                             <button
                                 onClick={() => setMode('individual')}
                                 className={`px-3 py-2 text-sm transition-colors ${mode === 'individual'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-100 text-gray-700 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                                    ? 'ui-toggle-active'
+                                    : 'ui-toggle-idle'
                                     }`}
                             >
                                 Per Raid
@@ -159,8 +194,8 @@ export default function LeaderboardPage() {
                             <button
                                 onClick={() => setMode('aggregate')}
                                 className={`px-3 py-2 text-sm transition-colors ${mode === 'aggregate'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-gray-100 text-gray-700 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                                    ? 'ui-toggle-active'
+                                    : 'ui-toggle-idle'
                                     }`}
                             >
                                 Total Clears
@@ -173,7 +208,7 @@ export default function LeaderboardPage() {
                         <button
                             onClick={fetchLeaderboard}
                             disabled={loading}
-                            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+                            className="px-4 py-2 text-sm rounded-lg ui-btn-primary disabled:opacity-50"
                         >
                             {loading ? 'Loading...' : 'Refresh'}
                         </button>
@@ -181,21 +216,38 @@ export default function LeaderboardPage() {
                 </div>
 
                 {/* Divider */}
-                <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+                <div className="border-t ui-divider pt-4">
                     {/* Time Slider */}
                     <div className="flex items-center justify-between mb-3">
-                        <label className="text-sm text-gray-600 dark:text-gray-400">Time Range</label>
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-200">
-                            Last {formatHours(hours)}
+                        <label className="text-sm ui-text-secondary">Time Range</label>
+                        <span className="text-sm font-medium ui-text-primary">
+                            Last {formatHours(pendingHours)}
                         </span>
                     </div>
                     <input
                         type="range"
                         min={0}
                         max={HOUR_MARKS.length - 1}
-                        value={HOUR_MARKS.indexOf(hours)}
-                        onChange={(e) => setHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500 dark:bg-gray-700"
+                        value={HOUR_MARKS.indexOf(pendingHours)}
+                        onChange={(e) => setPendingHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
+                        onMouseUp={commitPendingHours}
+                        onTouchEnd={commitPendingHours}
+                        onBlur={commitPendingHours}
+                        onKeyUp={(e) => {
+                            if (
+                                e.key === 'ArrowLeft' ||
+                                e.key === 'ArrowRight' ||
+                                e.key === 'ArrowUp' ||
+                                e.key === 'ArrowDown' ||
+                                e.key === 'Home' ||
+                                e.key === 'End' ||
+                                e.key === 'PageUp' ||
+                                e.key === 'PageDown'
+                            ) {
+                                commitPendingHours();
+                            }
+                        }}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer ui-range-accent dark:bg-gray-700"
                     />
                     <div className="relative mt-2 h-4">
                         {[1, 6, 12, 24, 36, 48].map((h) => {
@@ -205,9 +257,12 @@ export default function LeaderboardPage() {
                             return (
                                 <span
                                     key={h}
-                                    className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === hours ? 'text-blue-500 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-600'}`}
+                                    className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === pendingHours ? 'text-[var(--ui-accent)] font-medium' : 'ui-text-muted'}`}
                                     style={{ left: `${pct}%` }}
-                                    onClick={() => setHours(h)}
+                                    onClick={() => {
+                                        setPendingHours(h);
+                                        setHours(h);
+                                    }}
                                 >
                                     {h}h
                                 </span>
@@ -226,7 +281,7 @@ export default function LeaderboardPage() {
 
             {/* Aggregate Leaderboard */}
             {data && data.mode === 'aggregate' && (
-                <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+                <div className="ui-card p-4">
                     <LeaderboardTable
                         entries={(data as AggregateResponse).entries}
                         loading={loading}
@@ -244,8 +299,8 @@ export default function LeaderboardPage() {
 
                         if (count === 0 && !loading) {
                             return (
-                                <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-                                    <div className="text-center py-12 text-gray-600 dark:text-gray-400">
+                                <div className="ui-card p-4">
+                                    <div className="text-center py-12 ui-text-secondary">
                                         <p className="text-lg">No raids selected</p>
                                         <p className="text-sm mt-1">Select one or more raids from the dropdown above</p>
                                     </div>
@@ -267,7 +322,7 @@ export default function LeaderboardPage() {
                                 {leaderboards.map((lb) => (
                                     <div
                                         key={lb.raidKey}
-                                        className="bg-white border border-gray-200 rounded-lg p-4 min-w-0 dark:bg-gray-800 dark:border-gray-700"
+                                        className="ui-card p-4 min-w-0"
                                     >
                                         <LeaderboardTable
                                             entries={lb.entries}

@@ -60,11 +60,11 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
             {/* Trigger Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center justify-between gap-2 w-full min-w-[220px] px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 hover:border-gray-400 transition-colors dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:hover:border-gray-500"
+                className="flex items-center justify-between gap-2 w-full min-w-[220px] px-3 py-2 ui-input rounded-lg text-sm hover:border-[var(--ui-border-strong)] transition-colors"
             >
                 <span className="truncate">{label}</span>
                 <svg
-                    className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                    className={`w-4 h-4 ui-text-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -75,15 +75,15 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
 
             {/* Dropdown Panel */}
             {isOpen && (
-                <div className="absolute z-50 mt-1 w-full min-w-[260px] bg-white border border-gray-300 rounded-lg shadow-xl overflow-hidden dark:bg-gray-800 dark:border-gray-600">
+                <div className="absolute z-50 mt-1 w-full min-w-[260px] ui-input rounded-lg shadow-xl overflow-hidden">
                     {/* Select All / Clear All */}
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between px-3 py-2 border-b ui-divider">
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 selectAll();
                             }}
-                            className="text-xs text-blue-600 hover:text-blue-500 transition-colors dark:text-blue-400 dark:hover:text-blue-300"
+                            className="text-xs ui-accent-text transition-colors"
                         >
                             Select All
                         </button>
@@ -109,13 +109,13 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
                                         e.stopPropagation();
                                         toggleRaid(raid.key);
                                     }}
-                                    className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-100 transition-colors select-none dark:hover:bg-gray-700/50 ${isSelected ? 'bg-blue-50 dark:bg-gray-700/30' : ''
+                                    className={`flex items-center gap-3 px-3 py-2 cursor-pointer ui-list-item-hover select-none ${isSelected ? 'ui-list-item-active' : ''
                                         }`}
                                 >
                                     <div
                                         className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${isSelected
-                                                ? 'bg-blue-500 border-blue-500'
-                                                : 'border-gray-400 bg-transparent dark:border-gray-500'
+                                                ? 'ui-check-selected'
+                                                : 'border-[var(--ui-text-subtle)] bg-transparent'
                                             }`}
                                     >
                                         {isSelected && (
@@ -124,14 +124,14 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
                                             </svg>
                                         )}
                                     </div>
-                                    <span className="text-sm text-gray-900 dark:text-gray-200">{raid.name}</span>
+                                    <span className="text-sm ui-text-primary">{raid.name}</span>
                                 </div>
                             );
                         })}
                     </div>
 
                     {/* Selected count footer */}
-                    <div className="px-3 py-2 border-t border-gray-200 text-xs text-gray-600 dark:border-gray-700 dark:text-gray-500">
+                    <div className="px-3 py-2 border-t ui-divider text-xs ui-text-muted">
                         {selected.length === 0
                             ? 'No filter — showing all raids'
                             : `${selected.length} of ${raids.length} raids selected`}

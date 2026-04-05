@@ -141,20 +141,20 @@ export default function PlayerSearch() {
                     onKeyDown={onInputKeyDown}
                     type="text"
                     placeholder="Search player"
-                    className="w-full rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:placeholder:text-gray-500"
+                    className="w-full rounded-lg ui-input ui-focus-accent px-3 py-2 text-sm placeholder:text-[var(--ui-text-muted)] focus:outline-none"
                 />
                 <button
                     type="submit"
-                    className="rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors text-sm px-3 py-2"
+                    className="rounded-lg ui-btn-primary text-sm px-3 py-2"
                 >
                     Search
                 </button>
             </form>
 
             {open && (
-                <div className="absolute top-full mt-2 w-full rounded-lg border border-gray-200 bg-white shadow-xl z-50 overflow-hidden dark:border-gray-700 dark:bg-gray-900">
+                <div className="absolute top-full mt-2 w-full rounded-lg ui-input shadow-xl z-50 overflow-hidden">
                     {loading && (
-                        <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">Searching...</div>
+                        <div className="px-3 py-2 text-sm ui-text-secondary">Searching...</div>
                     )}
 
                     {!loading && error && (
@@ -162,7 +162,7 @@ export default function PlayerSearch() {
                     )}
 
                     {!loading && !error && results.length === 0 && (
-                        <div className="px-3 py-2 text-sm text-gray-600 dark:text-gray-400">
+                        <div className="px-3 py-2 text-sm ui-text-secondary">
                             No matches found in local player database.
                         </div>
                     )}
@@ -170,7 +170,7 @@ export default function PlayerSearch() {
                     {!loading && !error && results.length > 0 && (
                         <>
                             {!hasExact && (
-                                <div className="px-3 py-2 text-xs text-gray-600 border-b border-gray-200 dark:text-gray-500 dark:border-gray-800">
+                                <div className="px-3 py-2 text-xs ui-text-muted border-b ui-divider">
                                     Multiple players can share the same base name. Select the exact profile.
                                 </div>
                             )}
@@ -181,13 +181,13 @@ export default function PlayerSearch() {
                                         type="button"
                                         onClick={() => goToPlayer(result)}
                                         onMouseEnter={() => setSelectedIndex(index)}
-                                        className={`w-full text-left px-3 py-2 text-sm transition-colors ${selectedIndex === index
-                                            ? 'bg-gray-100 dark:bg-gray-800'
-                                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                                        className={`w-full text-left px-3 py-2 text-sm ui-list-item-hover ${selectedIndex === index
+                                            ? 'ui-list-item-active'
+                                            : ''
                                             }`}
                                     >
-                                        <div className="text-gray-900 dark:text-gray-100">{result.displayName}</div>
-                                        <div className="text-xs text-gray-600 dark:text-gray-500">
+                                        <div className="ui-text-primary">{result.displayName}</div>
+                                        <div className="text-xs ui-text-muted">
                                             {getMembershipTypeLabel(result.membershipType)}
                                             {(result.secondaryDisplayName || result.baseName)
                                                 && (result.secondaryDisplayName || result.baseName).toLowerCase() !== result.displayName.toLowerCase()

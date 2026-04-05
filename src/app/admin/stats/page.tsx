@@ -22,9 +22,9 @@ export default async function AdminStatsPage() {
 
     return (
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin Stats</h1>
+            <h1 className="text-3xl font-bold ui-text-primary">Admin Stats</h1>
 
-            <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-300">
+            <div className="ui-card px-4 py-3 text-sm ui-text-secondary">
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2">
                         <span>Scanner</span>
@@ -34,7 +34,7 @@ export default async function AdminStatsPage() {
                         />
                         <span>{stats.scanner?.isRunning ? 'Running' : 'Stopped'}</span>
                     </div>
-                    <span className="text-gray-600">|</span>
+                    <span className="ui-text-subtle">|</span>
                     <div className="flex items-center gap-2">
                         <span>Crawler</span>
                         <div
@@ -48,37 +48,37 @@ export default async function AdminStatsPage() {
                                     ? 'Never Started'
                                     : 'Stopped'}
                         </span>
-                        <span className="text-gray-500">({formatSecondsAgo(stats.secondsSinceHeartbeat)})</span>
+                        <span className="ui-text-muted">({formatSecondsAgo(stats.secondsSinceHeartbeat)})</span>
                     </div>
                 </div>
             </div>
 
-            <section className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                <h2 className="text-lg font-semibold text-white mb-3">Database</h2>
+            <section className="ui-card p-4">
+                <h2 className="text-lg font-semibold ui-text-primary mb-3">Database</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <div className="text-gray-400">Players: <span className="text-gray-200">{stats.database.totalPlayers.toLocaleString()}</span></div>
-                    <div className="text-gray-400">PGCRs: <span className="text-gray-200">{stats.database.totalPGCRs.toLocaleString()}</span></div>
-                    <div className="text-gray-400">PGCR Entries: <span className="text-gray-200">{stats.database.totalPGCRPlayers.toLocaleString()}</span></div>
-                    <div className="text-gray-400">Active Sessions: <span className="text-gray-200">{stats.database.activeSessions.toLocaleString()}</span></div>
-                    <div className="text-gray-400">Oldest PGCR: <span className="text-gray-200">{stats.database.oldestPGCR ? new Date(stats.database.oldestPGCR).toLocaleString() : 'N/A'}</span></div>
-                    <div className="text-gray-400">Newest PGCR: <span className="text-gray-200">{stats.database.newestPGCR ? new Date(stats.database.newestPGCR).toLocaleString() : 'N/A'}</span></div>
+                    <div className="ui-text-secondary">Players: <span className="ui-text-primary">{stats.database.totalPlayers.toLocaleString()}</span></div>
+                    <div className="ui-text-secondary">PGCRs: <span className="ui-text-primary">{stats.database.totalPGCRs.toLocaleString()}</span></div>
+                    <div className="ui-text-secondary">PGCR Entries: <span className="ui-text-primary">{stats.database.totalPGCRPlayers.toLocaleString()}</span></div>
+                    <div className="ui-text-secondary">Active Sessions: <span className="ui-text-primary">{stats.database.activeSessions.toLocaleString()}</span></div>
+                    <div className="ui-text-secondary">Oldest PGCR: <span className="ui-text-primary">{stats.database.oldestPGCR ? new Date(stats.database.oldestPGCR).toLocaleString() : 'N/A'}</span></div>
+                    <div className="ui-text-secondary">Newest PGCR: <span className="ui-text-primary">{stats.database.newestPGCR ? new Date(stats.database.newestPGCR).toLocaleString() : 'N/A'}</span></div>
                 </div>
             </section>
 
-            <section className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-                <h2 className="text-lg font-semibold text-white mb-3">Scanner</h2>
+            <section className="ui-card p-4">
+                <h2 className="text-lg font-semibold ui-text-primary mb-3">Scanner</h2>
                 {stats.scanner ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                        <div className="text-gray-400">Status: <span className="text-gray-200">{stats.scanner.isRunning ? 'Running' : 'Stopped'}</span></div>
-                        <div className="text-gray-400">Position: <span className="text-gray-200">{stats.scanner.currentInstanceId}</span></div>
-                        <div className="text-gray-400">Total Scanned: <span className="text-gray-200">{stats.scanner.totalScanned.toLocaleString()}</span></div>
-                        <div className="text-gray-400">Raids Found: <span className="text-gray-200">{stats.scanner.totalRaidsFound.toLocaleString()}</span></div>
-                        <div className="text-gray-400">Hit Rate: <span className="text-gray-200">{stats.scanner.raidHitRate}</span></div>
-                        <div className="text-gray-400">Uptime: <span className="text-gray-200">{formatDuration(stats.scanner.uptimeSeconds)}</span></div>
-                        <div className="text-gray-400">Last Update: <span className="text-gray-200">{formatSecondsAgo(stats.scanner.secondsSinceUpdate)}</span></div>
+                        <div className="ui-text-secondary">Status: <span className="ui-text-primary">{stats.scanner.isRunning ? 'Running' : 'Stopped'}</span></div>
+                        <div className="ui-text-secondary">Position: <span className="ui-text-primary">{stats.scanner.currentInstanceId}</span></div>
+                        <div className="ui-text-secondary">Total Scanned: <span className="ui-text-primary">{stats.scanner.totalScanned.toLocaleString()}</span></div>
+                        <div className="ui-text-secondary">Raids Found: <span className="ui-text-primary">{stats.scanner.totalRaidsFound.toLocaleString()}</span></div>
+                        <div className="ui-text-secondary">Hit Rate: <span className="ui-text-primary">{stats.scanner.raidHitRate}</span></div>
+                        <div className="ui-text-secondary">Uptime: <span className="ui-text-primary">{formatDuration(stats.scanner.uptimeSeconds)}</span></div>
+                        <div className="ui-text-secondary">Last Update: <span className="ui-text-primary">{formatSecondsAgo(stats.scanner.secondsSinceUpdate)}</span></div>
                     </div>
                 ) : (
-                    <p className="text-sm text-gray-400">Scanner stats not available yet.</p>
+                    <p className="text-sm ui-text-secondary">Scanner stats not available yet.</p>
                 )}
             </section>
         </div>

@@ -23,23 +23,23 @@ export default function RootLayout({
           strategy="afterInteractive"
         />
       </head>
-      <body className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white">
-        <nav className="border-b border-gray-200 bg-white/85 backdrop-blur-sm sticky top-0 z-50 dark:border-gray-800 dark:bg-gray-900/80">
+      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+        <nav className="ui-nav-surface border-b backdrop-blur-sm sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <Link href="/" className="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors shrink-0 dark:text-white dark:hover:text-blue-400">
+            <Link href="/" className="text-lg font-bold ui-text-primary hover:text-[var(--ui-accent)] transition-colors shrink-0">
               Destiny Farm Finder
             </Link>
             <PlayerSearch />
             <div className="flex gap-6 shrink-0">
               <Link
                 href="/leaderboard"
-                className="text-sm text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white"
+                className="text-sm ui-text-secondary hover:text-[var(--ui-text-primary)] transition-colors"
               >
                 Leaderboard
               </Link>
               <Link
                 href="/active-sessions"
-                className="text-sm text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white"
+                className="text-sm ui-text-secondary hover:text-[var(--ui-text-primary)] transition-colors"
               >
                 Active Sessions
               </Link>

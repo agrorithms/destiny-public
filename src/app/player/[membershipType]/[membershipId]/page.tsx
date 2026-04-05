@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import StatsBar from '@/components/StatsBar';
+// import StatsBar from '@/components/StatsBar';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
 
 interface ProfilePlayer {
@@ -231,9 +231,9 @@ export default function PlayerProfilePage() {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
-            <div className="mb-6">
+            {/* <div className="mb-6">
                 <StatsBar />
-            </div>
+            </div> */}
 
             {error && (
                 <div className="bg-red-100 border border-red-300 rounded-lg p-4 mb-6 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
@@ -244,7 +244,7 @@ export default function PlayerProfilePage() {
             {currentPlayer && (
                 <div className="mb-6">
                     <div className="flex flex-wrap items-center gap-3 mb-2">
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{currentPlayer.displayName}</h1>
+                        <h1 className="text-3xl font-bold ui-text-primary">{currentPlayer.displayName}</h1>
                         <div className="flex items-center gap-3">
                             <a
                                 href={`https://raid.report/${getMembershipPrefix(currentPlayer.membershipType)}/${currentPlayer.membershipId}`}
@@ -282,7 +282,7 @@ export default function PlayerProfilePage() {
                             </a>
                         </div>
                     </div>
-                    <p className="text-gray-600 dark:text-gray-400">
+                    <p className="ui-text-secondary">
                         Raid completions in the last {formatHours(hours)}
                     </p>
                 </div>
@@ -290,9 +290,9 @@ export default function PlayerProfilePage() {
 
             {(activeLoading || activeSession) && (
                 <div className="mb-6">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Active Session</h2>
+                    <h2 className="text-xl font-bold ui-text-primary mb-3">Active Session</h2>
                     {activeLoading && (
-                        <div className="max-w-lg h-44 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+                        <div className="max-w-lg h-44 ui-skeleton rounded animate-pulse" />
                     )}
                     {!activeLoading && activeSession && (
                         <div className="max-w-lg">
@@ -304,11 +304,11 @@ export default function PlayerProfilePage() {
 
             {profile && (
                 <>
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="ui-card p-4 mb-6">
                         <div className="flex flex-wrap items-end gap-4 mb-4">
                             <div>
-                                <label className="block text-xs text-gray-600 dark:text-gray-500 mb-1">Total Clears</label>
-                                <div className="text-2xl font-bold text-gray-900 dark:text-white">{totalCompletions}</div>
+                                <label className="block text-xs ui-text-muted mb-1">Total Clears</label>
+                                <div className="text-2xl font-bold ui-text-primary">{totalCompletions}</div>
                             </div>
 
                             <div>
@@ -318,7 +318,7 @@ export default function PlayerProfilePage() {
                                         fetchProfile({ refresh: true });
                                     }}
                                     disabled={refreshing}
-                                    className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50"
+                                    className="px-4 py-2 text-sm rounded-lg ui-btn-primary disabled:opacity-50"
                                 >
                                     {refreshing ? 'Refreshing...' : 'Refresh Player Data'}
                                 </button>
@@ -326,10 +326,10 @@ export default function PlayerProfilePage() {
 
                         </div>
 
-                        <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+                        <div className="border-t ui-divider pt-4">
                             <div className="flex items-center justify-between mb-3">
-                                <label className="text-sm text-gray-600 dark:text-gray-400">Time Range</label>
-                                <span className="text-sm font-medium text-gray-900 dark:text-gray-200">
+                                <label className="text-sm ui-text-secondary">Time Range</label>
+                                <span className="text-sm font-medium ui-text-primary">
                                     Last {formatHours(hours)}
                                 </span>
                             </div>
@@ -339,7 +339,7 @@ export default function PlayerProfilePage() {
                                 max={HOUR_MARKS.length - 1}
                                 value={HOUR_MARKS.indexOf(hours)}
                                 onChange={(e) => setHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
-                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500 dark:bg-gray-700"
+                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer ui-range-accent dark:bg-gray-700"
                             />
                             <div className="relative mt-2 h-4">
                                 {[1, 6, 12, 24, 36, 48].map((h) => {
@@ -349,7 +349,7 @@ export default function PlayerProfilePage() {
                                     return (
                                         <span
                                             key={h}
-                                            className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === hours ? 'text-blue-500 dark:text-blue-400 font-medium' : 'text-gray-500 dark:text-gray-600'}`}
+                                            className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === hours ? 'text-[var(--ui-accent)] font-medium' : 'ui-text-muted'}`}
                                             style={{ left: `${pct}%` }}
                                             onClick={() => setHours(h)}
                                         >
@@ -361,30 +361,30 @@ export default function PlayerProfilePage() {
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 dark:bg-gray-800 dark:border-gray-700">
+                    <div className="ui-card p-4 mb-6">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap gap-2">
                                 <button
                                     onClick={() => toggleSection('summary')}
-                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${visibleSections.includes('summary') ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}`}
+                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${visibleSections.includes('summary') ? 'ui-toggle-active' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}`}
                                 >
                                     Raid Summary
                                 </button>
                                 <button
                                     onClick={() => toggleSection('completions')}
-                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${visibleSections.includes('completions') ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}`}
+                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${visibleSections.includes('completions') ? 'ui-toggle-active' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}`}
                                 >
                                     Raid Completions
                                 </button>
                                 <button
                                     onClick={() => toggleSection('teammates')}
-                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${visibleSections.includes('teammates') ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}`}
+                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${visibleSections.includes('teammates') ? 'ui-toggle-active' : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'}`}
                                 >
                                     Teammates
                                 </button>
                             </div>
                             <div className="flex items-center gap-2">
-                                <label className="text-sm text-gray-600 dark:text-gray-400">Sort</label>
+                                <label className="text-sm ui-text-secondary">Sort</label>
                                 <select
                                     value={sortBy}
                                     onChange={(e) => setSortBy(e.target.value as SortBy)}
@@ -395,24 +395,24 @@ export default function PlayerProfilePage() {
                                 </select>
                             </div>
                         </div>
-                        <p className="text-xs text-gray-600 dark:text-gray-500 mt-2">Toggle 1-3 sections. At least one section stays visible.</p>
+                        <p className="text-xs ui-text-muted mt-2">Toggle 1-3 sections. At least one section stays visible.</p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
                         {visibleSections.includes('summary') && (
-                            <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Raid Summary</h2>
+                            <div className="ui-card p-4">
+                                <h2 className="text-xl font-bold ui-text-primary mb-3">Raid Summary</h2>
                                 {loading && !profile.summary.length && (
-                                    <div className="h-28 bg-gray-200 rounded animate-pulse dark:bg-gray-700/40" />
+                                    <div className="h-28 ui-skeleton rounded animate-pulse" />
                                 )}
                                 {!loading && profile.summary.length === 0 && (
-                                    <p className="text-gray-600 dark:text-gray-400 text-sm">No full clears found in this time range.</p>
+                                    <p className="ui-text-secondary text-sm">No full clears found in this time range.</p>
                                 )}
                                 {sortedSummary.length > 0 && (
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm">
                                             <thead>
-                                                <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                                <tr className="border-b ui-divider ui-text-muted">
                                                     <th className="text-left py-2">Raid</th>
                                                     <th className="text-right py-2">Clears</th>
                                                     <th className="text-right py-2">Avg Time</th>
@@ -421,9 +421,9 @@ export default function PlayerProfilePage() {
                                             <tbody>
                                                 {sortedSummary.map((row) => (
                                                     <tr key={row.raidKey} className="border-b border-gray-100 dark:border-gray-800">
-                                                        <td className="py-2 text-gray-900 dark:text-gray-200">{row.raidName}</td>
-                                                        <td className="py-2 text-right font-mono font-bold text-gray-900 dark:text-gray-200">{row.completions}</td>
-                                                        <td className="py-2 text-right text-gray-600 dark:text-gray-300">{formatDuration(row.avgCompletionSeconds)}</td>
+                                                        <td className="py-2 ui-text-primary">{row.raidName}</td>
+                                                        <td className="py-2 text-right font-mono font-bold ui-text-primary">{row.completions}</td>
+                                                        <td className="py-2 text-right ui-text-secondary">{formatDuration(row.avgCompletionSeconds)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -434,19 +434,19 @@ export default function PlayerProfilePage() {
                         )}
 
                         {visibleSections.includes('completions') && (
-                            <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Raid Completions</h2>
+                            <div className="ui-card p-4">
+                                <h2 className="text-xl font-bold ui-text-primary mb-3">Raid Completions</h2>
                                 {loading && !profile.recentCompletions.length && (
-                                    <div className="h-28 bg-gray-200 rounded animate-pulse dark:bg-gray-700/40" />
+                                    <div className="h-28 ui-skeleton rounded animate-pulse" />
                                 )}
                                 {!loading && profile.recentCompletions.length === 0 && (
-                                    <p className="text-gray-600 dark:text-gray-400 text-sm">No recent completions found in this time range.</p>
+                                    <p className="ui-text-secondary text-sm">No recent completions found in this time range.</p>
                                 )}
                                 {profile.recentCompletions.length > 0 && (
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-sm">
                                             <thead>
-                                                <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                                <tr className="border-b ui-divider ui-text-muted">
                                                     <th className="text-left py-2">Raid</th>
                                                     <th className="text-right py-2">Completed</th>
                                                     <th className="text-right py-2">Time</th>
@@ -455,11 +455,11 @@ export default function PlayerProfilePage() {
                                             <tbody>
                                                 {profile.recentCompletions.map((row) => (
                                                     <tr key={row.instanceId} className="border-b border-gray-100 dark:border-gray-800">
-                                                        <td className="py-2 text-gray-900 dark:text-gray-200">{row.raidName}</td>
-                                                        <td className="py-2 text-right text-gray-600 dark:text-gray-300" title={formatCompletionDate(row.completedAt)}>
+                                                        <td className="py-2 ui-text-primary">{row.raidName}</td>
+                                                        <td className="py-2 text-right ui-text-secondary" title={formatCompletionDate(row.completedAt)}>
                                                             {formatRelativeTime(row.completedAt)}
                                                         </td>
-                                                        <td className="py-2 text-right text-gray-600 dark:text-gray-300">{formatDuration(row.timePlayedSeconds)}</td>
+                                                        <td className="py-2 text-right ui-text-secondary">{formatDuration(row.timePlayedSeconds)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -470,13 +470,13 @@ export default function PlayerProfilePage() {
                         )}
 
                         {visibleSections.includes('teammates') && (
-                            <div className="bg-white border border-gray-200 rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-                                <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">Teammates</h2>
+                            <div className="ui-card p-4">
+                                <h2 className="text-xl font-bold ui-text-primary mb-3">Teammates</h2>
                                 {loading && !profile.teammates.length && (
-                                    <div className="h-28 bg-gray-200 rounded animate-pulse dark:bg-gray-700/40" />
+                                    <div className="h-28 ui-skeleton rounded animate-pulse" />
                                 )}
                                 {!loading && profile.teammates.length === 0 && (
-                                    <p className="text-gray-600 dark:text-gray-400 text-sm">No teammate completions found in this time range.</p>
+                                    <p className="ui-text-secondary text-sm">No teammate completions found in this time range.</p>
                                 )}
                                 {teammateGroups.length > 0 && (
                                     <div className="space-y-5">
@@ -487,8 +487,8 @@ export default function PlayerProfilePage() {
                                                     onClick={() => toggleTeammateRaid(raidGroup.raidKey)}
                                                     className="w-full flex items-center justify-between bg-gray-100 hover:bg-gray-200 rounded-md px-3 py-2 text-left dark:bg-gray-700/40 dark:hover:bg-gray-700/60"
                                                 >
-                                                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-200">{raidGroup.raidName}</span>
-                                                    <span className="text-xs text-gray-600 dark:text-gray-400">
+                                                    <span className="text-sm font-semibold ui-text-primary">{raidGroup.raidName}</span>
+                                                    <span className="text-xs ui-text-muted">
                                                         {expandedTeammateRaids.has(raidGroup.raidKey) ? 'Hide' : 'Show'} ({raidGroup.rows.length})
                                                     </span>
                                                 </button>
@@ -496,7 +496,7 @@ export default function PlayerProfilePage() {
                                                     <div className="overflow-x-auto mt-2">
                                                         <table className="w-full text-sm">
                                                             <thead>
-                                                                <tr className="border-b border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                                                <tr className="border-b ui-divider ui-text-muted">
                                                                     <th className="text-left py-2">Teammate</th>
                                                                     <th className="text-right py-2">Clears Together</th>
                                                                     <th className="text-right py-2">Avg Time</th>
@@ -505,16 +505,16 @@ export default function PlayerProfilePage() {
                                                             <tbody>
                                                                 {raidGroup.rows.map((row) => (
                                                                     <tr key={`${row.raidKey}:${row.teammateMembershipId}`} className="border-b border-gray-100 dark:border-gray-800">
-                                                                        <td className="py-2 text-gray-900 dark:text-gray-200" title={row.teammateDisplayName}>
+                                                                        <td className="py-2 ui-text-primary" title={row.teammateDisplayName}>
                                                                             <Link
                                                                                 href={`/player/${row.teammateMembershipType}/${row.teammateMembershipId}`}
-                                                                                className="text-gray-900 hover:text-blue-600 transition-colors dark:text-gray-200 dark:hover:text-blue-400"
+                                                                                className="ui-text-primary hover:text-blue-600 transition-colors dark:hover:text-blue-400"
                                                                             >
                                                                                 {truncateDisplayName(row.teammateDisplayName, 25)}
                                                                             </Link>
                                                                         </td>
-                                                                        <td className="py-2 text-right font-mono font-bold text-gray-900 dark:text-gray-200">{row.completions}</td>
-                                                                        <td className="py-2 text-right text-gray-600 dark:text-gray-300">{formatDuration(row.avgCompletionSeconds)}</td>
+                                                                        <td className="py-2 text-right font-mono font-bold ui-text-primary">{row.completions}</td>
+                                                                        <td className="py-2 text-right ui-text-secondary">{formatDuration(row.avgCompletionSeconds)}</td>
                                                                     </tr>
                                                                 ))}
                                                             </tbody>
@@ -533,9 +533,9 @@ export default function PlayerProfilePage() {
 
             {loading && !profile && (
                 <div className="space-y-3">
-                    <div className="h-10 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
-                    <div className="h-40 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
-                    <div className="h-64 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+                    <div className="h-10 ui-skeleton rounded animate-pulse" />
+                    <div className="h-40 ui-skeleton rounded animate-pulse" />
+                    <div className="h-64 ui-skeleton rounded animate-pulse" />
                 </div>
             )}
         </div>

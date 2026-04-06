@@ -7,9 +7,11 @@ import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
-type PreparedStatement = ReturnType<ReturnType<typeof getDb>['prepare']>;
+type RunnableStatement = {
+    run: (...params: unknown[]) => unknown;
+};
 let discoveryUpsertDbRef: ReturnType<typeof getDb> | null = null;
-let discoveryUpsertStmt: PreparedStatement | null = null;
+let discoveryUpsertStmt: RunnableStatement | null = null;
 let discoveryBulkUpsertTx: ((players: PlayerInfo[]) => void) | null = null;
 
 function isValidMembershipType(type: number): boolean {
@@ -28,12 +30,16 @@ function getDiscoveryBulkUpsertTransaction(): (players: PlayerInfo[]) => void {
       display_name = COALESCE(excluded.display_name, players.display_name),
       bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, players.bungie_global_display_name),
       bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, players.bungie_global_display_name_code)
-  `);
+  `) as unknown as RunnableStatement;
 
+        const stmt = discoveryUpsertStmt;
+        if (!stmt) {
+            throw new Error('Failed to initialize discovery upsert statement');
+        }
         discoveryBulkUpsertTx = db.transaction((entries: PlayerInfo[]) => {
             for (const p of entries) {
                 if (!isValidMembershipType(p.membershipType)) continue;
-                discoveryUpsertStmt.run(
+                stmt.run(
                     p.membershipId,
                     p.membershipType,
                     p.displayName,
@@ -42,6 +48,10 @@ function getDiscoveryBulkUpsertTransaction(): (players: PlayerInfo[]) => void {
                 );
             }
         });
+    }
+
+    if (!discoveryBulkUpsertTx) {
+        throw new Error('Failed to initialize discovery upsert transaction');
     }
 
     return discoveryBulkUpsertTx;

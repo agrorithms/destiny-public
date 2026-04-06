@@ -2,16 +2,18 @@ import { getDb } from './index';
 import type { PlayerInfo, LeaderboardEntry } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
-type PreparedStatement = ReturnType<ReturnType<typeof getDb>['prepare']>;
+type RunnableStatement = {
+    run: (...params: unknown[]) => unknown;
+};
 type SqlValue = string | number | null;
 
 let playerUpsertDbRef: ReturnType<typeof getDb> | null = null;
-let playerUpsertStmt: PreparedStatement | null = null;
+let playerUpsertStmt: RunnableStatement | null = null;
 let bulkUpsertPlayersTx: ((players: PlayerInfo[]) => void) | null = null;
 
 let pgcrInsertDbRef: ReturnType<typeof getDb> | null = null;
-let insertPGCRStmt: PreparedStatement | null = null;
-let insertPGCRPlayerStmt: PreparedStatement | null = null;
+let insertPGCRStmt: RunnableStatement | null = null;
+let insertPGCRPlayerStmt: RunnableStatement | null = null;
 let insertFullPGCRTx: ((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => void) | null = null;
 
 function isValidMembershipType(type: unknown): boolean {
@@ -19,7 +21,7 @@ function isValidMembershipType(type: unknown): boolean {
 }
 
 function getPlayerUpsertResources(): {
-    upsertStmt: PreparedStatement;
+    upsertStmt: RunnableStatement;
     bulkTx: (players: PlayerInfo[]) => void;
 } {
     const db = getDb();
@@ -33,8 +35,12 @@ function getPlayerUpsertResources(): {
       display_name = excluded.display_name,
       bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, bungie_global_display_name),
       bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, bungie_global_display_name_code)
-  `);
+  `) as unknown as RunnableStatement;
 
+        const stmt = playerUpsertStmt;
+        if (!stmt) {
+            throw new Error('Failed to initialize player upsert statement');
+        }
         bulkUpsertPlayersTx = db.transaction((players: PlayerInfo[]) => {
             let skipped = 0;
             const invalidSamples: string[] = [];
@@ -48,7 +54,7 @@ function getPlayerUpsertResources(): {
                     continue;
                 }
 
-                playerUpsertStmt.run(
+                stmt.run(
                     p.membershipId,
                     p.membershipType,
                     p.displayName,
@@ -63,6 +69,10 @@ function getPlayerUpsertResources(): {
                 console.log(`  ⚠️ Skipped ${skipped} players with invalid membership types${sampleSuffix}`);
             }
         });
+    }
+
+    if (!playerUpsertStmt || !bulkUpsertPlayersTx) {
+        throw new Error('Failed to initialize player upsert resources');
     }
 
     return {
@@ -533,7 +543,7 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
      activity_was_started_from_beginning, completed, player_count, source)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(instance_id) DO NOTHING
-  `);
+  `) as unknown as RunnableStatement;
 
         insertPGCRPlayerStmt = db.prepare(`
     INSERT OR IGNORE INTO pgcr_players 
@@ -541,10 +551,15 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
      bungie_global_display_name, character_class, light_level, 
      completed, kills, deaths, assists, time_played_seconds)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  `) as unknown as RunnableStatement;
 
+        const pgcrStmt = insertPGCRStmt;
+        const playerStmt = insertPGCRPlayerStmt;
+        if (!pgcrStmt || !playerStmt) {
+            throw new Error('Failed to initialize PGCR statements');
+        }
         insertFullPGCRTx = db.transaction((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => {
-            insertPGCRStmt.run(
+            pgcrStmt.run(
                 pgcrData.instanceId,
                 pgcrData.activityHash,
                 pgcrData.raidKey || null,
@@ -557,7 +572,7 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
             );
 
             for (const player of players) {
-                insertPGCRPlayerStmt.run(
+                playerStmt.run(
                     player.instanceId,
                     player.membershipId,
                     player.membershipType,
@@ -573,6 +588,10 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
                 );
             }
         });
+    }
+
+    if (!insertFullPGCRTx) {
+        throw new Error('Failed to initialize PGCR insert transaction');
     }
 
     return insertFullPGCRTx;
@@ -869,8 +888,8 @@ export function getDbStats(): {
         totalPGCRs: pgcrs,
         totalPGCRPlayers: pgcrPlayers,
         activeSessions: sessions,
-        oldestPGCR: oldest.p ? new Date(oldest.p * 1000).toISOString() : null,
-        newestPGCR: newest.p ? new Date(newest.p * 1000).toISOString() : null,
+            oldestPGCR: oldest?.p ? new Date(oldest.p * 1000).toISOString() : null,
+            newestPGCR: newest?.p ? new Date(newest.p * 1000).toISOString() : null,
     };
 }
 

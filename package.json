@@ -20,6 +20,7 @@
     "cleanup-types": "npx tsx scripts/cleanup-membership-types.ts"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.47.0",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.3.1",
     "next": "16.1.6",

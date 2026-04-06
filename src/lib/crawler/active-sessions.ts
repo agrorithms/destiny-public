@@ -1,6 +1,6 @@
 import { getBungieClient, BungieAPIError } from '../bungie/client';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { deleteSessionsContainingPlayer, upsertActiveSession } from '../db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession } from '../db/queries';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo, RaidSession } from '../bungie/types';
@@ -23,6 +23,28 @@ const DEFAULT_STALE_SESSION_REVERIFY_LIMIT = Math.max(
     1,
     parseInt(process.env.ACTIVE_SESSION_STALE_REVERIFY_LIMIT || '200', 10)
 );
+const IN_ORBIT_MODE_HASHES = [2166136261];
+const STALE_REVERIFY_TEAMMATE_FALLBACK_LIMIT = 2;
+
+interface CharacterActivityLike {
+    dateActivityStarted?: string;
+    currentActivityHash?: number;
+    currentActivityModeHash?: number;
+    currentActivityModeType?: number;
+}
+
+interface PartyMemberLike {
+    membershipId: string;
+    displayName?: string;
+    status?: number;
+}
+
+interface StaleSessionRow {
+    membership_id: string;
+    membership_type: number;
+    display_name: string;
+    party_members_json: string | null;
+}
 
 /**
  * Check if a player is currently in a raid activity and store the session.
@@ -49,7 +71,9 @@ export async function checkPlayerActivity(
         }
 
         // Use component 204 to get current activity metadata from the most recently started character activity.
-        const charActivities = Object.values(profile.Response.characterActivities?.data || {}) as any[];
+        const charActivities = Object.values(
+            profile.Response.characterActivities?.data || {}
+        ) as CharacterActivityLike[];
         charActivities.sort((a, b) => {
             const aTs = Date.parse(a?.dateActivityStarted || '') || 0;
             const bTs = Date.parse(b?.dateActivityStarted || '') || 0;
@@ -93,7 +117,7 @@ export async function checkPlayerActivity(
         let sessionKey: string;
         if (partyMembers.length > 0) {
             const sortedMemberIds = partyMembers
-                .map((m: any) => m.membershipId)
+                .map((m: PartyMemberLike) => m.membershipId)
                 .sort()
                 .join('-');
             sessionKey = `${currentActivityHash}-${sortedMemberIds}`;
@@ -171,24 +195,36 @@ export async function refreshStaleSessionsWithOptions(options?: {
     const client = getBungieClient();
 
     // Find sessions that are stale (not checked recently) but not ancient
+    const inOrbitPlaceholders = IN_ORBIT_MODE_HASHES.map(() => '?').join(',');
     const staleSessions = db.prepare(`
     SELECT 
       membership_id,
       membership_type,
       display_name,
       activity_hash,
+      activity_mode_hash,
+      activity_mode_type,
+      raid_key,
       started_at,
-      checked_at
+      checked_at,
+      party_members_json
     FROM active_sessions
     WHERE checked_at < ?
       AND checked_at >= ?
-    ORDER BY checked_at ASC
+    ORDER BY
+      CASE
+        WHEN activity_mode_type = 4 OR raid_key IS NOT NULL THEN 0
+        WHEN activity_mode_hash IN (${inOrbitPlaceholders}) AND player_count >= 3 THEN 1
+        ELSE 2
+      END ASC,
+      checked_at ASC
     LIMIT ?
   `).all(
         now - STALE_THRESHOLD_SECONDS,
         now - MAX_SESSION_AGE_SECONDS,
+        ...IN_ORBIT_MODE_HASHES,
         limit
-    ) as any[];
+    ) as StaleSessionRow[];
 
     if (staleSessions.length === 0) {
         return { refreshed: 0, removed: 0 };
@@ -208,12 +244,28 @@ export async function refreshStaleSessionsWithOptions(options?: {
 
             const result = await checkPlayerActivity(player, client);
 
-            if (!result) {
-                deleteSessionsContainingPlayer(session.membership_id);
-                return false;
+            if (result) {
+                return true;
             }
 
-            return true;
+            // If the anchor player is no longer active, quickly probe a couple teammates
+            // before removing this row. This avoids collapsing a still-active fireteam
+            // when one player leaves, disconnects, or has transient privacy/API issues.
+            const teammateCandidates = getTeammateCandidates(
+                session.party_members_json,
+                session.membership_id
+            ).slice(0, STALE_REVERIFY_TEAMMATE_FALLBACK_LIMIT);
+
+            for (const teammate of teammateCandidates) {
+                const teammateResult = await checkPlayerActivity(teammate, client);
+                if (teammateResult) {
+                    deleteActiveSessionForPlayer(session.membership_id);
+                    return true;
+                }
+            }
+
+            deleteActiveSessionForPlayer(session.membership_id);
+            return false;
         }
     );
 
@@ -241,6 +293,31 @@ export async function refreshStaleSessionsWithOptions(options?: {
     console.log(`[SESSIONS] Re-verification complete: ${refreshed} refreshed, ${removed} removed`);
 
     return { refreshed, removed };
+}
+
+function getTeammateCandidates(partyMembersJson: string | null | undefined, excludeMembershipId: string): PlayerInfo[] {
+    if (!partyMembersJson) {
+        return [];
+    }
+
+    try {
+        const partyMembers = JSON.parse(partyMembersJson) as Array<{
+            membershipId?: string;
+            membershipType?: number;
+            displayName?: string;
+        }>;
+
+        return partyMembers
+            .filter((m) => !!m.membershipId && m.membershipId !== excludeMembershipId)
+            .map((m) => ({
+                membershipId: String(m.membershipId),
+                membershipType: Number.isFinite(Number(m.membershipType)) ? Number(m.membershipType) : 0,
+                displayName: m.displayName || String(m.membershipId),
+            }))
+            .filter((m) => m.membershipType > 0);
+    } catch {
+        return [];
+    }
 }
 
 /**

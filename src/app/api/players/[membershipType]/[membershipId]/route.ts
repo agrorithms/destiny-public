@@ -5,7 +5,8 @@ import { runConcurrentDiscovery } from '@/lib/discovery/snowball-concurrent';
 import { checkPlayerActivity } from '@/lib/crawler/active-sessions';
 import { getDb } from '@/lib/db';
 import {
-    deleteSessionsContainingPlayer,
+    type ActiveSessionDbRow,
+    deleteActiveSessionForPlayer,
     getPlayerIdentity,
     getPlayerRaidCompletionSummary,
     getPlayerRaidTeammateSummary,
@@ -19,6 +20,28 @@ const refreshInFlight = new Map<string, Promise<void>>();
 const activeVerifyInFlight = new Map<string, Promise<void>>();
 const recentRefresh = new Map<string, number>();
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
+
+interface PartyMemberInput {
+    membershipId?: string;
+    membershipType?: number;
+    displayName?: string;
+    status?: number;
+}
+
+interface PartyMemberOutput extends Record<string, unknown> {
+    membershipId: string;
+    membershipType?: number;
+    displayName: string;
+    status?: number;
+}
+
+interface PlayerLookupRow {
+    membership_id: string;
+    membership_type: number;
+    bungie_global_display_name: string | null;
+    bungie_global_display_name_code: number | null;
+    display_name: string | null;
+}
 
 function formatDisplayName(player: {
     displayName: string | null;
@@ -129,7 +152,7 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
         }, discoveryClient);
 
         if (!liveSession) {
-            deleteSessionsContainingPlayer(membershipId);
+            deleteActiveSessionForPlayer(membershipId);
         }
     })();
 
@@ -165,11 +188,16 @@ function buildFallbackPlayerPayload(membershipType: number, membershipId: string
     };
 }
 
-function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): any[] {
-    let partyMembers: any[] = [];
+function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): PartyMemberOutput[] {
+    let partyMembers: PartyMemberInput[] = [];
     if (partyMembersJson) {
         try {
-            partyMembers = JSON.parse(partyMembersJson);
+            const parsed: unknown = JSON.parse(partyMembersJson);
+            if (Array.isArray(parsed)) {
+                partyMembers = parsed
+                    .filter((value) => !!value && typeof value === 'object')
+                    .map((value) => value as PartyMemberInput);
+            }
         } catch {
             partyMembers = [];
         }
@@ -180,14 +208,15 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
     }
 
     if (!enrich) {
-        return partyMembers.map((member: any) => {
+        return partyMembers.map((member) => {
             const id = String(member?.membershipId || '');
             const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
                 ? member.displayName
                 : null;
+            const baseMember = member as Record<string, unknown>;
 
             return {
-                ...member,
+                ...baseMember,
                 membershipId: id,
                 displayName: fallbackApiName || id,
             };
@@ -197,7 +226,7 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
     const db = getDb();
     const ids = [...new Set(
         partyMembers
-            .map((m: any) => String(m?.membershipId || ''))
+            .map((m) => String(m?.membershipId || ''))
             .filter(Boolean)
     )];
 
@@ -215,7 +244,7 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
               display_name
             FROM players
             WHERE membership_id IN (${placeholders})
-          `).all(...ids) as any[];
+          `).all(...ids) as PlayerLookupRow[];
 
         for (const row of rows) {
             typeMap.set(row.membership_id, row.membership_type);
@@ -232,15 +261,16 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
         }
     }
 
-    return partyMembers.map((member: any) => {
+    return partyMembers.map((member) => {
         const id = String(member?.membershipId || '');
         const knownName = nameMap.get(id);
         const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
             ? member.displayName
             : null;
+        const baseMember = member as Record<string, unknown>;
 
         return {
-            ...member,
+            ...baseMember,
             membershipId: id,
             membershipType: member?.membershipType ?? typeMap.get(id),
             displayName: knownName || fallbackApiName || id,
@@ -248,7 +278,7 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
     });
 }
 
-function buildActiveSessionPayload(activeSession: any, identity: {
+function buildActiveSessionPayload(activeSession: ActiveSessionDbRow | null, identity: {
     membershipId: string;
     membershipType: number;
     displayName: string | null;

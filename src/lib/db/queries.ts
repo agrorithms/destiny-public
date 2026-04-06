@@ -2,22 +2,24 @@ import { getDb } from './index';
 import type { PlayerInfo, LeaderboardEntry } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
+type PreparedStatement = ReturnType<ReturnType<typeof getDb>['prepare']>;
+type SqlValue = string | number | null;
 
 let playerUpsertDbRef: ReturnType<typeof getDb> | null = null;
-let playerUpsertStmt: any = null;
+let playerUpsertStmt: PreparedStatement | null = null;
 let bulkUpsertPlayersTx: ((players: PlayerInfo[]) => void) | null = null;
 
 let pgcrInsertDbRef: ReturnType<typeof getDb> | null = null;
-let insertPGCRStmt: any = null;
-let insertPGCRPlayerStmt: any = null;
+let insertPGCRStmt: PreparedStatement | null = null;
+let insertPGCRPlayerStmt: PreparedStatement | null = null;
 let insertFullPGCRTx: ((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => void) | null = null;
 
-function isValidMembershipType(type: any): boolean {
+function isValidMembershipType(type: unknown): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
 }
 
 function getPlayerUpsertResources(): {
-    upsertStmt: any;
+    upsertStmt: PreparedStatement;
     bulkTx: (players: PlayerInfo[]) => void;
 } {
     const db = getDb();
@@ -214,8 +216,8 @@ export function updateLastCrawled(membershipId: string): void {
 
 export function getPlayerCount(): number {
     const db = getDb();
-    const row = db.prepare('SELECT COUNT(*) as count FROM players').get() as any;
-    return row.count;
+    const row = db.prepare('SELECT COUNT(*) as count FROM players').get() as { count: number } | undefined;
+    return row?.count ?? 0;
 }
 
 export interface PlayerSearchResult {
@@ -443,7 +445,21 @@ export function getPlayerRaidTeammateSummary(
   `).all(membershipId, cutoffTimestamp, membershipId) as PlayerRaidTeammateSummary[];
 }
 
-export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: number = 600): any | null {
+export interface ActiveSessionDbRow {
+    membershipId: string;
+    membershipType: number;
+    displayName: string;
+    activityHash: number;
+    activityModeHash: number | null;
+    activityModeType: number | null;
+    raidKey: string | null;
+    startedAt: string;
+    partyMembersJson: string;
+    playerCount: number;
+    checkedAt: number;
+}
+
+export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: number = 600): ActiveSessionDbRow | null {
     const db = getDb();
     const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;
 
@@ -464,7 +480,7 @@ export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: n
     WHERE membership_id = ?
       AND checked_at >= ?
     LIMIT 1
-  `).get(membershipId, cutoff) as any;
+  `).get(membershipId, cutoff) as ActiveSessionDbRow | undefined;
 
     return row || null;
 }
@@ -572,8 +588,8 @@ export function insertFullPGCR(
 
 export function getPGCRCount(): number {
     const db = getDb();
-    const row = db.prepare('SELECT COUNT(*) as count FROM pgcrs').get() as any;
-    return row.count;
+    const row = db.prepare('SELECT COUNT(*) as count FROM pgcrs').get() as { count: number } | undefined;
+    return row?.count ?? 0;
 }
 
 // =====================
@@ -614,7 +630,7 @@ export function getLeaderboard(params: {
       AND p.completed = 1
   `;
 
-    const queryParams: any[] = [cutoffTimestamp];
+    const queryParams: SqlValue[] = [cutoffTimestamp];
 
     // Filter to full clears only (started from beginning)
     if (fullClearsOnly) {
@@ -671,7 +687,7 @@ export function getLeaderboardByRaid(params: {
       AND p.raid_key IS NOT NULL
   `;
 
-    const queryParams: any[] = [cutoffTimestamp];
+    const queryParams: SqlValue[] = [cutoffTimestamp];
 
     if (fullClearsOnly) {
         query += ` AND p.activity_was_started_from_beginning = 1`;
@@ -743,7 +759,7 @@ export function upsertActiveSession(session: {
     );
 }
 
-export function getActiveSessions(raidKey?: string, limit: number = 50, onlyRaidMode: boolean = true): any[] {
+export function getActiveSessions(raidKey?: string, limit: number = 50, onlyRaidMode: boolean = true): ActiveSessionDbRow[] {
     const db = getDb();
 
     // Only show sessions checked within the last 15 minutes
@@ -766,7 +782,7 @@ export function getActiveSessions(raidKey?: string, limit: number = 50, onlyRaid
     WHERE checked_at >= ?
   `;
 
-    const queryParams: any[] = [freshnessCutoff];
+    const queryParams: SqlValue[] = [freshnessCutoff];
 
     if (onlyRaidMode) {
         query += ` AND (activity_mode_type = 4 OR raid_key IS NOT NULL)`;
@@ -780,7 +796,7 @@ export function getActiveSessions(raidKey?: string, limit: number = 50, onlyRaid
     query += ` ORDER BY started_at DESC LIMIT ?`;
     queryParams.push(limit);
 
-    return db.prepare(query).all(...queryParams);
+    return db.prepare(query).all(...queryParams) as ActiveSessionDbRow[];
 }
 
 export function clearStaleActiveSessions(maxAgeSeconds: number = 600): void {
@@ -840,13 +856,13 @@ export function getDbStats(): {
 } {
     const db = getDb();
 
-    const players = (db.prepare('SELECT COUNT(*) as c FROM players').get() as any).c;
-    const pgcrs = (db.prepare('SELECT COUNT(*) as c FROM pgcrs').get() as any).c;
-    const pgcrPlayers = (db.prepare('SELECT COUNT(*) as c FROM pgcr_players').get() as any).c;
-    const sessions = (db.prepare('SELECT COUNT(*) as c FROM active_sessions').get() as any).c;
+    const players = (db.prepare('SELECT COUNT(*) as c FROM players').get() as { c: number } | undefined)?.c ?? 0;
+    const pgcrs = (db.prepare('SELECT COUNT(*) as c FROM pgcrs').get() as { c: number } | undefined)?.c ?? 0;
+    const pgcrPlayers = (db.prepare('SELECT COUNT(*) as c FROM pgcr_players').get() as { c: number } | undefined)?.c ?? 0;
+    const sessions = (db.prepare('SELECT COUNT(*) as c FROM active_sessions').get() as { c: number } | undefined)?.c ?? 0;
 
-    const oldest = db.prepare('SELECT MIN(period) as p FROM pgcrs').get() as any;
-    const newest = db.prepare('SELECT MAX(period) as p FROM pgcrs').get() as any;
+    const oldest = db.prepare('SELECT MIN(period) as p FROM pgcrs').get() as { p: number | null } | undefined;
+    const newest = db.prepare('SELECT MAX(period) as p FROM pgcrs').get() as { p: number | null } | undefined;
 
     return {
         totalPlayers: players,

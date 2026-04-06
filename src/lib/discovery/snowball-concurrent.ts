@@ -7,8 +7,9 @@ import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
+type PreparedStatement = ReturnType<ReturnType<typeof getDb>['prepare']>;
 let discoveryUpsertDbRef: ReturnType<typeof getDb> | null = null;
-let discoveryUpsertStmt: any = null;
+let discoveryUpsertStmt: PreparedStatement | null = null;
 let discoveryBulkUpsertTx: ((players: PlayerInfo[]) => void) | null = null;
 
 function isValidMembershipType(type: number): boolean {

@@ -7,6 +7,10 @@ import PlayerSearch from '@/components/PlayerSearch';
 export const metadata: Metadata = {
   title: 'Destiny Farm Finder',
   description: 'Real-time raid completion leaderboards and active session tracking for Destiny 2',
+  manifest: '/manifest.json',
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({
@@ -22,6 +26,10 @@ export default function RootLayout({
           data-website-id="ac99ded7-08b1-405d-9438-b3e03c1a7339"
           strategy="afterInteractive"
         />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"></link>
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png"></link>
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"></link>
+        <link rel="manifest" href="/manifest.json"></link>
       </head>
       <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
         <nav className="ui-nav-surface border-b backdrop-blur-sm sticky top-0 z-50">

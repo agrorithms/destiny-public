@@ -22,6 +22,26 @@ interface ActiveSessionCardProps {
     session: ActiveSession;
 }
 
+function getDisplayName(member: PartyMember): string {
+    return member.displayName || member.membershipId;
+}
+
+function getDisplayNameLength(member: PartyMember): number {
+    return getDisplayName(member).length;
+}
+
+function compactPartyMembers(members: PartyMember[]): PartyMember[] {
+    return [...members]
+        .slice(0, 6)
+        .map((member, index) => ({ member, index }))
+        .sort((a, b) => {
+            const lengthDelta = getDisplayNameLength(b.member) - getDisplayNameLength(a.member);
+            if (lengthDelta !== 0) return lengthDelta;
+            return a.index - b.index;
+        })
+        .map(({ member }) => member);
+}
+
 function getElapsedTime(startedAt: string): string {
     const start = new Date(startedAt).getTime();
     const now = Date.now();
@@ -40,6 +60,8 @@ function getElapsedTime(startedAt: string): string {
 }
 
 export default function ActiveSessionCard({ session }: ActiveSessionCardProps) {
+    const visibleMembers = compactPartyMembers(session.partyMembers);
+
     return (
         <div className="ui-card ui-card-hover p-4 hover:border-blue-300 dark:hover:border-gray-600">
             <div className="flex items-center justify-between mb-3">
@@ -66,30 +88,41 @@ export default function ActiveSessionCard({ session }: ActiveSessionCardProps) {
                 </div>
             </div>
 
-            <div className="space-y-1">
-                {session.partyMembers.map((member) => (
-                    <div
-                        key={member.membershipId}
-                        className="flex items-center gap-2 text-sm"
-                    >
+            <div className="grid grid-cols-1 gap-y-1 sm:grid-cols-2 sm:grid-flow-col sm:grid-rows-3 sm:gap-x-4">
+                {visibleMembers.map((member) => {
+                    const displayName = getDisplayName(member);
+                    const href = typeof member.membershipType === 'number'
+                        ? `/player/${member.membershipType}/${member.membershipId}`
+                        : null;
+
+                    return (
                         <div
-                            className={`w-1.5 h-1.5 rounded-full ${member.status === 1 ? 'bg-green-500' : 'bg-gray-500'
-                                }`}
-                        />
-                        {typeof member.membershipType === 'number' ? (
-                            <a
-                                href={`/player/${member.membershipType}/${member.membershipId}`}
-                                className="ui-text-primary truncate hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                            >
-                                {member.displayName || member.membershipId}
-                            </a>
-                        ) : (
-                            <span className="ui-text-primary truncate">
-                                {member.displayName || member.membershipId}
-                            </span>
-                        )}
-                    </div>
-                ))}
+                            key={member.membershipId}
+                            className="flex items-center gap-2 min-w-0 text-sm"
+                        >
+                            <div
+                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${member.status === 1 ? 'bg-green-500' : 'bg-gray-500'
+                                    }`}
+                            />
+                            {href ? (
+                                <a
+                                    href={href}
+                                    title={displayName}
+                                    className="block min-w-0 truncate ui-text-primary hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                >
+                                    {displayName}
+                                </a>
+                            ) : (
+                                <span
+                                    title={displayName}
+                                    className="block min-w-0 truncate ui-text-primary"
+                                >
+                                    {displayName}
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );

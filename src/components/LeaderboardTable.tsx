@@ -50,10 +50,10 @@ export default function LeaderboardTable({
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="border-b ui-divider ui-text-muted">
-                            <th className="text-left py-3 px-2 w-12">#</th>
-                            <th className="text-left py-3 px-2">Player</th>
-                            {showRaidColumn && <th className="text-left py-3 px-2">Raid</th>}
-                            <th className="text-right py-3 px-2 w-24">Clears</th>
+                            <th className="text-left py-1 px-2 w-12">#</th>
+                            <th className="text-left py-1 px-2">Player</th>
+                            {showRaidColumn && <th className="text-left py-1 px-2">Raid</th>}
+                            <th className="text-right py-1 px-2 w-24">Clears</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -62,11 +62,11 @@ export default function LeaderboardTable({
                                 key={entry.membershipId}
                                 className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                             >
-                                <td className="py-2.5 px-2 ui-text-muted">
+                                <td className="py-1.25 px-2 ui-text-muted">
                                     {index < 3 ? (
                                         <span className={`font-bold ${index === 0 ? 'text-yellow-400' :
-                                                index === 1 ? 'text-gray-500 dark:text-gray-300' :
-                                                    'text-amber-600'
+                                            index === 1 ? 'text-gray-500 dark:text-gray-300' :
+                                                'text-amber-600'
                                             }`}>
                                             {index + 1}
                                         </span>
@@ -74,7 +74,7 @@ export default function LeaderboardTable({
                                         index + 1
                                     )}
                                 </td>
-                                <td className="py-2.5 px-2">
+                                <td className="py-1.25 px-2">
                                     <a
                                         href={`/player/${entry.membershipType}/${entry.membershipId}`}
                                         className="ui-text-primary hover:text-blue-600 transition-colors dark:hover:text-blue-400"
@@ -84,9 +84,9 @@ export default function LeaderboardTable({
                                     </a>
                                 </td>
                                 {showRaidColumn && (
-                                    <td className="py-2.5 px-2 ui-text-muted">{raidName}</td>
+                                    <td className="py-1.25 px-2 ui-text-muted">{raidName}</td>
                                 )}
-                                <td className="py-2.5 px-2 text-right font-mono font-bold ui-text-primary">
+                                <td className="py-1.25 px-2 text-right font-mono font-bold ui-text-primary">
                                     {entry.completions}
                                 </td>
                             </tr>

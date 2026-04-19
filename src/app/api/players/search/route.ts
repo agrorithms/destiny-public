@@ -107,7 +107,9 @@ export async function GET(request: NextRequest) {
     try {
         let localResults = searchPlayersByName(query, limit);
 
-        const shouldFallback = localResults.length === 0 || query.includes('#');
+        // Only fall back to the Bungie API when local results come up empty.
+        // If the player is already in the DB (including with a full Name#Code), trust it.
+        const shouldFallback = localResults.length === 0;
         if (shouldFallback) {
             try {
                 const discovered = await runBungieFallbackSearch(query);
@@ -126,7 +128,9 @@ export async function GET(request: NextRequest) {
         const results = localResults.map((row) => {
             const baseName = row.bungieGlobalDisplayName || row.displayName || '';
             const fullName = formatDisplayName(row);
-            const secondaryDisplayName = row.displayName || baseName || row.membershipId;
+            // secondaryDisplayName is strictly the platform name (display_name field).
+            // This is the PSN ID / Xbox gamertag / Steam name shown under the primary result.
+            const secondaryDisplayName = row.displayName || row.membershipId;
 
             return {
                 membershipId: row.membershipId,

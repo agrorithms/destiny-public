@@ -245,6 +245,9 @@ export function searchPlayersByName(query: string, limit: number = 10): PlayerSe
 
     if (!nameOnly) return [];
 
+    // Search against both the base name and the full Name#Code composed string.
+    // The second OR condition catches queries like "Aegis#2771" or partial "Aegis#27"
+    // that the first condition would miss after stripping the code.
     const rows = db.prepare(`
     SELECT
       membership_id as membershipId,
@@ -254,21 +257,35 @@ export function searchPlayersByName(query: string, limit: number = 10): PlayerSe
       bungie_global_display_name_code as bungieGlobalDisplayNameCode
     FROM players
     WHERE LOWER(COALESCE(bungie_global_display_name, display_name, '')) LIKE ?
+       OR (bungie_global_display_name_code IS NOT NULL
+           AND LOWER(bungie_global_display_name || '#' || printf('%04d', bungie_global_display_name_code)) LIKE ?)
     ORDER BY discovered_at DESC
     LIMIT 100
-  `).all(`%${nameOnly}%`) as PlayerSearchResult[];
+  `).all(`%${nameOnly}%`, `%${normalized}%`) as PlayerSearchResult[];
 
     const withRank = rows.map((row) => {
-        const baseName = (row.bungieGlobalDisplayName || row.displayName || '').toLowerCase();
+        const bungieBaseName = (row.bungieGlobalDisplayName || '').toLowerCase();
+        const platformName = (row.displayName || '').toLowerCase();
+        // baseName used for starts-with / contains fallbacks — prefer bungie name over platform name
+        const baseName = bungieBaseName || platformName;
         const fullName = row.bungieGlobalDisplayName && row.bungieGlobalDisplayNameCode !== null
             ? `${row.bungieGlobalDisplayName}#${String(row.bungieGlobalDisplayNameCode).padStart(4, '0')}`.toLowerCase()
             : '';
 
-        let rank = 4;
+        // 6-tier ranking:
+        // 0 — exact full Name#Code match
+        // 1 — full Name#Code starts with query (only fires when query contains #)
+        // 2 — exact bungie_global_display_name match
+        // 3 — exact display_name (platform name) match
+        // 4 — base name starts with query
+        // 5 — base name contains query (catch-all)
+        let rank = 5;
         if (fullName && fullName === normalized) rank = 0;
-        else if (baseName === nameOnly) rank = 1;
-        else if (baseName.startsWith(nameOnly)) rank = 2;
-        else if (baseName.includes(nameOnly)) rank = 3;
+        else if (normalized.includes('#') && fullName && fullName.startsWith(normalized)) rank = 1;
+        else if (bungieBaseName && bungieBaseName === nameOnly) rank = 2;
+        else if (platformName && platformName === nameOnly) rank = 3;
+        else if (baseName.startsWith(nameOnly)) rank = 4;
+        else if (baseName.includes(nameOnly)) rank = 5;
 
         return { row, rank };
     });
@@ -888,8 +905,8 @@ export function getDbStats(): {
         totalPGCRs: pgcrs,
         totalPGCRPlayers: pgcrPlayers,
         activeSessions: sessions,
-            oldestPGCR: oldest?.p ? new Date(oldest.p * 1000).toISOString() : null,
-            newestPGCR: newest?.p ? new Date(newest.p * 1000).toISOString() : null,
+        oldestPGCR: oldest?.p ? new Date(oldest.p * 1000).toISOString() : null,
+        newestPGCR: newest?.p ? new Date(newest.p * 1000).toISOString() : null,
     };
 }
 

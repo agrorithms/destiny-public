@@ -54,6 +54,7 @@ data/*.db-shm
 
 #cleanup
 scripts/cleanup-membership-types.ts
+scripts/backfill-player-names.ts
 
 #seeds
 seeds.txt

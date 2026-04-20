@@ -267,6 +267,7 @@ async function scanSinglePGCR(
             membershipType: entry.player.destinyUserInfo.membershipType,
             displayName: entry.player.destinyUserInfo.displayName,
             bungieGlobalDisplayName: entry.player.destinyUserInfo.bungieGlobalDisplayName,
+            bungieGlobalDisplayNameCode: entry.player.destinyUserInfo.bungieGlobalDisplayNameCode ?? null, // add this
             characterClass: entry.player.characterClass || 'Unknown',
             lightLevel: entry.player.lightLevel || 0,
             completed: entry.values?.completed?.basic?.value === 1,

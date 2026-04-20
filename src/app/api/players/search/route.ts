@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
-import { bulkUpsertPlayers, searchPlayersByName } from '@/lib/db/queries';
+import { bulkUpsertPlayers, formatBungieDisplayName, searchPlayersByName } from '@/lib/db/queries';
 import type { PlayerInfo } from '@/lib/bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
@@ -15,18 +15,6 @@ function parseQuery(query: string): { baseName: string; code?: number } {
         baseName: match[1].trim(),
         code: parseInt(match[2], 10),
     };
-}
-
-function formatDisplayName(row: {
-    displayName: string | null;
-    bungieGlobalDisplayName: string | null;
-    bungieGlobalDisplayNameCode: number | null;
-    membershipId: string;
-}): string {
-    if (row.bungieGlobalDisplayName && row.bungieGlobalDisplayNameCode !== null) {
-        return `${row.bungieGlobalDisplayName}#${String(row.bungieGlobalDisplayNameCode).padStart(4, '0')}`;
-    }
-    return row.bungieGlobalDisplayName || row.displayName || row.membershipId;
 }
 
 function mapResponseToPlayers(rawResponse: any): PlayerInfo[] {
@@ -127,7 +115,7 @@ export async function GET(request: NextRequest) {
 
         const results = localResults.map((row) => {
             const baseName = row.bungieGlobalDisplayName || row.displayName || '';
-            const fullName = formatDisplayName(row);
+            const fullName = formatBungieDisplayName(row);
             // secondaryDisplayName is strictly the platform name (display_name field).
             // This is the PSN ID / Xbox gamertag / Steam name shown under the primary result.
             const secondaryDisplayName = row.displayName || row.membershipId;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getActiveSessions } from '@/lib/db/queries';
+import { formatBungieDisplayName, getActiveSessions } from '@/lib/db/queries';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { getDb } from '@/lib/db';
 import { getActivityDisplayName } from '@/lib/utils/activity';
@@ -127,16 +127,15 @@ export async function GET(request: NextRequest) {
             for (const row of rows) {
                 membershipTypeMap.set(row.membership_id, row.membership_type);
                 // Prefer "Name#1234" format if we have both parts
-                if (row.bungie_global_display_name && row.bungie_global_display_name_code) {
-                    nameMap.set(
-                        row.membership_id,
-                        `${row.bungie_global_display_name}#${String(row.bungie_global_display_name_code).padStart(4, '0')}`
-                    );
-                } else if (row.bungie_global_display_name) {
-                    nameMap.set(row.membership_id, row.bungie_global_display_name);
-                } else if (row.display_name) {
-                    nameMap.set(row.membership_id, row.display_name);
-                }
+                nameMap.set(
+                    row.membership_id,
+                    formatBungieDisplayName({
+                        membershipId: row.membership_id,
+                        displayName: row.display_name,
+                        bungieGlobalDisplayName: row.bungie_global_display_name,
+                        bungieGlobalDisplayNameCode: row.bungie_global_display_name_code,
+                    })
+                );
             }
         }
 

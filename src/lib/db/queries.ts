@@ -263,40 +263,81 @@ export function searchPlayersByName(query: string, limit: number = 10): PlayerSe
 
     if (!nameOnly) return [];
 
-    // Search against both the base name and the full Name#Code composed string.
-    // The second OR condition catches queries like "Aegis#2771" or partial "Aegis#27"
-    // that the first condition would miss after stripping the code.
-    const rows = db.prepare(`
-    SELECT
-      membership_id as membershipId,
-      membership_type as membershipType,
-      display_name as displayName,
-      bungie_global_display_name as bungieGlobalDisplayName,
-      bungie_global_display_name_code as bungieGlobalDisplayNameCode
-    FROM players
-    WHERE LOWER(COALESCE(bungie_global_display_name, display_name, '')) LIKE ?
-       OR (bungie_global_display_name_code IS NOT NULL
-           AND LOWER(bungie_global_display_name || '#' || printf('%04d', bungie_global_display_name_code)) LIKE ?)
-    ORDER BY discovered_at DESC
-    LIMIT 100
-  `).all(`%${nameOnly}%`, `%${normalized}%`) as PlayerSearchResult[];
+    const columns = `
+        membership_id as membershipId,
+        membership_type as membershipType,
+        display_name as displayName,
+        bungie_global_display_name as bungieGlobalDisplayName,
+        bungie_global_display_name_code as bungieGlobalDisplayNameCode
+    `;
 
-    const withRank = rows.map((row) => {
+    const seen = new Set<string>();
+    const results: PlayerSearchResult[] = [];
+
+    function addRows(rows: PlayerSearchResult[]) {
+        for (const row of rows) {
+            if (!seen.has(row.membershipId)) {
+                seen.add(row.membershipId);
+                results.push(row);
+            }
+        }
+    }
+
+    // --- Tier 0/2/3: exact matches, no LIMIT needed ---
+    const exactParams: string[] = [nameOnly, nameOnly];
+    let exactQuery = `
+        SELECT ${columns}
+        FROM players
+        WHERE LOWER(COALESCE(bungie_global_display_name, display_name, '')) = ?
+           OR LOWER(display_name) = ?
+    `;
+    if (normalized.includes('#')) {
+        exactQuery += ` OR (bungie_global_display_name_code IS NOT NULL
+            AND LOWER(bungie_global_display_name || '#' || printf('%04d', bungie_global_display_name_code)) = ?)`;
+        exactParams.push(normalized);
+    }
+    addRows(db.prepare(exactQuery).all(...exactParams) as PlayerSearchResult[]);
+
+    // --- Tier 1/4: starts-with, small LIMIT ---
+    const startsWithParams: (string | number)[] = [`${nameOnly}%`, `${nameOnly}%`, 20];
+    let startsWithQuery = `
+        SELECT ${columns}
+        FROM players
+        WHERE LOWER(COALESCE(bungie_global_display_name, display_name, '')) LIKE ?
+           OR LOWER(display_name) LIKE ?
+    `;
+    if (normalized.includes('#')) {
+        startsWithQuery += ` AND (bungie_global_display_name_code IS NOT NULL
+            AND LOWER(bungie_global_display_name || '#' || printf('%04d', bungie_global_display_name_code)) LIKE ?)`;
+        startsWithParams.splice(2, 0, `${normalized}%`);
+        startsWithParams[startsWithParams.length - 1] = 20; // keep LIMIT last
+    }
+    startsWithQuery += ` LIMIT ?`;
+    addRows(db.prepare(startsWithQuery).all(...startsWithParams) as PlayerSearchResult[]);
+
+    // --- Tier 5: contains, existing broad search to fill remaining slots ---
+    if (results.length < limit) {
+        const containsRows = db.prepare(`
+            SELECT ${columns}
+            FROM players
+            WHERE LOWER(COALESCE(bungie_global_display_name, display_name, '')) LIKE ?
+               OR (bungie_global_display_name_code IS NOT NULL
+                   AND LOWER(bungie_global_display_name || '#' || printf('%04d', bungie_global_display_name_code)) LIKE ?)
+            ORDER BY discovered_at DESC
+            LIMIT 100
+        `).all(`%${nameOnly}%`, `%${normalized}%`) as PlayerSearchResult[];
+        addRows(containsRows);
+    }
+
+    // --- JS ranking (unchanged logic) ---
+    const withRank = results.map((row) => {
         const bungieBaseName = (row.bungieGlobalDisplayName || '').toLowerCase();
         const platformName = (row.displayName || '').toLowerCase();
-        // baseName used for starts-with / contains fallbacks — prefer bungie name over platform name
         const baseName = bungieBaseName || platformName;
         const fullName = row.bungieGlobalDisplayName && row.bungieGlobalDisplayNameCode !== null
             ? `${row.bungieGlobalDisplayName}#${String(row.bungieGlobalDisplayNameCode).padStart(4, '0')}`.toLowerCase()
             : '';
 
-        // 6-tier ranking:
-        // 0 — exact full Name#Code match
-        // 1 — full Name#Code starts with query (only fires when query contains #)
-        // 2 — exact bungie_global_display_name match
-        // 3 — exact display_name (platform name) match
-        // 4 — base name starts with query
-        // 5 — base name contains query (catch-all)
         let rank = 5;
         if (fullName && fullName === normalized) rank = 0;
         else if (normalized.includes('#') && fullName && fullName.startsWith(normalized)) rank = 1;

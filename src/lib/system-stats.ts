@@ -1,5 +1,6 @@
 import { getDbStats, getCrawlerStatus } from '@/lib/db/queries';
 import { getDb } from '@/lib/db';
+import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
 
 export interface ScannerStats {
     isRunning: boolean;
@@ -16,6 +17,9 @@ export interface SystemStats {
     crawlerStatus: string;
     lastHeartbeat: string | null;
     secondsSinceHeartbeat: number | null;
+    bungieMaintenanceActive: boolean;
+    bungieMaintenanceUntil: number | null;
+    bungieMaintenanceRemainingMs: number;
     scanner: ScannerStats | null;
     database: {
         totalPlayers: number;
@@ -30,6 +34,7 @@ export interface SystemStats {
 export function getSystemStats(): SystemStats {
     const databaseStats = getDbStats();
     const crawlerStatus = getCrawlerStatus();
+    const bungieMaintenance = getBungieMaintenanceStatus();
 
     const db = getDb();
     const scannerStatsRow = db.prepare(
@@ -56,6 +61,9 @@ export function getSystemStats(): SystemStats {
         crawlerStatus: crawlerStatus.status,
         lastHeartbeat: crawlerStatus.lastHeartbeat,
         secondsSinceHeartbeat: crawlerStatus.secondsSinceHeartbeat,
+        bungieMaintenanceActive: bungieMaintenance.active,
+        bungieMaintenanceUntil: bungieMaintenance.until,
+        bungieMaintenanceRemainingMs: bungieMaintenance.remainingMs,
         scanner: scannerStats,
         database: databaseStats,
     };

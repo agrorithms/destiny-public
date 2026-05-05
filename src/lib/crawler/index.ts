@@ -10,6 +10,11 @@ import { crawlPlayer } from './players';
 import { pollActiveSessions } from './active-sessions';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
+import {
+    isBungieSystemDisabledError,
+    recordBungieMaintenancePause,
+    waitForBungieMaintenancePause,
+} from '../bungie/maintenance';
 import type { PlayerInfo } from '../bungie/types';
 
 function writeCrawlerHeartbeat(): void {
@@ -109,6 +114,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     const discoveredPlayersBuffer: PlayerInfo[] = [];
     let totalNewPlayersDiscovered = 0;
     let crawledCount = 0;
+    let maintenanceDetected = false;
     const halfMilestone = Math.max(1, Math.floor(config.maxPlayersPerCycle / 2));
     const fullMilestone = config.maxPlayersPerCycle;
     const reachedMilestones = new Set<number>();
@@ -117,7 +123,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
         players,
         config.crawlConcurrency,
         async (player) => {
-            if (shouldStop) {
+            if (shouldStop || maintenanceDetected) {
                 return { newPGCRs: 0, discoveredPlayers: [] as PlayerInfo[], skipped: true };
             }
             const result = await crawlPlayer(player, config.hoursBack);
@@ -144,7 +150,13 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
         {
             collectResults: false,
             onResult: (result) => {
-                if (!result.success) return;
+                if (!result.success) {
+                    if (isBungieSystemDisabledError(result.error) && !maintenanceDetected) {
+                        maintenanceDetected = true;
+                        recordBungieMaintenancePause('crawler');
+                    }
+                    return;
+                }
                 if (result.result.skipped) return;
 
                 crawledCount++;
@@ -166,6 +178,10 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     if (discoveredPlayersBuffer.length > 0) {
         bulkUpsertPlayers(discoveredPlayersBuffer);
         discoveredPlayersBuffer.length = 0;
+    }
+
+    if (maintenanceDetected) {
+        throw new Error('Bungie maintenance pause requested');
     }
 
     return {
@@ -219,6 +235,12 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         }
 
         const startTime = Date.now();
+        await waitForBungieMaintenancePause('crawler', () => shouldStop);
+        if (shouldStop) {
+            crawlLoop();
+            return;
+        }
+
         writeCrawlerHeartbeat();
         writeCrawlerStatus('running');
         console.log(`\n🔄 Starting crawl cycle at ${new Date().toISOString()}`);
@@ -230,7 +252,14 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
                 `${result.newPGCRs} new PGCRs, ${result.newPlayersDiscovered} new players`
             );
         } catch (error) {
-            console.error('❌ Crawl cycle error:', error);
+            if (isBungieSystemDisabledError(error)) {
+                recordBungieMaintenancePause('crawler');
+                await waitForBungieMaintenancePause('crawler', () => shouldStop);
+            } else if ((error as Error).message === 'Bungie maintenance pause requested') {
+                await waitForBungieMaintenancePause('crawler', () => shouldStop);
+            } else {
+                console.error('❌ Crawl cycle error:', error);
+            }
         }
 
         const elapsed = Date.now() - startTime;
@@ -246,6 +275,9 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         if (shouldStop || !config.enableActiveSessionPolling) return;
 
         const startTime = Date.now();
+        await waitForBungieMaintenancePause('active session poll', () => shouldStop);
+        if (shouldStop || !config.enableActiveSessionPolling) return;
+
         console.log(`\n👁️ Polling active sessions...`);
 
         try {
@@ -267,7 +299,12 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
                 console.log(`  🎮 ${raid}: ${count} active sessions`);
             }
         } catch (error) {
-            console.error('❌ Active session poll error:', error);
+            if (isBungieSystemDisabledError(error)) {
+                recordBungieMaintenancePause('active session poll');
+                await waitForBungieMaintenancePause('active session poll', () => shouldStop);
+            } else {
+                console.error('❌ Active session poll error:', error);
+            }
         }
 
         const elapsed = Date.now() - startTime;

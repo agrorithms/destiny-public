@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Script from 'next/script';
 import './globals.css';
 import PlayerSearch from '@/components/PlayerSearch';
+import BungieMaintenanceAlert from '@/components/BungieMaintenanceAlert';
 
 export const metadata: Metadata = {
   title: 'Destiny Farm Finder',
@@ -54,6 +55,7 @@ export default function RootLayout({
             </div>
           </div>
         </nav>
+        <BungieMaintenanceAlert />
         <main className="max-w-7xl mx-auto px-4 py-6">
           {children}
         </main>

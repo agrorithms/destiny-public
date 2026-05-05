@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifest';
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
+import { isBungieSystemDisabledError } from '@/lib/bungie/maintenance';
 import { runConcurrentDiscovery } from '@/lib/discovery/snowball-concurrent';
 import { checkPlayerActivity } from '@/lib/crawler/active-sessions';
 import { getDb } from '@/lib/db';
@@ -176,13 +177,21 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
 
     const verifyPromise = (async () => {
         const discoveryClient = getDiscoveryBungieClient();
-        const liveSession = await checkPlayerActivity({
-            membershipId,
-            membershipType,
-            displayName: identity?.displayName || identity?.bungieGlobalDisplayName || membershipId,
-            bungieGlobalDisplayName: identity?.bungieGlobalDisplayName || undefined,
-            bungieGlobalDisplayNameCode: identity?.bungieGlobalDisplayNameCode ?? undefined,
-        }, discoveryClient);
+        let liveSession;
+        try {
+            liveSession = await checkPlayerActivity({
+                membershipId,
+                membershipType,
+                displayName: identity?.displayName || identity?.bungieGlobalDisplayName || membershipId,
+                bungieGlobalDisplayName: identity?.bungieGlobalDisplayName || undefined,
+                bungieGlobalDisplayNameCode: identity?.bungieGlobalDisplayNameCode ?? undefined,
+            }, discoveryClient);
+        } catch (error) {
+            if (isBungieSystemDisabledError(error)) {
+                return;
+            }
+            throw error;
+        }
 
         if (!liveSession) {
             deleteActiveSessionForPlayer(membershipId);

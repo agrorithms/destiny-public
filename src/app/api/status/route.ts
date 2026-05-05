@@ -13,6 +13,9 @@ export async function GET() {
                 secondsSinceHeartbeat: stats.secondsSinceHeartbeat,
                 scannerRunning: stats.scanner?.isRunning ?? false,
                 scannerStatus: stats.scanner ? 'available' : 'unknown',
+                bungieMaintenanceActive: stats.bungieMaintenanceActive,
+                bungieMaintenanceUntil: stats.bungieMaintenanceUntil,
+                bungieMaintenanceRemainingMs: stats.bungieMaintenanceRemainingMs,
                 status: stale ? 'degraded' : 'ok',
                 timestamp: Date.now()
             },

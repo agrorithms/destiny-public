@@ -23,7 +23,7 @@
 # misc
 .DS_Store
 *.pem
-tmp-check-aegis-profile.js
+
 
 
 # debug
@@ -32,7 +32,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-scripts/debug-*
+
 
 # env files (can opt-in for committing if needed)
 .env
@@ -53,8 +53,7 @@ data/*.db-wal
 data/*.db-shm
 
 #cleanup
-scripts/cleanup-membership-types.ts
-scripts/backfill-player-names.ts
+scripts/cleanup/*
 
 #seeds
 seeds.txt

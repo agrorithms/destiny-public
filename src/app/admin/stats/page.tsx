@@ -1,4 +1,7 @@
-import { getSystemStats } from '@/lib/system-stats';
+import { getSystemStats, type SystemStats } from '@/lib/system-stats';
+import { isDatabaseMaintenanceError } from '@/lib/db';
+import { readAdminStatsSnapshot } from '@/lib/maintenance/snapshots';
+import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +21,57 @@ function formatDuration(seconds: number): string {
 }
 
 export default async function AdminStatsPage() {
-    const stats = getSystemStats();
+    let stats: SystemStats;
+    let showingSnapshot = false;
+    let snapshotGeneratedAt: number | null = null;
+
+    try {
+        stats = getSystemStats();
+    } catch (error) {
+        if (!isDatabaseMaintenanceError(error)) {
+            throw error;
+        }
+
+        const snapshot = readAdminStatsSnapshot();
+        const maintenance = getBungieMaintenanceStatus();
+
+        if (!snapshot?.data) {
+            return (
+                <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+                    <h1 className="text-3xl font-bold ui-text-primary">Admin Stats</h1>
+                    <div className="ui-card p-4 text-sm text-red-700 dark:text-red-400">
+                        Database maintenance is in progress. Live admin stats are temporarily unavailable.
+                    </div>
+                </div>
+            );
+        }
+
+        stats = {
+            ...snapshot.data,
+            bungieMaintenanceActive: maintenance.active,
+            bungieMaintenanceUntil: maintenance.until,
+            bungieMaintenanceRemainingMs: maintenance.remainingMs,
+            dbQuiesceActive: maintenance.dbQuiesceActive,
+            cleanupStatus: maintenance.cleanupStatus,
+            cleanupStartedAt: maintenance.cleanupStartedAt,
+            cleanupFinishedAt: maintenance.cleanupFinishedAt,
+            snapshotGeneratedAt: snapshot.snapshotGeneratedAt ?? maintenance.snapshotGeneratedAt,
+            lastVacuumCompletedAt: maintenance.lastVacuumCompletedAt,
+        };
+        showingSnapshot = true;
+        snapshotGeneratedAt = snapshot.snapshotGeneratedAt;
+    }
 
     return (
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
             <h1 className="text-3xl font-bold ui-text-primary">Admin Stats</h1>
+
+            {showingSnapshot && (
+                <div className="ui-card px-4 py-3 text-sm text-red-700 dark:text-red-400">
+                    Database maintenance is in progress. Showing the last known admin stats snapshot
+                    {snapshotGeneratedAt ? ` from ${new Date(snapshotGeneratedAt).toLocaleString()}` : ''}.
+                </div>
+            )}
 
             <div className="ui-card px-4 py-3 text-sm ui-text-secondary">
                 <div className="flex flex-wrap items-center gap-4">

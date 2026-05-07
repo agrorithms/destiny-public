@@ -1,6 +1,6 @@
-import { getDbStats, getCrawlerStatus } from '@/lib/db/queries';
-import { getDb } from '@/lib/db';
-import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
+import { getDbStats, getCrawlerStatus } from './db/queries';
+import { getDb } from './db';
+import { getBungieMaintenanceStatus } from './bungie/maintenance';
 
 export interface ScannerStats {
     isRunning: boolean;
@@ -20,6 +20,12 @@ export interface SystemStats {
     bungieMaintenanceActive: boolean;
     bungieMaintenanceUntil: number | null;
     bungieMaintenanceRemainingMs: number;
+    dbQuiesceActive: boolean;
+    cleanupStatus: string;
+    cleanupStartedAt: number | null;
+    cleanupFinishedAt: number | null;
+    snapshotGeneratedAt: number | null;
+    lastVacuumCompletedAt: number | null;
     scanner: ScannerStats | null;
     database: {
         totalPlayers: number;
@@ -64,6 +70,12 @@ export function getSystemStats(): SystemStats {
         bungieMaintenanceActive: bungieMaintenance.active,
         bungieMaintenanceUntil: bungieMaintenance.until,
         bungieMaintenanceRemainingMs: bungieMaintenance.remainingMs,
+        dbQuiesceActive: bungieMaintenance.dbQuiesceActive,
+        cleanupStatus: bungieMaintenance.cleanupStatus,
+        cleanupStartedAt: bungieMaintenance.cleanupStartedAt,
+        cleanupFinishedAt: bungieMaintenance.cleanupFinishedAt,
+        snapshotGeneratedAt: bungieMaintenance.snapshotGeneratedAt,
+        lastVacuumCompletedAt: bungieMaintenance.lastVacuumCompletedAt,
         scanner: scannerStats,
         database: databaseStats,
     };

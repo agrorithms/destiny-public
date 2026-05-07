@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 interface MaintenanceStatus {
     bungieMaintenanceActive?: boolean;
+    dbQuiesceActive?: boolean;
 }
 
 export default function BungieMaintenanceAlert() {
@@ -17,7 +18,9 @@ export default function BungieMaintenanceAlert() {
                 .then((res) => res.json())
                 .then((status: MaintenanceStatus) => {
                     if (!cancelled) {
-                        setIsActive(status.bungieMaintenanceActive === true);
+                        setIsActive(
+                            status.bungieMaintenanceActive === true || status.dbQuiesceActive === true
+                        );
                     }
                 })
                 .catch((error) => {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
+import { readLeaderboardSnapshot } from '@/lib/maintenance/snapshots';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -169,6 +171,19 @@ export async function GET(request: NextRequest) {
             });
         }
     } catch (error) {
+        if (isDatabaseMaintenanceError(error)) {
+            const snapshot = readLeaderboardSnapshot();
+            if (snapshot?.data) {
+                return NextResponse.json({
+                    ...snapshot.data,
+                    maintenance: true,
+                    snapshotGeneratedAt: snapshot.snapshotGeneratedAt,
+                    requestedMode: mode,
+                    requestedHours: hours,
+                });
+            }
+        }
+
         console.error('[ERROR] Leaderboard query failed:', error);
         return NextResponse.json(
             { error: 'Internal server error' },

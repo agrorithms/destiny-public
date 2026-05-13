@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { formatBungieDisplayName, getActiveSessions } from '@/lib/db/queries';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
-import { getDb } from '@/lib/db';
+import { getDb, isDatabaseMaintenanceError } from '@/lib/db';
 import { getActivityDisplayName } from '@/lib/utils/activity';
 
 interface PlayerLookupRow {
@@ -185,6 +185,16 @@ export async function GET(request: NextRequest) {
             sessions: deduped,
         });
     } catch (error) {
+        if (isDatabaseMaintenanceError(error)) {
+            return NextResponse.json({
+                raidKey: raidKey || 'all',
+                count: 0,
+                sessions: [],
+                maintenance: true,
+                message: 'Database maintenance is in progress. Active sessions are temporarily unavailable.',
+            });
+        }
+
         console.error('[ERROR] Active sessions query failed:', error);
         return NextResponse.json(
             { error: 'Internal server error' },

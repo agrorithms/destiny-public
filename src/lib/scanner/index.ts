@@ -1,4 +1,9 @@
 import { BungieClient, BungieAPIError } from '../bungie/client';
+import {
+    isBungieSystemDisabledError,
+    recordBungieMaintenancePause,
+    waitForBungieMaintenancePause,
+} from '../bungie/maintenance';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
 import { insertFullPGCR, hasPGCR } from '../db/queries';
@@ -235,7 +240,7 @@ function writeScannerStats(): void {
 async function scanSinglePGCR(
     client: BungieClient,
     instanceId: string
-): Promise<'raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable'> {
+): Promise<'raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable' | 'system_disabled'> {
     if (hasPGCR(instanceId)) {
         return 'not_raid';
     }
@@ -313,12 +318,9 @@ async function scanSinglePGCR(
         }
 
         // System disabled
-        if (
-            (error instanceof BungieAPIError && error.errorStatus === 'SystemDisabled') ||
-            errorMessage.includes('SystemDisabled')
-        ) {
-            console.error('[SCANNER] Bungie API is disabled. Pausing...');
-            return 'error';
+        if (isBungieSystemDisabledError(error)) {
+            recordBungieMaintenancePause('scanner');
+            return 'system_disabled';
         }
 
         // Detect Cloudflare/HTTP server errors (502, 503, 504)
@@ -357,6 +359,7 @@ async function scanBatch(
     missedIdsAdded: number;
     missedIdsDropped: number;
     lastId: bigint;
+    systemDisabled: boolean;
 }> {
     let raidsFound = 0;
     let misses = 0;
@@ -370,14 +373,17 @@ async function scanBatch(
 
     // Shared index — each worker grabs the next available ID
     let nextIndex = 0;
+    let systemDisabled = false;
 
     // Track results in order for consecutive miss calculation
-    const results: ('raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable')[] = new Array(batchSize);
+    const results: Array<'raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable' | 'system_disabled' | undefined> = new Array(batchSize);
 
     async function worker() {
         while (true) {
+            if (systemDisabled) break;
+
             const myIndex = nextIndex++;
-            if (myIndex >= batchSize || state.shouldStop) break;
+            if (myIndex >= batchSize || state.shouldStop || systemDisabled) break;
 
             const result = await scanSinglePGCR(client, instanceIds[myIndex]);
             results[myIndex] = result;
@@ -398,6 +404,9 @@ async function scanBatch(
                     scanned++;
                     break;
                 case 'error_retryable':
+                    break;
+                case 'system_disabled':
+                    systemDisabled = true;
                     break;
             }
         }
@@ -442,6 +451,7 @@ async function scanBatch(
         missedIdsAdded: addedThisBatch,
         missedIdsDropped: droppedThisBatch,
         lastId,
+        systemDisabled,
     };
 }
 
@@ -454,16 +464,19 @@ async function retryMissedIds(
     client: BungieClient,
     missedIds: string[],
     workerCount: number
-): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[] }> {
+): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[]; systemDisabled: boolean }> {
     let retryRaidsFound = 0;
     let stillMissing = 0;
     let nextIndex = 0;
+    let systemDisabled = false;
     const stillMissingIds: string[] = [];
 
     async function worker() {
         while (true) {
+            if (systemDisabled) break;
+
             const myIndex = nextIndex++;
-            if (myIndex >= missedIds.length || state.shouldStop) break;
+            if (myIndex >= missedIds.length || state.shouldStop || systemDisabled) break;
 
             const result = await scanSinglePGCR(client, missedIds[myIndex]);
 
@@ -481,6 +494,11 @@ async function retryMissedIds(
                     stillMissing++;
                     stillMissingIds.push(missedIds[myIndex]);
                     break;
+                case 'system_disabled':
+                    systemDisabled = true;
+                    stillMissing++;
+                    stillMissingIds.push(missedIds[myIndex]);
+                    break;
             }
         }
     }
@@ -491,7 +509,7 @@ async function retryMissedIds(
     );
     await Promise.all(workers);
 
-    return { retryRaidsFound, stillMissing, stillMissingIds };
+    return { retryRaidsFound, stillMissing, stillMissingIds, systemDisabled };
 }
 
 
@@ -542,6 +560,15 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             return;
         }
 
+        const resumedAfterMaintenance = await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
+        if (state.shouldStop) {
+            scanLoop();
+            return;
+        }
+        if (resumedAfterMaintenance) {
+            console.log('[SCANNER] Resuming scan loop after Bungie maintenance pause.');
+        }
+
         // Check if another process has moved the position ahead
         const dbPosition = loadScannerPositionRaw();
         if (dbPosition > state.currentInstanceId) {
@@ -556,6 +583,18 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         const batchStart = state.currentInstanceId + BigInt(1);
         const result = await scanBatch(client, batchStart, config.batchSize, config.workers);
         const previousTotalScanned = state.totalScanned;
+
+        if (result.systemDisabled) {
+            state.totalScanned += result.scanned;
+            state.totalRaidsFound += result.raidsFound;
+            state.totalMisses += result.misses;
+            state.consecutiveMisses = 0;
+            writeScannerStats();
+
+            await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
+            setTimeout(scanLoop, 100);
+            return;
+        }
 
         state.totalScanned += result.scanned;
         state.totalRaidsFound += result.raidsFound;
@@ -616,8 +655,12 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
                     console.log(
                         `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found. ` +
                         `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
-                        `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}`
+                            `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}`
                     );
+
+                    if (retryResult.systemDisabled) {
+                        await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
+                    }
                 }
 
                 scanLoop();

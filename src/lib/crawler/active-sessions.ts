@@ -1,4 +1,5 @@
 import { getBungieClient, BungieAPIError } from '../bungie/client';
+import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
 import { deleteActiveSessionForPlayer, upsertActiveSession } from '../db/queries';
 import { getDb } from '../db';
@@ -154,6 +155,10 @@ export async function checkPlayerActivity(
             playerCount: effectivePartyMembers.length,
         };
     } catch (error) {
+        if (isBungieSystemDisabledError(error)) {
+            throw error;
+        }
+
         if (error instanceof BungieAPIError) {
             if (
                 error.errorStatus === 'DestinyPrivacyRestriction' ||
@@ -272,7 +277,12 @@ export async function refreshStaleSessionsWithOptions(options?: {
     let refreshed = 0;
     let removed = 0;
     for (const result of results) {
-        if (!result.success) continue;
+        if (!result.success) {
+            if (isBungieSystemDisabledError(result.error)) {
+                throw result.error;
+            }
+            continue;
+        }
         if (result.result) {
             refreshed++;
         } else {
@@ -370,7 +380,12 @@ export async function pollActiveSessions(
 
     let checked = 0;
     for (const result of sessionResults) {
-        if (!result.success) continue;
+        if (!result.success) {
+            if (isBungieSystemDisabledError(result.error)) {
+                throw result.error;
+            }
+            continue;
+        }
         checked++;
         const session = result.result;
         if (session && !sessions.has(session.sessionKey)) {

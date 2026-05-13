@@ -1,4 +1,5 @@
 import { getBungieClient, BungieAPIError } from '../bungie/client';
+import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { isRaidActivityHash } from '../bungie/manifest';
 import { updateLastCrawled } from '../db/queries';
 import { fetchAndStorePGCR } from './pgcr';
@@ -38,6 +39,10 @@ export async function getCharacterIds(
         const characterIds = profile.Response.profile?.data?.characterIds || [];
         return characterIds;
     } catch (error) {
+        if (isBungieSystemDisabledError(error)) {
+            throw error;
+        }
+
         if (error instanceof BungieAPIError) {
             // Error code 217 = DestinyAccountNotFound
             // Error code 1601 = DestinyAccountNotFound (alternate)
@@ -99,6 +104,11 @@ export async function getRecentRaidActivities(
         };
     } catch (error) {
         const errorMessage = (error as Error).message || '';
+
+        if (isBungieSystemDisabledError(error)) {
+            throw error;
+        }
+
         if (error instanceof BungieAPIError) {
             if (
                 error.errorStatus === 'DestinyPrivacyRestriction' ||
@@ -197,6 +207,10 @@ export async function crawlPlayer(
         updateLastCrawled(player.membershipId);
 
     } catch (error) {
+        if (isBungieSystemDisabledError(error)) {
+            throw error;
+        }
+
         if (error instanceof BungieAPIError && error.errorStatus === 'DestinyPrivacyRestriction') {
             console.log(`[SKIP] Private profile: ${player.displayName} (${player.membershipId})`);
         } else {

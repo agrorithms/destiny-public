@@ -47,6 +47,7 @@ export default function ActiveSessionsPage() {
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+    const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
 
     const fetchSessions = useCallback(async () => {
         setLoading(true);
@@ -55,6 +56,7 @@ export default function ActiveSessionsPage() {
             if (!response.ok) throw new Error(`API error: ${response.status}`);
             const data = await response.json();
             setSessions(data.sessions || []);
+            setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
             setLastUpdated(new Date());
         } catch (error) {
             console.error('Failed to fetch active sessions:', error);
@@ -109,6 +111,12 @@ export default function ActiveSessionsPage() {
                 )}
             </div>
 
+            {maintenanceMessage && (
+                <div className="ui-card p-4 mb-6 text-sm text-red-700 dark:text-red-400">
+                    {maintenanceMessage}
+                </div>
+            )}
+
             {/* Controls Card */}
             <div className="ui-card p-4 mb-6">
                 <div className="flex flex-wrap items-end gap-4">
@@ -143,7 +151,7 @@ export default function ActiveSessionsPage() {
             )}
 
             {/* Empty State */}
-            {!loading && filteredSessions.length === 0 && (
+            {!loading && filteredSessions.length === 0 && !maintenanceMessage && (
                 <div className="ui-card p-4">
                     <div className="text-center py-12 ui-text-secondary">
                         <p className="text-lg">No active raid sessions found</p>

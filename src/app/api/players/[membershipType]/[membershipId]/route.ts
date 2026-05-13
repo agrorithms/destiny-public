@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifest';
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
+import { isBungieSystemDisabledError } from '@/lib/bungie/maintenance';
 import { runConcurrentDiscovery } from '@/lib/discovery/snowball-concurrent';
 import { checkPlayerActivity } from '@/lib/crawler/active-sessions';
-import { getDb } from '@/lib/db';
+import { getDb, isDatabaseMaintenanceError } from '@/lib/db';
 import {
     type ActiveSessionDbRow,
     deleteActiveSessionForPlayer,
@@ -176,13 +177,21 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
 
     const verifyPromise = (async () => {
         const discoveryClient = getDiscoveryBungieClient();
-        const liveSession = await checkPlayerActivity({
-            membershipId,
-            membershipType,
-            displayName: identity?.displayName || identity?.bungieGlobalDisplayName || membershipId,
-            bungieGlobalDisplayName: identity?.bungieGlobalDisplayName || undefined,
-            bungieGlobalDisplayNameCode: identity?.bungieGlobalDisplayNameCode ?? undefined,
-        }, discoveryClient);
+        let liveSession;
+        try {
+            liveSession = await checkPlayerActivity({
+                membershipId,
+                membershipType,
+                displayName: identity?.displayName || identity?.bungieGlobalDisplayName || membershipId,
+                bungieGlobalDisplayName: identity?.bungieGlobalDisplayName || undefined,
+                bungieGlobalDisplayNameCode: identity?.bungieGlobalDisplayNameCode ?? undefined,
+            }, discoveryClient);
+        } catch (error) {
+            if (isBungieSystemDisabledError(error)) {
+                return;
+            }
+            throw error;
+        }
 
         if (!liveSession) {
             deleteActiveSessionForPlayer(membershipId);
@@ -203,6 +212,35 @@ function buildFallbackPlayerPayload(membershipType: number, membershipId: string
         membershipType,
         displayName: membershipId,
         baseName: membershipId,
+    };
+}
+
+function buildMaintenancePayload(
+    membershipType: number,
+    membershipId: string,
+    hours: number,
+    activeOnly: boolean
+) {
+    const player = buildFallbackPlayerPayload(membershipType, membershipId);
+
+    if (activeOnly) {
+        return {
+            maintenance: true,
+            message: 'Database maintenance is in progress. Player details are temporarily unavailable.',
+            player,
+            activeSession: null,
+        };
+    }
+
+    return {
+        maintenance: true,
+        message: 'Database maintenance is in progress. Player details are temporarily unavailable.',
+        player,
+        hours,
+        summary: [],
+        recentCompletions: [],
+        teammates: [],
+        activeSession: null,
     };
 }
 
@@ -431,6 +469,10 @@ export async function GET(
             }),
         });
     } catch (error) {
+        if (isDatabaseMaintenanceError(error)) {
+            return NextResponse.json(buildMaintenancePayload(membershipType, membershipId, hours, activeOnly));
+        }
+
         console.error('[ERROR] Player profile query failed:', error);
         return NextResponse.json(
             { error: 'Internal server error' },

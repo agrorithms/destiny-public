@@ -1,4 +1,5 @@
-import { getBungieClient, BungieAPIError } from '../bungie/client';
+import { getBungieClient } from '../bungie/client';
+import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, isRaidActivityHash } from '../bungie/manifest';
 import { hasPGCR, insertFullPGCR } from '../db/queries';
 import { isoToUnix } from '../utils/helpers';
@@ -115,11 +116,8 @@ export async function fetchAndStorePGCR(instanceId: string, callSource: string):
 
         return processed;
     } catch (error) {
-        if (error instanceof BungieAPIError) {
-            if (error.errorStatus === 'SystemDisabled') {
-                console.error(`[ERROR] Bungie API is currently disabled. Skipping PGCR ${instanceId}.`);
-                return null;
-            }
+        if (isBungieSystemDisabledError(error)) {
+            throw error;
         }
         console.error(`[ERROR] Error fetching PGCR ${instanceId}:`, (error as Error).message);
         return null;

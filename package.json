@@ -17,7 +17,8 @@
     "debug-players": "npx tsx scripts/debug-players.ts",
     "debug-sessions": "npx tsx scripts/debug-sessions.ts",
     "scanner": "npx tsx scripts/start-scanner.ts",
-    "cleanup-types": "npx tsx scripts/cleanup-membership-types.ts"
+    "cleanup-types": "npx tsx scripts/cleanup-membership-types.ts",
+    "test-maintenance-cycle": "npx tsx scripts/test-maintenance-cycle.ts"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.47.0",

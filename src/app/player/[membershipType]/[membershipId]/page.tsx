@@ -60,6 +60,8 @@ interface ActiveSession {
 }
 
 interface ProfileResponse {
+    maintenance?: boolean;
+    message?: string;
     player: ProfilePlayer;
     hours: number;
     summary: RaidSummaryRow[];
@@ -75,6 +77,8 @@ type CompletionSortKey = 'raid' | 'completed' | 'time';
 type TeammateSortKey = 'teammate' | 'clearsTogether' | 'avgTime';
 
 interface ActiveSessionResponse {
+    maintenance?: boolean;
+    message?: string;
     player: ProfilePlayer;
     activeSession: ActiveSession | null;
 }
@@ -111,6 +115,7 @@ export default function PlayerProfilePage() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
     const [profile, setProfile] = useState<ProfileResponse | null>(null);
     const [headerPlayer, setHeaderPlayer] = useState<ProfilePlayer | null>(null);
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
@@ -143,8 +148,9 @@ export default function PlayerProfilePage() {
             const data: ActiveSessionResponse = await response.json();
             setHeaderPlayer(data.player);
             setActiveSession(data.activeSession);
+            setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
 
-            if (opts?.verify !== false) {
+            if (opts?.verify !== false && !data.maintenance) {
                 void fetch(`/api/players/${membershipType}/${membershipId}?part=active&verify=1&enrich=1`)
                     .then(async (verifyResponse) => {
                         if (!verifyResponse.ok) return;
@@ -189,6 +195,7 @@ export default function PlayerProfilePage() {
             setProfile(data);
             setHeaderPlayer(data.player);
             setActiveSession(data.activeSession || null);
+            setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
         } catch (err) {
             setError((err as Error).message);
         } finally {
@@ -294,6 +301,12 @@ export default function PlayerProfilePage() {
             {error && (
                 <div className="bg-red-100 border border-red-300 rounded-lg p-4 mb-6 text-red-700 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
                     Error loading player profile: {error}
+                </div>
+            )}
+
+            {maintenanceMessage && (
+                <div className="ui-card p-4 mb-6 text-sm text-red-700 dark:text-red-400">
+                    {maintenanceMessage}
                 </div>
             )}
 

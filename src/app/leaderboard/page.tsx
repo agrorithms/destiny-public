@@ -25,6 +25,8 @@ interface AggregateResponse {
     fullClearsOnly: boolean;
     raidKeys: string[];
     entries: LeaderboardEntry[];
+    maintenance?: boolean;
+    snapshotGeneratedAt?: number;
 }
 
 interface IndividualResponse {
@@ -32,6 +34,8 @@ interface IndividualResponse {
     hours: number;
     fullClearsOnly: boolean;
     raidKeys: string[];
+    maintenance?: boolean;
+    snapshotGeneratedAt?: number;
     leaderboards: Record<string, {
         raidKey: string;
         raidName: string;
@@ -165,6 +169,14 @@ export default function LeaderboardPage() {
                 Top raiders by full clears in the last {formatHours(hours)}
                 {raidFilterLabel !== 'All Raids' && ` — ${raidFilterLabel}`}
             </p>
+
+            {data?.maintenance && (
+                <div className="ui-card p-4 mb-6 text-sm text-red-700 dark:text-red-400">
+                    Database maintenance is in progress. Showing the last known leaderboard snapshot
+                    {data.snapshotGeneratedAt ? ` from ${new Date(data.snapshotGeneratedAt).toLocaleString()}` : ''}.
+                    Filters are temporarily frozen until maintenance completes.
+                </div>
+            )}
 
             {/* Controls + Time Slider Card (combined) */}
             <div className="ui-card p-4 mb-6">

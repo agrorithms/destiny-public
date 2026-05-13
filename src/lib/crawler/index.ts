@@ -89,6 +89,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
 
 let isRunning = false;
 let shouldStop = false;
+const activeSessionInitialDelayMs = parseInt(process.env.CRAWLER_ACTIVE_SESSION_INITIAL_DELAY_MS || '30000', 10);
 
 /**
  * Run a single crawl cycle: pick players, crawl their activity history,
@@ -235,10 +236,13 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         }
 
         const startTime = Date.now();
-        await waitForBungieMaintenancePause('crawler', () => shouldStop);
+        const resumedAfterMaintenance = await waitForBungieMaintenancePause('crawler', () => shouldStop);
         if (shouldStop) {
             crawlLoop();
             return;
+        }
+        if (resumedAfterMaintenance) {
+            console.log('[CRAWLER] Resuming crawl loop after Bungie maintenance pause.');
         }
 
         writeCrawlerHeartbeat();
@@ -275,8 +279,11 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         if (shouldStop || !config.enableActiveSessionPolling) return;
 
         const startTime = Date.now();
-        await waitForBungieMaintenancePause('active session poll', () => shouldStop);
+        const resumedAfterMaintenance = await waitForBungieMaintenancePause('active session poll', () => shouldStop);
         if (shouldStop || !config.enableActiveSessionPolling) return;
+        if (resumedAfterMaintenance) {
+            console.log('[SESSIONS] Resuming active session polling after Bungie maintenance pause.');
+        }
 
         console.log(`\n👁️ Polling active sessions...`);
 
@@ -338,8 +345,8 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
     crawlLoop();
 
     if (config.enableActiveSessionPolling) {
-        // Delay active session polling by 30 seconds to stagger API usage
-        setTimeout(activeSessionLoop, 30000);
+        // Delay active session polling to stagger API usage; override for local harnesses.
+        setTimeout(activeSessionLoop, Math.max(0, activeSessionInitialDelayMs));
     }
 
     // Delay cleanup by 5 minutes

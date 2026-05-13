@@ -24,7 +24,10 @@
 .DS_Store
 *.pem
 
-
+#temp files or logs from maintenance scripts
+/tmp/
+*maintenance-state.json
+/maintenance-snapshots/
 
 # debug
 npm-debug.log*

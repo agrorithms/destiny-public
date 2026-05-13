@@ -34,6 +34,27 @@ function getMaintenancePauseMs(): number {
         : DEFAULT_MAINTENANCE_PAUSE_MS;
 }
 
+function getCleanupDelayMs(): number {
+    const configured = Number.parseInt(process.env.BUNGIE_MAINTENANCE_CLEANUP_DELAY_MS || '', 10);
+    return Number.isFinite(configured) && configured > 0
+        ? configured
+        : CLEANUP_DELAY_MS;
+}
+
+function getQuiesceGraceMs(): number {
+    const configured = Number.parseInt(process.env.BUNGIE_MAINTENANCE_QUIESCE_GRACE_MS || '', 10);
+    return Number.isFinite(configured) && configured >= 0
+        ? configured
+        : QUIESCE_GRACE_MS;
+}
+
+function getCleanupRetryWindowMs(): number {
+    const configured = Number.parseInt(process.env.BUNGIE_MAINTENANCE_CLEANUP_RETRY_WINDOW_MS || '', 10);
+    return Number.isFinite(configured) && configured > 0
+        ? configured
+        : CLEANUP_RETRY_WINDOW_MS;
+}
+
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -111,7 +132,7 @@ function runSqlMaintenanceOnce(): void {
 async function runSqlMaintenanceWithRetry(): Promise<void> {
     validateQuickCheck();
 
-    const deadline = Date.now() + CLEANUP_RETRY_WINDOW_MS;
+    const deadline = Date.now() + getCleanupRetryWindowMs();
     while (true) {
         try {
             runSqlMaintenanceOnce();
@@ -154,7 +175,7 @@ async function runDowntimeCleanup(owner: string, source: string, shouldStop?: ()
         }));
 
         closeDb();
-        await sleep(QUIESCE_GRACE_MS);
+        await sleep(getQuiesceGraceMs());
 
         if (shouldStop?.()) {
             throw new Error(`${source} stopped before DB maintenance could start`);
@@ -248,7 +269,7 @@ export function recordBungieMaintenancePause(source: string): BungieMaintenanceS
             bungieMaintenanceActive: true,
             bungieMaintenanceUntil: Math.max(current.bungieMaintenanceUntil || 0, proposedUntil),
             maintenanceEventStartedAt: eventStartedAt,
-            cleanupEligibleAt: eventStartedAt + CLEANUP_DELAY_MS,
+            cleanupEligibleAt: eventStartedAt + getCleanupDelayMs(),
             cleanupStatus: currentlyActive ? current.cleanupStatus : 'pending',
             cleanupStartedAt: currentlyActive ? current.cleanupStartedAt : null,
             cleanupFinishedAt: currentlyActive ? current.cleanupFinishedAt : null,

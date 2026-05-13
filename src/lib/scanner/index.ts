@@ -560,10 +560,13 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             return;
         }
 
-        await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
+        const resumedAfterMaintenance = await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
         if (state.shouldStop) {
             scanLoop();
             return;
+        }
+        if (resumedAfterMaintenance) {
+            console.log('[SCANNER] Resuming scan loop after Bungie maintenance pause.');
         }
 
         // Check if another process has moved the position ahead

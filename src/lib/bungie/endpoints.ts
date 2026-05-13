@@ -1,4 +1,4 @@
-const BASE_URL = 'https://www.bungie.net/Platform';
+const BASE_URL = process.env.BUNGIE_BASE_URL || 'https://www.bungie.net/Platform';
 
 export const BungieEndpoints = {
     getProfile: (membershipType: number, membershipId: string, components: number[]) =>

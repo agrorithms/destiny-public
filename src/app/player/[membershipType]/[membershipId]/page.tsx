@@ -970,26 +970,20 @@ function truncateDisplayName(name: string, maxLength: number): string {
     return `${name.slice(0, maxLength - 1)}...`;
 }
 
-function getPaginationItems(currentPage: number, totalPages: number): Array<number | 'ellipsis'> {
-    if (totalPages <= 7) {
+function getPaginationItems(currentPage: number, totalPages: number): number[] {
+    if (totalPages <= 3) {
         return Array.from({ length: totalPages }, (_, index) => index + 1);
     }
 
-    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
-    const sortedPages = Array.from(pages)
-        .filter((page) => page >= 1 && page <= totalPages)
-        .sort((a, b) => a - b);
-
-    const items: Array<number | 'ellipsis'> = [];
-    for (const page of sortedPages) {
-        const previous = items[items.length - 1];
-        if (typeof previous === 'number' && page - previous > 1) {
-            items.push('ellipsis');
-        }
-        items.push(page);
+    const middlePage = Math.ceil(totalPages / 2);
+    const pages = new Set([1, currentPage, totalPages]);
+    if (currentPage === 1 || currentPage === totalPages) {
+        pages.add(middlePage);
     }
 
-    return items;
+    return Array.from(pages)
+        .filter((page) => page >= 1 && page <= totalPages)
+        .sort((a, b) => a - b);
 }
 
 function PaginationControls({
@@ -1016,27 +1010,27 @@ function PaginationControls({
     const paginationItems = getPaginationItems(currentPage, totalPages);
 
     return (
-        <div className="flex flex-wrap items-center gap-2 border-t ui-divider mt-3 pt-3 text-xs ui-text-muted">
-            <span>
+        <div className="flex flex-nowrap items-center gap-1.5 border-t ui-divider mt-3 pt-3 text-xs ui-text-muted overflow-x-auto">
+            <span className="shrink-0">
                 {rangeStart}-{rangeEnd} of {totalItems}{loadedLimitReached ? ' loaded' : ''}
             </span>
-            <span aria-hidden="true">|</span>
-            <div className="flex flex-wrap items-center gap-1">
-                {PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS
-                    .filter((size) => size !== pageSize)
-                    .map((size) => (
-                        <button
-                            key={size}
-                            type="button"
-                            onClick={() => onPageSizeChange(size)}
-                            className="px-2 py-1 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                        >
-                            {size}
-                        </button>
+            <span className="shrink-0" aria-hidden="true">|</span>
+            <label className="shrink-0">
+                <span className="sr-only">Rows per page</span>
+                <select
+                    value={pageSize}
+                    onChange={(event) => onPageSizeChange(parseInt(event.target.value, 10))}
+                    className="px-1 py-1 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                >
+                    {PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS.map((size) => (
+                        <option key={size} value={size}>
+                            Rows: {size}
+                        </option>
                     ))}
-            </div>
-            <span aria-hidden="true">|</span>
-            <div className="flex flex-wrap items-center gap-1">
+                </select>
+            </label>
+            <span className="shrink-0" aria-hidden="true">|</span>
+            <div className="flex shrink-0 items-center gap-1">
                 <button
                     type="button"
                     onClick={() => onPageChange(Math.max(1, currentPage - 1))}
@@ -1046,23 +1040,19 @@ function PaginationControls({
                 >
                     &lt;
                 </button>
-                {paginationItems.map((item, index) => (
-                    item === 'ellipsis' ? (
-                        <span key={`ellipsis-${index}`} className="px-1">...</span>
-                    ) : (
-                        <button
-                            key={item}
-                            type="button"
-                            onClick={() => onPageChange(item)}
-                            className={`px-2 py-1 rounded-md transition-colors ${item === currentPage
-                                ? 'ui-toggle-active'
-                                : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-                                }`}
-                            aria-current={item === currentPage ? 'page' : undefined}
-                        >
-                            {item}
-                        </button>
-                    )
+                {paginationItems.map((item) => (
+                    <button
+                        key={item}
+                        type="button"
+                        onClick={() => onPageChange(item)}
+                        className={`px-2 py-1 rounded-md transition-colors ${item === currentPage
+                            ? 'ui-toggle-active'
+                            : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                            }`}
+                        aria-current={item === currentPage ? 'page' : undefined}
+                    >
+                        {item}
+                    </button>
                 ))}
                 <button
                     type="button"

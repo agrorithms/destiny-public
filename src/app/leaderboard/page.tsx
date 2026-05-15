@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
 import LeaderboardTable from '@/components/LeaderboardTable';
+import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
 // import StatsBar from '@/components/StatsBar';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useViewMode, useTimeRange, useLeaderboardSize } from '@/hooks/useLeaderboardPrefs';
@@ -58,18 +59,11 @@ const AVAILABLE_RAIDS: RaidOption[] = [
     { key: 'last_wish', name: 'Last Wish' },
 ];
 
-const HOUR_MARKS = Array.from({ length: 48 }, (_, i) => i + 1);
 const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100];
-
-function formatHours(h: number): string {
-    if (h === 1) return '1 hour';
-    return `${h} hours`;
-}
 
 export default function LeaderboardPage() {
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
     const [hours, setHours] = useTimeRange();
-    const [pendingHours, setPendingHours] = useState(hours);
     const [mode, setMode] = useViewMode();
     const [leaderboardSize, setLeaderboardSize] = useLeaderboardSize();
     const [loading, setLoading] = useState(true);
@@ -127,10 +121,6 @@ export default function LeaderboardPage() {
     }, [selectedRaids, hours, mode, leaderboardSize]);
 
     useEffect(() => {
-        setPendingHours(hours);
-    }, [hours]);
-
-    useEffect(() => {
         return () => activeControllerRef.current?.abort();
     }, []);
 
@@ -151,12 +141,6 @@ export default function LeaderboardPage() {
             ? AVAILABLE_RAIDS.find((r) => r.key === selectedRaids[0])?.name || ''
             : `${selectedRaids.length} Raids`;
 
-    const commitPendingHours = useCallback(() => {
-        if (pendingHours !== hours) {
-            setHours(pendingHours);
-        }
-    }, [pendingHours, hours, setHours]);
-
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
             {/* Stats Bar */}
@@ -166,7 +150,7 @@ export default function LeaderboardPage() {
 
             <h1 className="text-3xl font-bold ui-text-primary mb-2">Raid Leaderboard</h1>
             <p className="ui-text-secondary mb-6">
-                Top raiders by full clears in the last {formatHours(hours)}
+                Top raiders by full clears in the last {formatTimeRange(hours)}
                 {raidFilterLabel !== 'All Raids' && ` — ${raidFilterLabel}`}
             </p>
 
@@ -178,7 +162,7 @@ export default function LeaderboardPage() {
                 </div>
             )}
 
-            {/* Controls + Time Slider Card (combined) */}
+            {/* Controls + Time Range Card (combined) */}
             <div className="ui-card p-4 mb-6">
                 {/* Top row: Raid filter, View toggle, Refresh */}
                 <div className="flex flex-wrap items-end gap-4 mb-4">
@@ -245,60 +229,8 @@ export default function LeaderboardPage() {
                     </div>
                 </div>
 
-                {/* Divider */}
                 <div className="border-t ui-divider pt-4">
-                    {/* Time Slider */}
-                    <div className="flex items-center justify-between mb-3">
-                        <label className="text-sm ui-text-secondary">Time Range</label>
-                        <span className="text-sm font-medium ui-text-primary">
-                            Last {formatHours(pendingHours)}
-                        </span>
-                    </div>
-                    <input
-                        type="range"
-                        min={0}
-                        max={HOUR_MARKS.length - 1}
-                        value={HOUR_MARKS.indexOf(pendingHours)}
-                        onChange={(e) => setPendingHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
-                        onMouseUp={commitPendingHours}
-                        onTouchEnd={commitPendingHours}
-                        onBlur={commitPendingHours}
-                        onKeyUp={(e) => {
-                            if (
-                                e.key === 'ArrowLeft' ||
-                                e.key === 'ArrowRight' ||
-                                e.key === 'ArrowUp' ||
-                                e.key === 'ArrowDown' ||
-                                e.key === 'Home' ||
-                                e.key === 'End' ||
-                                e.key === 'PageUp' ||
-                                e.key === 'PageDown'
-                            ) {
-                                commitPendingHours();
-                            }
-                        }}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer ui-range-accent dark:bg-gray-700"
-                    />
-                    <div className="relative mt-2 h-4">
-                        {[1, 6, 12, 24, 36, 48].map((h) => {
-                            const pct = ((h - 1) / (HOUR_MARKS.length - 1)) * 100;
-                            const offsetClass = h === 1 ? 'translate-x-0' : h === 48 ? '-translate-x-full' : '-translate-x-1/2';
-
-                            return (
-                                <span
-                                    key={h}
-                                    className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === pendingHours ? 'text-[var(--ui-accent)] font-medium' : 'ui-text-muted'}`}
-                                    style={{ left: `${pct}%` }}
-                                    onClick={() => {
-                                        setPendingHours(h);
-                                        setHours(h);
-                                    }}
-                                >
-                                    {h}h
-                                </span>
-                            );
-                        })}
-                    </div>
+                    <TimeSlider value={hours} onChange={setHours} />
                 </div>
             </div>
 

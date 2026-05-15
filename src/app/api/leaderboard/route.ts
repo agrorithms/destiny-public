@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
         ? raidsParam.split(',').filter((key) => allRaids[key])
         : [];
 
-    if (hours < 1 || hours > 168) {
+    if (hours < 1 || hours > 720) {
         return NextResponse.json(
-            { error: 'hours must be between 1 and 168' },
+            { error: 'hours must be between 1 and 720' },
             { status: 400 }
         );
     }

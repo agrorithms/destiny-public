@@ -6,6 +6,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 // import StatsBar from '@/components/StatsBar';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
+import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
+import { useTimeRange } from '@/hooks/useLeaderboardPrefs';
 
 interface ProfilePlayer {
     membershipId: string;
@@ -83,7 +85,6 @@ interface ActiveSessionResponse {
     activeSession: ActiveSession | null;
 }
 
-const HOUR_MARKS = Array.from({ length: 48 }, (_, i) => i + 1);
 const SUMMARY_FIRST_DIRECTIONS: Record<SummarySortKey, SortDirection> = {
     raid: 'asc',
     clears: 'desc',
@@ -100,18 +101,13 @@ const TEAMMATE_FIRST_DIRECTIONS: Record<TeammateSortKey, SortDirection> = {
     avgTime: 'asc',
 };
 
-function formatHours(hours: number): string {
-    return hours === 1 ? '1 hour' : `${hours} hours`;
-}
-
 export default function PlayerProfilePage() {
     const params = useParams<{ membershipType: string; membershipId: string }>();
 
     const membershipType = params?.membershipType;
     const membershipId = params?.membershipId;
 
-    const [hours, setHours] = useState(48);
-    const [pendingHours, setPendingHours] = useState(48);
+    const [hours, setHours] = useTimeRange();
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -223,10 +219,6 @@ export default function PlayerProfilePage() {
         fetchProfile({ refresh: false });
     }, [fetchProfile, membershipId, membershipType]);
 
-    useEffect(() => {
-        setPendingHours(hours);
-    }, [hours]);
-
     const totalCompletions = useMemo(() => {
         return (profile?.summary || []).reduce((sum, row) => sum + row.completions, 0);
     }, [profile]);
@@ -279,12 +271,6 @@ export default function PlayerProfilePage() {
     const onTeammateSort = (key: TeammateSortKey) => {
         setTeammateSort((current) => getNextSortState(current, key, TEAMMATE_FIRST_DIRECTIONS));
     };
-
-    const commitPendingHours = useCallback(() => {
-        if (pendingHours !== hours) {
-            setHours(pendingHours);
-        }
-    }, [pendingHours, hours]);
 
     if (!membershipType || !membershipId) {
         return (
@@ -352,7 +338,7 @@ export default function PlayerProfilePage() {
                         </div>
                     </div>
                     <p className="ui-text-secondary">
-                        Raid completions in the last {formatHours(hours)}
+                        Raid completions in the last {formatTimeRange(hours)}
                     </p>
                 </div>
             )}
@@ -396,57 +382,7 @@ export default function PlayerProfilePage() {
                         </div>
 
                         <div className="border-t ui-divider pt-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <label className="text-sm ui-text-secondary">Time Range</label>
-                                <span className="text-sm font-medium ui-text-primary">
-                                    Last {formatHours(pendingHours)}
-                                </span>
-                            </div>
-                            <input
-                                type="range"
-                                min={0}
-                                max={HOUR_MARKS.length - 1}
-                                value={HOUR_MARKS.indexOf(pendingHours)}
-                                onChange={(e) => setPendingHours(HOUR_MARKS[parseInt(e.target.value, 10)])}
-                                onMouseUp={commitPendingHours}
-                                onTouchEnd={commitPendingHours}
-                                onBlur={commitPendingHours}
-                                onKeyUp={(e) => {
-                                    if (
-                                        e.key === 'ArrowLeft' ||
-                                        e.key === 'ArrowRight' ||
-                                        e.key === 'ArrowUp' ||
-                                        e.key === 'ArrowDown' ||
-                                        e.key === 'Home' ||
-                                        e.key === 'End' ||
-                                        e.key === 'PageUp' ||
-                                        e.key === 'PageDown'
-                                    ) {
-                                        commitPendingHours();
-                                    }
-                                }}
-                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer ui-range-accent dark:bg-gray-700"
-                            />
-                            <div className="relative mt-2 h-4">
-                                {[1, 6, 12, 24, 36, 48].map((h) => {
-                                    const pct = ((h - 1) / (HOUR_MARKS.length - 1)) * 100;
-                                    const offsetClass = h === 1 ? 'translate-x-0' : h === 48 ? '-translate-x-full' : '-translate-x-1/2';
-
-                                    return (
-                                        <span
-                                            key={h}
-                                            className={`absolute top-0 text-xs cursor-pointer ${offsetClass} ${h === pendingHours ? 'text-[var(--ui-accent)] font-medium' : 'ui-text-muted'}`}
-                                            style={{ left: `${pct}%` }}
-                                            onClick={() => {
-                                                setPendingHours(h);
-                                                setHours(h);
-                                            }}
-                                        >
-                                            {h}h
-                                        </span>
-                                    );
-                                })}
-                            </div>
+                            <TimeSlider value={hours} onChange={setHours} />
                         </div>
                     </div>
 

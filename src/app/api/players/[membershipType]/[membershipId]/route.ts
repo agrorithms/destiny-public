@@ -386,8 +386,8 @@ export async function GET(
     const hours = parseInt(request.nextUrl.searchParams.get('hours') || '48', 10);
     const refresh = request.nextUrl.searchParams.get('refresh') === '1';
 
-    if (!activeOnly && (hours < 1 || hours > 48)) {
-        return NextResponse.json({ error: 'hours must be between 1 and 48' }, { status: 400 });
+    if (!activeOnly && (hours < 1 || hours > 720)) {
+        return NextResponse.json({ error: 'hours must be between 1 and 720' }, { status: 400 });
     }
 
     try {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { DEFAULT_TIME_RANGE_HOURS, isTimeRangePreset } from '@/components/TimeSlider';
 
 const VIEW_MODE_KEY = 'destiny-farm-finder-view-mode';
 const TIME_RANGE_KEY = 'destiny-farm-finder-time-range';
@@ -39,26 +40,26 @@ export function useViewMode(): ['aggregate' | 'individual', (mode: 'aggregate' |
 }
 
 /**
- * Persisted time range slider value.
- * Defaults to 48 hours.
+ * Persisted time range preset value.
+ * Defaults to 24 hours.
  */
 export function useTimeRange(): [number, (hours: number) => void] {
     const [hours, setHours] = useState(() => {
         if (typeof window === 'undefined') {
-            return 48;
+            return DEFAULT_TIME_RANGE_HOURS;
         }
         try {
             const stored = localStorage.getItem(TIME_RANGE_KEY);
             if (stored) {
-                const parsed = parseFloat(stored);
-                if (!isNaN(parsed)) {
-                    return Math.min(48, Math.max(1, Math.round(parsed)));
+                const parsed = parseInt(stored, 10);
+                if (isTimeRangePreset(parsed)) {
+                    return parsed;
                 }
             }
         } catch {
             // Ignore
         }
-        return 48;
+        return DEFAULT_TIME_RANGE_HOURS;
     });
 
     useEffect(() => {
@@ -69,7 +70,11 @@ export function useTimeRange(): [number, (hours: number) => void] {
         }
     }, [hours]);
 
-    return [hours, setHours];
+    const setTimeRange = useCallback((nextHours: number) => {
+        setHours(isTimeRangePreset(nextHours) ? nextHours : DEFAULT_TIME_RANGE_HOURS);
+    }, []);
+
+    return [hours, setTimeRange];
 }
 
 /**

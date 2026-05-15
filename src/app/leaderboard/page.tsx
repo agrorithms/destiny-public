@@ -263,8 +263,8 @@ export default function LeaderboardPage() {
                             return (
                                 <div className="ui-card p-4">
                                     <div className="text-center py-12 ui-text-secondary">
-                                        <p className="text-lg">No raids selected</p>
-                                        <p className="text-sm mt-1">Select one or more raids from the dropdown above</p>
+                                        <p className="text-lg">No leaderboards found</p>
+                                        <p className="text-sm mt-1">Try a different time range or refresh the leaderboard</p>
                                     </div>
                                 </div>
                             );

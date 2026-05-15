@@ -40,7 +40,7 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
         onChange(raids.map((r) => r.key));
     }
 
-    function clearAll() {
+    function clearFilter() {
         onChange([]);
     }
 
@@ -76,7 +76,7 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
             {/* Dropdown Panel */}
             {isOpen && (
                 <div className="absolute z-50 mt-1 w-full min-w-[260px] ui-input rounded-lg shadow-xl overflow-hidden">
-                    {/* Select All / Clear All */}
+                    {/* Select All / Clear Filter */}
                     <div className="flex items-center justify-between px-3 py-2 border-b ui-divider">
                         <button
                             onClick={(e) => {
@@ -90,11 +90,11 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                clearAll();
+                                clearFilter();
                             }}
                             className="text-xs text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-300"
                         >
-                            Clear All
+                            Clear Filter
                         </button>
                     </div>
 

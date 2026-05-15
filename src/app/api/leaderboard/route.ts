@@ -39,11 +39,12 @@ export async function GET(request: NextRequest) {
         const db = getDb();
         const cutoff = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
 
-        if (mode === 'individual' && raidKeys.length > 0) {
-            // Return separate leaderboards for each selected raid
+        if (mode === 'individual') {
+            // Empty raid selection means no filter, so fan out across every raid.
+            const effectiveRaidKeys = raidKeys.length > 0 ? raidKeys : Object.keys(allRaids);
             const leaderboards: Record<string, any> = {};
 
-            for (const raidKey of raidKeys) {
+            for (const raidKey of effectiveRaidKeys) {
                 let query = `
           WITH run_durations AS (
             SELECT
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
                 mode: 'individual',
                 hours,
                 fullClearsOnly,
-                raidKeys,
+                raidKeys: effectiveRaidKeys,
                 leaderboards,
             });
         } else {

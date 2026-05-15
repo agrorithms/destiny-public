@@ -6,8 +6,15 @@ import Image from 'next/image';
 import Link from 'next/link';
 // import StatsBar from '@/components/StatsBar';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
+import RaidMultiSelect from '@/components/RaidMultiSelect';
 import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
-import { useTimeRange } from '@/hooks/useLeaderboardPrefs';
+import { PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS, useProfileCompletionsPageSize, useTimeRange } from '@/hooks/useLeaderboardPrefs';
+import { useRaidFilter } from '@/hooks/useRaidFilter';
+
+interface RaidOption {
+    key: string;
+    name: string;
+}
 
 interface ProfilePlayer {
     membershipId: string;
@@ -85,6 +92,20 @@ interface ActiveSessionResponse {
     activeSession: ActiveSession | null;
 }
 
+const AVAILABLE_RAIDS: RaidOption[] = [
+    { key: 'the_desert_perpetual', name: 'The Desert Perpetual' },
+    { key: 'salvations_edge', name: "Salvation's Edge" },
+    { key: 'crotas_end', name: "Crota's End" },
+    { key: 'root_of_nightmares', name: 'Root of Nightmares' },
+    { key: 'kings_fall', name: "King's Fall" },
+    { key: 'vow_of_the_disciple', name: 'Vow of the Disciple' },
+    { key: 'vault_of_glass', name: 'Vault of Glass' },
+    { key: 'deep_stone_crypt', name: 'Deep Stone Crypt' },
+    { key: 'garden_of_salvation', name: 'Garden of Salvation' },
+    { key: 'last_wish', name: 'Last Wish' },
+];
+const RECENT_COMPLETIONS_LOADED_LIMIT = 500;
+
 const SUMMARY_FIRST_DIRECTIONS: Record<SummarySortKey, SortDirection> = {
     raid: 'asc',
     clears: 'desc',
@@ -108,6 +129,9 @@ export default function PlayerProfilePage() {
     const membershipId = params?.membershipId;
 
     const [hours, setHours] = useTimeRange();
+    const [selectedRaids, setSelectedRaids] = useRaidFilter();
+    const [completionPageSize, setCompletionPageSize] = useProfileCompletionsPageSize();
+    const [completionPage, setCompletionPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -223,18 +247,70 @@ export default function PlayerProfilePage() {
         return (profile?.summary || []).reduce((sum, row) => sum + row.completions, 0);
     }, [profile]);
     const currentPlayer = profile?.player || headerPlayer;
+    const availableRaidKeys = useMemo(() => new Set(AVAILABLE_RAIDS.map((raid) => raid.key)), []);
+    const validSelectedRaids = useMemo(() => {
+        return selectedRaids.filter((raidKey) => availableRaidKeys.has(raidKey));
+    }, [availableRaidKeys, selectedRaids]);
+    const raidFilterActive = validSelectedRaids.length > 0 && validSelectedRaids.length < AVAILABLE_RAIDS.length;
+    const selectedRaidSet = useMemo(() => new Set(validSelectedRaids), [validSelectedRaids]);
+    const selectedRaidNames = useMemo(() => {
+        if (!raidFilterActive) return [];
+        return AVAILABLE_RAIDS
+            .filter((raid) => selectedRaidSet.has(raid.key))
+            .map((raid) => raid.name);
+    }, [raidFilterActive, selectedRaidSet]);
+    const selectedRaidTitle = selectedRaidNames.join(', ');
+
+    const filteredSummary = useMemo(() => {
+        const rows = profile?.summary || [];
+        if (!raidFilterActive) return rows;
+        return rows.filter((row) => selectedRaidSet.has(row.raidKey));
+    }, [profile?.summary, raidFilterActive, selectedRaidSet]);
+
+    const filteredRecentCompletions = useMemo(() => {
+        const rows = profile?.recentCompletions || [];
+        if (!raidFilterActive) return rows;
+        return rows.filter((row) => selectedRaidSet.has(row.raidKey));
+    }, [profile?.recentCompletions, raidFilterActive, selectedRaidSet]);
+
+    const filteredTeammates = useMemo(() => {
+        const rows = profile?.teammates || [];
+        if (!raidFilterActive) return rows;
+        return rows.filter((row) => selectedRaidSet.has(row.raidKey));
+    }, [profile?.teammates, raidFilterActive, selectedRaidSet]);
+    const filteredCompletions = useMemo(() => {
+        return filteredSummary.reduce((sum, row) => sum + row.completions, 0);
+    }, [filteredSummary]);
+    const loadedCompletionsLimitReached = (profile?.recentCompletions.length || 0) === RECENT_COMPLETIONS_LOADED_LIMIT;
 
     const sortedSummary = useMemo(() => {
-        return sortRaidSummary(profile?.summary || [], summarySort);
-    }, [profile?.summary, summarySort]);
+        return sortRaidSummary(filteredSummary, summarySort);
+    }, [filteredSummary, summarySort]);
 
     const sortedCompletions = useMemo(() => {
-        return sortRecentCompletions(profile?.recentCompletions || [], completionSort);
-    }, [profile?.recentCompletions, completionSort]);
+        return sortRecentCompletions(filteredRecentCompletions, completionSort);
+    }, [filteredRecentCompletions, completionSort]);
+
+    const completionTotalPages = Math.max(1, Math.ceil(sortedCompletions.length / completionPageSize));
+    const effectiveCompletionPage = Math.min(completionPage, completionTotalPages);
+    const paginatedCompletions = useMemo(() => {
+        const start = (effectiveCompletionPage - 1) * completionPageSize;
+        return sortedCompletions.slice(start, start + completionPageSize);
+    }, [effectiveCompletionPage, completionPageSize, sortedCompletions]);
+    const completionRangeStart = sortedCompletions.length === 0 ? 0 : (effectiveCompletionPage - 1) * completionPageSize + 1;
+    const completionRangeEnd = Math.min(effectiveCompletionPage * completionPageSize, sortedCompletions.length);
 
     const teammateGroups = useMemo(() => {
-        return groupTeammatesByRaid(profile?.teammates || [], teammateSort);
-    }, [profile?.teammates, teammateSort]);
+        return groupTeammatesByRaid(filteredTeammates, teammateSort);
+    }, [filteredTeammates, teammateSort]);
+
+    useEffect(() => {
+        setCompletionPage(1);
+    }, [completionPageSize, completionSort.direction, completionSort.key, hours, validSelectedRaids]);
+
+    useEffect(() => {
+        setCompletionPage((currentPage) => Math.min(currentPage, completionTotalPages));
+    }, [completionTotalPages]);
 
     const toggleSection = (section: SectionKey) => {
         setVisibleSections((current) => {
@@ -362,9 +438,25 @@ export default function PlayerProfilePage() {
                     <div className="ui-card p-4 mb-6">
                         <div className="flex flex-wrap items-end gap-4 mb-4">
                             <div>
+                                <label className="block text-xs ui-text-muted mb-1">Raids</label>
+                                <RaidMultiSelect
+                                    raids={AVAILABLE_RAIDS}
+                                    selected={selectedRaids}
+                                    onChange={setSelectedRaids}
+                                />
+                            </div>
+
+                            <div>
                                 <label className="block text-xs ui-text-muted mb-1">Total Clears</label>
                                 <div className="text-2xl font-bold ui-text-primary">{totalCompletions}</div>
                             </div>
+
+                            {raidFilterActive && (
+                                <div title={selectedRaidTitle}>
+                                    <label className="block text-xs ui-text-muted mb-1" title={selectedRaidTitle}>Filtered Clears</label>
+                                    <div className="text-2xl font-bold ui-text-primary" title={selectedRaidTitle}>{filteredCompletions}</div>
+                                </div>
+                            )}
 
                             <div>
                                 <button
@@ -419,7 +511,7 @@ export default function PlayerProfilePage() {
                                 {loading && !profile.summary.length && (
                                     <div className="h-28 ui-skeleton rounded animate-pulse" />
                                 )}
-                                {!loading && profile.summary.length === 0 && (
+                                {!loading && sortedSummary.length === 0 && (
                                     <p className="ui-text-secondary text-sm">No full clears found in this time range.</p>
                                 )}
                                 {sortedSummary.length > 0 && (
@@ -477,55 +569,68 @@ export default function PlayerProfilePage() {
                                 {loading && !profile.recentCompletions.length && (
                                     <div className="h-28 ui-skeleton rounded animate-pulse" />
                                 )}
-                                {!loading && profile.recentCompletions.length === 0 && (
+                                {!loading && sortedCompletions.length === 0 && (
                                     <p className="ui-text-secondary text-sm">No recent completions found in this time range.</p>
                                 )}
-                                {profile.recentCompletions.length > 0 && (
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="border-b ui-divider ui-text-muted">
-                                                    <th className="text-left py-2">
-                                                        <SortHeaderButton
-                                                            label="Raid"
-                                                            align="left"
-                                                            active={completionSort.key === 'raid'}
-                                                            direction={completionSort.direction}
-                                                            onClick={() => onCompletionSort('raid')}
-                                                        />
-                                                    </th>
-                                                    <th className="text-right py-2">
-                                                        <SortHeaderButton
-                                                            label="Completed"
-                                                            align="right"
-                                                            active={completionSort.key === 'completed'}
-                                                            direction={completionSort.direction}
-                                                            onClick={() => onCompletionSort('completed')}
-                                                        />
-                                                    </th>
-                                                    <th className="text-right py-2">
-                                                        <SortHeaderButton
-                                                            label="Time"
-                                                            align="right"
-                                                            active={completionSort.key === 'time'}
-                                                            direction={completionSort.direction}
-                                                            onClick={() => onCompletionSort('time')}
-                                                        />
-                                                    </th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {sortedCompletions.map((row) => (
-                                                    <tr key={row.instanceId} className="border-b border-gray-100 dark:border-gray-800">
-                                                        <td className="py-2 ui-text-primary">{row.raidName}</td>
-                                                        <td className="py-2 text-right ui-text-secondary" title={formatCompletionDate(row.completedAt)}>
-                                                            {formatRelativeTime(row.completedAt)}
-                                                        </td>
-                                                        <td className="py-2 text-right ui-text-secondary">{formatDuration(row.timePlayedSeconds)}</td>
+                                {sortedCompletions.length > 0 && (
+                                    <div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b ui-divider ui-text-muted">
+                                                        <th className="text-left py-2">
+                                                            <SortHeaderButton
+                                                                label="Raid"
+                                                                align="left"
+                                                                active={completionSort.key === 'raid'}
+                                                                direction={completionSort.direction}
+                                                                onClick={() => onCompletionSort('raid')}
+                                                            />
+                                                        </th>
+                                                        <th className="text-right py-2">
+                                                            <SortHeaderButton
+                                                                label="Completed"
+                                                                align="right"
+                                                                active={completionSort.key === 'completed'}
+                                                                direction={completionSort.direction}
+                                                                onClick={() => onCompletionSort('completed')}
+                                                            />
+                                                        </th>
+                                                        <th className="text-right py-2">
+                                                            <SortHeaderButton
+                                                                label="Time"
+                                                                align="right"
+                                                                active={completionSort.key === 'time'}
+                                                                direction={completionSort.direction}
+                                                                onClick={() => onCompletionSort('time')}
+                                                            />
+                                                        </th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody>
+                                                    {paginatedCompletions.map((row) => (
+                                                        <tr key={row.instanceId} className="border-b border-gray-100 dark:border-gray-800">
+                                                            <td className="py-2 ui-text-primary">{row.raidName}</td>
+                                                            <td className="py-2 text-right ui-text-secondary" title={formatCompletionDate(row.completedAt)}>
+                                                                {formatRelativeTime(row.completedAt)}
+                                                            </td>
+                                                            <td className="py-2 text-right ui-text-secondary">{formatDuration(row.timePlayedSeconds)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <PaginationControls
+                                            currentPage={effectiveCompletionPage}
+                                            pageSize={completionPageSize}
+                                            totalItems={sortedCompletions.length}
+                                            totalPages={completionTotalPages}
+                                            rangeStart={completionRangeStart}
+                                            rangeEnd={completionRangeEnd}
+                                            loadedLimitReached={loadedCompletionsLimitReached}
+                                            onPageChange={setCompletionPage}
+                                            onPageSizeChange={setCompletionPageSize}
+                                        />
                                     </div>
                                 )}
                             </div>
@@ -537,7 +642,7 @@ export default function PlayerProfilePage() {
                                 {loading && !profile.teammates.length && (
                                     <div className="h-28 ui-skeleton rounded animate-pulse" />
                                 )}
-                                {!loading && profile.teammates.length === 0 && (
+                                {!loading && teammateGroups.length === 0 && (
                                     <p className="ui-text-secondary text-sm">No teammate completions found in this time range.</p>
                                 )}
                                 {teammateGroups.length > 0 && (
@@ -863,6 +968,114 @@ function getSortIcon(direction: SortDirection): string {
 function truncateDisplayName(name: string, maxLength: number): string {
     if (name.length <= maxLength) return name;
     return `${name.slice(0, maxLength - 1)}...`;
+}
+
+function getPaginationItems(currentPage: number, totalPages: number): Array<number | 'ellipsis'> {
+    if (totalPages <= 7) {
+        return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+    const sortedPages = Array.from(pages)
+        .filter((page) => page >= 1 && page <= totalPages)
+        .sort((a, b) => a - b);
+
+    const items: Array<number | 'ellipsis'> = [];
+    for (const page of sortedPages) {
+        const previous = items[items.length - 1];
+        if (typeof previous === 'number' && page - previous > 1) {
+            items.push('ellipsis');
+        }
+        items.push(page);
+    }
+
+    return items;
+}
+
+function PaginationControls({
+    currentPage,
+    pageSize,
+    totalItems,
+    totalPages,
+    rangeStart,
+    rangeEnd,
+    loadedLimitReached,
+    onPageChange,
+    onPageSizeChange,
+}: {
+    currentPage: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+    rangeStart: number;
+    rangeEnd: number;
+    loadedLimitReached: boolean;
+    onPageChange: (page: number) => void;
+    onPageSizeChange: (size: number) => void;
+}) {
+    const paginationItems = getPaginationItems(currentPage, totalPages);
+
+    return (
+        <div className="flex flex-wrap items-center gap-2 border-t ui-divider mt-3 pt-3 text-xs ui-text-muted">
+            <span>
+                {rangeStart}-{rangeEnd} of {totalItems}{loadedLimitReached ? ' loaded' : ''}
+            </span>
+            <span aria-hidden="true">|</span>
+            <div className="flex flex-wrap items-center gap-1">
+                {PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS
+                    .filter((size) => size !== pageSize)
+                    .map((size) => (
+                        <button
+                            key={size}
+                            type="button"
+                            onClick={() => onPageSizeChange(size)}
+                            className="px-2 py-1 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                        >
+                            {size}
+                        </button>
+                    ))}
+            </div>
+            <span aria-hidden="true">|</span>
+            <div className="flex flex-wrap items-center gap-1">
+                <button
+                    type="button"
+                    onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    aria-label="Previous page"
+                >
+                    &lt;
+                </button>
+                {paginationItems.map((item, index) => (
+                    item === 'ellipsis' ? (
+                        <span key={`ellipsis-${index}`} className="px-1">...</span>
+                    ) : (
+                        <button
+                            key={item}
+                            type="button"
+                            onClick={() => onPageChange(item)}
+                            className={`px-2 py-1 rounded-md transition-colors ${item === currentPage
+                                ? 'ui-toggle-active'
+                                : 'bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                                }`}
+                            aria-current={item === currentPage ? 'page' : undefined}
+                        >
+                            {item}
+                        </button>
+                    )
+                ))}
+                <button
+                    type="button"
+                    onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-2 py-1 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    aria-label="Next page"
+                >
+                    &gt;
+                </button>
+            </div>
+        </div>
+    );
 }
 
 function SortHeaderButton({

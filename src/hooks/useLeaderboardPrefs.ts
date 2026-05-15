@@ -6,7 +6,9 @@ import { DEFAULT_TIME_RANGE_HOURS, isTimeRangePreset } from '@/components/TimeSl
 const VIEW_MODE_KEY = 'destiny-farm-finder-view-mode';
 const TIME_RANGE_KEY = 'destiny-farm-finder-time-range';
 const LEADERBOARD_SIZE_KEY = 'destiny-farm-finder-leaderboard-size';
+const PROFILE_COMPLETIONS_PAGE_SIZE_KEY = 'destiny-farm-finder-profile-completions-page-size';
 const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100] as const;
+export const PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 /**
  * Persisted view mode toggle (aggregate vs individual).
@@ -109,4 +111,44 @@ export function useLeaderboardSize(): [number, (size: number) => void] {
     }, [size]);
 
     return [size, setSize];
+}
+
+/**
+ * Persisted player profile Raid Completions rows per page.
+ * Defaults to 25 rows.
+ */
+export function useProfileCompletionsPageSize(): [number, (size: number) => void] {
+    const [size, setSize] = useState(() => {
+        if (typeof window === 'undefined') {
+            return 25;
+        }
+        try {
+            const stored = localStorage.getItem(PROFILE_COMPLETIONS_PAGE_SIZE_KEY);
+            if (stored) {
+                const parsed = parseInt(stored, 10);
+                if (PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS.includes(parsed as (typeof PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS)[number])) {
+                    return parsed;
+                }
+            }
+        } catch {
+            // Ignore
+        }
+        return 25;
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(PROFILE_COMPLETIONS_PAGE_SIZE_KEY, size.toString());
+        } catch {
+            // Ignore
+        }
+    }, [size]);
+
+    const setPageSize = useCallback((nextSize: number) => {
+        if (PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS.includes(nextSize as (typeof PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS)[number])) {
+            setSize(nextSize);
+        }
+    }, []);
+
+    return [size, setPageSize];
 }

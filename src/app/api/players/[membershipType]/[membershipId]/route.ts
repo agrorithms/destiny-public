@@ -433,7 +433,7 @@ export async function GET(
         await verifyActiveSession(membershipType, membershipId, identityForSession);
 
         const summary = getPlayerRaidCompletionSummary(membershipId, hours);
-        const recentCompletions = getPlayerRecentCompletions(membershipId, hours, 100);
+        const recentCompletions = getPlayerRecentCompletions(membershipId, hours, 500);
         const teammates = getPlayerRaidTeammateSummary(membershipId, hours);
         const activeSession = getActiveSessionForPlayer(membershipId, 600);
         const raids = getAllRaidDefinitions();

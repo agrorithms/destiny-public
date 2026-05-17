@@ -3,7 +3,7 @@ import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifes
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
 import { isBungieSystemDisabledError } from '@/lib/bungie/maintenance';
 import { runConcurrentDiscovery } from '@/lib/discovery/snowball-concurrent';
-import { checkPlayerActivity } from '@/lib/crawler/active-sessions';
+import { checkPlayerActivityDetailed } from '@/lib/crawler/active-sessions';
 import { getDb, isDatabaseMaintenanceError } from '@/lib/db';
 import {
     type ActiveSessionDbRow,
@@ -14,17 +14,27 @@ import {
     getPlayerRaidCompletionSummary,
     getPlayerRaidTeammateSummary,
     getPlayerRecentCompletions,
+    getActiveSessionContainingPlayer,
     getActiveSessionForPlayer,
     type PlayerIdentity,
     upsertPlayer,
 } from '@/lib/db/queries';
 import { getActivityDisplayName } from '@/lib/utils/activity';
 
-const refreshInFlight = new Map<string, Promise<void>>();
-const activeVerifyInFlight = new Map<string, Promise<void>>();
+const refreshInFlight = new Map<string, Promise<ProfileRefreshResult>>();
+const activeVerifyInFlight = new Map<string, Promise<ActiveSessionVerifyResult>>();
 const identityFetchInFlight = new Map<string, Promise<PlayerIdentity | null>>();
 const recentRefresh = new Map<string, number>();
+const recentRefreshResults = new Map<string, ProfileRefreshResult>();
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
+
+interface ActiveSessionVerifyResult {
+    privacyRestricted: boolean;
+}
+
+interface ProfileRefreshResult {
+    privacyRestricted: boolean;
+}
 
 interface PartyMemberInput {
     membershipId?: string;
@@ -120,26 +130,25 @@ function buildPlayerPayload(identity: PlayerIdentity | null, membershipType: num
     };
 }
 
-async function refreshPlayerData(membershipType: number, membershipId: string): Promise<void> {
+async function refreshPlayerData(membershipType: number, membershipId: string): Promise<ProfileRefreshResult> {
     const key = `${membershipType}:${membershipId}`;
     const now = Date.now();
     const lastRefreshAt = recentRefresh.get(key) || 0;
 
     if (now - lastRefreshAt < 30_000) {
-        return;
+        return recentRefreshResults.get(key) || { privacyRestricted: false };
     }
 
     const existing = refreshInFlight.get(key);
     if (existing) {
-        await existing;
-        return;
+        return existing;
     }
 
     const refreshPromise = (async () => {
         const identity = await resolvePlayerIdentity(membershipType, membershipId);
         const identityForSession = identity || buildFallbackIdentity(membershipType, membershipId);
 
-        await runConcurrentDiscovery(
+        const discoveryResult = await runConcurrentDiscovery(
             [{ membershipId, membershipType }],
             {
                 maxDepth: 1,
@@ -149,15 +158,20 @@ async function refreshPlayerData(membershipType: number, membershipId: string): 
             }
         );
 
-        await verifyActiveSession(membershipType, membershipId, identityForSession);
+        const activeVerifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
+        const refreshResult = {
+            privacyRestricted: discoveryResult.privacyRestricted || activeVerifyResult.privacyRestricted,
+        };
 
         recentRefresh.set(key, Date.now());
+        recentRefreshResults.set(key, refreshResult);
+        return refreshResult;
     })();
 
     refreshInFlight.set(key, refreshPromise);
 
     try {
-        await refreshPromise;
+        return await refreshPromise;
     } finally {
         refreshInFlight.delete(key);
     }
@@ -167,19 +181,18 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
     displayName: string | null;
     bungieGlobalDisplayName: string | null;
     bungieGlobalDisplayNameCode: number | null;
-}): Promise<void> {
+}): Promise<ActiveSessionVerifyResult> {
     const key = `${membershipType}:${membershipId}`;
     const existing = activeVerifyInFlight.get(key);
     if (existing) {
-        await existing;
-        return;
+        return existing;
     }
 
     const verifyPromise = (async () => {
         const discoveryClient = getDiscoveryBungieClient();
-        let liveSession;
+        let activityResult;
         try {
-            liveSession = await checkPlayerActivity({
+            activityResult = await checkPlayerActivityDetailed({
                 membershipId,
                 membershipType,
                 displayName: identity?.displayName || identity?.bungieGlobalDisplayName || membershipId,
@@ -188,19 +201,25 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
             }, discoveryClient);
         } catch (error) {
             if (isBungieSystemDisabledError(error)) {
-                return;
+                return { privacyRestricted: false };
             }
             throw error;
         }
 
-        if (!liveSession) {
+        if (activityResult.status === 'privacyRestricted') {
+            return { privacyRestricted: true };
+        }
+
+        if (activityResult.status === 'inactive') {
             deleteActiveSessionForPlayer(membershipId);
         }
+
+        return { privacyRestricted: false };
     })();
 
     activeVerifyInFlight.set(key, verifyPromise);
     try {
-        await verifyPromise;
+        return await verifyPromise;
     } finally {
         activeVerifyInFlight.delete(key);
     }
@@ -229,6 +248,7 @@ function buildMaintenancePayload(
             message: 'Database maintenance is in progress. Player details are temporarily unavailable.',
             player,
             activeSession: null,
+            privacyRestricted: false,
         };
     }
 
@@ -241,6 +261,7 @@ function buildMaintenancePayload(
         recentCompletions: [],
         teammates: [],
         activeSession: null,
+        privacyRestricted: false,
     };
 }
 
@@ -406,36 +427,44 @@ export async function GET(
                     activeSession: buildActiveSessionPayload(cachedSession, identityForSession, {
                         enrichPartyMembers: enrichRequested,
                     }),
+                    privacyRestricted: false,
                 });
             }
 
-            await verifyActiveSession(membershipType, membershipId, identityForSession);
-            const activeSession = getActiveSessionForPlayer(membershipId, 600);
+            const verifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
+            const activeSession = verifyResult.privacyRestricted
+                ? getActiveSessionContainingPlayer(membershipId, 900)
+                : getActiveSessionForPlayer(membershipId, 600);
             return NextResponse.json({
                 player: playerPayload,
                 activeSession: buildActiveSessionPayload(activeSession, identityForSession, {
                     enrichPartyMembers: true,
                 }),
+                privacyRestricted: verifyResult.privacyRestricted,
             });
         }
 
         const identity = await resolvePlayerIdentity(membershipType, membershipId);
         const identityForSession = identity || buildFallbackIdentity(membershipType, membershipId);
+        let refreshResult: ProfileRefreshResult = { privacyRestricted: false };
 
         if (refresh) {
             try {
-                await refreshPlayerData(membershipType, membershipId);
+                refreshResult = await refreshPlayerData(membershipType, membershipId);
             } catch (error) {
                 console.error('[WARN] Player refresh failed:', error);
             }
         }
 
-        await verifyActiveSession(membershipType, membershipId, identityForSession);
+        const verifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
+        const privacyRestricted = refreshResult.privacyRestricted || verifyResult.privacyRestricted;
 
         const summary = getPlayerRaidCompletionSummary(membershipId, hours);
         const recentCompletions = getPlayerRecentCompletions(membershipId, hours, 500);
         const teammates = getPlayerRaidTeammateSummary(membershipId, hours);
-        const activeSession = getActiveSessionForPlayer(membershipId, 600);
+        const activeSession = privacyRestricted
+            ? getActiveSessionContainingPlayer(membershipId, 900)
+            : getActiveSessionForPlayer(membershipId, 600);
         const raids = getAllRaidDefinitions();
 
         return NextResponse.json({
@@ -467,6 +496,7 @@ export async function GET(
             activeSession: buildActiveSessionPayload(activeSession, identityForSession, {
                 enrichPartyMembers: true,
             }),
+            privacyRestricted,
         });
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {

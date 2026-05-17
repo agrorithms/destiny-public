@@ -571,6 +571,44 @@ export function getActiveSessionForPlayer(membershipId: string, maxAgeSeconds: n
     return row || null;
 }
 
+export function getActiveSessionContainingPlayer(membershipId: string, maxAgeSeconds: number = 900): ActiveSessionDbRow | null {
+    const db = getDb();
+    const cutoff = Math.floor(Date.now() / 1000) - maxAgeSeconds;
+    const stringMembershipPattern = `%\"membershipId\":\"${membershipId}\"%`;
+    const numericMembershipPattern = `%\"membershipId\":${membershipId}%`;
+
+    const row = db.prepare(`
+    SELECT
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      activity_hash as activityHash,
+      activity_mode_hash as activityModeHash,
+      activity_mode_type as activityModeType,
+      raid_key as raidKey,
+      started_at as startedAt,
+      party_members_json as partyMembersJson,
+      player_count as playerCount,
+      checked_at as checkedAt
+    FROM active_sessions
+    WHERE checked_at >= ?
+      AND (
+        membership_id = ?
+        OR party_members_json LIKE ?
+        OR party_members_json LIKE ?
+      )
+    ORDER BY checked_at DESC, started_at DESC
+    LIMIT 1
+  `).get(
+        cutoff,
+        membershipId,
+        stringMembershipPattern,
+        numericMembershipPattern
+    ) as ActiveSessionDbRow | undefined;
+
+    return row || null;
+}
+
 // =====================
 // PGCR QUERIES
 // =====================

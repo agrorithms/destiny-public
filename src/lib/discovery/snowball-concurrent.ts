@@ -74,6 +74,8 @@ export interface DiscoveryResult {
     totalPlayersDiscovered: number;
     totalPGCRsProcessed: number;
     totalNewPGCRs: number;
+    privacyRestricted: boolean;
+    privacyRestrictedMembershipIds: string[];
     playersByRaid: Record<string, number>;
     topPlayers: Array<{
         displayName: string;
@@ -88,6 +90,8 @@ interface PlayerProcessResult {
     discoveredPlayers: PlayerInfo[];
     completionsByRaid: Map<string, number>;
     playerCompletions: Map<string, number>;
+    privacyRestricted: boolean;
+    privacyRestrictedMembershipIds: string[];
 }
 
 // =====================
@@ -108,11 +112,19 @@ async function processPlayer(
     const completionsByRaid = new Map<string, number>();
     const playerCompletions = new Map<string, number>();
     let newPGCRs = 0;
+    let privacyRestricted = false;
 
     // Get character IDs
     const characterIds = await getCharacterIds(player.membershipType, player.membershipId);
     if (characterIds.length === 0) {
-        return { newPGCRs, discoveredPlayers, completionsByRaid, playerCompletions };
+        return {
+            newPGCRs,
+            discoveredPlayers,
+            completionsByRaid,
+            playerCompletions,
+            privacyRestricted,
+            privacyRestrictedMembershipIds: [],
+        };
     }
 
     // Collect all activity instance IDs across characters
@@ -127,6 +139,7 @@ async function processPlayer(
             50
         );
         if (result.isPrivacyRestricted) {
+            privacyRestricted = true;
             break;
         }
 
@@ -171,7 +184,14 @@ async function processPlayer(
         }
     }
 
-    return { newPGCRs, discoveredPlayers, completionsByRaid, playerCompletions };
+    return {
+        newPGCRs,
+        discoveredPlayers,
+        completionsByRaid,
+        playerCompletions,
+        privacyRestricted,
+        privacyRestrictedMembershipIds: privacyRestricted ? [player.membershipId] : [],
+    };
 }
 
 // =====================
@@ -216,6 +236,7 @@ export async function runConcurrentDiscovery(
     const processedPGCRs = new Set<string>();
     const processedPlayerIds = new Set<string>();
     let totalNewPGCRs = 0;
+    const privacyRestrictedMembershipIds = new Set<string>();
 
     const completionsByRaid = new Map<string, number>();
 
@@ -293,10 +314,15 @@ export async function runConcurrentDiscovery(
                         discoveredPlayers,
                         completionsByRaid: playerRaidCompletions,
                         playerCompletions,
+                        privacyRestrictedMembershipIds: playerPrivacyRestrictedMembershipIds,
                     } = result.result;
 
                     depthNewPGCRs += newPGCRs;
                     totalNewPGCRs += newPGCRs;
+
+                    for (const membershipId of playerPrivacyRestrictedMembershipIds) {
+                        privacyRestrictedMembershipIds.add(membershipId);
+                    }
 
                     // Merge raid completion counts
                     for (const [raid, count] of playerRaidCompletions) {
@@ -401,6 +427,8 @@ export async function runConcurrentDiscovery(
         totalPlayersDiscovered: allPlayers.size,
         totalPGCRsProcessed: processedPGCRs.size,
         totalNewPGCRs,
+        privacyRestricted: privacyRestrictedMembershipIds.size > 0,
+        privacyRestrictedMembershipIds: [...privacyRestrictedMembershipIds],
         playersByRaid,
         topPlayers,
         duration,

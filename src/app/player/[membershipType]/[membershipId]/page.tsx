@@ -77,6 +77,7 @@ interface ProfileResponse {
     recentCompletions: RecentCompletion[];
     teammates: TeammateSummaryRow[];
     activeSession: ActiveSession | null;
+    privacyRestricted?: boolean;
 }
 
 type SectionKey = 'summary' | 'completions' | 'teammates';
@@ -90,8 +91,10 @@ interface ActiveSessionResponse {
     message?: string;
     player: ProfilePlayer;
     activeSession: ActiveSession | null;
+    privacyRestricted?: boolean;
 }
 
+const PRIVATE_DATA_MESSAGE = 'The user has chosen for this data to be private. Data may be incomplete';
 const AVAILABLE_RAIDS: RaidOption[] = [
     { key: 'the_desert_perpetual', name: 'The Desert Perpetual' },
     { key: 'salvations_edge', name: "Salvation's Edge" },
@@ -139,6 +142,7 @@ export default function PlayerProfilePage() {
     const [profile, setProfile] = useState<ProfileResponse | null>(null);
     const [headerPlayer, setHeaderPlayer] = useState<ProfilePlayer | null>(null);
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+    const [privacyRestricted, setPrivacyRestricted] = useState(false);
     const [activeLoading, setActiveLoading] = useState(true);
     const [visibleSections, setVisibleSections] = useState<SectionKey[]>(['summary', 'completions', 'teammates']);
     const [summarySort, setSummarySort] = useState<{ key: SummarySortKey | null; direction: SortDirection }>({
@@ -168,6 +172,7 @@ export default function PlayerProfilePage() {
             const data: ActiveSessionResponse = await response.json();
             setHeaderPlayer(data.player);
             setActiveSession(data.activeSession);
+            setPrivacyRestricted((current) => current || Boolean(data.privacyRestricted));
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
 
             if (opts?.verify !== false && !data.maintenance) {
@@ -177,6 +182,7 @@ export default function PlayerProfilePage() {
                         const verifiedData: ActiveSessionResponse = await verifyResponse.json();
                         setHeaderPlayer(verifiedData.player);
                         setActiveSession(verifiedData.activeSession);
+                        setPrivacyRestricted((current) => current || Boolean(verifiedData.privacyRestricted));
                     })
                     .catch((err) => {
                         console.error('Failed to verify active session:', err);
@@ -215,6 +221,7 @@ export default function PlayerProfilePage() {
             setProfile(data);
             setHeaderPlayer(data.player);
             setActiveSession(data.activeSession || null);
+            setPrivacyRestricted(Boolean(data.privacyRestricted));
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
         } catch (err) {
             setError((err as Error).message);
@@ -223,6 +230,12 @@ export default function PlayerProfilePage() {
             setRefreshing(false);
         }
     }, [hours, membershipId, membershipType]);
+
+    useEffect(() => {
+        if (!membershipId || !membershipType) return;
+
+        setPrivacyRestricted(false);
+    }, [membershipId, membershipType]);
 
     useEffect(() => {
         if (!membershipId || !membershipType) return;
@@ -374,6 +387,11 @@ export default function PlayerProfilePage() {
 
             {currentPlayer && (
                 <div className="mb-6">
+                    {privacyRestricted && (
+                        <div className="inline-flex max-w-full rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300 mb-3">
+                            {PRIVATE_DATA_MESSAGE}
+                        </div>
+                    )}
                     <div className="flex flex-wrap items-center gap-3 mb-2">
                         <h1 className="text-3xl font-bold ui-text-primary">{currentPlayer.displayName}</h1>
                         <div className="flex items-center gap-3">

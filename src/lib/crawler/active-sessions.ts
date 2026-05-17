@@ -47,6 +47,33 @@ interface StaleSessionRow {
     party_members_json: string | null;
 }
 
+export type PlayerActivityCheckStatus = 'active' | 'inactive' | 'privacyRestricted';
+
+export interface PlayerActivityCheckResult {
+    status: PlayerActivityCheckStatus;
+    session: RaidSession | null;
+}
+
+export function isBungiePrivacyRestrictionError(error: unknown): boolean {
+    const errorMessage = (error as Error).message || '';
+
+    if (error instanceof BungieAPIError) {
+        return (
+            error.errorStatus === 'DestinyPrivacyRestriction'
+            || error.errorCode === 217
+            || error.errorCode === 1601
+            || error.errorCode === 1665
+        );
+    }
+
+    return (
+        errorMessage.includes('DestinyPrivacyRestriction')
+        || errorMessage.includes('No peeking')
+        || errorMessage.includes('chosen for this data to be private')
+        || errorMessage.includes('"ErrorCode":1665')
+    );
+}
+
 /**
  * Check if a player is currently in a raid activity and store the session.
  * Uses both Component 204 (CharacterActivities) and Component 1000 (Transitory).
@@ -55,6 +82,14 @@ export async function checkPlayerActivity(
     player: PlayerInfo,
     clientOverride?: ReturnType<typeof getBungieClient>
 ): Promise<RaidSession | null> {
+    const result = await checkPlayerActivityDetailed(player, clientOverride);
+    return result.status === 'active' ? result.session : null;
+}
+
+export async function checkPlayerActivityDetailed(
+    player: PlayerInfo,
+    clientOverride?: ReturnType<typeof getBungieClient>
+): Promise<PlayerActivityCheckResult> {
     const client = clientOverride || getBungieClient();
 
     try {
@@ -68,7 +103,7 @@ export async function checkPlayerActivity(
         // If absent, treat as offline and clear any stored session for this player upstream.
         const transitory = profile.Response.profileTransitoryData?.data;
         if (!transitory) {
-            return null;
+            return { status: 'inactive', session: null };
         }
 
         // Use component 204 to get current activity metadata from the most recently started character activity.
@@ -106,7 +141,7 @@ export async function checkPlayerActivity(
         // Some valid transitory states (for example in-orbit) report an activity hash
         // while omitting mode type. Keep these sessions instead of dropping them.
         if (!currentActivityHash) {
-            return null;
+            return { status: 'inactive', session: null };
         }
 
         const raidKey = getRaidKeyFromHash(currentActivityHash);
@@ -146,30 +181,27 @@ export async function checkPlayerActivity(
         });
 
         return {
-            sessionKey,
-            activityHash: currentActivityHash,
-            raidName: activityName,
-            raidKey: raidKey || 'unknown',
-            players: effectivePartyMembers,
-            startedAt: activityStartedAt || new Date().toISOString(),
-            playerCount: effectivePartyMembers.length,
+            status: 'active',
+            session: {
+                sessionKey,
+                activityHash: currentActivityHash,
+                raidName: activityName,
+                raidKey: raidKey || 'unknown',
+                players: effectivePartyMembers,
+                startedAt: activityStartedAt || new Date().toISOString(),
+                playerCount: effectivePartyMembers.length,
+            },
         };
     } catch (error) {
         if (isBungieSystemDisabledError(error)) {
             throw error;
         }
 
-        if (error instanceof BungieAPIError) {
-            if (
-                error.errorStatus === 'DestinyPrivacyRestriction' ||
-                error.errorCode === 217 ||
-                error.errorCode === 1601
-            ) {
-                return null;
-            }
+        if (isBungiePrivacyRestrictionError(error)) {
+            return { status: 'privacyRestricted', session: null };
         }
         console.error(`[ERROR] Unexpected error checking activity for ${player.membershipId}:`, (error as Error).message);
-        return null;
+        return { status: 'inactive', session: null };
     }
 }
 

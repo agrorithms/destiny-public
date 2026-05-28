@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import Script from 'next/script';
+import packageJson from '../../package.json';
 import './globals.css';
 import PlayerSearch from '@/components/PlayerSearch';
 import BungieMaintenanceAlert from '@/components/BungieMaintenanceAlert';
+import FooterStatus from '@/components/FooterStatus';
 
 export const metadata: Metadata = {
   title: 'Destiny Farm Finder',
@@ -32,7 +35,7 @@ export default function RootLayout({
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png"></link>
         <link rel="manifest" href="/manifest.json"></link>
       </head>
-      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col">
         <nav className="ui-nav-surface border-b backdrop-blur-sm sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <Link href="/" className="text-lg font-bold ui-text-primary hover:text-[var(--ui-accent)] transition-colors shrink-0">
@@ -56,9 +59,45 @@ export default function RootLayout({
           </div>
         </nav>
         <BungieMaintenanceAlert />
-        <main className="max-w-7xl mx-auto px-4 py-6">
+        <main className="max-w-7xl mx-auto px-4 py-6 w-full flex-1">
           {children}
         </main>
+        <footer className="ui-footer-surface border-t mt-8">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <span className="ui-text-muted">Version v{packageJson.version}</span>
+              <span className="ui-text-subtle" aria-hidden="true">•</span>
+              <Link href="/changelog" className="ui-footer-link">
+                Changelog
+              </Link>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <a
+                href="https://ko-fi.com/destinyfarmfinder"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ui-footer-icon-link"
+                aria-label="Support Destiny Farm Finder on Ko-fi"
+                title="Ko-fi"
+              >
+                <Image src="https://ko-fi.com/img/favicon.ico" alt="" width={18} height={18} />
+              </a>
+              <a
+                href="https://discord.gg/DndgAEqcEQ"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ui-footer-icon-link"
+                aria-label="Join the Destiny Farm Finder Discord"
+                title="Discord"
+              >
+                <Image src="https://discord.com/assets/favicon.ico" alt="" width={18} height={18} />
+              </a>
+              <span className="ui-text-subtle" aria-hidden="true">•</span>
+              <FooterStatus />
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );

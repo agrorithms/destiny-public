@@ -243,7 +243,7 @@ export default function LeaderboardPage() {
 
             {/* Aggregate Leaderboard */}
             {data && data.mode === 'aggregate' && (
-                <div className="ui-card p-4">
+                <div className="ui-card p-3 sm:p-4">
                     <LeaderboardTable
                         entries={(data as AggregateResponse).entries}
                         loading={loading}
@@ -261,7 +261,7 @@ export default function LeaderboardPage() {
 
                         if (count === 0 && !loading) {
                             return (
-                                <div className="ui-card p-4">
+                                <div className="ui-card p-3 sm:p-4">
                                     <div className="text-center py-12 ui-text-secondary">
                                         <p className="text-lg">No leaderboards found</p>
                                         <p className="text-sm mt-1">Try a different time range or refresh the leaderboard</p>
@@ -284,7 +284,7 @@ export default function LeaderboardPage() {
                                 {leaderboards.map((lb) => (
                                     <div
                                         key={lb.raidKey}
-                                        className="ui-card p-4 min-w-0"
+                                        className="ui-card p-3 sm:p-4 min-w-0"
                                     >
                                         <LeaderboardTable
                                             entries={lb.entries}

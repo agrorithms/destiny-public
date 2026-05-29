@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
 import { bulkUpsertPlayers, formatBungieDisplayName, searchPlayersByName } from '@/lib/db/queries';
 import type { PlayerInfo } from '@/lib/bungie/types';
+import { withCache, withNoStore } from '@/lib/http/cache';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(Math.max(parseInt(request.nextUrl.searchParams.get('limit') || '8', 10), 1), 20);
 
     if (query.length < 2) {
-        return NextResponse.json({ query, results: [] });
+        return withCache(NextResponse.json({ query, results: [] }), 30, 60);
     }
 
     try {
@@ -131,12 +132,12 @@ export async function GET(request: NextRequest) {
             };
         });
 
-        return NextResponse.json({ query, results });
+        return withCache(NextResponse.json({ query, results }), 30, 60);
     } catch (error) {
         console.error('[ERROR] Player search failed:', error);
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }
-        );
+        ));
     }
 }

@@ -20,12 +20,15 @@ import {
     upsertPlayer,
 } from '@/lib/db/queries';
 import { getActivityDisplayName } from '@/lib/utils/activity';
+import { withCache, withNoStore } from '@/lib/http/cache';
 
 const refreshInFlight = new Map<string, Promise<ProfileRefreshResult>>();
 const activeVerifyInFlight = new Map<string, Promise<ActiveSessionVerifyResult>>();
 const identityFetchInFlight = new Map<string, Promise<PlayerIdentity | null>>();
 const recentRefresh = new Map<string, number>();
 const recentRefreshResults = new Map<string, ProfileRefreshResult>();
+const recentActiveVerify = new Map<string, number>();
+const recentActiveVerifyResults = new Map<string, ActiveSessionVerifyResult>();
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
 
 interface ActiveSessionVerifyResult {
@@ -135,7 +138,7 @@ async function refreshPlayerData(membershipType: number, membershipId: string): 
     const now = Date.now();
     const lastRefreshAt = recentRefresh.get(key) || 0;
 
-    if (now - lastRefreshAt < 30_000) {
+    if (now - lastRefreshAt < 120_000) {
         return recentRefreshResults.get(key) || { privacyRestricted: false };
     }
 
@@ -183,6 +186,13 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
     bungieGlobalDisplayNameCode: number | null;
 }): Promise<ActiveSessionVerifyResult> {
     const key = `${membershipType}:${membershipId}`;
+    const now = Date.now();
+    const lastVerifyAt = recentActiveVerify.get(key) || 0;
+
+    if (now - lastVerifyAt < 10_000) {
+        return recentActiveVerifyResults.get(key) || { privacyRestricted: false };
+    }
+
     const existing = activeVerifyInFlight.get(key);
     if (existing) {
         return existing;
@@ -206,15 +216,17 @@ async function verifyActiveSession(membershipType: number, membershipId: string,
             throw error;
         }
 
-        if (activityResult.status === 'privacyRestricted') {
-            return { privacyRestricted: true };
-        }
+        let verifyResult: ActiveSessionVerifyResult = { privacyRestricted: false };
 
-        if (activityResult.status === 'inactive') {
+        if (activityResult.status === 'privacyRestricted') {
+            verifyResult = { privacyRestricted: true };
+        } else if (activityResult.status === 'inactive') {
             deleteActiveSessionForPlayer(membershipId);
         }
 
-        return { privacyRestricted: false };
+        recentActiveVerify.set(key, Date.now());
+        recentActiveVerifyResults.set(key, verifyResult);
+        return verifyResult;
     })();
 
     activeVerifyInFlight.set(key, verifyPromise);
@@ -396,10 +408,10 @@ export async function GET(
     const membershipType = parseInt(membershipTypeRaw, 10);
 
     if (!membershipId || Number.isNaN(membershipType)) {
-        return NextResponse.json({ error: 'Invalid player identity' }, { status: 400 });
+        return withNoStore(NextResponse.json({ error: 'Invalid player identity' }, { status: 400 }));
     }
     if (!validMembershipTypes.has(membershipType)) {
-        return NextResponse.json({ error: 'Invalid membership type' }, { status: 400 });
+        return withNoStore(NextResponse.json({ error: 'Invalid membership type' }, { status: 400 }));
     }
 
     const part = request.nextUrl.searchParams.get('part');
@@ -408,7 +420,7 @@ export async function GET(
     const refresh = request.nextUrl.searchParams.get('refresh') === '1';
 
     if (!activeOnly && (hours < 1 || hours > 720)) {
-        return NextResponse.json({ error: 'hours must be between 1 and 720' }, { status: 400 });
+        return withNoStore(NextResponse.json({ error: 'hours must be between 1 and 720' }, { status: 400 }));
     }
 
     try {
@@ -422,26 +434,26 @@ export async function GET(
 
             if (!verify) {
                 const cachedSession = getActiveSessionForPlayer(membershipId, 600);
-                return NextResponse.json({
+                return withNoStore(NextResponse.json({
                     player: playerPayload,
                     activeSession: buildActiveSessionPayload(cachedSession, identityForSession, {
                         enrichPartyMembers: enrichRequested,
                     }),
                     privacyRestricted: false,
-                });
+                }));
             }
 
             const verifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
             const activeSession = verifyResult.privacyRestricted
                 ? getActiveSessionContainingPlayer(membershipId, 900)
                 : getActiveSessionForPlayer(membershipId, 600);
-            return NextResponse.json({
+            return withNoStore(NextResponse.json({
                 player: playerPayload,
                 activeSession: buildActiveSessionPayload(activeSession, identityForSession, {
                     enrichPartyMembers: true,
                 }),
                 privacyRestricted: verifyResult.privacyRestricted,
-            });
+            }));
         }
 
         const identity = await resolvePlayerIdentity(membershipType, membershipId);
@@ -467,7 +479,7 @@ export async function GET(
             : getActiveSessionForPlayer(membershipId, 600);
         const raids = getAllRaidDefinitions();
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             player: buildPlayerPayload(identity, membershipType, membershipId),
             hours,
             summary: summary.map((row) => ({
@@ -498,15 +510,17 @@ export async function GET(
             }),
             privacyRestricted,
         });
+
+        return refresh ? withNoStore(response) : withCache(response, 15, 60);
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
-            return NextResponse.json(buildMaintenancePayload(membershipType, membershipId, hours, activeOnly));
+            return withNoStore(NextResponse.json(buildMaintenancePayload(membershipType, membershipId, hours, activeOnly)));
         }
 
         console.error('[ERROR] Player profile query failed:', error);
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }
-        );
+        ));
     }
 }

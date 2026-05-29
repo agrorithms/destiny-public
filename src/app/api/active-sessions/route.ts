@@ -3,6 +3,7 @@ import { formatBungieDisplayName, getActiveSessions } from '@/lib/db/queries';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { getDb, isDatabaseMaintenanceError } from '@/lib/db';
 import { getActivityDisplayName } from '@/lib/utils/activity';
+import { withCache, withNoStore } from '@/lib/http/cache';
 
 interface PlayerLookupRow {
     membership_id: string;
@@ -74,18 +75,18 @@ export async function GET(request: NextRequest) {
     if (raidKey) {
         const raids = getAllRaidDefinitions();
         if (!raids[raidKey]) {
-            return NextResponse.json(
+            return withNoStore(NextResponse.json(
                 { error: `Unknown raid key: ${raidKey}`, validKeys: Object.keys(raids) },
                 { status: 400 }
-            );
+            ));
         }
     }
 
     if (limit < 1 || limit > 200) {
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'limit must be between 1 and 200' },
             { status: 400 }
-        );
+        ));
     }
 
     try {
@@ -179,27 +180,27 @@ export async function GET(request: NextRequest) {
 
         const deduped = deduplicateSessions(sessions);
 
-        return NextResponse.json({
+        return withCache(NextResponse.json({
             raidKey: raidKey || 'all',
             count: deduped.length,
             sessions: deduped,
-        });
+        }), 10, 30);
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
-            return NextResponse.json({
+            return withNoStore(NextResponse.json({
                 raidKey: raidKey || 'all',
                 count: 0,
                 sessions: [],
                 maintenance: true,
                 message: 'Database maintenance is in progress. Active sessions are temporarily unavailable.',
-            });
+            }));
         }
 
         console.error('[ERROR] Active sessions query failed:', error);
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }
-        );
+        ));
     }
 }
 

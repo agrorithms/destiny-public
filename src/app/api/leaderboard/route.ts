@@ -3,6 +3,17 @@ import { getDb } from '@/lib/db';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { readLeaderboardSnapshot } from '@/lib/maintenance/snapshots';
+import { withCache, withNoStore } from '@/lib/http/cache';
+
+function leaderboardCacheWindow(hours: number): { sMaxAge: number; staleWhileRevalidate: number } {
+    if (hours <= 6) {
+        return { sMaxAge: 15, staleWhileRevalidate: 60 };
+    }
+    if (hours <= 24) {
+        return { sMaxAge: 30, staleWhileRevalidate: 120 };
+    }
+    return { sMaxAge: 120, staleWhileRevalidate: 600 };
+}
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -22,22 +33,23 @@ export async function GET(request: NextRequest) {
         : [];
 
     if (hours < 1 || hours > 720) {
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'hours must be between 1 and 720' },
             { status: 400 }
-        );
+        ));
     }
 
     if (limit < 1 || limit > 500) {
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'limit must be between 1 and 500' },
             { status: 400 }
-        );
+        ));
     }
 
     try {
         const db = getDb();
         const cutoff = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
+        const cacheWindow = leaderboardCacheWindow(hours);
 
         if (mode === 'individual') {
             // Empty raid selection means no filter, so fan out across every raid.
@@ -101,13 +113,13 @@ export async function GET(request: NextRequest) {
                 };
             }
 
-            return NextResponse.json({
+            return withCache(NextResponse.json({
                 mode: 'individual',
                 hours,
                 fullClearsOnly,
                 raidKeys: effectiveRaidKeys,
                 leaderboards,
-            });
+            }), cacheWindow.sMaxAge, cacheWindow.staleWhileRevalidate);
         } else {
             // Aggregate mode — total clears across all selected raids
             let query = `
@@ -158,7 +170,7 @@ export async function GET(request: NextRequest) {
 
             const entries = db.prepare(query).all(...params) as any[];
 
-            return NextResponse.json({
+            return withCache(NextResponse.json({
                 mode: 'aggregate',
                 hours,
                 fullClearsOnly,
@@ -169,27 +181,27 @@ export async function GET(request: NextRequest) {
                     displayName: formatDisplayName(e),
                     completions: e.completions,
                 })),
-            });
+            }), cacheWindow.sMaxAge, cacheWindow.staleWhileRevalidate);
         }
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
             const snapshot = readLeaderboardSnapshot();
             if (snapshot?.data) {
-                return NextResponse.json({
+                return withNoStore(NextResponse.json({
                     ...snapshot.data,
                     maintenance: true,
                     snapshotGeneratedAt: snapshot.snapshotGeneratedAt,
                     requestedMode: mode,
                     requestedHours: hours,
-                });
+                }));
             }
         }
 
         console.error('[ERROR] Leaderboard query failed:', error);
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }
-        );
+        ));
     }
 }
 

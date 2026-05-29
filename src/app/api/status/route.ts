@@ -3,13 +3,14 @@ import { getSystemStats } from '@/lib/system-stats';
 import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { readStatusSnapshot } from '@/lib/maintenance/snapshots';
+import { withCache, withNoStore } from '@/lib/http/cache';
 
 export async function GET() {
     try {
         const stats = getSystemStats();
         const stale = (stats.secondsSinceHeartbeat ?? 301) > 300; // 5 minutes
 
-        return NextResponse.json(
+        const response = NextResponse.json(
             {
                 crawlerRunning: stats.crawlerRunning,
                 crawlerStatus: stats.crawlerStatus,
@@ -30,13 +31,15 @@ export async function GET() {
             },
             { status: stale ? 503 : 200 }
         );
+
+        return stale ? withNoStore(response) : withCache(response, 5, 15);
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
             const maintenance = getBungieMaintenanceStatus();
             const snapshot = readStatusSnapshot();
             const stats = snapshot?.data;
 
-            return NextResponse.json({
+            return withNoStore(NextResponse.json({
                 crawlerRunning: stats?.crawlerRunning ?? false,
                 crawlerStatus: stats?.crawlerStatus ?? 'maintenance',
                 secondsSinceHeartbeat: stats?.secondsSinceHeartbeat ?? null,
@@ -54,13 +57,13 @@ export async function GET() {
                 maintenanceSnapshot: true,
                 status: 'maintenance',
                 timestamp: Date.now(),
-            });
+            }));
         }
 
         console.error('[ERROR] Status query failed:', error);
-        return NextResponse.json(
+        return withNoStore(NextResponse.json(
             { error: 'Internal server error' },
             { status: 500 }
-        );
+        ));
     }
 }

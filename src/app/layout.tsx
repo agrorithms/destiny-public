@@ -70,6 +70,14 @@ export default function RootLayout({
               <Link href="/changelog" className="ui-footer-link">
                 Changelog
               </Link>
+              <span className="ui-text-subtle" aria-hidden="true">•</span>
+              <Link href="/about" className="ui-footer-link">
+                About
+              </Link>
+              <span className="ui-text-subtle" aria-hidden="true">•</span>
+              <Link href="/faq" className="ui-footer-link">
+                FAQ
+              </Link>
             </div>
 
             <div className="flex flex-wrap items-center gap-4 text-sm">

@@ -6,8 +6,8 @@ export default function Home() {
       <div className="text-center py-12">
         <h1 className="text-4xl font-bold mb-4">Destiny Farm Finder</h1>
         <p className="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">
-          Track who is farming raids right now. See real-time leaderboards of
-          the most completed raid activities in the past few hours, and browse
+          Track who is raiding right now. See real-time leaderboards of
+          the most completed raid activities in the past few hours to several days, and browse
           active raid sessions across Destiny 2.
         </p>
       </div>

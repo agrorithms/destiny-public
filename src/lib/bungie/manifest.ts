@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getBungieClient } from './client';
+import type { DestinyActivityDefinition } from './types';
 
 const MANIFEST_CACHE_PATH = path.join(process.cwd(), 'data', 'manifest-cache.json');
 
@@ -114,10 +115,15 @@ export async function updateManifestCache(): Promise<void> {
     console.log(`📥 Downloading activity definitions from ${activityDefUrl}`);
 
     const response = await fetch(activityDefUrl);
-    const activityDefs: Record<string, any> = await response.json();
+    const activityDefs: Record<string, DestinyActivityDefinition> = await response.json();
 
     // Find all raid activities
-    const raidActivities: Record<string, any> = {};
+    const raidActivities: Record<string, {
+        hash: number;
+        name?: string;
+        description?: string;
+        directActivityModeType?: number;
+    }> = {};
     for (const [hash, def] of Object.entries(activityDefs)) {
         if (
             def.activityTypeHash === 2043403989 ||

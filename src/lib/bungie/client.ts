@@ -5,6 +5,8 @@ import type {
     DestinyProfileResponse,
     DestinyActivityHistoryResults,
     DestinyPostGameCarnageReportData,
+    DestinyManifestResponse,
+    DestinyUserSearchResponse,
 } from './types';
 
 export class BungieAPIError extends Error {
@@ -94,17 +96,17 @@ export class BungieClient {
         return this.request<DestinyPostGameCarnageReportData>(url);
     }
 
-    async getManifest(): Promise<BungieResponse<any>> {
+    async getManifest(): Promise<BungieResponse<DestinyManifestResponse>> {
         const url = BungieEndpoints.getManifest();
-        return this.request<any>(url);
+        return this.request<DestinyManifestResponse>(url);
     }
 
     async searchByGlobalName(
         displayName: string,
         displayNameCode: number
-    ): Promise<BungieResponse<any>> {
+    ): Promise<BungieResponse<DestinyUserSearchResponse>> {
         const url = BungieEndpoints.searchByGlobalName(0);
-        return this.request<any>(url, {
+        return this.request<DestinyUserSearchResponse>(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ displayName, displayNameCode }),
@@ -114,9 +116,9 @@ export class BungieClient {
     async searchByBungieNamePrefix(
         displayNamePrefix: string,
         page: number = 0
-    ): Promise<BungieResponse<any>> {
+    ): Promise<BungieResponse<DestinyUserSearchResponse>> {
         const url = BungieEndpoints.searchByGlobalName(page);
-        return this.request<any>(url, {
+        return this.request<DestinyUserSearchResponse>(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ displayNamePrefix }),

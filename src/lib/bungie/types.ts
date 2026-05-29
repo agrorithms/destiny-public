@@ -98,6 +98,43 @@ export interface DestinyPostGameCarnageReportEntry {
     values: Record<string, DestinyHistoricalStatsValue>;
 }
 
+// ---- Manifest / Search ----
+export interface DestinyManifestResponse {
+    jsonWorldComponentContentPaths: {
+        en: {
+            DestinyActivityDefinition: string;
+        };
+    };
+}
+
+export interface DestinyActivityDefinition {
+    activityTypeHash?: number;
+    activityModeTypes?: number[];
+    displayProperties?: {
+        name?: string;
+        description?: string;
+    };
+    directActivityModeType?: number;
+}
+
+export interface DestinyUserSearchMembership {
+    membershipId?: string;
+    membershipType?: number;
+    displayName?: string;
+    bungieGlobalDisplayName?: string;
+    bungieGlobalDisplayNameCode?: number;
+}
+
+export interface DestinyUserSearchResult extends DestinyUserSearchMembership {
+    destinyMemberships?: DestinyUserSearchMembership[];
+}
+
+export type DestinyUserSearchResponse =
+    | DestinyUserSearchResult[]
+    | {
+        searchResults?: DestinyUserSearchResult[];
+    };
+
 // ---- Transitory ----
 export interface TransitoryComponent {
     partyMembers: TransitoryPartyMember[];

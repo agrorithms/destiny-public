@@ -5,6 +5,30 @@ import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { readLeaderboardSnapshot } from '@/lib/maintenance/snapshots';
 import { withCache, withNoStore } from '@/lib/http/cache';
 
+type SqlParam = string | number;
+
+interface LeaderboardDbRow {
+    membershipId: string;
+    membershipType: number;
+    displayName: string | null;
+    bungieGlobalDisplayName: string | null;
+    bungieGlobalDisplayNameCode: number | null;
+    completions: number;
+}
+
+interface LeaderboardResponseEntry {
+    membershipId: string;
+    membershipType: number;
+    displayName: string;
+    completions: number;
+}
+
+interface IndividualLeaderboard {
+    raidKey: string;
+    raidName: string;
+    entries: LeaderboardResponseEntry[];
+}
+
 function leaderboardCacheWindow(hours: number): { sMaxAge: number; staleWhileRevalidate: number } {
     if (hours <= 6) {
         return { sMaxAge: 15, staleWhileRevalidate: 60 };
@@ -54,7 +78,7 @@ export async function GET(request: NextRequest) {
         if (mode === 'individual') {
             // Empty raid selection means no filter, so fan out across every raid.
             const effectiveRaidKeys = raidKeys.length > 0 ? raidKeys : Object.keys(allRaids);
-            const leaderboards: Record<string, any> = {};
+            const leaderboards: Record<string, IndividualLeaderboard> = {};
 
             for (const raidKey of effectiveRaidKeys) {
                 let query = `
@@ -83,7 +107,7 @@ export async function GET(request: NextRequest) {
             AND p.raid_key = ?
         `;
 
-                const params: any[] = [cutoff, raidKey];
+                const params: SqlParam[] = [cutoff, raidKey];
 
                 if (fullClearsOnly) {
                     query += ` AND p.activity_was_started_from_beginning = 1`;
@@ -97,7 +121,7 @@ export async function GET(request: NextRequest) {
         `;
                 params.push(limit);
 
-                const entries = db.prepare(query).all(...params) as any[];
+                const entries = db.prepare(query).all(...params) as LeaderboardDbRow[];
 
                 const raidName = allRaids[raidKey]?.name || raidKey;
 
@@ -147,7 +171,7 @@ export async function GET(request: NextRequest) {
           AND p.completed = 1
       `;
 
-            const params: any[] = [cutoff];
+            const params: SqlParam[] = [cutoff];
 
             // Filter to selected raids if any are specified
             if (raidKeys.length > 0) {
@@ -168,7 +192,7 @@ export async function GET(request: NextRequest) {
       `;
             params.push(limit);
 
-            const entries = db.prepare(query).all(...params) as any[];
+            const entries = db.prepare(query).all(...params) as LeaderboardDbRow[];
 
             return withCache(NextResponse.json({
                 mode: 'aggregate',
@@ -205,7 +229,7 @@ export async function GET(request: NextRequest) {
     }
 }
 
-function formatDisplayName(entry: any): string {
+function formatDisplayName(entry: LeaderboardDbRow): string {
     if (entry.bungieGlobalDisplayName && entry.bungieGlobalDisplayNameCode) {
         return `${entry.bungieGlobalDisplayName}#${String(entry.bungieGlobalDisplayNameCode).padStart(4, '0')}`;
     }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDiscoveryBungieClient } from '@/lib/bungie/client';
 import { bulkUpsertPlayers, formatBungieDisplayName, searchPlayersByName } from '@/lib/db/queries';
-import type { PlayerInfo } from '@/lib/bungie/types';
+import type { BungieResponse, DestinyUserSearchResponse, PlayerInfo } from '@/lib/bungie/types';
 import { withCache, withNoStore } from '@/lib/http/cache';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
@@ -18,7 +18,7 @@ function parseQuery(query: string): { baseName: string; code?: number } {
     };
 }
 
-function mapResponseToPlayers(rawResponse: any): PlayerInfo[] {
+function mapResponseToPlayers(rawResponse: BungieResponse<DestinyUserSearchResponse>): PlayerInfo[] {
     const raw = rawResponse?.Response;
     const rows = Array.isArray(raw)
         ? raw

@@ -7,7 +7,16 @@ import {
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
 import { insertFullPGCR, hasPGCR } from '../db/queries';
+import type { InsertFullPGCRPlayer } from '../db/queries';
 import { isoToUnix } from '../utils/helpers';
+
+type RunnableStatement = {
+    run: (...params: unknown[]) => unknown;
+};
+
+type ScannerPlayerEntry = InsertFullPGCRPlayer & {
+    bungieGlobalDisplayNameCode?: number | null;
+};
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 // Global set for missed IDs (deduped, capped)
@@ -35,7 +44,7 @@ function addMissedIds(instanceIds: string[]): void {
     }
 }
 
-function isValidMembershipType(type: any): boolean {
+function isValidMembershipType(type: unknown): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
 }
 
@@ -94,8 +103,8 @@ const state: ScannerState = {
 // Separate client and rate limiter for the scanner
 let scannerClient: BungieClient | null = null;
 let scannerStmtDbRef: ReturnType<typeof getDb> | null = null;
-let scannerUpsertPlayerStmt: any = null;
-let scannerInsertManyPlayersTx: ((entries: any[]) => void) | null = null;
+let scannerUpsertPlayerStmt: RunnableStatement | null = null;
+let scannerInsertManyPlayersTx: ((entries: ScannerPlayerEntry[]) => void) | null = null;
 
 // =====================
 // CLIENT SETUP
@@ -115,7 +124,7 @@ function getScannerClient(config: ScannerConfig): BungieClient {
     return scannerClient;
 }
 
-function getScannerPlayerUpsertTransaction(): (entries: any[]) => void {
+function getScannerPlayerUpsertTransaction(): (entries: ScannerPlayerEntry[]) => void {
     const db = getDb();
 
     // Rebuild prepared statements if DB instance changes (for safety in long-lived runtimes).
@@ -128,9 +137,9 @@ function getScannerPlayerUpsertTransaction(): (entries: any[]) => void {
         display_name = COALESCE(excluded.display_name, players.display_name),
         bungie_global_display_name = COALESCE(excluded.bungie_global_display_name, players.bungie_global_display_name),
         bungie_global_display_name_code = COALESCE(excluded.bungie_global_display_name_code, players.bungie_global_display_name_code)
-    `);
+    `) as unknown as RunnableStatement;
 
-        scannerInsertManyPlayersTx = db.transaction((entries: any[]) => {
+        scannerInsertManyPlayersTx = db.transaction((entries: ScannerPlayerEntry[]) => {
             for (const entry of entries) {
                 if (!isValidMembershipType(entry.membershipType)) continue;
                 scannerUpsertPlayerStmt!.run(
@@ -263,10 +272,10 @@ async function scanSinglePGCR(
         const raidKey = getRaidKeyFromHash(activityHash);
 
         const anyoneCompleted = pgcrData.entries?.some(
-            (entry: any) => entry.values?.completed?.basic?.value === 1
+            (entry) => entry.values?.completed?.basic?.value === 1
         ) || false;
 
-        const playerEntries = (pgcrData.entries || []).map((entry: any) => ({
+        const playerEntries: ScannerPlayerEntry[] = (pgcrData.entries || []).map((entry) => ({
             instanceId,
             membershipId: entry.player.destinyUserInfo.membershipId,
             membershipType: entry.player.destinyUserInfo.membershipType,

@@ -6,6 +6,7 @@ import { getAllRaidDefinitions } from '../src/lib/bungie/manifest';
 import { BungieClient, BungieAPIError } from '../src/lib/bungie/client';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../src/lib/bungie/manifest';
 import { hasPGCR, insertFullPGCR } from '../src/lib/db/queries';
+import type { InsertFullPGCRPlayer } from '../src/lib/db/queries';
 import { isoToUnix } from '../src/lib/utils/helpers';
 
 // ============================================
@@ -271,10 +272,10 @@ async function runBackwardScan(client: BungieClient): Promise<{
             const raidKey = getRaidKeyFromHash(activityHash);
 
             const anyoneCompleted = pgcrData.entries?.some(
-                (entry: any) => entry.values?.completed?.basic?.value === 1
+                (entry) => entry.values?.completed?.basic?.value === 1
             ) || false;
 
-            const playerEntries = (pgcrData.entries || []).map((entry: any) => ({
+            const playerEntries: InsertFullPGCRPlayer[] = (pgcrData.entries || []).map((entry) => ({
                 instanceId,
                 membershipId: entry.player.destinyUserInfo.membershipId,
                 membershipType: entry.player.destinyUserInfo.membershipType,
@@ -304,7 +305,7 @@ async function runBackwardScan(client: BungieClient): Promise<{
                 playerEntries
             );
 
-            const insertPlayers = db.transaction((entries: any[]) => {
+            const insertPlayers = db.transaction((entries: InsertFullPGCRPlayer[]) => {
                 let added = 0;
                 for (const entry of entries) {
                     if (!VALID_MEMBERSHIP_TYPES.has(Number(entry.membershipType))) continue;

@@ -46,14 +46,20 @@ export default function LeaderboardTable({
     return (
         <div>
             {title && <h3 className="text-lg font-bold ui-text-primary mb-3">{title}</h3>}
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+            <div className="overflow-hidden">
+                <table className="w-full table-fixed text-sm">
+                    <colgroup>
+                        <col className="w-[2.25rem] sm:w-10" />
+                        <col />
+                        {showRaidColumn && <col className="w-[5.5rem] sm:w-28" />}
+                        <col className="w-[4.25rem] sm:w-20" />
+                    </colgroup>
                     <thead>
                         <tr className="border-b ui-divider ui-text-muted">
-                            <th className="text-left py-1 px-2 w-12">#</th>
-                            <th className="text-left py-1 px-2">Player</th>
-                            {showRaidColumn && <th className="text-left py-1 px-2">Raid</th>}
-                            <th className="text-right py-1 px-2 w-24">Clears</th>
+                            <th className="text-left py-1 px-1.5 sm:px-2">#</th>
+                            <th className="text-left py-1 px-1.5 sm:px-2">Player</th>
+                            {showRaidColumn && <th className="text-left py-1 px-1.5 sm:px-2">Raid</th>}
+                            <th className="text-right py-1 px-1.5 sm:px-2">Clears</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -62,7 +68,7 @@ export default function LeaderboardTable({
                                 key={entry.membershipId}
                                 className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                             >
-                                <td className="py-1.25 px-2 ui-text-muted">
+                                <td className="py-1.25 px-1.5 sm:px-2 ui-text-muted">
                                     {index < 3 ? (
                                         <span className={`font-bold ${index === 0 ? 'text-yellow-400' :
                                             index === 1 ? 'text-gray-500 dark:text-gray-300' :
@@ -74,19 +80,21 @@ export default function LeaderboardTable({
                                         index + 1
                                     )}
                                 </td>
-                                <td className="py-1.25 px-2">
+                                <td className="min-w-0 overflow-hidden py-1.25 px-1.5 sm:px-2">
                                     <a
                                         href={`/player/${entry.membershipType}/${entry.membershipId}`}
-                                        className="ui-text-primary hover:text-blue-600 transition-colors dark:hover:text-blue-400"
+                                        className="block min-w-0 truncate ui-text-primary hover:text-blue-600 transition-colors dark:hover:text-blue-400"
                                         title={entry.displayName}
                                     >
-                                        {truncateDisplayName(entry.displayName, 25)}
+                                        {entry.displayName}
                                     </a>
                                 </td>
                                 {showRaidColumn && (
-                                    <td className="py-1.25 px-2 ui-text-muted">{raidName}</td>
+                                    <td className="truncate py-1.25 px-1.5 sm:px-2 ui-text-muted" title={raidName}>
+                                        {raidName}
+                                    </td>
                                 )}
-                                <td className="py-1.25 px-2 text-right font-mono font-bold ui-text-primary">
+                                <td className="py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary">
                                     {entry.completions}
                                 </td>
                             </tr>
@@ -96,9 +104,4 @@ export default function LeaderboardTable({
             </div>
         </div>
     );
-}
-
-function truncateDisplayName(name: string, maxLength: number): string {
-    if (name.length <= maxLength) return name;
-    return `${name.slice(0, maxLength - 1)}...`;
 }

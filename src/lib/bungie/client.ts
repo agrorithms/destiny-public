@@ -6,6 +6,7 @@ import type {
     DestinyActivityHistoryResults,
     DestinyPostGameCarnageReportData,
     DestinyManifestResponse,
+    DestinyExactPlayerSearchResponse,
     DestinyUserSearchResponse,
 } from './types';
 
@@ -101,12 +102,13 @@ export class BungieClient {
         return this.request<DestinyManifestResponse>(url);
     }
 
-    async searchByGlobalName(
+    async searchDestinyPlayerByBungieName(
         displayName: string,
-        displayNameCode: number
-    ): Promise<BungieResponse<DestinyUserSearchResponse>> {
-        const url = BungieEndpoints.searchByGlobalName(0);
-        return this.request<DestinyUserSearchResponse>(url, {
+        displayNameCode: number,
+        membershipType: number = -1
+    ): Promise<BungieResponse<DestinyExactPlayerSearchResponse>> {
+        const url = BungieEndpoints.searchDestinyPlayerByBungieName(membershipType);
+        return this.request<DestinyExactPlayerSearchResponse>(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ displayName, displayNameCode }),

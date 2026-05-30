@@ -77,7 +77,7 @@ function getPlayerUpsertResources(): {
                     p.membershipType,
                     p.displayName,
                     p.bungieGlobalDisplayName || null,
-                    p.bungieGlobalDisplayNameCode || null
+                    p.bungieGlobalDisplayNameCode ?? null
                 );
             }
             if (skipped > 0) {
@@ -111,7 +111,7 @@ export function upsertPlayer(player: PlayerInfo): void {
         player.membershipType,
         player.displayName,
         player.bungieGlobalDisplayName || null,
-        player.bungieGlobalDisplayNameCode || null
+        player.bungieGlobalDisplayNameCode ?? null
     );
 }
 

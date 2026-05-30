@@ -123,6 +123,8 @@ export interface DestinyUserSearchMembership {
     displayName?: string;
     bungieGlobalDisplayName?: string;
     bungieGlobalDisplayNameCode?: number;
+    crossSaveOverride?: number;
+    applicableMembershipTypes?: number[];
 }
 
 export interface DestinyUserSearchResult extends DestinyUserSearchMembership {
@@ -134,6 +136,8 @@ export type DestinyUserSearchResponse =
     | {
         searchResults?: DestinyUserSearchResult[];
     };
+
+export type DestinyExactPlayerSearchResponse = DestinyUserSearchMembership[];
 
 // ---- Transitory ----
 export interface TransitoryComponent {

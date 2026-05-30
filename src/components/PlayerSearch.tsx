@@ -13,18 +13,41 @@ interface SearchResult {
     isExactNameMatch: boolean;
 }
 
+interface SearchApiResponse {
+    results?: SearchResult[];
+    fallbackUnavailable?: boolean;
+    message?: string;
+}
+
 export default function PlayerSearch() {
     const router = useRouter();
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const requestOrderRef = useRef(0);
+    const latestAppliedRequestRef = useRef(0);
+    const localRequestSeqRef = useRef(0);
+    const fallbackRequestSeqRef = useRef(0);
+    const resultsRef = useRef<SearchResult[]>([]);
+    const trimmedRef = useRef('');
 
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [fallbackLoading, setFallbackLoading] = useState(false);
+    const [fallbackUnavailable, setFallbackUnavailable] = useState(false);
+    const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [selectedIndex, setSelectedIndex] = useState(-1);
 
     const trimmed = query.trim();
+
+    useEffect(() => {
+        resultsRef.current = results;
+    }, [results]);
+
+    useEffect(() => {
+        trimmedRef.current = trimmed;
+    }, [trimmed]);
 
     useEffect(() => {
         const onClickOutside = (event: MouseEvent) => {
@@ -43,30 +66,107 @@ export default function PlayerSearch() {
             setResults([]);
             setOpen(false);
             setError(null);
+            setFallbackUnavailable(false);
+            setFallbackMessage(null);
+            setFallbackLoading(false);
             setSelectedIndex(-1);
             return;
         }
 
+        const controller = new AbortController();
         const timeout = setTimeout(async () => {
+            const requestId = ++localRequestSeqRef.current;
+            const requestOrder = ++requestOrderRef.current;
             setLoading(true);
             setError(null);
+            setFallbackUnavailable(false);
+            setFallbackMessage(null);
 
             try {
-                const res = await fetch(`/api/players/search?query=${encodeURIComponent(trimmed)}&limit=10`);
+                const res = await fetch(
+                    `/api/players/search?query=${encodeURIComponent(trimmed)}&limit=10&fallback=0`,
+                    { signal: controller.signal }
+                );
                 if (!res.ok) throw new Error(`Search failed (${res.status})`);
-                const data = await res.json();
-                setResults(data.results || []);
+                const data = await res.json() as SearchApiResponse;
+                if (requestId !== localRequestSeqRef.current || trimmed !== trimmedRef.current) return;
+                if (requestOrder < latestAppliedRequestRef.current) return;
+                latestAppliedRequestRef.current = requestOrder;
+
+                const nextResults = data.results || [];
+                setResults(nextResults);
                 setOpen(true);
-                setSelectedIndex((data.results || []).length > 0 ? 0 : -1);
+                setSelectedIndex(nextResults.length > 0 ? 0 : -1);
             } catch (err) {
+                if ((err as Error).name === 'AbortError') return;
+                if (requestId !== localRequestSeqRef.current || trimmed !== trimmedRef.current) return;
+
                 setError((err as Error).message);
                 setSelectedIndex(-1);
             } finally {
-                setLoading(false);
+                if (requestId === localRequestSeqRef.current) setLoading(false);
             }
         }, 250);
 
-        return () => clearTimeout(timeout);
+        return () => {
+            controller.abort();
+            clearTimeout(timeout);
+        };
+    }, [trimmed]);
+
+    useEffect(() => {
+        const baseName = getSearchBaseName(trimmed);
+
+        if (baseName.length < 3) {
+            setFallbackLoading(false);
+            setFallbackUnavailable(false);
+            setFallbackMessage(null);
+            return;
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(async () => {
+            if (resultsRef.current.some((result) => result.isExactFullMatch)) {
+                return;
+            }
+
+            const requestId = ++fallbackRequestSeqRef.current;
+            const requestOrder = ++requestOrderRef.current;
+            setFallbackLoading(true);
+            setError(null);
+
+            try {
+                const res = await fetch(
+                    `/api/players/search?query=${encodeURIComponent(trimmed)}&limit=10&fallback=1`,
+                    { signal: controller.signal }
+                );
+                if (!res.ok) throw new Error(`Search failed (${res.status})`);
+                const data = await res.json() as SearchApiResponse;
+                if (requestId !== fallbackRequestSeqRef.current || trimmed !== trimmedRef.current) return;
+                if (requestOrder < latestAppliedRequestRef.current) return;
+                latestAppliedRequestRef.current = requestOrder;
+
+                const nextResults = data.results || [];
+                setResults(nextResults);
+                setFallbackUnavailable(Boolean(data.fallbackUnavailable));
+                setFallbackMessage(data.message || null);
+                setOpen(true);
+                setSelectedIndex(nextResults.length > 0 ? 0 : -1);
+            } catch (err) {
+                if ((err as Error).name === 'AbortError') return;
+                if (requestId !== fallbackRequestSeqRef.current || trimmed !== trimmedRef.current) return;
+
+                setError((err as Error).message);
+                setSelectedIndex(-1);
+            } finally {
+                if (requestId === fallbackRequestSeqRef.current) setFallbackLoading(false);
+            }
+        }, 700);
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeout);
+        };
     }, [trimmed]);
 
     const hasExact = useMemo(
@@ -136,7 +236,7 @@ export default function PlayerSearch() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onFocus={() => {
-                        if (results.length > 0) setOpen(true);
+                        if (results.length > 0 || fallbackUnavailable || error) setOpen(true);
                     }}
                     onKeyDown={onInputKeyDown}
                     type="text"
@@ -199,10 +299,27 @@ export default function PlayerSearch() {
                             </div>
                         </>
                     )}
+
+                    {!loading && !error && fallbackLoading && (
+                        <div className="px-3 py-2 text-xs ui-text-muted border-t ui-divider">
+                            Searching Bungie...
+                        </div>
+                    )}
+
+                    {!loading && !error && fallbackUnavailable && (
+                        <div className="px-3 py-2 text-xs ui-text-muted border-t ui-divider">
+                            {fallbackMessage || 'Bungie search unavailable'}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
     );
+}
+
+function getSearchBaseName(query: string): string {
+    const hashIndex = query.indexOf('#');
+    return (hashIndex === -1 ? query : query.slice(0, hashIndex)).trim();
 }
 
 function getMembershipTypeLabel(membershipType: number): string {

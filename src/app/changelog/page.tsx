@@ -15,9 +15,7 @@ export default function ChangelogPage() {
           <span className="text-sm ui-text-muted">{todayIsoDate}</span>
         </div>
         <ul className="list-disc pl-5 space-y-2 ui-text-secondary text-sm">
-          <li>Added a global footer across all pages for quick access to project links.</li>
-          <li>Introduced status freshness visibility in the footer.</li>
-          <li>Added direct links to Ko-fi, Discord, and this changelog page.</li>
+          <li>Pre build</li>
         </ul>
       </article>
     </section>

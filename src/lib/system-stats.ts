@@ -20,6 +20,7 @@ export interface SystemStats {
     bungieMaintenanceActive: boolean;
     bungieMaintenanceUntil: number | null;
     bungieMaintenanceRemainingMs: number;
+    isVacuuming: boolean;
     dbQuiesceActive: boolean;
     cleanupStatus: string;
     cleanupStartedAt: number | null;
@@ -70,6 +71,7 @@ export function getSystemStats(): SystemStats {
         bungieMaintenanceActive: bungieMaintenance.active,
         bungieMaintenanceUntil: bungieMaintenance.until,
         bungieMaintenanceRemainingMs: bungieMaintenance.remainingMs,
+        isVacuuming: bungieMaintenance.isVacuuming,
         dbQuiesceActive: bungieMaintenance.dbQuiesceActive,
         cleanupStatus: bungieMaintenance.cleanupStatus,
         cleanupStartedAt: bungieMaintenance.cleanupStartedAt,

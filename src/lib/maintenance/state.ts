@@ -26,6 +26,7 @@ export interface MaintenanceState {
     bungieMaintenanceUntil: number | null;
     maintenanceEventStartedAt: number | null;
     cleanupEligibleAt: number | null;
+    isVacuuming: boolean;
     dbQuiesceActive: boolean;
     cleanupStatus: MaintenanceCleanupStatus;
     cleanupStartedAt: number | null;
@@ -44,6 +45,7 @@ function getDefaultState(): MaintenanceState {
         bungieMaintenanceUntil: null,
         maintenanceEventStartedAt: null,
         cleanupEligibleAt: null,
+        isVacuuming: false,
         dbQuiesceActive: false,
         cleanupStatus: 'idle',
         cleanupStartedAt: null,
@@ -110,6 +112,17 @@ export function updateMaintenanceState(
 
 export function isDbQuiesceActive(): boolean {
     return readMaintenanceState().dbQuiesceActive === true;
+}
+
+export function isVacuumingActive(): boolean {
+    return readMaintenanceState().isVacuuming === true;
+}
+
+export function setVacuumingActive(isVacuuming: boolean): MaintenanceState {
+    return updateMaintenanceState((state) => ({
+        ...state,
+        isVacuuming,
+    }));
 }
 
 export function tryAcquireCleanupLease(owner: string): boolean {

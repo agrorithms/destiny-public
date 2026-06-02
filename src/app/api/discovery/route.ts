@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runDiscovery } from '@/lib/discovery/snowball';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
+import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
 import { withNoStore } from '@/lib/http/cache';
 
 let discoveryInFlight: Promise<unknown> | null = null;
@@ -9,6 +10,14 @@ export async function POST(request: NextRequest) {
     let currentDiscovery: Promise<unknown> | null = null;
 
     try {
+        const maintenance = getBungieMaintenanceStatus();
+        if (maintenance.isVacuuming) {
+            return withNoStore(NextResponse.json(
+                { error: 'Database maintenance in progress, try again shortly' },
+                { status: 503 }
+            ));
+        }
+
         const body = await request.json();
 
         const {

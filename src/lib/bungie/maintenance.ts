@@ -19,6 +19,7 @@ export interface BungieMaintenanceStatus {
     active: boolean;
     until: number | null;
     remainingMs: number;
+    isVacuuming: boolean;
     dbQuiesceActive: boolean;
     cleanupStatus: MaintenanceCleanupStatus;
     cleanupStartedAt: number | null;
@@ -81,7 +82,7 @@ function isCleanupEligibleNow(): boolean {
         return false;
     }
 
-    if (state.dbQuiesceActive) {
+    if (state.isVacuuming || state.dbQuiesceActive) {
         return false;
     }
 
@@ -147,14 +148,11 @@ async function runSqlMaintenanceWithRetry(): Promise<void> {
     }
 }
 
-async function runDowntimeCleanup(owner: string, source: string, shouldStop?: () => boolean): Promise<void> {
-    const state = readMaintenanceState();
-    const eventId = getEventId(state.maintenanceEventStartedAt);
-    if (!eventId) {
-        releaseCleanupLease(owner);
-        return;
-    }
-
+async function runMaintenanceCleanup(
+    source: string,
+    cleanupId: string,
+    shouldStop?: () => boolean
+): Promise<boolean> {
     try {
         updateMaintenanceState((current) => ({
             ...current,
@@ -162,7 +160,8 @@ async function runDowntimeCleanup(owner: string, source: string, shouldStop?: ()
             cleanupStartedAt: Date.now(),
             cleanupFinishedAt: null,
             cleanupError: null,
-            lastCleanupAttemptedEventId: eventId,
+            isVacuuming: true,
+            lastCleanupAttemptedEventId: cleanupId,
         }));
 
         generateMaintenanceSnapshots();
@@ -190,16 +189,18 @@ async function runDowntimeCleanup(owner: string, source: string, shouldStop?: ()
 
         updateMaintenanceState((current) => ({
             ...current,
+            isVacuuming: false,
             dbQuiesceActive: false,
             cleanupStatus: 'succeeded',
             cleanupFinishedAt: Date.now(),
             cleanupError: null,
             lastVacuumCompletedAt: Date.now(),
-            lastCleanupEventId: eventId,
+            lastCleanupEventId: cleanupId,
         }));
     } catch (error) {
         updateMaintenanceState((current) => ({
             ...current,
+            isVacuuming: false,
             dbQuiesceActive: false,
             cleanupStatus: 'failed',
             cleanupFinishedAt: Date.now(),
@@ -207,12 +208,30 @@ async function runDowntimeCleanup(owner: string, source: string, shouldStop?: ()
         }));
 
         console.error(`[BUNGIE] Downtime DB maintenance failed for ${source}:`, error);
+        return false;
+    }
+
+    return true;
+}
+
+export async function executeMaintenanceCleanup(
+    source: string,
+    cleanupId: string,
+    shouldStop?: () => boolean
+): Promise<boolean> {
+    const owner = `${source}-${process.pid}`;
+    if (!tryAcquireCleanupLease(owner)) {
+        return false;
+    }
+
+    try {
+        return await runMaintenanceCleanup(source, cleanupId, shouldStop);
     } finally {
         releaseCleanupLease(owner);
     }
 }
 
-async function maybeRunDowntimeCleanup(source: string, shouldStop?: () => boolean): Promise<void> {
+export async function maybeRunDowntimeCleanup(source: string, shouldStop?: () => boolean): Promise<void> {
     const state = readMaintenanceState();
 
     if (state.dbQuiesceActive) {
@@ -229,7 +248,12 @@ async function maybeRunDowntimeCleanup(source: string, shouldStop?: () => boolea
         return;
     }
 
-    await runDowntimeCleanup(owner, source, shouldStop);
+    const cleanupId = getEventId(state.maintenanceEventStartedAt) || `manual-${Date.now()}`;
+    try {
+        await runMaintenanceCleanup(source, cleanupId, shouldStop);
+    } finally {
+        releaseCleanupLease(owner);
+    }
 }
 
 export function isBungieSystemDisabledError(error: unknown): boolean {
@@ -244,6 +268,7 @@ export function getBungieMaintenanceStatus(): BungieMaintenanceStatus {
         active: remainingMs > 0,
         until: state.bungieMaintenanceUntil,
         remainingMs,
+        isVacuuming: state.isVacuuming,
         dbQuiesceActive: state.dbQuiesceActive,
         cleanupStatus: state.cleanupStatus,
         cleanupStartedAt: state.cleanupStartedAt,
@@ -270,12 +295,13 @@ export function recordBungieMaintenancePause(source: string): BungieMaintenanceS
             bungieMaintenanceUntil: Math.max(current.bungieMaintenanceUntil || 0, proposedUntil),
             maintenanceEventStartedAt: eventStartedAt,
             cleanupEligibleAt: eventStartedAt + getCleanupDelayMs(),
-            cleanupStatus: currentlyActive ? current.cleanupStatus : 'pending',
-            cleanupStartedAt: currentlyActive ? current.cleanupStartedAt : null,
-            cleanupFinishedAt: currentlyActive ? current.cleanupFinishedAt : null,
-            cleanupError: currentlyActive ? current.cleanupError : null,
-            snapshotGeneratedAt: currentlyActive ? current.snapshotGeneratedAt : null,
-            dbQuiesceActive: currentlyActive ? current.dbQuiesceActive : false,
+            cleanupStatus: (currentlyActive || current.isVacuuming) ? current.cleanupStatus : 'pending',
+            cleanupStartedAt: (currentlyActive || current.isVacuuming) ? current.cleanupStartedAt : null,
+            cleanupFinishedAt: (currentlyActive || current.isVacuuming) ? current.cleanupFinishedAt : null,
+            cleanupError: (currentlyActive || current.isVacuuming) ? current.cleanupError : null,
+            snapshotGeneratedAt: (currentlyActive || current.isVacuuming) ? current.snapshotGeneratedAt : null,
+            isVacuuming: current.isVacuuming,
+            dbQuiesceActive: (currentlyActive || current.isVacuuming) ? current.dbQuiesceActive : false,
         };
     });
 
@@ -296,7 +322,7 @@ export async function waitForBungieMaintenancePause(
         await maybeRunDowntimeCleanup(source, shouldStop);
 
         const status = getBungieMaintenanceStatus();
-        if (!status.active && !status.dbQuiesceActive) {
+        if (!status.active && !status.dbQuiesceActive && !status.isVacuuming) {
             return waited;
         }
 
@@ -304,12 +330,14 @@ export async function waitForBungieMaintenancePause(
         if (!logged) {
             const reason = status.dbQuiesceActive
                 ? 'DB maintenance quiesce'
+                : status.isVacuuming
+                    ? 'DB maintenance vacuum'
                 : `${(status.remainingMs / 1000).toFixed(1)}s of Bungie maintenance pause`;
             console.log(`[BUNGIE] ${source} waiting for ${reason}.`);
             logged = true;
         }
 
-        if (status.dbQuiesceActive) {
+        if (status.dbQuiesceActive || status.isVacuuming) {
             closeDb();
         }
 

@@ -8,6 +8,7 @@ import { isRaidActivityHash, getRaidKeyFromHash } from '../src/lib/bungie/manife
 import { hasPGCR, insertFullPGCR } from '../src/lib/db/queries';
 import type { InsertFullPGCRPlayer } from '../src/lib/db/queries';
 import { isoToUnix } from '../src/lib/utils/helpers';
+import { isVacuumingActive } from '../src/lib/maintenance/state';
 
 // ============================================
 // CONFIGURATION — Edit these values!
@@ -27,6 +28,11 @@ const SEED_PLAYERS = process.env.SEED_PLAYERS?.split(',').map((entry) => {
 if (SEED_PLAYERS.length === 0) {
     console.error('No seed players configured. Set SEED_PLAYERS in .env');
     process.exit(1);
+}
+
+if (isVacuumingActive()) {
+    console.warn('Database maintenance in progress, try again shortly. Exiting without writing.');
+    process.exit(0);
 }
 
 // How far back to look for PGCRs during discovery

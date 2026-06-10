@@ -14,6 +14,16 @@ export interface RaidDefinition {
 // Known raid activity hashes — fallback/starter values
 // The setup-manifest script will fetch the latest from the API
 const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
+    pantheon_morgeth_surpassing: {
+        name: "Pantheon: Morgeth Surpassing",
+        slug: 'pantheon-morgeth-surpassing',
+        hashes: [2530656885],
+    },
+    pantheon_calus_resplendent: {
+        name: "Pantheon: Calus Resplendent",
+        slug: 'pantheon-calus-resplendent',
+        hashes: [1516551982],
+    },
     the_desert_perpetual: {
         name: "The Desert Perpetual",
         slug: 'the-desert-perpetual',

@@ -18,6 +18,22 @@ type ScannerPlayerEntry = InsertFullPGCRPlayer & {
     bungieGlobalDisplayNameCode?: number | null;
 };
 
+type ScannerRequestResult =
+    | 'raid'
+    | 'not_raid'
+    | 'not_found'
+    | 'error'
+    | 'error_retryable'
+    | 'system_disabled'
+    | 'fatal_no_clients';
+
+type ScannerClientSlot = {
+    index: number;
+    apiKeyLabel: string;
+    client: BungieClient;
+    disabled: boolean;
+};
+
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 // Global set for missed IDs (deduped, capped)
 const missedIdsSet = new Set<string>();
@@ -58,9 +74,21 @@ export interface ScannerConfig {
     pauseOnCatchupMs: number;
     maxConsecutiveMisses: number;
     progressLogEvery: number;
+    apiKeys?: string[];
     apiKey?: string;
     enabled: boolean;
     workers: number;
+}
+
+export function getScannerApiKeysFromEnv(): string[] {
+    return [
+        process.env.BUNGIE_SCANNER_API_KEY,
+        process.env.BUNGIE_SCANNER_API_KEY_2,
+        process.env.BUNGIE_SCANNER_API_KEY_3,
+        process.env.BUNGIE_SCANNER_API_KEY_4,
+    ]
+        .map((key) => key?.trim())
+        .filter((key): key is string => Boolean(key));
 }
 
 const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
@@ -69,7 +97,7 @@ const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
     pauseOnCatchupMs: parseInt(process.env.SCANNER_PAUSE_ON_CATCHUP_MS || '20000', 10),
     maxConsecutiveMisses: parseInt(process.env.SCANNER_MAX_CONSECUTIVE_MISSES || '50', 10),
     progressLogEvery: parseInt(process.env.SCANNER_PROGRESS_LOG_EVERY || '1000', 10),
-    apiKey: process.env.BUNGIE_SCANNER_API_KEY || undefined,
+    apiKeys: getScannerApiKeysFromEnv(),
     enabled: true,
     workers: parseInt(process.env.SCANNER_WORKERS || '15', 10),
 };
@@ -100,8 +128,9 @@ const state: ScannerState = {
     startedAt: 0,
 };
 
-// Separate client and rate limiter for the scanner
-let scannerClient: BungieClient | null = null;
+// Separate client pool and rate limiters for the scanner
+let scannerClientPool: ScannerClientPool | null = null;
+let scannerClientPoolSignature: string | null = null;
 let scannerStmtDbRef: ReturnType<typeof getDb> | null = null;
 let scannerUpsertPlayerStmt: RunnableStatement | null = null;
 let scannerInsertManyPlayersTx: ((entries: ScannerPlayerEntry[]) => void) | null = null;
@@ -110,18 +139,130 @@ let scannerInsertManyPlayersTx: ((entries: ScannerPlayerEntry[]) => void) | null
 // CLIENT SETUP
 // =====================
 
-function getScannerClient(config: ScannerConfig): BungieClient {
-    if (!scannerClient) {
-        const apiKey = config.apiKey || process.env.BUNGIE_API_KEY;
-        if (!apiKey) {
-            throw new Error('No API key available for scanner. Set BUNGIE_SCANNER_API_KEY or BUNGIE_API_KEY.');
+function normalizeScannerApiKeys(config: ScannerConfig): string[] {
+    const rawKeys = config.apiKeys && config.apiKeys.length > 0
+        ? config.apiKeys
+        : config.apiKey
+            ? [config.apiKey]
+            : getScannerApiKeysFromEnv();
+
+    const normalized = rawKeys
+        .map((key) => key.trim())
+        .filter((key) => key.length > 0);
+
+    return Array.from(new Set(normalized));
+}
+
+function getScannerClientPool(config: ScannerConfig): ScannerClientPool {
+    const apiKeys = normalizeScannerApiKeys(config);
+
+    if (apiKeys.length === 0) {
+        throw new Error('No scanner API keys available. Set BUNGIE_SCANNER_API_KEY, _2, _3, or _4.');
+    }
+
+    const signature = `${config.requestsPerSecond}:${apiKeys.join('|')}`;
+
+    if (!scannerClientPool || scannerClientPoolSignature !== signature) {
+        scannerClientPool = new ScannerClientPool(apiKeys, config.requestsPerSecond);
+        scannerClientPoolSignature = signature;
+    }
+
+    return scannerClientPool;
+}
+
+function getBungieApiHttpStatus(error: unknown): number | null {
+    const message = (error as Error)?.message || '';
+    const match = message.match(/Bungie API error (\d+):/i);
+    if (!match) {
+        return null;
+    }
+
+    const status = Number.parseInt(match[1], 10);
+    return Number.isFinite(status) ? status : null;
+}
+
+function shouldDisableScannerClient(error: unknown): boolean {
+    const status = getBungieApiHttpStatus(error);
+    if (status === 401 || status === 403 || status === 429) {
+        return true;
+    }
+
+    return false;
+}
+
+function describeScannerClientFailure(error: unknown): string {
+    const status = getBungieApiHttpStatus(error);
+    if (status) {
+        return `HTTP ${status}`;
+    }
+
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+
+    return 'unknown error';
+}
+
+class ScannerClientPool {
+    private slots: ScannerClientSlot[];
+    private nextSlotIndex: number;
+    private requestsPerSecond: number;
+
+    constructor(apiKeys: string[], requestsPerSecond: number) {
+        this.requestsPerSecond = requestsPerSecond;
+        this.slots = apiKeys.map((apiKey, index) => ({
+            index,
+            apiKeyLabel: `key-${index + 1}`,
+            client: new BungieClient(apiKey, requestsPerSecond),
+            disabled: false,
+        }));
+        this.nextSlotIndex = 0;
+    }
+
+    get totalClients(): number {
+        return this.slots.length;
+    }
+
+    get activeClients(): number {
+        return this.slots.filter((slot) => !slot.disabled).length;
+    }
+
+    get totalRequestsPerSecond(): number {
+        return this.activeClients * this.requestsPerSecond;
+    }
+
+    acquireClient(): ScannerClientSlot | null {
+        if (this.activeClients === 0) {
+            return null;
         }
 
-        const rps = parseInt(process.env.SCANNER_REQUESTS_PER_SECOND || '25', 10);
+        for (let i = 0; i < this.slots.length; i++) {
+            const slotIndex = (this.nextSlotIndex + i) % this.slots.length;
+            const slot = this.slots[slotIndex];
+            if (slot.disabled) {
+                continue;
+            }
 
-        scannerClient = new BungieClient(apiKey, rps);
+            this.nextSlotIndex = (slotIndex + 1) % this.slots.length;
+            return slot;
+        }
+
+        return null;
     }
-    return scannerClient;
+
+    disableClient(slotIndex: number, reason: string): void {
+        const slot = this.slots[slotIndex];
+        if (!slot || slot.disabled) {
+            return;
+        }
+
+        slot.disabled = true;
+        const remaining = this.activeClients;
+        console.warn(
+            `[SCANNER] Disabling ${slot.apiKeyLabel} after ${reason}. ` +
+            `${remaining}/${this.totalClients} scanner keys remain active.`
+        );
+    }
 }
 
 function getScannerPlayerUpsertTransaction(): (entries: ScannerPlayerEntry[]) => void {
@@ -247,106 +388,122 @@ function writeScannerStats(): void {
 // =====================
 
 async function scanSinglePGCR(
-    client: BungieClient,
+    clientPool: ScannerClientPool,
     instanceId: string
-): Promise<'raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable' | 'system_disabled'> {
+): Promise<ScannerRequestResult> {
     if (hasPGCR(instanceId)) {
         return 'not_raid';
     }
 
-    try {
-        const response = await client.getPGCR(instanceId);
-        const pgcrData = response.Response;
-
-        if (!pgcrData || !pgcrData.activityDetails) {
-            return 'not_found';
+    while (true) {
+        const client = clientPool.acquireClient();
+        if (!client) {
+            return 'fatal_no_clients';
         }
 
-        const activityHash = pgcrData.activityDetails.directorActivityHash
-            || pgcrData.activityDetails.referenceId;
+        try {
+            const response = await client.client.getPGCR(instanceId);
+            const pgcrData = response.Response;
 
-        if (!isRaidActivityHash(activityHash)) {
-            return 'not_raid';
-        }
+            if (!pgcrData || !pgcrData.activityDetails) {
+                return 'not_found';
+            }
 
-        const raidKey = getRaidKeyFromHash(activityHash);
+            const activityHash = pgcrData.activityDetails.directorActivityHash
+                || pgcrData.activityDetails.referenceId;
 
-        const anyoneCompleted = pgcrData.entries?.some(
-            (entry) => entry.values?.completed?.basic?.value === 1
-        ) || false;
+            if (!isRaidActivityHash(activityHash)) {
+                return 'not_raid';
+            }
 
-        const playerEntries: ScannerPlayerEntry[] = (pgcrData.entries || []).map((entry) => ({
-            instanceId,
-            membershipId: entry.player.destinyUserInfo.membershipId,
-            membershipType: entry.player.destinyUserInfo.membershipType,
-            displayName: entry.player.destinyUserInfo.displayName,
-            bungieGlobalDisplayName: entry.player.destinyUserInfo.bungieGlobalDisplayName,
-            bungieGlobalDisplayNameCode: entry.player.destinyUserInfo.bungieGlobalDisplayNameCode ?? null, // add this
-            characterClass: entry.player.characterClass || 'Unknown',
-            lightLevel: entry.player.lightLevel || 0,
-            completed: entry.values?.completed?.basic?.value === 1,
-            kills: entry.values?.kills?.basic?.value || 0,
-            deaths: entry.values?.deaths?.basic?.value || 0,
-            assists: entry.values?.assists?.basic?.value || 0,
-            timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value || 0,
-        }));
+            const raidKey = getRaidKeyFromHash(activityHash);
 
-        insertFullPGCR(
-            {
+            const anyoneCompleted = pgcrData.entries?.some(
+                (entry) => entry.values?.completed?.basic?.value === 1
+            ) || false;
+
+            const playerEntries: ScannerPlayerEntry[] = (pgcrData.entries || []).map((entry) => ({
                 instanceId,
-                activityHash,
-                raidKey,
-                period: isoToUnix(pgcrData.period),
-                startingPhaseIndex: pgcrData.startingPhaseIndex || 0,
-                activityWasStartedFromBeginning: pgcrData.activityWasStartedFromBeginning || false,
-                completed: anyoneCompleted,
-                playerCount: (pgcrData.entries || []).length,
-                source: 'scanner',  // tell db where this came from
-            },
-            playerEntries
-        );
+                membershipId: entry.player.destinyUserInfo.membershipId,
+                membershipType: entry.player.destinyUserInfo.membershipType,
+                displayName: entry.player.destinyUserInfo.displayName,
+                bungieGlobalDisplayName: entry.player.destinyUserInfo.bungieGlobalDisplayName,
+                bungieGlobalDisplayNameCode: entry.player.destinyUserInfo.bungieGlobalDisplayNameCode ?? null,
+                characterClass: entry.player.characterClass || 'Unknown',
+                lightLevel: entry.player.lightLevel || 0,
+                completed: entry.values?.completed?.basic?.value === 1,
+                kills: entry.values?.kills?.basic?.value || 0,
+                deaths: entry.values?.deaths?.basic?.value || 0,
+                assists: entry.values?.assists?.basic?.value || 0,
+                timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value || 0,
+            }));
 
-        const insertMany = getScannerPlayerUpsertTransaction();
-        insertMany(playerEntries);
+            insertFullPGCR(
+                {
+                    instanceId,
+                    activityHash,
+                    raidKey,
+                    period: isoToUnix(pgcrData.period),
+                    startingPhaseIndex: pgcrData.startingPhaseIndex || 0,
+                    activityWasStartedFromBeginning: pgcrData.activityWasStartedFromBeginning || false,
+                    completed: anyoneCompleted,
+                    playerCount: (pgcrData.entries || []).length,
+                    source: 'scanner',
+                },
+                playerEntries
+            );
 
-        return 'raid';
-    } catch (error) {
-        const errorMessage = (error as Error).message || '';
+            const insertMany = getScannerPlayerUpsertTransaction();
+            insertMany(playerEntries);
 
-        // Check for PGCR not found — whether it's a BungieAPIError or regular Error
-        if (
-            (error instanceof BungieAPIError && (
-                error.errorCode === 1653 ||
-                error.errorStatus === 'DestinyPGCRNotFound' ||
-                error.errorCode === 7
-            )) ||
-            errorMessage.includes('DestinyPGCRNotFound') ||
-            errorMessage.includes('1653')
-        ) {
-            return 'not_found';
+            return 'raid';
+        } catch (error) {
+            const errorMessage = (error as Error).message || '';
+
+            if (shouldDisableScannerClient(error)) {
+                clientPool.disableClient(client.index, describeScannerClientFailure(error));
+                if (clientPool.activeClients === 0) {
+                    return 'fatal_no_clients';
+                }
+
+                continue;
+            }
+
+            // Check for PGCR not found — whether it's a BungieAPIError or regular Error
+            if (
+                (error instanceof BungieAPIError && (
+                    error.errorCode === 1653 ||
+                    error.errorStatus === 'DestinyPGCRNotFound' ||
+                    error.errorCode === 7
+                )) ||
+                errorMessage.includes('DestinyPGCRNotFound') ||
+                errorMessage.includes('1653')
+            ) {
+                return 'not_found';
+            }
+
+            // System disabled
+            if (isBungieSystemDisabledError(error)) {
+                recordBungieMaintenancePause('scanner');
+                return 'system_disabled';
+            }
+
+            // Detect Cloudflare/HTTP server errors (502, 503, 504)
+            if (
+                errorMessage.includes('502') ||
+                errorMessage.includes('503') ||
+                errorMessage.includes('504') ||
+                errorMessage.includes('Bad gateway') ||
+                errorMessage.includes('<!DOCTYPE html>')
+            ) {
+                console.warn(`[SCANNER] ⚠️ Bungie API server error for PGCR ${instanceId} — will retry`);
+                return 'error_retryable';
+            }
+
+            // Log unexpected errors (truncated) but continue scanning
+            console.error(`[SCANNER] Error fetching PGCR ${instanceId}:`, errorMessage.substring(0, 150));
+            return 'error';
         }
-
-        // System disabled
-        if (isBungieSystemDisabledError(error)) {
-            recordBungieMaintenancePause('scanner');
-            return 'system_disabled';
-        }
-
-        // Detect Cloudflare/HTTP server errors (502, 503, 504)
-        if (
-            errorMessage.includes('502') ||
-            errorMessage.includes('503') ||
-            errorMessage.includes('504') ||
-            errorMessage.includes('Bad gateway') ||
-            errorMessage.includes('<!DOCTYPE html>')
-        ) {
-            console.warn(`[SCANNER] ⚠️ Bungie API server error for PGCR ${instanceId} — will retry`);
-            return 'error_retryable';
-        }
-
-        // Log unexpected errors (truncated) but continue scanning
-        console.error(`[SCANNER] Error fetching PGCR ${instanceId}:`, errorMessage.substring(0, 150));
-        return 'error';
     }
 }
 
@@ -356,7 +513,7 @@ async function scanSinglePGCR(
 
 
 async function scanBatch(
-    client: BungieClient,
+    clientPool: ScannerClientPool,
     startId: bigint,
     batchSize: number,
     workerCount: number
@@ -369,6 +526,7 @@ async function scanBatch(
     missedIdsDropped: number;
     lastId: bigint;
     systemDisabled: boolean;
+    fatalNoClients: boolean;
 }> {
     let raidsFound = 0;
     let misses = 0;
@@ -383,18 +541,19 @@ async function scanBatch(
     // Shared index — each worker grabs the next available ID
     let nextIndex = 0;
     let systemDisabled = false;
+    let fatalNoClients = false;
 
     // Track results in order for consecutive miss calculation
-    const results: Array<'raid' | 'not_raid' | 'not_found' | 'error' | 'error_retryable' | 'system_disabled' | undefined> = new Array(batchSize);
+    const results: Array<ScannerRequestResult | undefined> = new Array(batchSize);
 
     async function worker() {
         while (true) {
-            if (systemDisabled) break;
+            if (systemDisabled || fatalNoClients) break;
 
             const myIndex = nextIndex++;
-            if (myIndex >= batchSize || state.shouldStop || systemDisabled) break;
+            if (myIndex >= batchSize || state.shouldStop || systemDisabled || fatalNoClients) break;
 
-            const result = await scanSinglePGCR(client, instanceIds[myIndex]);
+            const result = await scanSinglePGCR(clientPool, instanceIds[myIndex]);
             results[myIndex] = result;
 
             switch (result) {
@@ -416,6 +575,9 @@ async function scanBatch(
                     break;
                 case 'system_disabled':
                     systemDisabled = true;
+                    break;
+                case 'fatal_no_clients':
+                    fatalNoClients = true;
                     break;
             }
         }
@@ -450,7 +612,9 @@ async function scanBatch(
         }
     }
 
-    const lastId = startId + BigInt(batchSize - 1);
+    const lastId = fatalNoClients
+        ? startId - BigInt(1)
+        : startId + BigInt(batchSize - 1);
 
     return {
         scanned,
@@ -461,6 +625,7 @@ async function scanBatch(
         missedIdsDropped: droppedThisBatch,
         lastId,
         systemDisabled,
+        fatalNoClients,
     };
 }
 
@@ -470,24 +635,25 @@ async function scanBatch(
 // =====================
 
 async function retryMissedIds(
-    client: BungieClient,
+    clientPool: ScannerClientPool,
     missedIds: string[],
     workerCount: number
-): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[]; systemDisabled: boolean }> {
+): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[]; systemDisabled: boolean; fatalNoClients: boolean }> {
     let retryRaidsFound = 0;
     let stillMissing = 0;
     let nextIndex = 0;
     let systemDisabled = false;
+    let fatalNoClients = false;
     const stillMissingIds: string[] = [];
 
     async function worker() {
         while (true) {
-            if (systemDisabled) break;
+            if (systemDisabled || fatalNoClients) break;
 
             const myIndex = nextIndex++;
-            if (myIndex >= missedIds.length || state.shouldStop || systemDisabled) break;
+            if (myIndex >= missedIds.length || state.shouldStop || systemDisabled || fatalNoClients) break;
 
-            const result = await scanSinglePGCR(client, missedIds[myIndex]);
+            const result = await scanSinglePGCR(clientPool, missedIds[myIndex]);
 
             switch (result) {
                 case 'raid':
@@ -508,6 +674,11 @@ async function retryMissedIds(
                     stillMissing++;
                     stillMissingIds.push(missedIds[myIndex]);
                     break;
+                case 'fatal_no_clients':
+                    fatalNoClients = true;
+                    stillMissing++;
+                    stillMissingIds.push(missedIds[myIndex]);
+                    break;
             }
         }
     }
@@ -518,7 +689,7 @@ async function retryMissedIds(
     );
     await Promise.all(workers);
 
-    return { retryRaidsFound, stillMissing, stillMissingIds, systemDisabled };
+    return { retryRaidsFound, stillMissing, stillMissingIds, systemDisabled, fatalNoClients };
 }
 
 
@@ -539,6 +710,10 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         return;
     }
 
+    scannerClientPool = null;
+    scannerClientPoolSignature = null;
+    const clientPool = getScannerClientPool(config);
+    state.currentInstanceId = loadScannerPosition();
     state.isRunning = true;
     state.shouldStop = false;
     state.startedAt = Date.now();
@@ -546,18 +721,16 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
     state.totalRaidsFound = 0;
     state.totalMisses = 0;
 
-    const client = getScannerClient(config);
-    state.currentInstanceId = loadScannerPosition();
-
     console.log('[SCANNER] Starting PGCR scanner');
-    console.log(`  Rate limit:    ${config.requestsPerSecond} req/s`);
+    console.log(`  API keys:      ${clientPool.totalClients} configured / ${clientPool.activeClients} active`);
+    console.log(`  Rate limit:    ${config.requestsPerSecond} req/s per key`);
+    console.log(`  Effective:     ${clientPool.totalRequestsPerSecond} req/s total`);
     console.log(`  Batch size:    ${config.batchSize}`);
     console.log(`  Workers:       ${config.workers}`);
     console.log(`  Catchup pause: ${config.pauseOnCatchupMs}ms`);
     console.log(`  Max misses:    ${config.maxConsecutiveMisses}`);
     console.log(`  Progress log:  every ${config.progressLogEvery} scanned`);
     console.log(`  Starting at:   ${state.currentInstanceId}`);
-    console.log(`  API key:       ${config.apiKey ? 'dedicated scanner key' : 'shared main key'}`);
     console.log('');
 
     async function scanLoop() {
@@ -590,7 +763,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         }
 
         const batchStart = state.currentInstanceId + BigInt(1);
-        const result = await scanBatch(client, batchStart, config.batchSize, config.workers);
+        const result = await scanBatch(clientPool, batchStart, config.batchSize, config.workers);
         const previousTotalScanned = state.totalScanned;
 
         if (result.systemDisabled) {
@@ -602,6 +775,17 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
             await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
             setTimeout(scanLoop, 100);
+            return;
+        }
+
+        if (result.fatalNoClients) {
+            state.totalScanned += result.scanned;
+            state.totalRaidsFound += result.raidsFound;
+            state.totalMisses += result.misses;
+            writeScannerStats();
+            console.error('[SCANNER] All scanner API keys are disabled or unavailable. Stopping scanner until keys are fixed.');
+            state.isRunning = false;
+            saveScannerPosition(state.currentInstanceId);
             return;
         }
 
@@ -656,7 +840,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
                     console.log(`[SCANNER] 🔄 Missed IDs set reached ${missedIdsSet.size}. Retrying...`);
                     const idsToRetry = Array.from(missedIdsSet);
                     missedIdsSet.clear();
-                    const retryResult = await retryMissedIds(client, idsToRetry, config.workers);
+                    const retryResult = await retryMissedIds(clientPool, idsToRetry, config.workers);
 
                     state.totalRaidsFound += retryResult.retryRaidsFound;
                     addMissedIds(retryResult.stillMissingIds);
@@ -669,6 +853,14 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
                     if (retryResult.systemDisabled) {
                         await waitForBungieMaintenancePause('scanner', () => state.shouldStop);
+                    }
+
+                    if (retryResult.fatalNoClients) {
+                        console.error('[SCANNER] All scanner API keys were disabled during retry processing.');
+                        state.isRunning = false;
+                        saveScannerPosition(state.currentInstanceId);
+                        writeScannerStats();
+                        return;
                     }
                 }
 

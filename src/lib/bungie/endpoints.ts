@@ -1,4 +1,5 @@
 const BASE_URL = process.env.BUNGIE_BASE_URL || 'https://www.bungie.net/Platform';
+const PGCR_BASE_URL = process.env.BUNGIE_PGCR_BASE_URL || 'https://stats.bungie.net/Platform';
 
 export const BungieEndpoints = {
     getProfile: (membershipType: number, membershipId: string, components: number[]) =>
@@ -18,7 +19,7 @@ export const BungieEndpoints = {
     },
 
     getPGCR: (activityId: string) =>
-        `${BASE_URL}/Destiny2/Stats/PostGameCarnageReport/${activityId}/`,
+        `${PGCR_BASE_URL}/Destiny2/Stats/PostGameCarnageReport/${activityId}/`,
 
     getManifest: () =>
         `${BASE_URL}/Destiny2/Manifest/`,

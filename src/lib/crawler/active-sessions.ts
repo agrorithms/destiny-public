@@ -1,7 +1,7 @@
 import { getBungieClient, BungieAPIError } from '../bungie/client';
 import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { deleteActiveSessionForPlayer, upsertActiveSession } from '../db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes } from '../db/queries';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
 import type { PlayerInfo, RaidSession } from '../bungie/types';
@@ -296,11 +296,17 @@ export async function refreshStaleSessionsWithOptions(options?: {
             for (const teammate of teammateCandidates) {
                 const teammateResult = await checkPlayerActivity(teammate, client);
                 if (teammateResult) {
+                    // Anchor left / went private but teammate is still active —
+                    // the raid may still be in progress. Enqueue the anchor only so
+                    // the completed PGCR lands as soon as they finish.
+                    enqueueEndedSession(session);
                     deleteActiveSessionForPlayer(session.membership_id);
                     return true;
                 }
             }
 
+            // All probed players are inactive: raid confirmed ended. Enqueue the full fireteam.
+            enqueueEndedSession(session);
             deleteActiveSessionForPlayer(session.membership_id);
             return false;
         }
@@ -335,6 +341,54 @@ export async function refreshStaleSessionsWithOptions(options?: {
     console.log(`[SESSIONS] Re-verification complete: ${refreshed} refreshed, ${removed} removed`);
 
     return { refreshed, removed };
+}
+
+/**
+ * Enqueue the anchor player and any resolvable fireteam members into the crawl queue
+ * when a session is confirmed ended. Uses source='session_end' at priority 100 so the
+ * crawler picks them up first on the next cycle.
+ *
+ * Teammates lack membershipType in party_members_json (Bungie transitory data doesn't
+ * include it), so we resolve from the players table and skip unresolvable ones. The
+ * anchor's single PGCR still credits all 6 participants for this raid.
+ */
+function enqueueEndedSession(session: StaleSessionRow): void {
+    const toEnqueue: { membershipId: string; membershipType: number; displayName: string | null }[] = [
+        {
+            membershipId: session.membership_id,
+            membershipType: session.membership_type,
+            displayName: session.display_name,
+        },
+    ];
+
+    // Collect teammate membershipIds from party_members_json
+    const rawTeammates = getTeammateMembershipIds(session.party_members_json, session.membership_id);
+
+    if (rawTeammates.length > 0) {
+        const resolved = resolveMembershipTypes(rawTeammates);
+        for (const [id, info] of resolved) {
+            toEnqueue.push({
+                membershipId: id,
+                membershipType: info.membershipType,
+                displayName: info.displayName,
+            });
+        }
+    }
+
+    enqueueCrawl(toEnqueue, 'session_end', 100);
+}
+
+/** Extract teammate membershipIds (no type) from party_members_json, excluding the anchor. */
+function getTeammateMembershipIds(partyMembersJson: string | null | undefined, excludeId: string): string[] {
+    if (!partyMembersJson) return [];
+    try {
+        const members = JSON.parse(partyMembersJson) as Array<{ membershipId?: string }>;
+        return members
+            .map((m) => m.membershipId)
+            .filter((id): id is string => !!id && id !== excludeId);
+    } catch {
+        return [];
+    }
 }
 
 function getTeammateCandidates(partyMembersJson: string | null | undefined, excludeMembershipId: string): PlayerInfo[] {

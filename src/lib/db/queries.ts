@@ -248,6 +248,206 @@ export function getPlayerCount(): number {
     return row?.count ?? 0;
 }
 
+// =====================
+// CHARACTER ID CACHE
+// =====================
+
+export interface CachedCharacterIds {
+    ids: string[];
+    updatedAt: number;
+}
+
+export function getCachedCharacterIds(membershipId: string): CachedCharacterIds | null {
+    const db = getDb();
+    const row = db.prepare(`
+    SELECT character_ids, character_ids_updated_at
+    FROM players
+    WHERE membership_id = ?
+  `).get(membershipId) as { character_ids: string | null; character_ids_updated_at: number | null } | undefined;
+
+    if (!row || !row.character_ids) return null;
+
+    try {
+        const ids = JSON.parse(row.character_ids) as string[];
+        if (!Array.isArray(ids) || ids.length === 0) return null;
+        return { ids, updatedAt: row.character_ids_updated_at ?? 0 };
+    } catch {
+        return null;
+    }
+}
+
+export function updateCharacterIds(membershipId: string, ids: string[]): void {
+    const db = getDb();
+    db.prepare(`
+    UPDATE players
+    SET character_ids = ?, character_ids_updated_at = unixepoch()
+    WHERE membership_id = ?
+  `).run(JSON.stringify(ids), membershipId);
+}
+
+// =====================
+// CRAWL QUEUE
+// =====================
+
+export interface CrawlQueueRow {
+    membershipId: string;
+    membershipType: number;
+    displayName: string | null;
+}
+
+/** Bulk-enqueue players for next crawl cycle. Re-enqueue upgrades priority if higher. */
+export function enqueueCrawl(
+    players: { membershipId: string; membershipType: number; displayName?: string | null }[],
+    source: string,
+    priority: number = 0
+): void {
+    if (players.length === 0) return;
+    const db = getDb();
+    const stmt = db.prepare(`
+    INSERT INTO crawl_queue (membership_id, membership_type, display_name, source, priority, enqueued_at)
+    VALUES (?, ?, ?, ?, ?, unixepoch())
+    ON CONFLICT(membership_id) DO UPDATE SET
+      source = excluded.source,
+      priority = MAX(priority, excluded.priority),
+      enqueued_at = excluded.enqueued_at
+  `);
+    const tx = db.transaction((rows: typeof players) => {
+        for (const p of rows) {
+            stmt.run(p.membershipId, p.membershipType, p.displayName ?? null, source, priority);
+        }
+    });
+    tx(players);
+}
+
+/** Drain up to `limit` rows from the crawl queue, highest priority + oldest first. */
+export function drainCrawlQueue(limit: number): CrawlQueueRow[] {
+    const db = getDb();
+    return db.prepare(`
+    SELECT membership_id AS membershipId, membership_type AS membershipType, display_name AS displayName
+    FROM crawl_queue
+    ORDER BY priority DESC, enqueued_at ASC
+    LIMIT ?
+  `).all(limit) as CrawlQueueRow[];
+}
+
+/** Delete processed queue rows (after crawl attempt, success or failure). */
+export function deleteCrawlQueueRows(membershipIds: string[]): void {
+    if (membershipIds.length === 0) return;
+    const db = getDb();
+    db.prepare(`
+    DELETE FROM crawl_queue WHERE membership_id IN (SELECT value FROM json_each(?))
+  `).run(JSON.stringify(membershipIds));
+}
+
+/**
+ * Resolve membershipType + displayName for a list of membershipIds from the players table.
+ * Returns a map of membershipId → { membershipType, displayName }.
+ */
+export function resolveMembershipTypes(
+    membershipIds: string[]
+): Map<string, { membershipType: number; displayName: string | null }> {
+    const result = new Map<string, { membershipType: number; displayName: string | null }>();
+    if (membershipIds.length === 0) return result;
+    const db = getDb();
+    const rows = db.prepare(`
+    SELECT membership_id, membership_type, display_name
+    FROM players
+    WHERE membership_id IN (SELECT value FROM json_each(?))
+  `).all(JSON.stringify(membershipIds)) as { membership_id: string; membership_type: number; display_name: string | null }[];
+    for (const row of rows) {
+        result.set(row.membership_id, { membershipType: row.membership_type, displayName: row.display_name });
+    }
+    return result;
+}
+
+// =====================
+// TIERED CRAWL SELECTION
+// =====================
+
+/**
+ * Select players for the hot or warm bucket.
+ * hot:  minSeenUnix = now-hotHours, maxSeenUnix = null
+ * warm: minSeenUnix = now-warmHours, maxSeenUnix = now-hotHours
+ */
+export function getPlayersInRecentBucket(
+    minSeenUnix: number,
+    maxSeenUnix: number | null,
+    limit: number,
+    excludeIds: string[]
+): PlayerInfo[] {
+    if (limit <= 0) return [];
+    const db = getDb();
+    const excludeJson = JSON.stringify(excludeIds);
+    const maxFilter = maxSeenUnix !== null ? 'AND (pg.period + d.dur) < ?' : '';
+    const params: (number | string)[] = [minSeenUnix];
+    if (maxSeenUnix !== null) params.push(maxSeenUnix);
+    params.push(excludeJson, limit);
+
+    return db.prepare(`
+    WITH recent AS (
+      SELECT pp.membership_id AS membershipId
+      FROM pgcr_players pp
+      INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
+      INNER JOIN (
+        SELECT instance_id, MAX(time_played_seconds) AS dur
+        FROM pgcr_players WHERE completed = 1 GROUP BY instance_id
+      ) d ON d.instance_id = pg.instance_id
+      WHERE (pg.period + d.dur) >= ?
+        ${maxFilter}
+      GROUP BY pp.membership_id
+    )
+    SELECT p.membership_id AS membershipId,
+           p.membership_type AS membershipType,
+           p.display_name AS displayName,
+           p.bungie_global_display_name AS bungieGlobalDisplayName,
+           p.last_crawled_at AS lastCrawledAt
+    FROM recent r
+    INNER JOIN players p ON p.membership_id = r.membershipId
+    WHERE p.is_active = 1
+      AND p.membership_id NOT IN (SELECT value FROM json_each(?))
+    ORDER BY p.last_crawled_at ASC
+    LIMIT ?
+  `).all(...params) as PlayerInfo[];
+}
+
+/**
+ * Select players for the cold bucket: seen before warmCutoff OR never seen in any PGCR.
+ */
+export function getPlayersInColdBucket(
+    warmCutoffUnix: number,
+    limit: number,
+    excludeIds: string[]
+): PlayerInfo[] {
+    if (limit <= 0) return [];
+    const db = getDb();
+    const excludeJson = JSON.stringify(excludeIds);
+    return db.prepare(`
+    WITH all_recent AS (
+      SELECT pp.membership_id AS membershipId,
+             MAX(pg.period + d.dur) AS lastSeenPeriod
+      FROM pgcr_players pp
+      INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
+      INNER JOIN (
+        SELECT instance_id, MAX(time_played_seconds) AS dur
+        FROM pgcr_players WHERE completed = 1 GROUP BY instance_id
+      ) d ON d.instance_id = pg.instance_id
+      GROUP BY pp.membership_id
+    )
+    SELECT p.membership_id AS membershipId,
+           p.membership_type AS membershipType,
+           p.display_name AS displayName,
+           p.bungie_global_display_name AS bungieGlobalDisplayName,
+           p.last_crawled_at AS lastCrawledAt
+    FROM players p
+    LEFT JOIN all_recent r ON r.membershipId = p.membership_id
+    WHERE p.is_active = 1
+      AND (r.membershipId IS NULL OR r.lastSeenPeriod < ?)
+      AND p.membership_id NOT IN (SELECT value FROM json_each(?))
+    ORDER BY p.priority DESC, p.last_crawled_at ASC
+    LIMIT ?
+  `).all(warmCutoffUnix, excludeJson, limit) as PlayerInfo[];
+}
+
 export interface PlayerSearchResult {
     membershipId: string;
     membershipType: number;
@@ -616,6 +816,12 @@ export function getActiveSessionContainingPlayer(membershipId: string, maxAgeSec
 export function hasPGCR(instanceId: string): boolean {
     const db = getDb();
     const row = db.prepare('SELECT 1 FROM pgcrs WHERE instance_id = ?').get(instanceId);
+    return !!row;
+}
+
+export function hasCrawlerPGCR(instanceId: string): boolean {
+    const db = getDb();
+    const row = db.prepare("SELECT 1 FROM pgcrs WHERE instance_id = ? AND source = 'crawler'").get(instanceId);
     return !!row;
 }
 

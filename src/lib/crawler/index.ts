@@ -1,10 +1,13 @@
 import {
     getPlayersForSessionPolling,
-    getPlayersToCrawl,
     bulkUpsertPlayers,
     cleanupOldPGCRs,
     getDbStats,
     getSessionPollingCandidateLimit,
+    drainCrawlQueue,
+    deleteCrawlQueueRows,
+    getPlayersInRecentBucket,
+    getPlayersInColdBucket,
 } from '../db/queries';
 import { crawlPlayer } from './players';
 import { pollActiveSessions } from './active-sessions';
@@ -42,7 +45,6 @@ function writeCrawlerStatus(status: string): void {
 export interface CrawlerConfig {
     intervalMs: number;
     maxPlayersPerCycle: number;
-    hoursBack: number;
     crawlConcurrency: number;
     enableActiveSessionPolling: boolean;
     activeSessionIntervalMs: number;
@@ -52,12 +54,25 @@ export interface CrawlerConfig {
     sessionPollingLimit: number;
     cleanupIntervalMs: number;
     cleanupMaxAgeHours: number;
+    // DB-bounded pagination
+    maxBackfillHours: number;
+    hotRecrawlCount: number;
+    coldCrawlCount: number;
+    maxPages: number;
+    charIdTtlDays: number;
+    // Tiered bucket percentages
+    bucketHotHours: number;
+    bucketWarmHours: number;
+    bucketHotPct: number;
+    bucketWarmPct: number;
+    bucketColdPct: number;
+    // Crawl queue
+    queueMaxPerCycle: number;
 }
 
 const DEFAULT_CONFIG: CrawlerConfig = {
     intervalMs: parseInt(process.env.CRAWLER_INTERVAL_MS || '90000', 10),
     maxPlayersPerCycle: parseInt(process.env.CRAWLER_MAX_PLAYERS_PER_CYCLE || '50', 10),
-    hoursBack: parseInt(process.env.CRAWLER_HOURS_BACK || '24', 10),
     crawlConcurrency: parseInt(process.env.CRAWLER_CONCURRENCY || '5', 10),
     enableActiveSessionPolling: true,
     activeSessionIntervalMs: parseInt(process.env.CRAWLER_ACTIVE_SESSION_INTERVAL_MS || '120000', 10), // 2 minutes
@@ -84,29 +99,153 @@ const DEFAULT_CONFIG: CrawlerConfig = {
         parseInt(process.env.CRAWLER_SESSION_POLLING_LIMIT || '200', 10)
     ),
     cleanupIntervalMs: 1800000, // 30 minutes
-    cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '24', 10),
+    cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '720', 10),
+    // DB-bounded pagination
+    maxBackfillHours: parseInt(process.env.CRAWLER_BACKFILL_MAX_HOURS || '720', 10),
+    hotRecrawlCount: parseInt(process.env.CRAWLER_HOT_RECRAWL_COUNT || '15', 10),
+    coldCrawlCount: parseInt(process.env.CRAWLER_COLD_CRAWL_COUNT || '50', 10),
+    maxPages: parseInt(process.env.CRAWLER_MAX_PAGES || '5', 10),
+    charIdTtlDays: parseInt(process.env.CRAWLER_CHARACTER_IDS_TTL_DAYS || '14', 10),
+    // Tiered bucket percentages
+    bucketHotHours: parseInt(process.env.CRAWLER_BUCKET_HOT_HOURS || '6', 10),
+    bucketWarmHours: parseInt(process.env.CRAWLER_BUCKET_WARM_HOURS || '48', 10),
+    bucketHotPct: parseInt(process.env.CRAWLER_BUCKET_HOT_PCT || '75', 10),
+    bucketWarmPct: parseInt(process.env.CRAWLER_BUCKET_WARM_PCT || '15', 10),
+    bucketColdPct: parseInt(process.env.CRAWLER_BUCKET_COLD_PCT || '10', 10),
+    // Crawl queue
+    queueMaxPerCycle: parseInt(process.env.CRAWLER_QUEUE_MAX_PER_CYCLE || '100', 10),
 };
 
 let isRunning = false;
 let shouldStop = false;
 const activeSessionInitialDelayMs = parseInt(process.env.CRAWLER_ACTIVE_SESSION_INITIAL_DELAY_MS || '30000', 10);
 
+interface CrawlTask {
+    player: PlayerInfo;
+    /** Activities per page — hot/queue players get a smaller, cheaper count. */
+    pageCount: number;
+}
+
 /**
- * Run a single crawl cycle: pick players, crawl their activity history,
- * fetch new PGCRs, and discover new players.
+ * Run a single crawl cycle:
+ * 1. Drain crawl_queue (additional budget, capped).
+ * 2. Fill remaining budget with tiered buckets (hot 75% / warm 15% / cold 10%),
+ *    with spillover when a bucket is thin.
+ * 3. Crawl all players concurrently.
+ * 4. Clean up processed queue rows.
  */
 async function crawlCycle(config: CrawlerConfig): Promise<{
     playersCrawled: number;
     newPGCRs: number;
     newPlayersDiscovered: number;
 }> {
-    const players = getPlayersToCrawl(config.maxPlayersPerCycle);
+    const now = Math.floor(Date.now() / 1000);
+    const charIdTtlSeconds = config.charIdTtlDays * 24 * 60 * 60;
+    const crawlOptions = {
+        maxBackfillHours: config.maxBackfillHours,
+        maxPages: config.maxPages,
+        charIdTtlSeconds,
+    };
 
-    if (players.length === 0) {
+    // --- Step 1: Drain crawl_queue (additional, capped) ---
+    const queueRows = drainCrawlQueue(config.queueMaxPerCycle);
+    const queueIds = new Set(queueRows.map((r) => r.membershipId));
+    const queueTasks: CrawlTask[] = queueRows.map((r) => ({
+        player: {
+            membershipId: r.membershipId,
+            membershipType: r.membershipType,
+            displayName: r.displayName ?? r.membershipId,
+        },
+        pageCount: config.hotRecrawlCount, // recently ended session — fast check
+    }));
+
+    if (queueTasks.length > 0) {
+        console.log(`[CRAWLER] Draining ${queueTasks.length} players from crawl_queue`);
+    }
+
+    // --- Step 2: Select tiered bucket players ---
+    const total = config.maxPlayersPerCycle;
+    const hotTarget = Math.floor(total * config.bucketHotPct / 100);
+    const warmTarget = Math.floor(total * config.bucketWarmPct / 100);
+    const coldTarget = total - hotTarget - warmTarget; // absorbs rounding
+
+    const hotCutoff = now - config.bucketHotHours * 3600;
+    const warmCutoff = now - config.bucketWarmHours * 3600;
+    const excludeFromBuckets = [...queueIds];
+
+    const hotPlayers = getPlayersInRecentBucket(hotCutoff, null, hotTarget, excludeFromBuckets);
+    const hotIds = hotPlayers.map((p) => p.membershipId);
+
+    const warmPlayers = getPlayersInRecentBucket(
+        warmCutoff,
+        hotCutoff,
+        warmTarget,
+        [...excludeFromBuckets, ...hotIds]
+    );
+    const warmIds = warmPlayers.map((p) => p.membershipId);
+
+    const coldPlayers = getPlayersInColdBucket(
+        warmCutoff,
+        coldTarget,
+        [...excludeFromBuckets, ...hotIds, ...warmIds]
+    );
+
+    // Spillover: redistribute unused budget hot→warm→cold
+    const hotShortfall = hotTarget - hotPlayers.length;
+    const warmShortfall = warmTarget - warmPlayers.length;
+
+    if (hotShortfall > 0) {
+        // Pull extra warm players to cover hot shortfall
+        const extra = getPlayersInRecentBucket(
+            warmCutoff,
+            hotCutoff,
+            hotShortfall,
+            [...excludeFromBuckets, ...hotIds, ...warmIds]
+        );
+        warmPlayers.push(...extra);
+        warmIds.push(...extra.map((p) => p.membershipId));
+
+        // If warm couldn't cover it either, pull from cold
+        const stillShort = hotShortfall - extra.length;
+        if (stillShort > 0) {
+            const coldExtra = getPlayersInColdBucket(
+                warmCutoff,
+                stillShort,
+                [...excludeFromBuckets, ...hotIds, ...warmIds, ...coldPlayers.map((p) => p.membershipId)]
+            );
+            coldPlayers.push(...coldExtra);
+        }
+    }
+
+    if (warmShortfall > 0) {
+        const coldExtra = getPlayersInColdBucket(
+            warmCutoff,
+            warmShortfall,
+            [...excludeFromBuckets, ...hotIds, ...warmIds, ...coldPlayers.map((p) => p.membershipId)]
+        );
+        coldPlayers.push(...coldExtra);
+    }
+
+    console.log(
+        `[CRAWLER] Bucket selection: ${hotPlayers.length} hot / ${warmPlayers.length} warm / ${coldPlayers.length} cold` +
+        (queueTasks.length > 0 ? ` + ${queueTasks.length} queued` : '')
+    );
+
+    // Build task list: queue first, then buckets
+    const bucketTasks: CrawlTask[] = [
+        ...hotPlayers.map((p) => ({ player: p, pageCount: config.hotRecrawlCount })),
+        ...warmPlayers.map((p) => ({ player: p, pageCount: config.coldCrawlCount })),
+        ...coldPlayers.map((p) => ({ player: p, pageCount: config.coldCrawlCount })),
+    ];
+
+    const allTasks: CrawlTask[] = [...queueTasks, ...bucketTasks];
+
+    if (allTasks.length === 0) {
         console.log('⚠️ No players to crawl. Run the discovery tool first to seed players.');
         return { playersCrawled: 0, newPGCRs: 0, newPlayersDiscovered: 0 };
     }
 
+    // --- Step 3: Crawl all tasks ---
     let totalNewPGCRs = 0;
     const discoveredFlushSize = Math.max(
         1,
@@ -116,18 +255,21 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
     let totalNewPlayersDiscovered = 0;
     let crawledCount = 0;
     let maintenanceDetected = false;
-    const halfMilestone = Math.max(1, Math.floor(config.maxPlayersPerCycle / 2));
-    const fullMilestone = config.maxPlayersPerCycle;
+    const halfMilestone = Math.max(1, Math.floor(allTasks.length / 2));
+    const fullMilestone = allTasks.length;
     const reachedMilestones = new Set<number>();
 
     await processWithConcurrency(
-        players,
+        allTasks,
         config.crawlConcurrency,
-        async (player) => {
+        async (task) => {
             if (shouldStop || maintenanceDetected) {
                 return { newPGCRs: 0, discoveredPlayers: [] as PlayerInfo[], skipped: true };
             }
-            const result = await crawlPlayer(player, config.hoursBack);
+            const result = await crawlPlayer(task.player, {
+                ...crawlOptions,
+                pageCount: task.pageCount,
+            });
             return { ...result, skipped: false };
         },
         (completed, total) => {
@@ -175,6 +317,11 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
         }
     );
 
+    // --- Step 4: Clean up queue rows ---
+    if (queueIds.size > 0) {
+        deleteCrawlQueueRows([...queueIds]);
+    }
+
     // Flush any remaining discovered players
     if (discoveredPlayersBuffer.length > 0) {
         bulkUpsertPlayers(discoveredPlayersBuffer);
@@ -212,8 +359,12 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
     console.log('🚀 Starting crawler with config:', {
         intervalMs: config.intervalMs,
         maxPlayersPerCycle: config.maxPlayersPerCycle,
-        hoursBack: config.hoursBack,
         crawlConcurrency: config.crawlConcurrency,
+        buckets: `${config.bucketHotPct}% hot(<${config.bucketHotHours}h) / ${config.bucketWarmPct}% warm(<${config.bucketWarmHours}h) / ${config.bucketColdPct}% cold`,
+        queueMaxPerCycle: config.queueMaxPerCycle,
+        pageCounts: `hot=${config.hotRecrawlCount} cold=${config.coldCrawlCount} maxPages=${config.maxPages}`,
+        maxBackfillHours: config.maxBackfillHours,
+        charIdTtlDays: config.charIdTtlDays,
         activeSessionIntervalMs: config.activeSessionIntervalMs,
         activeSessionConcurrency: config.activeSessionConcurrency,
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,

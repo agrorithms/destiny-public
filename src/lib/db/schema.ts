@@ -74,6 +74,17 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_players_priority ON players(priority DESC, last_crawled_at ASC);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_raid ON active_sessions(raid_key);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_checked_at ON active_sessions(checked_at);
+
+    CREATE TABLE IF NOT EXISTS crawl_queue (
+      membership_id   TEXT PRIMARY KEY,
+      membership_type INTEGER NOT NULL,
+      display_name    TEXT,
+      source          TEXT NOT NULL DEFAULT 'unknown',
+      priority        INTEGER NOT NULL DEFAULT 0,
+      enqueued_at     INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_crawl_queue_drain ON crawl_queue(priority DESC, enqueued_at ASC);
   `);
 
     // Migration guard for existing DBs created before "source" was added.
@@ -91,6 +102,18 @@ export function initializeSchema(db: Database.Database): void {
     }
     try {
         db.prepare(`ALTER TABLE active_sessions ADD COLUMN activity_mode_type INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
+
+    // Migration guards for character ID caching on the players table.
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN character_ids TEXT`).run();
+    } catch {
+        // Column already exists.
+    }
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN character_ids_updated_at INTEGER DEFAULT 0`).run();
     } catch {
         // Column already exists.
     }

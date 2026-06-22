@@ -2,6 +2,12 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+    describeClientBungieError,
+    isClientBungieError,
+    searchBungiePlayerClient,
+} from '@/lib/bungie/client-api';
+import type { PlayerInfo } from '@/lib/bungie/types';
 
 interface SearchResult {
     membershipId: string;
@@ -11,6 +17,7 @@ interface SearchResult {
     secondaryDisplayName: string;
     isExactFullMatch: boolean;
     isExactNameMatch: boolean;
+    notTracked?: boolean;
 }
 
 interface SearchApiResponse {
@@ -84,7 +91,7 @@ export default function PlayerSearch() {
 
             try {
                 const res = await fetch(
-                    `/api/players/search?query=${encodeURIComponent(trimmed)}&limit=10&fallback=0`,
+                    `/api/players/search?query=${encodeURIComponent(trimmed)}&limit=10`,
                     { signal: controller.signal }
                 );
                 if (!res.ok) throw new Error(`Search failed (${res.status})`);
@@ -124,7 +131,7 @@ export default function PlayerSearch() {
             return;
         }
 
-        const controller = new AbortController();
+        let cancelled = false;
         const timeout = setTimeout(async () => {
             if (resultsRef.current.some((result) => result.isExactFullMatch)) {
                 return;
@@ -136,35 +143,50 @@ export default function PlayerSearch() {
             setError(null);
 
             try {
-                const res = await fetch(
-                    `/api/players/search?query=${encodeURIComponent(trimmed)}&limit=10&fallback=1`,
-                    { signal: controller.signal }
-                );
-                if (!res.ok) throw new Error(`Search failed (${res.status})`);
-                const data = await res.json() as SearchApiResponse;
+                // Query Bungie directly from the browser (public key) instead of the server,
+                // so user search traffic never consumes the server's API budget.
+                const players = await searchBungiePlayerClient(trimmed);
+                if (cancelled) return;
                 if (requestId !== fallbackRequestSeqRef.current || trimmed !== trimmedRef.current) return;
                 if (requestOrder < latestAppliedRequestRef.current) return;
                 latestAppliedRequestRef.current = requestOrder;
 
-                const nextResults = data.results || [];
+                const localKeys = new Set(resultsRef.current.map((r) => r.membershipId));
+                const merged = new Map(resultsRef.current.map((r) => [r.membershipId, r]));
+                for (const player of players) {
+                    const result = mapPlayerInfoToResult(player, trimmed, !localKeys.has(player.membershipId));
+                    if (!merged.has(result.membershipId)) {
+                        merged.set(result.membershipId, result);
+                    }
+                }
+
+                const nextResults = [...merged.values()];
                 setResults(nextResults);
-                setFallbackUnavailable(Boolean(data.fallbackUnavailable));
-                setFallbackMessage(data.message || null);
+                setFallbackUnavailable(false);
+                setFallbackMessage(null);
                 setOpen(true);
                 setSelectedIndex(nextResults.length > 0 ? 0 : -1);
+
+                // NOTE: we intentionally do NOT queue crawls here. A prefix search returns
+                // many players and re-runs as the user types, which would flood queue-crawl.
+                // The crawl is queued instead when the user actually opens a profile.
             } catch (err) {
-                if ((err as Error).name === 'AbortError') return;
+                if (cancelled) return;
                 if (requestId !== fallbackRequestSeqRef.current || trimmed !== trimmedRef.current) return;
 
-                setError((err as Error).message);
-                setSelectedIndex(-1);
+                if (isClientBungieError(err)) {
+                    setFallbackUnavailable(true);
+                    setFallbackMessage(describeClientBungieError(err));
+                } else {
+                    console.warn('Bungie search failed:', err);
+                }
             } finally {
-                if (requestId === fallbackRequestSeqRef.current) setFallbackLoading(false);
+                if (!cancelled && requestId === fallbackRequestSeqRef.current) setFallbackLoading(false);
             }
         }, 700);
 
         return () => {
-            controller.abort();
+            cancelled = true;
             clearTimeout(timeout);
         };
     }, [trimmed]);
@@ -294,6 +316,11 @@ export default function PlayerSearch() {
                                                 ? ` • ${result.secondaryDisplayName || result.baseName}`
                                                 : ''}
                                         </div>
+                                        {result.notTracked && (
+                                            <div className="text-[10px] ui-text-muted mt-0.5">
+                                                Not tracked yet — queued for crawl
+                                            </div>
+                                        )}
                                     </button>
                                 ))}
                             </div>
@@ -320,6 +347,26 @@ export default function PlayerSearch() {
 function getSearchBaseName(query: string): string {
     const hashIndex = query.indexOf('#');
     return (hashIndex === -1 ? query : query.slice(0, hashIndex)).trim();
+}
+
+function mapPlayerInfoToResult(player: PlayerInfo, query: string, notTracked: boolean): SearchResult {
+    const code = player.bungieGlobalDisplayNameCode;
+    const baseName = player.bungieGlobalDisplayName || player.displayName || player.membershipId;
+    const fullName = player.bungieGlobalDisplayName && code !== undefined
+        ? `${player.bungieGlobalDisplayName}#${String(code).padStart(4, '0')}`
+        : baseName;
+    const queryBaseName = getSearchBaseName(query).toLowerCase();
+
+    return {
+        membershipId: player.membershipId,
+        membershipType: player.membershipType,
+        displayName: fullName,
+        baseName,
+        secondaryDisplayName: player.displayName || player.membershipId,
+        isExactFullMatch: fullName.toLowerCase() === query.trim().toLowerCase(),
+        isExactNameMatch: baseName.toLowerCase() === queryBaseName,
+        notTracked,
+    };
 }
 
 function getMembershipTypeLabel(membershipType: number): string {

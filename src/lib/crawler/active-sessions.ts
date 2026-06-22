@@ -4,7 +4,7 @@ import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
 import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes } from '../db/queries';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
-import type { PlayerInfo, RaidSession } from '../bungie/types';
+import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/types';
 
 // How long before a session is considered "stale" and needs re-verification
 const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
@@ -93,105 +93,8 @@ export async function checkPlayerActivityDetailed(
     const client = clientOverride || getBungieClient();
 
     try {
-        const profile = await client.getProfile(
-            player.membershipType,
-            player.membershipId,
-            [204, 1000]
-        );
-
-        // Authoritative online/activity signal: component 1000 (transitory).
-        // If absent, treat as offline and clear any stored session for this player upstream.
-        const transitory = profile.Response.profileTransitoryData?.data;
-        if (!transitory) {
-            return { status: 'inactive', session: null };
-        }
-
-        // Use component 204 to get current activity metadata from the most recently started character activity.
-        const charActivities = Object.values(
-            profile.Response.characterActivities?.data || {}
-        ) as CharacterActivityLike[];
-        charActivities.sort((a, b) => {
-            const aTs = Date.parse(a?.dateActivityStarted || '') || 0;
-            const bTs = Date.parse(b?.dateActivityStarted || '') || 0;
-            return bTs - aTs;
-        });
-        const mostRecent = charActivities[0];
-
-        const currentActivityHash = Number(
-            mostRecent?.currentActivityHash
-            || transitory.currentActivity?.currentActivityHash
-            || 0
-        );
-        const currentActivityModeHash = Number(
-            mostRecent?.currentActivityModeHash
-            || transitory.currentActivity?.currentActivityModeHash
-            || 0
-        );
-        const currentActivityModeType = Number(
-            mostRecent?.currentActivityModeType
-            || transitory.currentActivity?.currentActivityModeType
-            || 0
-        );
-
-        const activityStartedAt =
-            mostRecent?.dateActivityStarted
-            || transitory.currentActivity?.startTime
-            || null;
-
-        // Some valid transitory states (for example in-orbit) report an activity hash
-        // while omitting mode type. Keep these sessions instead of dropping them.
-        if (!currentActivityHash) {
-            return { status: 'inactive', session: null };
-        }
-
-        const raidKey = getRaidKeyFromHash(currentActivityHash);
-        const activityName = getRaidNameFromHash(currentActivityHash);
-
-        // Get party members from Transitory if available
-        const partyMembers = transitory?.partyMembers || [];
-
-        let sessionKey: string;
-        if (partyMembers.length > 0) {
-            const sortedMemberIds = partyMembers
-                .map((m: PartyMemberLike) => m.membershipId)
-                .sort()
-                .join('-');
-            sessionKey = `${currentActivityHash}-${sortedMemberIds}`;
-        } else {
-            sessionKey = `${currentActivityHash}-${player.membershipId}`;
-        }
-
-        const displayName = player.displayName || player.bungieGlobalDisplayName || 'Unknown';
-
-        const effectivePartyMembers = partyMembers.length > 0
-            ? partyMembers
-            : [{ membershipId: player.membershipId, displayName, status: 1, emblemHash: 0 }];
-
-        upsertActiveSession({
-            membershipId: player.membershipId,
-            membershipType: player.membershipType,
-            displayName,
-            activityHash: currentActivityHash,
-            activityModeHash: currentActivityModeHash || null,
-            activityModeType: currentActivityModeType || null,
-            raidKey,
-            startedAt: activityStartedAt || new Date().toISOString(),
-            partyMembersJson: JSON.stringify(effectivePartyMembers),
-            playerCount: effectivePartyMembers.length,
-        });
-
-        return {
-            status: 'active',
-            session: {
-                sessionKey,
-                activityHash: currentActivityHash,
-                raidName: activityName,
-                raidKey: raidKey || 'unknown',
-                players: effectivePartyMembers,
-                startedAt: activityStartedAt || new Date().toISOString(),
-                playerCount: effectivePartyMembers.length,
-            },
-        };
+        const profileResponse = await fetchPlayerActivityProfile(player, client);
+        return parseAndStoreActivity(player, profileResponse);
     } catch (error) {
         if (isBungieSystemDisabledError(error)) {
             throw error;
@@ -203,6 +106,127 @@ export async function checkPlayerActivityDetailed(
         console.error(`[ERROR] Unexpected error checking activity for ${player.membershipId}:`, (error as Error).message);
         return { status: 'inactive', session: null };
     }
+}
+
+/**
+ * Fetch the raw profile components (204 + 1000) used to determine current activity.
+ * Returns the `.Response` payload. Throws on Bungie errors (privacy, maintenance, etc.).
+ */
+export async function fetchPlayerActivityProfile(
+    player: PlayerInfo,
+    clientOverride?: ReturnType<typeof getBungieClient>
+): Promise<DestinyProfileResponse> {
+    const client = clientOverride || getBungieClient();
+    const profile = await client.getProfile(
+        player.membershipType,
+        player.membershipId,
+        [204, 1000]
+    );
+    return profile.Response;
+}
+
+/**
+ * Parse an already-fetched profile response (components 204 + 1000) into an activity
+ * result and store/clear the active session. Makes no Bungie API calls, so it can run
+ * against a profile response fetched client-side.
+ */
+export function parseAndStoreActivity(
+    player: PlayerInfo,
+    profileResponse: DestinyProfileResponse
+): PlayerActivityCheckResult {
+    // Authoritative online/activity signal: component 1000 (transitory).
+    // If absent, treat as offline and clear any stored session for this player upstream.
+    const transitory = profileResponse.profileTransitoryData?.data;
+    if (!transitory) {
+        return { status: 'inactive', session: null };
+    }
+
+    // Use component 204 to get current activity metadata from the most recently started character activity.
+    const charActivities = Object.values(
+        profileResponse.characterActivities?.data || {}
+    ) as CharacterActivityLike[];
+    charActivities.sort((a, b) => {
+        const aTs = Date.parse(a?.dateActivityStarted || '') || 0;
+        const bTs = Date.parse(b?.dateActivityStarted || '') || 0;
+        return bTs - aTs;
+    });
+    const mostRecent = charActivities[0];
+
+    const currentActivityHash = Number(
+        mostRecent?.currentActivityHash
+        || transitory.currentActivity?.currentActivityHash
+        || 0
+    );
+    const currentActivityModeHash = Number(
+        mostRecent?.currentActivityModeHash
+        || transitory.currentActivity?.currentActivityModeHash
+        || 0
+    );
+    const currentActivityModeType = Number(
+        mostRecent?.currentActivityModeType
+        || transitory.currentActivity?.currentActivityModeType
+        || 0
+    );
+
+    const activityStartedAt =
+        mostRecent?.dateActivityStarted
+        || transitory.currentActivity?.startTime
+        || null;
+
+    // Some valid transitory states (for example in-orbit) report an activity hash
+    // while omitting mode type. Keep these sessions instead of dropping them.
+    if (!currentActivityHash) {
+        return { status: 'inactive', session: null };
+    }
+
+    const raidKey = getRaidKeyFromHash(currentActivityHash);
+    const activityName = getRaidNameFromHash(currentActivityHash);
+
+    // Get party members from Transitory if available
+    const partyMembers = transitory?.partyMembers || [];
+
+    let sessionKey: string;
+    if (partyMembers.length > 0) {
+        const sortedMemberIds = partyMembers
+            .map((m: PartyMemberLike) => m.membershipId)
+            .sort()
+            .join('-');
+        sessionKey = `${currentActivityHash}-${sortedMemberIds}`;
+    } else {
+        sessionKey = `${currentActivityHash}-${player.membershipId}`;
+    }
+
+    const displayName = player.displayName || player.bungieGlobalDisplayName || 'Unknown';
+
+    const effectivePartyMembers = partyMembers.length > 0
+        ? partyMembers
+        : [{ membershipId: player.membershipId, displayName, status: 1, emblemHash: 0 }];
+
+    upsertActiveSession({
+        membershipId: player.membershipId,
+        membershipType: player.membershipType,
+        displayName,
+        activityHash: currentActivityHash,
+        activityModeHash: currentActivityModeHash || null,
+        activityModeType: currentActivityModeType || null,
+        raidKey,
+        startedAt: activityStartedAt || new Date().toISOString(),
+        partyMembersJson: JSON.stringify(effectivePartyMembers),
+        playerCount: effectivePartyMembers.length,
+    });
+
+    return {
+        status: 'active',
+        session: {
+            sessionKey,
+            activityHash: currentActivityHash,
+            raidName: activityName,
+            raidKey: raidKey || 'unknown',
+            players: effectivePartyMembers,
+            startedAt: activityStartedAt || new Date().toISOString(),
+            playerCount: effectivePartyMembers.length,
+        },
+    };
 }
 
 /**

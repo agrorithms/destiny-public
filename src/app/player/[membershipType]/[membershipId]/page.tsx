@@ -10,6 +10,7 @@ import RaidMultiSelect from '@/components/RaidMultiSelect';
 import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
 import { PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS, useProfileCompletionsPageSize, useTimeRange } from '@/hooks/useLeaderboardPrefs';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
+import { fetchPlayerProfileClient, isClientBungieError } from '@/lib/bungie/client-api';
 
 interface RaidOption {
     key: string;
@@ -147,6 +148,7 @@ export default function PlayerProfilePage() {
     const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
     const [privacyRestricted, setPrivacyRestricted] = useState(false);
     const [activeLoading, setActiveLoading] = useState(true);
+    const [liveChecking, setLiveChecking] = useState(false);
     const [visibleSections, setVisibleSections] = useState<SectionKey[]>(['summary', 'completions', 'teammates']);
     const [summarySort, setSummarySort] = useState<{ key: SummarySortKey | null; direction: SortDirection }>({
         key: null,
@@ -161,13 +163,14 @@ export default function PlayerProfilePage() {
         direction: 'asc',
     });
     const [expandedTeammateRaids, setExpandedTeammateRaids] = useState<Set<string>>(new Set());
-    const hasRefreshedOnIdentity = useRef<string | null>(null);
+    const hasQueuedOnIdentity = useRef<string | null>(null);
 
     const fetchActiveSession = useCallback(async (opts?: { verify?: boolean }) => {
         if (!membershipType || !membershipId) return;
 
         setActiveLoading(true);
         try {
+            // Baseline: last-known session from our DB. Renders instantly.
             const response = await fetch(`/api/players/${membershipType}/${membershipId}?part=active&enrich=0`);
             if (!response.ok) {
                 throw new Error(`Active session API error: ${response.status}`);
@@ -178,18 +181,44 @@ export default function PlayerProfilePage() {
             setPrivacyRestricted((current) => current || Boolean(data.privacyRestricted));
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
 
+            // Live status: call Bungie directly from the browser (public key), then POST the
+            // raw response to the server to refresh the DB and get the enriched session back.
             if (opts?.verify !== false && !data.maintenance) {
-                void fetch(`/api/players/${membershipType}/${membershipId}?part=active&verify=1&enrich=1`)
-                    .then(async (verifyResponse) => {
-                        if (!verifyResponse.ok) return;
-                        const verifiedData: ActiveSessionResponse = await verifyResponse.json();
-                        setHeaderPlayer(verifiedData.player);
-                        setActiveSession(verifiedData.activeSession);
-                        setPrivacyRestricted((current) => current || Boolean(verifiedData.privacyRestricted));
+                setLiveChecking(true);
+                void verifyActiveSessionLive(membershipType, membershipId)
+                    .then((live) => {
+                        if (!live) return;
+                        if (live.player) setHeaderPlayer(live.player);
+                        if (live.privacyRestricted) {
+                            setPrivacyRestricted((current) => current || true);
+                        }
+
+                        if (live.activeSession) {
+                            setActiveSession(live.activeSession);
+                            return;
+                        }
+
+                        // Private + in a fireteam but no stored session yet: show the provisional
+                        // card immediately, then probe a public teammate to resolve the real raid.
+                        if (live.provisionalSession) {
+                            setActiveSession(live.provisionalSession);
+                            if (live.candidateMembers && live.candidateMembers.length > 0) {
+                                void resolveFireteamActivity(membershipType, membershipId, live.candidateMembers)
+                                    .then((resolved) => {
+                                        if (resolved) setActiveSession(resolved);
+                                    })
+                                    .catch(() => undefined);
+                            }
+                            return;
+                        }
+
+                        setActiveSession(live.activeSession);
                     })
                     .catch((err) => {
-                        console.error('Failed to verify active session:', err);
-                    });
+                        // Keep the DB baseline already on screen.
+                        console.error('Failed to verify live active session:', err);
+                    })
+                    .finally(() => setLiveChecking(false));
             }
         } catch (err) {
             console.error('Failed to load active session:', err);
@@ -210,10 +239,7 @@ export default function PlayerProfilePage() {
         setError(null);
 
         try {
-            const params = new URLSearchParams({
-                hours: hours.toString(),
-                refresh: opts?.refresh ? '1' : '0',
-            });
+            const params = new URLSearchParams({ hours: hours.toString() });
 
             const response = await fetch(`/api/players/${membershipType}/${membershipId}?${params.toString()}`);
             if (!response.ok) {
@@ -222,9 +248,8 @@ export default function PlayerProfilePage() {
 
             const data = await response.json();
             setProfile(data);
-            setHeaderPlayer(data.player);
-            setActiveSession(data.activeSession || null);
-            setPrivacyRestricted(Boolean(data.privacyRestricted));
+            // Active session + header identity are owned by fetchActiveSession (which has the
+            // fresher, live-verified values); avoid clobbering them here.
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
         } catch (err) {
             setError((err as Error).message);
@@ -249,20 +274,35 @@ export default function PlayerProfilePage() {
     useEffect(() => {
         if (!membershipId || !membershipType) return;
 
-        const identityKey = `${membershipType}:${membershipId}`;
-        if (hasRefreshedOnIdentity.current !== identityKey) {
-            hasRefreshedOnIdentity.current = identityKey;
-            fetchProfile({ refresh: true });
-            return;
-        }
-
-        fetchProfile({ refresh: false });
+        fetchProfile();
     }, [fetchProfile, membershipId, membershipType]);
+
+    // Fire-and-forget: queue a background crawl once per profile visit so the next visitor
+    // (and the next load) sees fresher data. Server enforces a per-player cooldown.
+    useEffect(() => {
+        if (!membershipId || !membershipType) return;
+
+        const identityKey = `${membershipType}:${membershipId}`;
+        if (hasQueuedOnIdentity.current === identityKey) return;
+        hasQueuedOnIdentity.current = identityKey;
+
+        void fetch('/api/players/queue-crawl', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ membershipType: Number(membershipType), membershipId }),
+        }).catch(() => undefined);
+    }, [membershipId, membershipType]);
 
     const totalCompletions = useMemo(() => {
         return (profile?.summary || []).reduce((sum, row) => sum + row.completions, 0);
     }, [profile]);
-    const currentPlayer = profile?.player || headerPlayer;
+    const currentPlayer = useMemo(() => {
+        const candidates = [headerPlayer, profile?.player].filter(Boolean) as ProfilePlayer[];
+        // Prefer a resolved Name#Code over a bare membershipId placeholder (untracked players
+        // get hydrated by the live Bungie call after the DB baseline loads).
+        const named = candidates.find((p) => p.displayName && p.displayName !== p.membershipId);
+        return named || candidates[0] || null;
+    }, [headerPlayer, profile?.player]);
     const availableRaidKeys = useMemo(() => new Set(AVAILABLE_RAIDS.map((raid) => raid.key)), []);
     const validSelectedRaids = useMemo(() => {
         return selectedRaids.filter((raidKey) => availableRaidKeys.has(raidKey));
@@ -440,15 +480,25 @@ export default function PlayerProfilePage() {
                 </div>
             )}
 
-            {(activeLoading || activeSession) && (
+            {(activeLoading || activeSession || liveChecking) && (
                 <div className="mb-6">
-                    <h2 className="text-xl font-bold ui-text-primary mb-3">Active Session</h2>
+                    <div className="flex items-center gap-2 mb-3">
+                        <h2 className="text-xl font-bold ui-text-primary">Active Session</h2>
+                        {liveChecking && (
+                            <span className="text-xs ui-text-muted">Checking live status…</span>
+                        )}
+                    </div>
                     {activeLoading && (
                         <div className="max-w-lg h-44 ui-skeleton rounded animate-pulse" />
                     )}
                     {!activeLoading && activeSession && (
                         <div className="max-w-lg">
                             <ActiveSessionCard session={activeSession} />
+                        </div>
+                    )}
+                    {!activeLoading && !activeSession && liveChecking && (
+                        <div className="max-w-lg text-sm ui-text-muted">
+                            Checking Bungie for a live session…
                         </div>
                     )}
                 </div>
@@ -752,6 +802,127 @@ export default function PlayerProfilePage() {
             )}
         </div>
     );
+}
+
+interface CandidateMember {
+    membershipId: string;
+    membershipType: number;
+}
+
+interface ActiveSessionUpdateResponse {
+    skipped?: boolean;
+    player?: ProfilePlayer;
+    activeSession?: ActiveSession | null;
+    privacyRestricted?: boolean;
+    provisionalSession?: ActiveSession;
+    candidateMembers?: CandidateMember[];
+}
+
+interface LiveSessionResult {
+    player?: ProfilePlayer;
+    activeSession: ActiveSession | null;
+    privacyRestricted?: boolean;
+    provisionalSession?: ActiveSession;
+    candidateMembers?: CandidateMember[];
+}
+
+async function verifyActiveSessionLive(
+    membershipType: string,
+    membershipId: string,
+): Promise<LiveSessionResult | null> {
+    // Browser → Bungie (public key), then relay the raw response to our server, which parses
+    // it, updates the DB, and returns the enriched session for display.
+    let profileResponse;
+    try {
+        profileResponse = await fetchPlayerProfileClient(Number(membershipType), membershipId);
+    } catch (err) {
+        // Account-wide privacy ("No peeking"): we can't read their profile at all. Ask the
+        // server for any session that already contains them (from a teammate) and flag privacy
+        // so the profile page shows the "data is private" banner.
+        if (isClientBungieError(err) && err.kind === 'privacy') {
+            const res = await fetch('/api/players/active-session-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ membershipType: Number(membershipType), membershipId, privacyRestricted: true }),
+            });
+            if (!res.ok) return { activeSession: null, privacyRestricted: true };
+            const data = await res.json() as ActiveSessionUpdateResponse;
+            return {
+                player: data.player,
+                activeSession: data.activeSession ?? null,
+                privacyRestricted: true,
+            };
+        }
+        throw err;
+    }
+
+    const res = await fetch('/api/players/active-session-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ membershipType: Number(membershipType), membershipId, profileResponse }),
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json() as ActiveSessionUpdateResponse;
+    if (data.skipped) return null;
+
+    return {
+        player: data.player,
+        activeSession: data.activeSession ?? null,
+        privacyRestricted: data.privacyRestricted,
+        provisionalSession: data.provisionalSession,
+        candidateMembers: data.candidateMembers,
+    };
+}
+
+// For a private player in a fireteam with no stored session yet: probe up to a few public
+// teammates (browser → Bungie) and POST their profiles so the server stores the real session
+// (which includes this player). Then re-read this player's containing session.
+async function resolveFireteamActivity(
+    membershipType: string,
+    membershipId: string,
+    candidates: CandidateMember[],
+): Promise<ActiveSession | null> {
+    for (const candidate of candidates.slice(0, 3)) {
+        let memberProfile;
+        try {
+            memberProfile = await fetchPlayerProfileClient(candidate.membershipType, candidate.membershipId);
+        } catch {
+            continue; // teammate also private / unreachable — try the next one
+        }
+
+        try {
+            await fetch('/api/players/active-session-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    membershipType: candidate.membershipType,
+                    membershipId: candidate.membershipId,
+                    profileResponse: memberProfile,
+                }),
+            });
+        } catch {
+            continue;
+        }
+
+        // Re-read (privacy flag = pure DB read, not cooldown-gated): did the teammate's stored
+        // session turn out to contain our private player?
+        try {
+            const res = await fetch('/api/players/active-session-update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ membershipType: Number(membershipType), membershipId, privacyRestricted: true }),
+            });
+            if (res.ok) {
+                const data = await res.json() as ActiveSessionUpdateResponse;
+                if (data.activeSession) return data.activeSession;
+            }
+        } catch {
+            // keep trying remaining candidates
+        }
+    }
+
+    return null;
 }
 
 function getMembershipPrefix(membershipType: number): string {

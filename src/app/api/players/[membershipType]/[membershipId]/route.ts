@@ -1,69 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifest';
-import { getDiscoveryBungieClient } from '@/lib/bungie/client';
-import { isBungieSystemDisabledError } from '@/lib/bungie/maintenance';
-import { runConcurrentDiscovery } from '@/lib/discovery/snowball-concurrent';
-import { checkPlayerActivityDetailed } from '@/lib/crawler/active-sessions';
-import { getDb, isDatabaseMaintenanceError } from '@/lib/db';
+import { isDatabaseMaintenanceError } from '@/lib/db';
 import {
-    type ActiveSessionDbRow,
-    deleteActiveSessionForPlayer,
     formatBungieDisplayName,
-    hasCompleteBungieDisplayName,
     getPlayerIdentity,
     getPlayerRaidCompletionSummary,
     getPlayerRaidTeammateSummary,
     getPlayerRecentCompletions,
-    getActiveSessionContainingPlayer,
     getActiveSessionForPlayer,
     type PlayerIdentity,
-    upsertPlayer,
 } from '@/lib/db/queries';
-import { getActivityDisplayName } from '@/lib/utils/activity';
+import { buildActiveSessionPayload } from '@/lib/active-session/format';
 import { withCache, withNoStore } from '@/lib/http/cache';
 
-const refreshInFlight = new Map<string, Promise<ProfileRefreshResult>>();
-const activeVerifyInFlight = new Map<string, Promise<ActiveSessionVerifyResult>>();
-const identityFetchInFlight = new Map<string, Promise<PlayerIdentity | null>>();
-const recentRefresh = new Map<string, number>();
-const recentRefreshResults = new Map<string, ProfileRefreshResult>();
-const recentActiveVerify = new Map<string, number>();
-const recentActiveVerifyResults = new Map<string, ActiveSessionVerifyResult>();
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
-
-interface ActiveSessionVerifyResult {
-    privacyRestricted: boolean;
-}
-
-interface ProfileRefreshResult {
-    privacyRestricted: boolean;
-}
-
-interface PartyMemberInput {
-    membershipId?: string;
-    membershipType?: number;
-    displayName?: string;
-    status?: number;
-}
-
-interface PartyMemberOutput extends Record<string, unknown> {
-    membershipId: string;
-    membershipType?: number;
-    displayName: string;
-    status?: number;
-}
-
-interface PlayerLookupRow {
-    membership_id: string;
-    membership_type: number;
-    bungie_global_display_name: string | null;
-    bungie_global_display_name_code: number | null;
-    display_name: string | null;
-}
-
-function isLikelyMembershipId(str: string): boolean {
-    return /^\d{16,}$/.test(str);
-}
 
 function buildFallbackIdentity(membershipType: number, membershipId: string): PlayerIdentity {
     return {
@@ -73,51 +23,6 @@ function buildFallbackIdentity(membershipType: number, membershipId: string): Pl
         bungieGlobalDisplayName: null,
         bungieGlobalDisplayNameCode: null,
     };
-}
-
-async function resolvePlayerIdentity(membershipType: number, membershipId: string): Promise<PlayerIdentity | null> {
-    const cachedIdentity = getPlayerIdentity(membershipId);
-    if (cachedIdentity && hasCompleteBungieDisplayName(cachedIdentity)) {
-        return cachedIdentity;
-    }
-
-    const key = `${membershipType}:${membershipId}`;
-    const existing = identityFetchInFlight.get(key);
-    if (existing) {
-        return existing;
-    }
-
-    const fetchPromise = (async () => {
-        try {
-            const client = getDiscoveryBungieClient();
-            const profile = await client.getProfile(membershipType, membershipId, [100]);
-            const userInfo = profile.Response.profile?.data?.userInfo;
-
-            if (!userInfo) {
-                return cachedIdentity;
-            }
-
-            upsertPlayer({
-                membershipId: userInfo.membershipId,
-                membershipType: userInfo.membershipType,
-                displayName: userInfo.displayName,
-                bungieGlobalDisplayName: userInfo.bungieGlobalDisplayName,
-                bungieGlobalDisplayNameCode: userInfo.bungieGlobalDisplayNameCode,
-            });
-
-            return getPlayerIdentity(membershipId) || cachedIdentity;
-        } catch (error) {
-            console.warn('[WARN] Bungie identity lookup failed:', error);
-            return cachedIdentity;
-        }
-    })();
-
-    identityFetchInFlight.set(key, fetchPromise);
-    try {
-        return await fetchPromise;
-    } finally {
-        identityFetchInFlight.delete(key);
-    }
 }
 
 function buildPlayerPayload(identity: PlayerIdentity | null, membershipType: number, membershipId: string) {
@@ -131,110 +36,6 @@ function buildPlayerPayload(identity: PlayerIdentity | null, membershipType: num
         displayName: formatBungieDisplayName(identity),
         baseName: identity.bungieGlobalDisplayName || identity.displayName || identity.membershipId,
     };
-}
-
-async function refreshPlayerData(membershipType: number, membershipId: string): Promise<ProfileRefreshResult> {
-    const key = `${membershipType}:${membershipId}`;
-    const now = Date.now();
-    const lastRefreshAt = recentRefresh.get(key) || 0;
-
-    if (now - lastRefreshAt < 120_000) {
-        return recentRefreshResults.get(key) || { privacyRestricted: false };
-    }
-
-    const existing = refreshInFlight.get(key);
-    if (existing) {
-        return existing;
-    }
-
-    const refreshPromise = (async () => {
-        const identity = await resolvePlayerIdentity(membershipType, membershipId);
-        const identityForSession = identity || buildFallbackIdentity(membershipType, membershipId);
-
-        const discoveryResult = await runConcurrentDiscovery(
-            [{ membershipId, membershipType }],
-            {
-                maxDepth: 1,
-                maxPlayers: 120,
-                hoursBack: 48,
-                concurrency: Math.min(parseInt(process.env.DISCOVERY_CONCURRENCY || '5', 10), 5),
-            }
-        );
-
-        const activeVerifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
-        const refreshResult = {
-            privacyRestricted: discoveryResult.privacyRestricted || activeVerifyResult.privacyRestricted,
-        };
-
-        recentRefresh.set(key, Date.now());
-        recentRefreshResults.set(key, refreshResult);
-        return refreshResult;
-    })();
-
-    refreshInFlight.set(key, refreshPromise);
-
-    try {
-        return await refreshPromise;
-    } finally {
-        refreshInFlight.delete(key);
-    }
-}
-
-async function verifyActiveSession(membershipType: number, membershipId: string, identity?: {
-    displayName: string | null;
-    bungieGlobalDisplayName: string | null;
-    bungieGlobalDisplayNameCode: number | null;
-}): Promise<ActiveSessionVerifyResult> {
-    const key = `${membershipType}:${membershipId}`;
-    const now = Date.now();
-    const lastVerifyAt = recentActiveVerify.get(key) || 0;
-
-    if (now - lastVerifyAt < 10_000) {
-        return recentActiveVerifyResults.get(key) || { privacyRestricted: false };
-    }
-
-    const existing = activeVerifyInFlight.get(key);
-    if (existing) {
-        return existing;
-    }
-
-    const verifyPromise = (async () => {
-        const discoveryClient = getDiscoveryBungieClient();
-        let activityResult;
-        try {
-            activityResult = await checkPlayerActivityDetailed({
-                membershipId,
-                membershipType,
-                displayName: identity?.displayName || identity?.bungieGlobalDisplayName || membershipId,
-                bungieGlobalDisplayName: identity?.bungieGlobalDisplayName || undefined,
-                bungieGlobalDisplayNameCode: identity?.bungieGlobalDisplayNameCode ?? undefined,
-            }, discoveryClient);
-        } catch (error) {
-            if (isBungieSystemDisabledError(error)) {
-                return { privacyRestricted: false };
-            }
-            throw error;
-        }
-
-        let verifyResult: ActiveSessionVerifyResult = { privacyRestricted: false };
-
-        if (activityResult.status === 'privacyRestricted') {
-            verifyResult = { privacyRestricted: true };
-        } else if (activityResult.status === 'inactive') {
-            deleteActiveSessionForPlayer(membershipId);
-        }
-
-        recentActiveVerify.set(key, Date.now());
-        recentActiveVerifyResults.set(key, verifyResult);
-        return verifyResult;
-    })();
-
-    activeVerifyInFlight.set(key, verifyPromise);
-    try {
-        return await verifyPromise;
-    } finally {
-        activeVerifyInFlight.delete(key);
-    }
 }
 
 function buildFallbackPlayerPayload(membershipType: number, membershipId: string) {
@@ -277,129 +78,10 @@ function buildMaintenancePayload(
     };
 }
 
-function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): PartyMemberOutput[] {
-    let partyMembers: PartyMemberInput[] = [];
-    if (partyMembersJson) {
-        try {
-            const parsed: unknown = JSON.parse(partyMembersJson);
-            if (Array.isArray(parsed)) {
-                partyMembers = parsed
-                    .filter((value) => !!value && typeof value === 'object')
-                    .map((value) => value as PartyMemberInput);
-            }
-        } catch {
-            partyMembers = [];
-        }
-    }
-
-    if (partyMembers.length === 0) {
-        return [];
-    }
-
-    if (!enrich) {
-        return partyMembers.map((member) => {
-            const id = String(member?.membershipId || '');
-            const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
-                ? member.displayName
-                : null;
-            const baseMember = member as Record<string, unknown>;
-
-            return {
-                ...baseMember,
-                membershipId: id,
-                displayName: fallbackApiName || id,
-            };
-        });
-    }
-
-    const db = getDb();
-    const ids = [...new Set(
-        partyMembers
-            .map((m) => String(m?.membershipId || ''))
-            .filter(Boolean)
-    )];
-
-    const nameMap = new Map<string, string>();
-    const typeMap = new Map<string, number>();
-
-    if (ids.length > 0) {
-        const placeholders = ids.map(() => '?').join(',');
-        const rows = db.prepare(`
-            SELECT
-              membership_id,
-              membership_type,
-              bungie_global_display_name,
-              bungie_global_display_name_code,
-              display_name
-            FROM players
-            WHERE membership_id IN (${placeholders})
-          `).all(...ids) as PlayerLookupRow[];
-
-        for (const row of rows) {
-            typeMap.set(row.membership_id, row.membership_type);
-            if (row.bungie_global_display_name && row.bungie_global_display_name_code !== null) {
-                nameMap.set(
-                    row.membership_id,
-                    `${row.bungie_global_display_name}#${String(row.bungie_global_display_name_code).padStart(4, '0')}`
-                );
-            } else if (row.bungie_global_display_name) {
-                nameMap.set(row.membership_id, row.bungie_global_display_name);
-            } else if (row.display_name) {
-                nameMap.set(row.membership_id, row.display_name);
-            }
-        }
-    }
-
-    return partyMembers.map((member) => {
-        const id = String(member?.membershipId || '');
-        const knownName = nameMap.get(id);
-        const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
-            ? member.displayName
-            : null;
-        const baseMember = member as Record<string, unknown>;
-
-        return {
-            ...baseMember,
-            membershipId: id,
-            membershipType: member?.membershipType ?? typeMap.get(id),
-            displayName: knownName || fallbackApiName || id,
-        };
-    });
-}
-
-function buildActiveSessionPayload(activeSession: ActiveSessionDbRow | null, identity: {
-    membershipId: string;
-    membershipType: number;
-    displayName: string | null;
-    bungieGlobalDisplayName: string | null;
-    bungieGlobalDisplayNameCode: number | null;
-}, options?: { enrichPartyMembers?: boolean }) {
-    if (!activeSession) return null;
-    const partyMembers = enrichPartyMembersFromJson(
-        activeSession.partyMembersJson,
-        options?.enrichPartyMembers ?? true
-    );
-
-    return {
-        membershipId: activeSession.membershipId,
-        membershipType: activeSession.membershipType,
-        displayName: formatBungieDisplayName(identity),
-        activityHash: activeSession.activityHash,
-        activityModeHash: activeSession.activityModeHash,
-        activityModeType: activeSession.activityModeType,
-        raidKey: activeSession.raidKey,
-        raidName: getActivityDisplayName(
-            activeSession.activityHash,
-            activeSession.activityModeType,
-            activeSession.activityModeHash
-        ),
-        startedAt: activeSession.startedAt,
-        playerCount: activeSession.playerCount,
-        partyMembers,
-        checkedAt: activeSession.checkedAt,
-    };
-}
-
+// This route is now a pure SQLite read with ZERO Bungie API calls. Live activity
+// verification and identity lookups for untracked players happen client-side (public
+// key) — see src/lib/bungie/client-api.ts and the active-session-update / queue-crawl
+// endpoints. That keeps the server's Bungie API budget reserved for the crawler/scanner.
 export async function GET(
     request: NextRequest,
     context: { params: Promise<{ membershipType: string; membershipId: string }> }
@@ -417,66 +99,32 @@ export async function GET(
     const part = request.nextUrl.searchParams.get('part');
     const activeOnly = part === 'active';
     const hours = parseInt(request.nextUrl.searchParams.get('hours') || '48', 10);
-    const refresh = request.nextUrl.searchParams.get('refresh') === '1';
 
     if (!activeOnly && (hours < 1 || hours > 720)) {
         return withNoStore(NextResponse.json({ error: 'hours must be between 1 and 720' }, { status: 400 }));
     }
 
     try {
-        // Fast-path for profile header rendering: check/update active session only.
+        const identity = getPlayerIdentity(membershipId);
+        const identityForSession = identity || buildFallbackIdentity(membershipType, membershipId);
+
+        // Fast-path for profile header rendering: last-known active session from the DB.
         if (activeOnly) {
-            const verify = request.nextUrl.searchParams.get('verify') === '1';
             const enrichRequested = request.nextUrl.searchParams.get('enrich') === '1';
-            const identity = await resolvePlayerIdentity(membershipType, membershipId);
-            const identityForSession = identity || buildFallbackIdentity(membershipType, membershipId);
-            const playerPayload = buildPlayerPayload(identity, membershipType, membershipId);
-
-            if (!verify) {
-                const cachedSession = getActiveSessionForPlayer(membershipId, 600);
-                return withNoStore(NextResponse.json({
-                    player: playerPayload,
-                    activeSession: buildActiveSessionPayload(cachedSession, identityForSession, {
-                        enrichPartyMembers: enrichRequested,
-                    }),
-                    privacyRestricted: false,
-                }));
-            }
-
-            const verifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
-            const activeSession = verifyResult.privacyRestricted
-                ? getActiveSessionContainingPlayer(membershipId, 900)
-                : getActiveSessionForPlayer(membershipId, 600);
+            const cachedSession = getActiveSessionForPlayer(membershipId, 600);
             return withNoStore(NextResponse.json({
-                player: playerPayload,
-                activeSession: buildActiveSessionPayload(activeSession, identityForSession, {
-                    enrichPartyMembers: true,
+                player: buildPlayerPayload(identity, membershipType, membershipId),
+                activeSession: buildActiveSessionPayload(cachedSession, identityForSession, {
+                    enrichPartyMembers: enrichRequested,
                 }),
-                privacyRestricted: verifyResult.privacyRestricted,
+                privacyRestricted: false,
             }));
         }
-
-        const identity = await resolvePlayerIdentity(membershipType, membershipId);
-        const identityForSession = identity || buildFallbackIdentity(membershipType, membershipId);
-        let refreshResult: ProfileRefreshResult = { privacyRestricted: false };
-
-        if (refresh) {
-            try {
-                refreshResult = await refreshPlayerData(membershipType, membershipId);
-            } catch (error) {
-                console.error('[WARN] Player refresh failed:', error);
-            }
-        }
-
-        const verifyResult = await verifyActiveSession(membershipType, membershipId, identityForSession);
-        const privacyRestricted = refreshResult.privacyRestricted || verifyResult.privacyRestricted;
 
         const summary = getPlayerRaidCompletionSummary(membershipId, hours);
         const recentCompletions = getPlayerRecentCompletions(membershipId, hours, 500);
         const teammates = getPlayerRaidTeammateSummary(membershipId, hours);
-        const activeSession = privacyRestricted
-            ? getActiveSessionContainingPlayer(membershipId, 900)
-            : getActiveSessionForPlayer(membershipId, 600);
+        const activeSession = getActiveSessionForPlayer(membershipId, 600);
         const raids = getAllRaidDefinitions();
 
         const response = NextResponse.json({
@@ -508,10 +156,10 @@ export async function GET(
             activeSession: buildActiveSessionPayload(activeSession, identityForSession, {
                 enrichPartyMembers: true,
             }),
-            privacyRestricted,
+            privacyRestricted: false,
         });
 
-        return refresh ? withNoStore(response) : withCache(response, 15, 60);
+        return withCache(response, 15, 60);
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
             return withNoStore(NextResponse.json(buildMaintenancePayload(membershipType, membershipId, hours, activeOnly)));

@@ -57,6 +57,7 @@ data/*.db-shm
 
 #cleanup
 scripts/cleanup/*
+scripts/find-private-session-players.ts
 
 #seeds
 seeds.txt
@@ -67,3 +68,5 @@ localhost.crt
 localhost.key
 # Sentry Config File
 .env.sentry-build-plugin
+
+certificates

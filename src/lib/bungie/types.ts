@@ -10,19 +10,24 @@ export interface BungieResponse<T> {
 // ---- Profile / Characters ----
 export interface DestinyProfileResponse {
     profile?: {
-        data: {
+        data?: {
             userInfo: UserInfoCard;
             characterIds: string[];
         };
+        privacy?: number;
     };
     characters?: {
-        data: Record<string, DestinyCharacterComponent>;
+        data?: Record<string, DestinyCharacterComponent>;
+        privacy?: number;
     };
     profileTransitoryData?: {
-        data: TransitoryComponent | null;
+        data?: TransitoryComponent | null;
+        privacy?: number;
     };
     characterActivities?: {
-        data: Record<string, CharacterActivitiesComponent>;
+        // A withheld (private) component arrives as `{ privacy: 2 }` with no `data`.
+        data?: Record<string, CharacterActivitiesComponent>;
+        privacy?: number;
     };
 }
 
@@ -32,6 +37,7 @@ export interface UserInfoCard {
     displayName: string;
     bungieGlobalDisplayName?: string;
     bungieGlobalDisplayNameCode?: number;
+    isPublic?: boolean;
 }
 
 export interface DestinyCharacterComponent {

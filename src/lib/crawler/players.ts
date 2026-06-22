@@ -149,16 +149,16 @@ export async function getRecentRaidActivities(
 
         return {
             activities: activities
-            .filter((activity) => {
-                const period = isoToUnix(activity.period);
-                const hash = activity.activityDetails.directorActivityHash || activity.activityDetails.referenceId;
-                return period >= cutoff && isRaidActivityHash(hash);
-            })
-            .map((activity) => ({
-                instanceId: activity.activityDetails.instanceId,
-                activityHash: activity.activityDetails.directorActivityHash || activity.activityDetails.referenceId,
-                period: isoToUnix(activity.period),
-            })),
+                .filter((activity) => {
+                    const period = isoToUnix(activity.period);
+                    const hash = activity.activityDetails.directorActivityHash || activity.activityDetails.referenceId;
+                    return period >= cutoff && isRaidActivityHash(hash);
+                })
+                .map((activity) => ({
+                    instanceId: activity.activityDetails.instanceId,
+                    activityHash: activity.activityDetails.directorActivityHash || activity.activityDetails.referenceId,
+                    period: isoToUnix(activity.period),
+                })),
             isPrivacyRestricted: false,
         };
     } catch (error) {
@@ -352,9 +352,10 @@ export async function crawlPlayer(
             return { newPGCRs, discoveredPlayers };
         }
 
-        if (fromCache) {
-            console.log(`[CRAWLER] Using cached char IDs for ${player.membershipId} (${characterIds.length} chars)`);
-        }
+        //log cache usage. only needed for testing and monitoring, so we can optimize TTLs and understand cache hit rates
+        // if (fromCache) {
+        //     console.log(`[CRAWLER] Using cached char IDs for ${player.membershipId} (${characterIds.length} chars)`);
+        // }
 
         // Fetch raid activities for each character, stopping on known PGCRs
         const uniqueInstanceIds = new Set<string>();

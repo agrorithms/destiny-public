@@ -316,11 +316,6 @@ export default function PlayerSearch() {
                                                 ? ` • ${result.secondaryDisplayName || result.baseName}`
                                                 : ''}
                                         </div>
-                                        {result.notTracked && (
-                                            <div className="text-[10px] ui-text-muted mt-0.5">
-                                                Not tracked yet — queued for crawl
-                                            </div>
-                                        )}
                                     </button>
                                 ))}
                             </div>

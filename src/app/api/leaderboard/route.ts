@@ -1,43 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { readLeaderboardSnapshot } from '@/lib/maintenance/snapshots';
 import { withCache, withNoStore } from '@/lib/http/cache';
-
-type SqlParam = string | number;
-
-interface LeaderboardDbRow {
-    membershipId: string;
-    membershipType: number;
-    displayName: string | null;
-    bungieGlobalDisplayName: string | null;
-    bungieGlobalDisplayNameCode: number | null;
-    completions: number;
-}
-
-interface LeaderboardResponseEntry {
-    membershipId: string;
-    membershipType: number;
-    displayName: string;
-    completions: number;
-}
-
-interface IndividualLeaderboard {
-    raidKey: string;
-    raidName: string;
-    entries: LeaderboardResponseEntry[];
-}
-
-function leaderboardCacheWindow(hours: number): { sMaxAge: number; staleWhileRevalidate: number } {
-    if (hours <= 6) {
-        return { sMaxAge: 15, staleWhileRevalidate: 60 };
-    }
-    if (hours <= 24) {
-        return { sMaxAge: 30, staleWhileRevalidate: 120 };
-    }
-    return { sMaxAge: 120, staleWhileRevalidate: 600 };
-}
+import { getLeaderboardResponse } from '@/lib/cache/leaderboard-cache';
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -46,12 +12,11 @@ export async function GET(request: NextRequest) {
     const raidsParam = searchParams.get('raids') || '';
     const hours = parseInt(searchParams.get('hours') || '4', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
-    const fullClearsOnly = searchParams.get('fullClearsOnly') !== 'false';
-    const mode = searchParams.get('mode') || 'aggregate'; // 'aggregate' or 'individual'
+    const mode = searchParams.get('mode') === 'individual' ? 'individual' : 'aggregate';
+    // fullClearsOnly is forced true on the cache path (the only real UI path);
+    // it is folded into the cache key as a constant rather than read here.
 
     const allRaids = getAllRaidDefinitions();
-
-    // Parse raid keys
     const raidKeys = raidsParam
         ? raidsParam.split(',').filter((key) => allRaids[key])
         : [];
@@ -71,142 +36,11 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const db = getDb();
-        const cutoff = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
-        const cacheWindow = leaderboardCacheWindow(hours);
+        const { body, state, band } = await getLeaderboardResponse({ mode, hours, raidKeys, limit });
 
-        if (mode === 'individual') {
-            // Empty raid selection means no filter, so fan out across every raid.
-            const effectiveRaidKeys = raidKeys.length > 0 ? raidKeys : Object.keys(allRaids);
-            const leaderboards: Record<string, IndividualLeaderboard> = {};
-
-            for (const raidKey of effectiveRaidKeys) {
-                let query = `
-          WITH run_durations AS (
-            SELECT
-              instance_id,
-              MAX(time_played_seconds) as pgcrDurationSeconds
-            FROM pgcr_players
-            WHERE completed = 1
-            GROUP BY instance_id
-          )
-          SELECT
-            pp.membership_id as membershipId,
-            pp.membership_type as membershipType,
-            COALESCE(pl.bungie_global_display_name, pp.display_name) as displayName,
-            pl.bungie_global_display_name as bungieGlobalDisplayName,
-            pl.bungie_global_display_name_code as bungieGlobalDisplayNameCode,
-            COUNT(DISTINCT pp.instance_id) as completions
-          FROM pgcr_players pp
-          JOIN pgcrs p ON pp.instance_id = p.instance_id
-          JOIN run_durations d ON d.instance_id = p.instance_id
-          LEFT JOIN players pl ON pp.membership_id = pl.membership_id
-          WHERE (p.period + d.pgcrDurationSeconds) >= ?
-            AND pp.completed = 1
-            AND p.completed = 1
-            AND p.raid_key = ?
-        `;
-
-                const params: SqlParam[] = [cutoff, raidKey];
-
-                if (fullClearsOnly) {
-                    query += ` AND p.activity_was_started_from_beginning = 1`;
-                }
-
-                query += `
-          GROUP BY pp.membership_id
-          HAVING completions > 0
-          ORDER BY completions DESC
-          LIMIT ?
-        `;
-                params.push(limit);
-
-                const entries = db.prepare(query).all(...params) as LeaderboardDbRow[];
-
-                const raidName = allRaids[raidKey]?.name || raidKey;
-
-                leaderboards[raidKey] = {
-                    raidKey,
-                    raidName,
-                    entries: entries.map((e) => ({
-                        membershipId: e.membershipId,
-                        membershipType: e.membershipType,
-                        displayName: formatDisplayName(e),
-                        completions: e.completions,
-                    })),
-                };
-            }
-
-            return withCache(NextResponse.json({
-                mode: 'individual',
-                hours,
-                fullClearsOnly,
-                raidKeys: effectiveRaidKeys,
-                leaderboards,
-            }), cacheWindow.sMaxAge, cacheWindow.staleWhileRevalidate);
-        } else {
-            // Aggregate mode — total clears across all selected raids
-            let query = `
-        WITH run_durations AS (
-          SELECT
-            instance_id,
-            MAX(time_played_seconds) as pgcrDurationSeconds
-          FROM pgcr_players
-          WHERE completed = 1
-          GROUP BY instance_id
-        )
-        SELECT
-          pp.membership_id as membershipId,
-          pp.membership_type as membershipType,
-          COALESCE(pl.bungie_global_display_name, pp.display_name) as displayName,
-          pl.bungie_global_display_name as bungieGlobalDisplayName,
-          pl.bungie_global_display_name_code as bungieGlobalDisplayNameCode,
-          COUNT(DISTINCT pp.instance_id) as completions
-        FROM pgcr_players pp
-        JOIN pgcrs p ON pp.instance_id = p.instance_id
-        JOIN run_durations d ON d.instance_id = p.instance_id
-        LEFT JOIN players pl ON pp.membership_id = pl.membership_id
-        WHERE (p.period + d.pgcrDurationSeconds) >= ?
-          AND pp.completed = 1
-          AND p.completed = 1
-      `;
-
-            const params: SqlParam[] = [cutoff];
-
-            // Filter to selected raids if any are specified
-            if (raidKeys.length > 0) {
-                const placeholders = raidKeys.map(() => '?').join(',');
-                query += ` AND p.raid_key IN (${placeholders})`;
-                params.push(...raidKeys);
-            }
-
-            if (fullClearsOnly) {
-                query += ` AND p.activity_was_started_from_beginning = 1`;
-            }
-
-            query += `
-        GROUP BY pp.membership_id
-        HAVING completions > 0
-        ORDER BY completions DESC
-        LIMIT ?
-      `;
-            params.push(limit);
-
-            const entries = db.prepare(query).all(...params) as LeaderboardDbRow[];
-
-            return withCache(NextResponse.json({
-                mode: 'aggregate',
-                hours,
-                fullClearsOnly,
-                raidKeys: raidKeys.length > 0 ? raidKeys : Object.keys(allRaids),
-                entries: entries.map((e) => ({
-                    membershipId: e.membershipId,
-                    membershipType: e.membershipType,
-                    displayName: formatDisplayName(e),
-                    completions: e.completions,
-                })),
-            }), cacheWindow.sMaxAge, cacheWindow.staleWhileRevalidate);
-        }
+        const response = withCache(NextResponse.json(body), band.sMaxAge, band.staleWhileRevalidate);
+        response.headers.set('X-Cache', state.toUpperCase());
+        return response;
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
             const snapshot = readLeaderboardSnapshot();
@@ -227,11 +61,4 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         ));
     }
-}
-
-function formatDisplayName(entry: LeaderboardDbRow): string {
-    if (entry.bungieGlobalDisplayName && entry.bungieGlobalDisplayNameCode) {
-        return `${entry.bungieGlobalDisplayName}#${String(entry.bungieGlobalDisplayNameCode).padStart(4, '0')}`;
-    }
-    return entry.bungieGlobalDisplayName || entry.displayName || entry.membershipId;
 }

@@ -117,4 +117,12 @@ export function initializeSchema(db: Database.Database): void {
     } catch {
         // Column already exists.
     }
+
+    // Migration guard for denormalized run end-time (ended_at = period + duration).
+    // Nullable with no default; populated at insert for new rows (Phase 1 writer).
+    try {
+        db.prepare(`ALTER TABLE pgcrs ADD COLUMN ended_at INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
 }

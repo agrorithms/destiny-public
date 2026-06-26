@@ -835,6 +835,8 @@ export interface InsertFullPGCRData {
     completed: boolean;
     playerCount: number;
     source?: string;
+    /** Bungie activity-level duration (seconds); Tier 1 input for ended_at. */
+    activityDurationSeconds?: number | null;
 }
 
 export interface InsertFullPGCRPlayer {
@@ -850,6 +852,36 @@ export interface InsertFullPGCRPlayer {
     deaths: number;
     assists: number;
     timePlayedSeconds: number;
+    /** Per-player join offset from activity start (seconds); Tier 2 input. */
+    startSeconds?: number | null;
+}
+
+/**
+ * Tiered activity duration (seconds) used to derive `pgcrs.ended_at = period + duration`.
+ *   Tier 1 — Bungie's activity-level `activityDurationSeconds` (authoritative).
+ *   Tier 2 — MAX over ALL players of (startSeconds + timePlayedSeconds). Considers every
+ *            player (not just completed ones); correctly counts late joiners; collapses to
+ *            MAX(timePlayedSeconds) when startSeconds is absent.
+ *   Tier 3 — null (no usable duration; an empty/malformed PGCR). ended_at stays NULL.
+ */
+export function computeActivityDurationSeconds(
+    activityDurationSeconds: number | null | undefined,
+    players: { startSeconds?: number | null; timePlayedSeconds: number }[],
+): number | null {
+    if (typeof activityDurationSeconds === 'number' && activityDurationSeconds > 0) {
+        return activityDurationSeconds;
+    }
+
+    let best = 0;
+    for (const player of players) {
+        const start = typeof player.startSeconds === 'number' ? player.startSeconds : 0;
+        const t = typeof player.timePlayedSeconds === 'number' ? player.timePlayedSeconds : 0;
+        if (t > 0) {
+            best = Math.max(best, start + t);
+        }
+    }
+
+    return best > 0 ? best : null;
 }
 
 function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => void {
@@ -858,10 +890,10 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
     if (!insertPGCRStmt || !insertPGCRPlayerStmt || !insertFullPGCRTx || pgcrInsertDbRef !== db) {
         pgcrInsertDbRef = db;
         insertPGCRStmt = db.prepare(`
-    INSERT OR IGNORE INTO pgcrs 
-    (instance_id, activity_hash, raid_key, period, starting_phase_index, 
-     activity_was_started_from_beginning, completed, player_count, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO pgcrs
+    (instance_id, activity_hash, raid_key, period, starting_phase_index,
+     activity_was_started_from_beginning, completed, player_count, source, ended_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(instance_id) DO NOTHING
   `) as unknown as RunnableStatement;
 
@@ -879,6 +911,9 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
             throw new Error('Failed to initialize PGCR statements');
         }
         insertFullPGCRTx = db.transaction((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => {
+            const duration = computeActivityDurationSeconds(pgcrData.activityDurationSeconds, players);
+            const endedAt = duration != null ? pgcrData.period + duration : null;
+
             pgcrStmt.run(
                 pgcrData.instanceId,
                 pgcrData.activityHash,
@@ -888,7 +923,8 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
                 pgcrData.activityWasStartedFromBeginning ? 1 : 0,
                 pgcrData.completed ? 1 : 0,
                 pgcrData.playerCount,
-                pgcrData.source || 'unknown'
+                pgcrData.source || 'unknown',
+                endedAt
             );
 
             for (const player of players) {

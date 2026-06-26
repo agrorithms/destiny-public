@@ -2,6 +2,7 @@ import { getBungieClient } from '../bungie/client';
 import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, isRaidActivityHash } from '../bungie/manifest';
 import { hasPGCR, insertFullPGCR } from '../db/queries';
+import { readActivityDurationSeconds, readEntryStartSeconds } from '../bungie/pgcr-stats';
 import { isoToUnix } from '../utils/helpers';
 import type {
     DestinyPostGameCarnageReportData,
@@ -96,6 +97,7 @@ export async function fetchAndStorePGCR(instanceId: string, callSource: string):
             deaths: entry.values?.deaths?.basic?.value || 0,
             assists: entry.values?.assists?.basic?.value || 0,
             timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value || 0,
+            startSeconds: readEntryStartSeconds(entry),
         }));
 
         // Store in database (single transaction)
@@ -110,6 +112,7 @@ export async function fetchAndStorePGCR(instanceId: string, callSource: string):
                 completed: processed.completed,
                 playerCount: pgcrData.entries.length,
                 source: callSource,
+                activityDurationSeconds: readActivityDurationSeconds(pgcrData.entries),
             },
             playerEntries
         );

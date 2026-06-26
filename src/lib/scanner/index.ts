@@ -8,6 +8,7 @@ import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
 import { insertFullPGCR, hasPGCR } from '../db/queries';
 import type { InsertFullPGCRPlayer } from '../db/queries';
+import { readActivityDurationSeconds, readEntryStartSeconds } from '../bungie/pgcr-stats';
 import { isoToUnix } from '../utils/helpers';
 
 type RunnableStatement = {
@@ -436,6 +437,7 @@ async function scanSinglePGCR(
                 deaths: entry.values?.deaths?.basic?.value || 0,
                 assists: entry.values?.assists?.basic?.value || 0,
                 timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value || 0,
+                startSeconds: readEntryStartSeconds(entry),
             }));
 
             insertFullPGCR(
@@ -449,6 +451,7 @@ async function scanSinglePGCR(
                     completed: anyoneCompleted,
                     playerCount: (pgcrData.entries || []).length,
                     source: 'scanner',
+                    activityDurationSeconds: readActivityDurationSeconds(pgcrData.entries),
                 },
                 playerEntries
             );

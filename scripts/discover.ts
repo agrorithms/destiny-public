@@ -7,6 +7,7 @@ import { BungieClient, BungieAPIError } from '../src/lib/bungie/client';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../src/lib/bungie/manifest';
 import { hasPGCR, insertFullPGCR } from '../src/lib/db/queries';
 import type { InsertFullPGCRPlayer } from '../src/lib/db/queries';
+import { readActivityDurationSeconds, readEntryStartSeconds } from '../src/lib/bungie/pgcr-stats';
 import { isoToUnix } from '../src/lib/utils/helpers';
 import { isVacuumingActive } from '../src/lib/maintenance/state';
 
@@ -294,6 +295,7 @@ async function runBackwardScan(client: BungieClient): Promise<{
                 deaths: entry.values?.deaths?.basic?.value || 0,
                 assists: entry.values?.assists?.basic?.value || 0,
                 timePlayedSeconds: entry.values?.timePlayedSeconds?.basic?.value || 0,
+                startSeconds: readEntryStartSeconds(entry),
             }));
 
             insertFullPGCR(
@@ -306,7 +308,8 @@ async function runBackwardScan(client: BungieClient): Promise<{
                     activityWasStartedFromBeginning: pgcrData.activityWasStartedFromBeginning || false,
                     completed: anyoneCompleted,
                     playerCount: (pgcrData.entries || []).length,
-                    source: 'discover backscan' //tell db how this record was found
+                    source: 'discover backscan', //tell db how this record was found
+                    activityDurationSeconds: readActivityDurationSeconds(pgcrData.entries),
                 },
                 playerEntries
             );

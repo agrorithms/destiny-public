@@ -52,14 +52,6 @@ function buildLeaderboardSnapshot(hours: number = 4, limit: number = 50): Leader
     const allRaids = getAllRaidDefinitions();
 
     const rows = db.prepare(`
-        WITH run_durations AS (
-          SELECT
-            instance_id,
-            MAX(time_played_seconds) as pgcrDurationSeconds
-          FROM pgcr_players
-          WHERE completed = 1
-          GROUP BY instance_id
-        )
         SELECT
           pp.membership_id as membershipId,
           pp.membership_type as membershipType,
@@ -69,9 +61,8 @@ function buildLeaderboardSnapshot(hours: number = 4, limit: number = 50): Leader
           COUNT(DISTINCT pp.instance_id) as completions
         FROM pgcr_players pp
         JOIN pgcrs p ON pp.instance_id = p.instance_id
-        JOIN run_durations d ON d.instance_id = p.instance_id
         LEFT JOIN players pl ON pp.membership_id = pl.membership_id
-        WHERE (p.period + d.pgcrDurationSeconds) >= ?
+        WHERE p.ended_at >= ?
           AND pp.completed = 1
           AND p.completed = 1
           AND p.activity_was_started_from_beginning = 1

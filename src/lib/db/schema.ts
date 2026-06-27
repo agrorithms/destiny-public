@@ -65,11 +65,10 @@ export function initializeSchema(db: Database.Database): void {
       updated_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
+    -- idx_pgcrs_period retained: still serves cleanupOldPGCRs (period < ?) and MIN/MAX(period).
     CREATE INDEX IF NOT EXISTS idx_pgcrs_period ON pgcrs(period);
     CREATE INDEX IF NOT EXISTS idx_pgcrs_raid_key ON pgcrs(raid_key);
-    CREATE INDEX IF NOT EXISTS idx_pgcrs_raid_period ON pgcrs(raid_key, period);
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_membership ON pgcr_players(membership_id);
-    CREATE INDEX IF NOT EXISTS idx_pgcr_players_completed ON pgcr_players(completed);
     CREATE INDEX IF NOT EXISTS idx_players_last_crawled ON players(last_crawled_at);
     CREATE INDEX IF NOT EXISTS idx_players_priority ON players(priority DESC, last_crawled_at ASC);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_raid ON active_sessions(raid_key);

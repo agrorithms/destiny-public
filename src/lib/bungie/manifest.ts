@@ -14,16 +14,11 @@ export interface RaidDefinition {
 // Known raid activity hashes — fallback/starter values
 // The setup-manifest script will fetch the latest from the API
 const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
-    pantheon_insurrection_prime_revolutionary: {
-        name: "Pantheon: Insurrection Prime Revolutionary",
-        slug: 'pantheon-insurrection-prime-revolutionary',
-        hashes: [2530656885],
-    },
-    pantheon_morgeth_surpassing: {
-        name: "Pantheon: Morgeth Surpassing",
-        slug: 'pantheon-morgeth-surpassing',
-        hashes: [2530656885],
-    },
+    // pantheon_insurrection_prime_revolutionary: {
+    //    name: "Pantheon: Insurrection Prime Revolutionary",
+    //    slug: 'pantheon-insurrection-prime-revolutionary',
+    //    hashes: [2530656885],
+    //},
     pantheon_calus_resplendent: {
         name: "Pantheon: Calus Resplendent",
         slug: 'pantheon-calus-resplendent',
@@ -78,6 +73,11 @@ const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
         name: 'Last Wish',
         slug: 'last-wish',
         hashes: [2122313384, 1661734046, 2214608157, 2214608156],
+    },
+    pantheon_morgeth_surpassing: {
+        name: "Pantheon: Morgeth Surpassing",
+        slug: 'pantheon-morgeth-surpassing',
+        hashes: [2530656885],
     },
 };
 

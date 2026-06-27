@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { getDbStats, getLeaderboard } from '../src/lib/db/queries';
+import { getDbStats } from '../src/lib/db/queries';
+import { runLeaderboardRows } from '../src/lib/cache/leaderboard-cache';
 import { getAllRaidDefinitions } from '../src/lib/bungie/manifest';
 import { closeDb } from '../src/lib/db';
 
@@ -25,34 +26,24 @@ async function main() {
     console.log('----------------------------------------');
 
     for (const [key, raid] of Object.entries(raids)) {
-        const leaderboard = getLeaderboard({
-            raidKey: key,
-            hoursBack,
-            limit: 10,
-            fullClearsOnly: true,
-        });
+        // Raw, uncached leaderboard query (bypasses the SWR cache layer).
+        const leaderboard = runLeaderboardRows(hoursBack, [key], 10);
 
         if (leaderboard.length === 0) continue;
 
         console.log(`\n  ${raid.name}:`);
         leaderboard.forEach((entry, i) => {
-            const name = entry.bungieGlobalDisplayName || entry.displayName;
-            console.log(`    ${String(i + 1).padStart(2)}. ${name} — ${entry.completions} clears`);
+            console.log(`    ${String(i + 1).padStart(2)}. ${entry.displayName} — ${entry.completions} clears`);
         });
     }
 
-    // Show overall leaderboard
-    const overall = getLeaderboard({
-        hoursBack,
-        limit: 15,
-        fullClearsOnly: true,
-    });
+    // Show overall leaderboard (all raids)
+    const overall = runLeaderboardRows(hoursBack, [], 15);
 
     if (overall.length > 0) {
         console.log(`\n  All Raids Combined:`);
         overall.forEach((entry, i) => {
-            const name = entry.bungieGlobalDisplayName || entry.displayName;
-            console.log(`    ${String(i + 1).padStart(2)}. ${name} — ${entry.completions} clears`);
+            console.log(`    ${String(i + 1).padStart(2)}. ${entry.displayName} — ${entry.completions} clears`);
         });
     }
 

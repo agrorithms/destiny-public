@@ -1,5 +1,5 @@
 import { getDb } from './index';
-import type { PlayerInfo, LeaderboardEntry } from '../bungie/types';
+import type { PlayerInfo } from '../bungie/types';
 
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 type RunnableStatement = {
@@ -152,18 +152,10 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     WITH recent_players AS (
       SELECT
         pp.membership_id as membershipId,
-        MAX(pg.period + d.pgcrDurationSeconds) as lastSeenPeriod
+        MAX(pg.ended_at) as lastSeenPeriod
       FROM pgcr_players pp
       INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      INNER JOIN (
-        SELECT
-          instance_id,
-          MAX(time_played_seconds) as pgcrDurationSeconds
-        FROM pgcr_players
-        WHERE completed = 1
-        GROUP BY instance_id
-      ) d ON d.instance_id = pg.instance_id
-      WHERE (pg.period + d.pgcrDurationSeconds) >= ?
+      WHERE pg.ended_at >= ?
       GROUP BY pp.membership_id
       ORDER BY lastSeenPeriod DESC
       LIMIT ?
@@ -378,7 +370,7 @@ export function getPlayersInRecentBucket(
     if (limit <= 0) return [];
     const db = getDb();
     const excludeJson = JSON.stringify(excludeIds);
-    const maxFilter = maxSeenUnix !== null ? 'AND (pg.period + d.dur) < ?' : '';
+    const maxFilter = maxSeenUnix !== null ? 'AND pg.ended_at < ?' : '';
     const params: (number | string)[] = [minSeenUnix];
     if (maxSeenUnix !== null) params.push(maxSeenUnix);
     params.push(excludeJson, limit);
@@ -388,11 +380,7 @@ export function getPlayersInRecentBucket(
       SELECT pp.membership_id AS membershipId
       FROM pgcr_players pp
       INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      INNER JOIN (
-        SELECT instance_id, MAX(time_played_seconds) AS dur
-        FROM pgcr_players WHERE completed = 1 GROUP BY instance_id
-      ) d ON d.instance_id = pg.instance_id
-      WHERE (pg.period + d.dur) >= ?
+      WHERE pg.ended_at >= ?
         ${maxFilter}
       GROUP BY pp.membership_id
     )
@@ -424,13 +412,10 @@ export function getPlayersInColdBucket(
     return db.prepare(`
     WITH all_recent AS (
       SELECT pp.membership_id AS membershipId,
-             MAX(pg.period + d.dur) AS lastSeenPeriod
+             MAX(pg.ended_at) AS lastSeenPeriod
       FROM pgcr_players pp
       INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      INNER JOIN (
-        SELECT instance_id, MAX(time_played_seconds) AS dur
-        FROM pgcr_players WHERE completed = 1 GROUP BY instance_id
-      ) d ON d.instance_id = pg.instance_id
+      WHERE pg.ended_at IS NOT NULL
       GROUP BY pp.membership_id
     )
     SELECT p.membership_id AS membershipId,
@@ -592,23 +577,14 @@ export function getPlayerRaidCompletionSummary(
     const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
 
     return db.prepare(`
-    WITH run_durations AS (
-      SELECT
-        instance_id,
-        MAX(time_played_seconds) as pgcrDurationSeconds
-      FROM pgcr_players
-      WHERE completed = 1
-      GROUP BY instance_id
-    )
     SELECT
       p.raid_key as raidKey,
       COUNT(DISTINCT pp.instance_id) as completions,
-      CAST(ROUND(AVG(d.pgcrDurationSeconds)) AS INTEGER) as avgCompletionSeconds
+      CAST(ROUND(AVG(p.ended_at - p.period)) AS INTEGER) as avgCompletionSeconds
     FROM pgcr_players pp
     JOIN pgcrs p ON pp.instance_id = p.instance_id
-    JOIN run_durations d ON d.instance_id = p.instance_id
     WHERE pp.membership_id = ?
-      AND (p.period + d.pgcrDurationSeconds) >= ?
+      AND p.ended_at >= ?
       AND pp.completed = 1
       AND p.completed = 1
       AND p.raid_key IS NOT NULL
@@ -623,6 +599,7 @@ export interface PlayerRecentCompletion {
     raidKey: string | null;
     period: number;
     activityHash: number;
+    endedAt: number;
     timePlayedSeconds: number;
 }
 
@@ -635,30 +612,22 @@ export function getPlayerRecentCompletions(
     const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
 
     return db.prepare(`
-    WITH run_durations AS (
-      SELECT
-        instance_id,
-        MAX(time_played_seconds) as pgcrDurationSeconds
-      FROM pgcr_players
-      WHERE completed = 1
-      GROUP BY instance_id
-    )
     SELECT
       p.instance_id as instanceId,
       p.raid_key as raidKey,
       p.period as period,
       p.activity_hash as activityHash,
-      d.pgcrDurationSeconds as timePlayedSeconds
+      p.ended_at as endedAt,
+      (p.ended_at - p.period) as timePlayedSeconds
     FROM pgcr_players pp
     JOIN pgcrs p ON pp.instance_id = p.instance_id
-    JOIN run_durations d ON d.instance_id = p.instance_id
     WHERE pp.membership_id = ?
-      AND (p.period + d.pgcrDurationSeconds) >= ?
+      AND p.ended_at >= ?
       AND pp.completed = 1
       AND p.completed = 1
       AND p.raid_key IS NOT NULL
       AND p.activity_was_started_from_beginning = 1
-    ORDER BY (p.period + d.pgcrDurationSeconds) DESC
+    ORDER BY p.ended_at DESC
     LIMIT ?
   `).all(membershipId, cutoffTimestamp, limit) as PlayerRecentCompletion[];
 }
@@ -680,23 +649,15 @@ export function getPlayerRaidTeammateSummary(
     const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
 
     return db.prepare(`
-    WITH run_durations AS (
-      SELECT
-        instance_id,
-        MAX(time_played_seconds) as pgcrDurationSeconds
-      FROM pgcr_players
-      WHERE completed = 1
-      GROUP BY instance_id
-    ),
-    player_runs AS (
+    WITH player_runs AS (
       SELECT
         p.instance_id,
-        p.raid_key
+        p.raid_key,
+        (p.ended_at - p.period) as durationSeconds
       FROM pgcr_players self
       JOIN pgcrs p ON self.instance_id = p.instance_id
-      JOIN run_durations d ON d.instance_id = p.instance_id
       WHERE self.membership_id = ?
-        AND (p.period + d.pgcrDurationSeconds) >= ?
+        AND p.ended_at >= ?
         AND self.completed = 1
         AND p.completed = 1
         AND p.raid_key IS NOT NULL
@@ -719,10 +680,9 @@ export function getPlayerRaidTeammateSummary(
         mate.membership_id
       ) as teammateDisplayName,
       COUNT(DISTINCT pr.instance_id) as completions,
-      CAST(ROUND(AVG(d.pgcrDurationSeconds)) AS INTEGER) as avgCompletionSeconds
+      CAST(ROUND(AVG(pr.durationSeconds)) AS INTEGER) as avgCompletionSeconds
     FROM player_runs pr
     JOIN pgcr_players mate ON mate.instance_id = pr.instance_id
-    JOIN run_durations d ON d.instance_id = pr.instance_id
     LEFT JOIN players pl ON pl.membership_id = mate.membership_id
     WHERE mate.membership_id <> ?
       AND mate.completed = 1
@@ -965,128 +925,6 @@ export function getPGCRCount(): number {
     const db = getDb();
     const row = db.prepare('SELECT COUNT(*) as count FROM pgcrs').get() as { count: number } | undefined;
     return row?.count ?? 0;
-}
-
-// =====================
-// LEADERBOARD QUERIES
-// =====================
-
-export function getLeaderboard(params: {
-    raidKey?: string;
-    hoursBack: number;
-    limit?: number;
-    fullClearsOnly?: boolean;
-}): LeaderboardEntry[] {
-    const db = getDb();
-    const { raidKey, hoursBack, limit = 100, fullClearsOnly = true } = params;
-
-    const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
-
-    let query = `
-    SELECT 
-      pp.membership_id as membershipId,
-      pp.membership_type as membershipType,
-      pp.display_name as displayName,
-      pp.bungie_global_display_name as bungieGlobalDisplayName,
-      COUNT(DISTINCT pp.instance_id) as completions,
-      COALESCE(p.raid_key, 'unknown') as raidName
-    FROM pgcr_players pp
-    JOIN pgcrs p ON pp.instance_id = p.instance_id
-    JOIN (
-      SELECT
-        instance_id,
-        MAX(time_played_seconds) as pgcrDurationSeconds
-      FROM pgcr_players
-      WHERE completed = 1
-      GROUP BY instance_id
-    ) d ON d.instance_id = p.instance_id
-    WHERE (p.period + d.pgcrDurationSeconds) >= ?
-      AND pp.completed = 1
-      AND p.completed = 1
-  `;
-
-    const queryParams: SqlValue[] = [cutoffTimestamp];
-
-    // Filter to full clears only (started from beginning)
-    if (fullClearsOnly) {
-        query += ` AND p.activity_was_started_from_beginning = 1`;
-    }
-
-    // Filter to specific raid
-    if (raidKey) {
-        query += ` AND p.raid_key = ?`;
-        queryParams.push(raidKey);
-    }
-
-    query += `
-    GROUP BY pp.membership_id
-    ORDER BY completions DESC
-    LIMIT ?
-  `;
-    queryParams.push(limit);
-
-    return db.prepare(query).all(...queryParams) as LeaderboardEntry[];
-}
-
-export function getLeaderboardByRaid(params: {
-    hoursBack: number;
-    limit?: number;
-    fullClearsOnly?: boolean;
-}): Record<string, LeaderboardEntry[]> {
-    const db = getDb();
-    const { hoursBack, limit = 50, fullClearsOnly = true } = params;
-
-    const cutoffTimestamp = Math.floor((Date.now() - hoursBack * 60 * 60 * 1000) / 1000);
-
-    let query = `
-    SELECT 
-      pp.membership_id as membershipId,
-      pp.membership_type as membershipType,
-      pp.display_name as displayName,
-      pp.bungie_global_display_name as bungieGlobalDisplayName,
-      COUNT(DISTINCT pp.instance_id) as completions,
-      p.raid_key as raidKey
-    FROM pgcr_players pp
-    JOIN pgcrs p ON pp.instance_id = p.instance_id
-    JOIN (
-      SELECT
-        instance_id,
-        MAX(time_played_seconds) as pgcrDurationSeconds
-      FROM pgcr_players
-      WHERE completed = 1
-      GROUP BY instance_id
-    ) d ON d.instance_id = p.instance_id
-    WHERE (p.period + d.pgcrDurationSeconds) >= ?
-      AND pp.completed = 1
-      AND p.completed = 1
-      AND p.raid_key IS NOT NULL
-  `;
-
-    const queryParams: SqlValue[] = [cutoffTimestamp];
-
-    if (fullClearsOnly) {
-        query += ` AND p.activity_was_started_from_beginning = 1`;
-    }
-
-    query += `
-    GROUP BY p.raid_key, pp.membership_id
-    ORDER BY p.raid_key, completions DESC
-  `;
-
-    const rows = db.prepare(query).all(...queryParams) as (LeaderboardEntry & { raidKey: string })[];
-
-    // Group by raid and limit each
-    const grouped: Record<string, LeaderboardEntry[]> = {};
-    for (const row of rows) {
-        if (!grouped[row.raidKey]) {
-            grouped[row.raidKey] = [];
-        }
-        if (grouped[row.raidKey].length < limit) {
-            grouped[row.raidKey].push(row);
-        }
-    }
-
-    return grouped;
 }
 
 // =====================

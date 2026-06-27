@@ -6,13 +6,17 @@
  * envelope construction. Both the route and the warmer go through here so they
  * share one query path and one single-flight cache (see swr-cache.ts).
  *
- * The SQL is byte-for-byte the same aggregation used previously; for a single
- * raid the aggregate (`IN (?)`) and per-raid (`= ?`) forms are equivalent, so
- * one runner covers all shapes. `fullClearsOnly` is forced true on the cache
- * path (the only real UI path) so it drops out of the key space.
+ * The ranking aggregation reads the denormalized `pgcrs.ended_at` (Phase 3); for
+ * a single raid the aggregate (`IN (?)`) and per-raid (`= ?`) forms are
+ * equivalent, so one runner covers all shapes. `fullClearsOnly` is forced true
+ * on the cache path (the only real UI path) so it drops out of the key space.
+ *
+ * `runLeaderboardRows` is the pure, uncached query (the SWR cache only wraps it
+ * inside `getLeaderboardResponse`); it is exported so scripts/db-stats.ts can run
+ * the raw leaderboard without the cache layer.
  */
-import { getDb } from '@/lib/db';
-import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
+import { getDb } from '../db';
+import { getAllRaidDefinitions } from '../bungie/manifest';
 import { getOrCompute, type CacheState } from './swr-cache';
 
 type SqlParam = string | number;
@@ -136,19 +140,11 @@ function formatDisplayName(entry: LeaderboardDbRow): string {
  * a single key yields the same ranking as the per-raid individual query.
  * `fullClearsOnly` is always applied (forced true on every cached + bypass path).
  */
-function runLeaderboardRows(hours: number, raidKeys: string[], limit: number): LeaderboardResponseEntry[] {
+export function runLeaderboardRows(hours: number, raidKeys: string[], limit: number): LeaderboardResponseEntry[] {
     const db = getDb();
     const cutoff = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
 
     let query = `
-        WITH run_durations AS (
-          SELECT
-            instance_id,
-            MAX(time_played_seconds) as pgcrDurationSeconds
-          FROM pgcr_players
-          WHERE completed = 1
-          GROUP BY instance_id
-        )
         SELECT
           pp.membership_id as membershipId,
           pp.membership_type as membershipType,
@@ -158,9 +154,8 @@ function runLeaderboardRows(hours: number, raidKeys: string[], limit: number): L
           COUNT(DISTINCT pp.instance_id) as completions
         FROM pgcr_players pp
         JOIN pgcrs p ON pp.instance_id = p.instance_id
-        JOIN run_durations d ON d.instance_id = p.instance_id
         LEFT JOIN players pl ON pp.membership_id = pl.membership_id
-        WHERE (p.period + d.pgcrDurationSeconds) >= ?
+        WHERE p.ended_at >= ?
           AND pp.completed = 1
           AND p.completed = 1
     `;

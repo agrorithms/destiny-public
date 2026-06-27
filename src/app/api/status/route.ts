@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSystemStats } from '@/lib/system-stats';
+import { getStatusStats } from '@/lib/system-stats';
 import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { readStatusSnapshot } from '@/lib/maintenance/snapshots';
@@ -7,7 +7,7 @@ import { withCache, withNoStore } from '@/lib/http/cache';
 
 export async function GET() {
     try {
-        const stats = getSystemStats();
+        const stats = getStatusStats();
         const stale = (stats.secondsSinceHeartbeat ?? 301) > 300; // 5 minutes
 
         const response = NextResponse.json(

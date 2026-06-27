@@ -38,8 +38,15 @@ export interface SystemStats {
     };
 }
 
-export function getSystemStats(): SystemStats {
-    const databaseStats = getDbStats();
+/**
+ * Status fields without the database totals. `getDbStats()` runs four unfiltered
+ * COUNT(*) scans over the (large) DB and synchronously blocks the event loop; the
+ * public `/api/status` hot path never uses the totals, so it reads this leaner
+ * shape instead. See getStatusStats below.
+ */
+export type StatusStats = Omit<SystemStats, 'database'>;
+
+export function getStatusStats(): StatusStats {
     const crawlerStatus = getCrawlerStatus();
     const bungieMaintenance = getBungieMaintenanceStatus();
 
@@ -79,6 +86,12 @@ export function getSystemStats(): SystemStats {
         snapshotGeneratedAt: bungieMaintenance.snapshotGeneratedAt,
         lastVacuumCompletedAt: bungieMaintenance.lastVacuumCompletedAt,
         scanner: scannerStats,
-        database: databaseStats,
+    };
+}
+
+export function getSystemStats(): SystemStats {
+    return {
+        ...getStatusStats(),
+        database: getDbStats(),
     };
 }

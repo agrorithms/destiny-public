@@ -1,6 +1,6 @@
 import { getAllRaidDefinitions } from '../bungie/manifest';
 import { getDb } from '../db';
-import { getSystemStats, type SystemStats } from '../system-stats';
+import { getStatusStats, getSystemStats, type StatusStats, type SystemStats } from '../system-stats';
 import { readSnapshot, writeSnapshot } from './state';
 
 export interface MaintenanceSnapshotEnvelope<T> {
@@ -87,7 +87,10 @@ function buildLeaderboardSnapshot(hours: number = 4, limit: number = 50): Leader
 }
 
 export function generateMaintenanceSnapshots(): void {
-    const status = getSystemStats();
+    // The public status snapshot never needs the DB totals, so build it from the
+    // lean status stats (no COUNT(*) scans). The admin-stats snapshot keeps the
+    // full stats since the admin dashboard renders the totals.
+    const status = getStatusStats();
     const adminStats = getSystemStats();
     const leaderboard = buildLeaderboardSnapshot();
 
@@ -96,8 +99,8 @@ export function generateMaintenanceSnapshots(): void {
     writeSnapshot('leaderboard', buildEnvelope(leaderboard));
 }
 
-export function readStatusSnapshot(): MaintenanceSnapshotEnvelope<SystemStats> | null {
-    return readSnapshot<MaintenanceSnapshotEnvelope<SystemStats>>('status');
+export function readStatusSnapshot(): MaintenanceSnapshotEnvelope<StatusStats> | null {
+    return readSnapshot<MaintenanceSnapshotEnvelope<StatusStats>>('status');
 }
 
 export function readAdminStatsSnapshot(): MaintenanceSnapshotEnvelope<SystemStats> | null {

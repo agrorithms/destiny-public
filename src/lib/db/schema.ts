@@ -125,4 +125,18 @@ export function initializeSchema(db: Database.Database): void {
     } catch {
         // Column already exists.
     }
+
+    // Phase 3 indexes for the ended_at reader cutover. Created here (after the
+    // ended_at column exists) so fresh/dev DBs get them automatically; on the
+    // large prod DB they are pre-built in an ingestion-paused window via
+    // scripts/create-phase3-indexes.ts, making these IF NOT EXISTS no-ops.
+    // No partial predicates: idx_pgcrs_ended is shared by the leaderboard
+    // (all-raids) and the crawler recency queries, which do NOT filter
+    // completed/started at the outer level — a predicate would exclude them.
+    db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pgcrs_raid_ended ON pgcrs(raid_key, ended_at);
+    CREATE INDEX IF NOT EXISTS idx_pgcrs_ended ON pgcrs(ended_at);
+    CREATE INDEX IF NOT EXISTS idx_pgcr_players_instance_completed_member ON pgcr_players(instance_id, completed, membership_id);
+    CREATE INDEX IF NOT EXISTS idx_pgcr_players_member_completed_instance ON pgcr_players(membership_id, completed, instance_id);
+  `);
 }

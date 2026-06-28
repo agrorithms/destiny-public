@@ -8,12 +8,29 @@ import PlayerSearch from '@/components/PlayerSearch';
 import BungieMaintenanceAlert from '@/components/BungieMaintenanceAlert';
 import FooterStatus from '@/components/FooterStatus';
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://destinyfarmfinder.qzz.io';
+
 export const metadata: Metadata = {
+  // Required so relative og:image URLs (from opengraph-image.tsx) resolve to absolute URLs,
+  // which social crawlers (Discord/Slack/Twitter) require.
+  metadataBase: new URL(siteUrl),
   title: 'Destiny Farm Finder',
   description: 'Real-time raid completion leaderboards and active session tracking for Destiny 2',
   manifest: '/manifest.json',
   icons: {
     apple: '/icons/apple-touch-icon.png',
+  },
+  openGraph: {
+    title: 'Destiny Farm Finder',
+    description: 'Real-time raid completion leaderboards and active session tracking for Destiny 2',
+    siteName: 'Destiny Farm Finder',
+    url: siteUrl,
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Destiny Farm Finder',
+    description: 'Real-time raid completion leaderboards and active session tracking for Destiny 2',
   },
 };
 

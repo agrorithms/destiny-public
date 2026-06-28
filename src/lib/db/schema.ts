@@ -125,6 +125,18 @@ export function initializeSchema(db: Database.Database): void {
         // Column already exists.
     }
 
+    // Migration guard for denormalized last-seen time on players: the max
+    // pgcrs.ended_at across PGCRs the player appears in. Maintained at insert
+    // (insertFullPGCR) and backfilled once via scripts/backfill-last-seen.ts.
+    // Lets the tiered bucket selection read players directly instead of
+    // aggregating the full pgcr_players ⋈ pgcrs join every crawl cycle.
+    // Nullable: NULL means "never seen in a PGCR" → cold bucket.
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN last_seen_at INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
+
     // Phase 3 indexes for the ended_at reader cutover. Created here (after the
     // ended_at column exists) so fresh/dev DBs get them automatically; on the
     // large prod DB they are pre-built in an ingestion-paused window via
@@ -137,5 +149,12 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pgcrs_ended ON pgcrs(ended_at);
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_instance_completed_member ON pgcr_players(instance_id, completed, membership_id);
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_member_completed_instance ON pgcr_players(membership_id, completed, instance_id);
+  `);
+
+    // Index for tiered bucket selection on the denormalized last_seen_at:
+    // hot/warm filter by last_seen_at range and order by last_crawled_at ASC.
+    // (The cold bucket orders by priority and reuses idx_players_priority.)
+    db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at, last_crawled_at);
   `);
 }

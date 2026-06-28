@@ -19,6 +19,7 @@
     "scanner": "npx tsx scripts/start-scanner.ts",
     "db-maintenance": "npx tsx scripts/run-db-maintenance.ts",
     "backfill-ended-at": "npx tsx scripts/backfill-ended-at.ts",
+    "backfill-last-seen": "npx tsx scripts/backfill-last-seen.ts",
     "db-cleanup": "npx tsx scripts/db-cleanup.ts",
     "create-phase3-indexes": "npx tsx scripts/create-phase3-indexes.ts",
     "verify-phase3-cutover": "npx tsx scripts/verify-phase3-cutover.ts",

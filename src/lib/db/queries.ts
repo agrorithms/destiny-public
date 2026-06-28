@@ -20,6 +20,7 @@ let bulkUpsertPlayersTx: ((players: PlayerInfo[]) => void) | null = null;
 let pgcrInsertDbRef: ReturnType<typeof getDb> | null = null;
 let insertPGCRStmt: RunnableStatement | null = null;
 let insertPGCRPlayerStmt: RunnableStatement | null = null;
+let bumpLastSeenStmt: RunnableStatement | null = null;
 let insertFullPGCRTx: ((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => void) | null = null;
 
 function isValidMembershipType(type: unknown): boolean {
@@ -146,18 +147,19 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     const recentWindowSeconds = Math.floor((Date.now() - 6 * 60 * 60 * 1000) / 1000);
     const candidateLimit = getSessionPollingCandidateLimit(limit);
 
-    // Strategy: Get players who appeared in recent PGCRs (last 6 hours)
-    // These are the most likely to still be online and raiding
+    // Strategy: Get players seen in a PGCR within the last 6 hours.
+    // These are the most likely to still be online and raiding. Reads the
+    // denormalized players.last_seen_at (idx_players_last_seen) instead of
+    // aggregating the pgcr_players ⋈ pgcrs join.
     const recentlyActive = db.prepare(`
     WITH recent_players AS (
       SELECT
-        pp.membership_id as membershipId,
-        MAX(pg.ended_at) as lastSeenPeriod
-      FROM pgcr_players pp
-      INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      WHERE pg.ended_at >= ?
-      GROUP BY pp.membership_id
-      ORDER BY lastSeenPeriod DESC
+        membership_id as membershipId,
+        last_seen_at as lastSeenPeriod
+      FROM players
+      WHERE is_active = 1
+        AND last_seen_at >= ?
+      ORDER BY last_seen_at DESC
       LIMIT ?
     )
     SELECT
@@ -370,28 +372,24 @@ export function getPlayersInRecentBucket(
     if (limit <= 0) return [];
     const db = getDb();
     const excludeJson = JSON.stringify(excludeIds);
-    const maxFilter = maxSeenUnix !== null ? 'AND pg.ended_at < ?' : '';
+    const maxFilter = maxSeenUnix !== null ? 'AND p.last_seen_at < ?' : '';
     const params: (number | string)[] = [minSeenUnix];
     if (maxSeenUnix !== null) params.push(maxSeenUnix);
     params.push(excludeJson, limit);
 
+    // Reads the denormalized players.last_seen_at (maintained in insertFullPGCR,
+    // backfilled by scripts/backfill-last-seen.ts) instead of aggregating the
+    // pgcr_players ⋈ pgcrs join every cycle. Served by idx_players_last_seen.
     return db.prepare(`
-    WITH recent AS (
-      SELECT pp.membership_id AS membershipId
-      FROM pgcr_players pp
-      INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      WHERE pg.ended_at >= ?
-        ${maxFilter}
-      GROUP BY pp.membership_id
-    )
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,
            p.display_name AS displayName,
            p.bungie_global_display_name AS bungieGlobalDisplayName,
            p.last_crawled_at AS lastCrawledAt
-    FROM recent r
-    INNER JOIN players p ON p.membership_id = r.membershipId
+    FROM players p
     WHERE p.is_active = 1
+      AND p.last_seen_at >= ?
+      ${maxFilter}
       AND p.membership_id NOT IN (SELECT value FROM json_each(?))
     ORDER BY p.last_crawled_at ASC
     LIMIT ?
@@ -409,24 +407,18 @@ export function getPlayersInColdBucket(
     if (limit <= 0) return [];
     const db = getDb();
     const excludeJson = JSON.stringify(excludeIds);
+    // Cold = seen before warmCutoff OR never seen (NULL last_seen_at). Ordered by
+    // priority then staleness; served by idx_players_priority (the planner scans
+    // in priority order and stops at LIMIT once enough cold players are found).
     return db.prepare(`
-    WITH all_recent AS (
-      SELECT pp.membership_id AS membershipId,
-             MAX(pg.ended_at) AS lastSeenPeriod
-      FROM pgcr_players pp
-      INNER JOIN pgcrs pg ON pp.instance_id = pg.instance_id
-      WHERE pg.ended_at IS NOT NULL
-      GROUP BY pp.membership_id
-    )
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,
            p.display_name AS displayName,
            p.bungie_global_display_name AS bungieGlobalDisplayName,
            p.last_crawled_at AS lastCrawledAt
     FROM players p
-    LEFT JOIN all_recent r ON r.membershipId = p.membership_id
     WHERE p.is_active = 1
-      AND (r.membershipId IS NULL OR r.lastSeenPeriod < ?)
+      AND (p.last_seen_at IS NULL OR p.last_seen_at < ?)
       AND p.membership_id NOT IN (SELECT value FROM json_each(?))
     ORDER BY p.priority DESC, p.last_crawled_at ASC
     LIMIT ?
@@ -858,16 +850,25 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
   `) as unknown as RunnableStatement;
 
         insertPGCRPlayerStmt = db.prepare(`
-    INSERT OR IGNORE INTO pgcr_players 
-    (instance_id, membership_id, membership_type, display_name, 
-     bungie_global_display_name, character_class, light_level, 
+    INSERT OR IGNORE INTO pgcr_players
+    (instance_id, membership_id, membership_type, display_name,
+     bungie_global_display_name, character_class, light_level,
      completed, kills, deaths, assists, time_played_seconds)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `) as unknown as RunnableStatement;
 
+        // Denormalized last_seen_at maintenance: advance to this run's ended_at
+        // when newer. No-op for players not yet in the players table (they get
+        // their value once crawled/upserted, defaulting to cold until then).
+        bumpLastSeenStmt = db.prepare(`
+    UPDATE players SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?)
+    WHERE membership_id = ?
+  `) as unknown as RunnableStatement;
+
         const pgcrStmt = insertPGCRStmt;
         const playerStmt = insertPGCRPlayerStmt;
-        if (!pgcrStmt || !playerStmt) {
+        const lastSeenStmt = bumpLastSeenStmt;
+        if (!pgcrStmt || !playerStmt || !lastSeenStmt) {
             throw new Error('Failed to initialize PGCR statements');
         }
         insertFullPGCRTx = db.transaction((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => {
@@ -902,6 +903,10 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
                     player.assists,
                     player.timePlayedSeconds
                 );
+
+                if (endedAt != null) {
+                    lastSeenStmt.run(endedAt, player.membershipId);
+                }
             }
         });
     }

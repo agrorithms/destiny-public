@@ -137,6 +137,31 @@ export function initializeSchema(db: Database.Database): void {
         // Column already exists.
     }
 
+    // Migration guards for crawl scheduling, decoupled from the coverage
+    // watermark (last_crawled_at, advanced only on a clean successful crawl):
+    //   last_attempt_at      — bumped on EVERY crawl attempt; buckets order by it,
+    //                          so a failed crawl goes to the back of the line
+    //                          instead of being re-picked every cycle.
+    //   consecutive_failures — drives exponential backoff + auto-deactivation.
+    //   next_eligible_at     — "snooze until"; buckets skip rows still backing off.
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN last_attempt_at INTEGER DEFAULT 0`).run();
+        // Seed sane ordering for pre-existing rows (no-op for fresh DBs).
+        db.prepare(`UPDATE players SET last_attempt_at = last_crawled_at WHERE last_attempt_at = 0`).run();
+    } catch {
+        // Column already exists.
+    }
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN consecutive_failures INTEGER DEFAULT 0`).run();
+    } catch {
+        // Column already exists.
+    }
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN next_eligible_at INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
+
     // Phase 3 indexes for the ended_at reader cutover. Created here (after the
     // ended_at column exists) so fresh/dev DBs get them automatically; on the
     // large prod DB they are pre-built in an ingestion-paused window via
@@ -151,10 +176,13 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_member_completed_instance ON pgcr_players(membership_id, completed, instance_id);
   `);
 
-    // Index for tiered bucket selection on the denormalized last_seen_at:
-    // hot/warm filter by last_seen_at range and order by last_crawled_at ASC.
+    // Indexes for tiered bucket selection on the denormalized last_seen_at.
+    // hot/warm filter by last_seen_at range and order by last_attempt_at ASC
+    // (idx_players_last_seen_attempt). idx_players_last_seen is retained for the
+    // active-session polling candidate scan (orders by last_seen_at DESC).
     // (The cold bucket orders by priority and reuses idx_players_priority.)
     db.exec(`
     CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at, last_crawled_at);
+    CREATE INDEX IF NOT EXISTS idx_players_last_seen_attempt ON players(last_seen_at, last_attempt_at);
   `);
 }

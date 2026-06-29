@@ -60,6 +60,7 @@ export interface CrawlerConfig {
     coldCrawlCount: number;
     maxPages: number;
     charIdTtlDays: number;
+    recrawlBufferSeconds: number;
     // Tiered bucket percentages
     bucketHotHours: number;
     bucketWarmHours: number;
@@ -106,6 +107,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     coldCrawlCount: parseInt(process.env.CRAWLER_COLD_CRAWL_COUNT || '50', 10),
     maxPages: parseInt(process.env.CRAWLER_MAX_PAGES || '5', 10),
     charIdTtlDays: parseInt(process.env.CRAWLER_CHARACTER_IDS_TTL_DAYS || '14', 10),
+    recrawlBufferSeconds: Math.max(0, parseInt(process.env.CRAWLER_RECRAWL_BUFFER_MINUTES || '30', 10)) * 60,
     // Tiered bucket percentages
     bucketHotHours: parseInt(process.env.CRAWLER_BUCKET_HOT_HOURS || '6', 10),
     bucketWarmHours: parseInt(process.env.CRAWLER_BUCKET_WARM_HOURS || '48', 10),
@@ -145,6 +147,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
         maxBackfillHours: config.maxBackfillHours,
         maxPages: config.maxPages,
         charIdTtlSeconds,
+        recrawlBufferSeconds: config.recrawlBufferSeconds,
     };
 
     // --- Step 1: Drain crawl_queue (additional, capped) ---
@@ -365,6 +368,7 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         pageCounts: `hot=${config.hotRecrawlCount} cold=${config.coldCrawlCount} maxPages=${config.maxPages}`,
         maxBackfillHours: config.maxBackfillHours,
         charIdTtlDays: config.charIdTtlDays,
+        recrawlBufferMin: config.recrawlBufferSeconds / 60,
         activeSessionIntervalMs: config.activeSessionIntervalMs,
         activeSessionConcurrency: config.activeSessionConcurrency,
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,

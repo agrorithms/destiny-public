@@ -229,11 +229,81 @@ export function getPlayersToCrawl(limit: number = 50): PlayerInfo[] {
   `).all(limit) as PlayerInfo[];
 }
 
-export function updateLastCrawled(membershipId: string): void {
+/**
+ * Result of a single crawl attempt, used to schedule the next one.
+ *  - success:   clean full traversal → advance the coverage watermark.
+ *  - transient: API/network error or empty result → short exponential backoff,
+ *               auto-deactivate after MAX_CONSECUTIVE_FAILURES.
+ *  - privacy:   private profile/history → long fixed backoff, never deactivated.
+ *  - not_found: deleted/unknown account (error 217/1601) → deactivate immediately.
+ */
+export type CrawlOutcome = 'success' | 'transient' | 'privacy' | 'not_found';
+
+const FAIL_BACKOFF_BASE_SEC = Math.max(
+    1,
+    parseInt(process.env.CRAWLER_FAIL_BACKOFF_BASE_SEC || '300', 10)
+);
+const FAIL_BACKOFF_CAP_SEC = Math.max(
+    FAIL_BACKOFF_BASE_SEC,
+    parseInt(process.env.CRAWLER_FAIL_BACKOFF_CAP_SEC || '21600', 10)
+);
+const PRIVACY_BACKOFF_SEC = Math.max(
+    1,
+    parseInt(process.env.CRAWLER_PRIVACY_BACKOFF_SEC || '86400', 10)
+);
+const MAX_CONSECUTIVE_FAILURES = Math.max(
+    1,
+    parseInt(process.env.CRAWLER_MAX_CONSECUTIVE_FAILURES || '8', 10)
+);
+
+/**
+ * Record a crawl attempt's outcome. `last_attempt_at` advances on every outcome
+ * (scheduling clock); `last_crawled_at` (coverage watermark, read by the
+ * per-player ended_at stop condition) advances only on success.
+ */
+export function recordCrawlOutcome(membershipId: string, outcome: CrawlOutcome): void {
     const db = getDb();
-    db.prepare(`
-    UPDATE players SET last_crawled_at = unixepoch() WHERE membership_id = ?
-  `).run(membershipId);
+    switch (outcome) {
+        case 'success':
+            db.prepare(`
+        UPDATE players SET
+          last_crawled_at = unixepoch(),
+          last_attempt_at = unixepoch(),
+          consecutive_failures = 0,
+          next_eligible_at = NULL
+        WHERE membership_id = ?
+      `).run(membershipId);
+            return;
+        case 'transient':
+            // Backoff uses the pre-increment failure count (SQLite evaluates all
+            // RHS expressions against the old row), so the first failure waits
+            // base*1. Shift clamped at 20 to avoid overflow; capped overall.
+            db.prepare(`
+        UPDATE players SET
+          last_attempt_at = unixepoch(),
+          consecutive_failures = consecutive_failures + 1,
+          next_eligible_at = unixepoch() + MIN(?, ? * (1 << MIN(consecutive_failures, 20))),
+          is_active = CASE WHEN consecutive_failures + 1 >= ? THEN 0 ELSE is_active END
+        WHERE membership_id = ?
+      `).run(FAIL_BACKOFF_CAP_SEC, FAIL_BACKOFF_BASE_SEC, MAX_CONSECUTIVE_FAILURES, membershipId);
+            return;
+        case 'privacy':
+            db.prepare(`
+        UPDATE players SET
+          last_attempt_at = unixepoch(),
+          next_eligible_at = unixepoch() + ?
+        WHERE membership_id = ?
+      `).run(PRIVACY_BACKOFF_SEC, membershipId);
+            return;
+        case 'not_found':
+            db.prepare(`
+        UPDATE players SET
+          is_active = 0,
+          last_attempt_at = unixepoch()
+        WHERE membership_id = ?
+      `).run(membershipId);
+            return;
+    }
 }
 
 export function getPlayerCount(): number {
@@ -379,7 +449,10 @@ export function getPlayersInRecentBucket(
 
     // Reads the denormalized players.last_seen_at (maintained in insertFullPGCR,
     // backfilled by scripts/backfill-last-seen.ts) instead of aggregating the
-    // pgcr_players ⋈ pgcrs join every cycle. Served by idx_players_last_seen.
+    // pgcr_players ⋈ pgcrs join every cycle. Ordered by last_attempt_at (the
+    // scheduling clock, bumped on every attempt) so backing-off players don't
+    // get re-picked instantly; next_eligible_at gates players still in backoff.
+    // Served by idx_players_last_seen_attempt.
     return db.prepare(`
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,
@@ -390,8 +463,9 @@ export function getPlayersInRecentBucket(
     WHERE p.is_active = 1
       AND p.last_seen_at >= ?
       ${maxFilter}
+      AND (p.next_eligible_at IS NULL OR p.next_eligible_at <= unixepoch())
       AND p.membership_id NOT IN (SELECT value FROM json_each(?))
-    ORDER BY p.last_crawled_at ASC
+    ORDER BY p.last_attempt_at ASC
     LIMIT ?
   `).all(...params) as PlayerInfo[];
 }
@@ -408,8 +482,9 @@ export function getPlayersInColdBucket(
     const db = getDb();
     const excludeJson = JSON.stringify(excludeIds);
     // Cold = seen before warmCutoff OR never seen (NULL last_seen_at). Ordered by
-    // priority then staleness; served by idx_players_priority (the planner scans
-    // in priority order and stops at LIMIT once enough cold players are found).
+    // priority then staleness (last_attempt_at); next_eligible_at gates players
+    // still in backoff. Served by idx_players_priority (the planner scans in
+    // priority order and stops at LIMIT once enough cold players are found).
     return db.prepare(`
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,
@@ -419,8 +494,9 @@ export function getPlayersInColdBucket(
     FROM players p
     WHERE p.is_active = 1
       AND (p.last_seen_at IS NULL OR p.last_seen_at < ?)
+      AND (p.next_eligible_at IS NULL OR p.next_eligible_at <= unixepoch())
       AND p.membership_id NOT IN (SELECT value FROM json_each(?))
-    ORDER BY p.priority DESC, p.last_crawled_at ASC
+    ORDER BY p.priority DESC, p.last_attempt_at ASC
     LIMIT ?
   `).all(warmCutoffUnix, excludeJson, limit) as PlayerInfo[];
 }
@@ -771,11 +847,6 @@ export function hasPGCR(instanceId: string): boolean {
     return !!row;
 }
 
-export function hasCrawlerPGCR(instanceId: string): boolean {
-    const db = getDb();
-    const row = db.prepare("SELECT 1 FROM pgcrs WHERE instance_id = ? AND source = 'crawler'").get(instanceId);
-    return !!row;
-}
 
 export interface InsertFullPGCRData {
     instanceId: string;

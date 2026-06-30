@@ -3,6 +3,7 @@ import { enqueueCrawl } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { getClientIp } from '@/lib/http/request-ip';
+import { isTrustedClientWrite } from '@/lib/http/request-auth';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
 
@@ -33,6 +34,10 @@ interface QueueCrawlBody {
 }
 
 export async function POST(request: NextRequest) {
+    if (!isTrustedClientWrite(request)) {
+        return withNoStore(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
+    }
+
     let body: QueueCrawlBody;
     try {
         body = await request.json();

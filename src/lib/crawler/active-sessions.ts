@@ -1,8 +1,9 @@
-import { getBungieClient, BungieAPIError } from '../bungie/client';
+import { getBungieClient, BungieAPIError, type BungieClient } from '../bungie/client';
 import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes } from '../db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes, getExistingPlayerIds, upsertPlayer } from '../db/queries';
 import { getDb } from '../db';
+import { pickPrimaryLinkedProfile } from '../bungie/linked-profiles';
 import { processWithConcurrency } from '../utils/concurrent';
 import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/types';
 
@@ -26,6 +27,14 @@ const DEFAULT_STALE_SESSION_REVERIFY_LIMIT = Math.max(
 );
 const IN_ORBIT_MODE_HASHES = [2166136261];
 const STALE_REVERIFY_TEAMMATE_FALLBACK_LIMIT = 2;
+
+// Max number of unknown fireteam members to resolve to Name#Code per active-session cycle.
+// Each resolution is one GetLinkedProfiles call against the crawler's API budget; the rest
+// carry over to following cycles.
+const DEFAULT_MEMBER_RESOLVE_LIMIT = Math.max(
+    0,
+    parseInt(process.env.CRAWLER_MEMBER_RESOLVE_LIMIT || '25', 10)
+);
 
 interface CharacterActivityLike {
     dateActivityStarted?: string;
@@ -508,4 +517,59 @@ export async function pollActiveSessions(
     );
 
     return [...sessions.values()];
+}
+
+/**
+ * Resolve fireteam members that appear in active sessions but aren't yet in the players table.
+ * Transitory party members carry only a membershipId (no type/Name#Code), so cards fall back to
+ * the raw id. We look up each unknown id via GetLinkedProfiles and upsert its identity; the
+ * read-time enricher then supplies Name#Code and makes the card clickable on the next render.
+ *
+ * Capped per cycle (CRAWLER_MEMBER_RESOLVE_LIMIT) to bound API-budget cost; any leftover unknown
+ * members are picked up on subsequent cycles. Failures (private/deleted/unresolvable) are skipped.
+ */
+export async function resolveUnknownPartyMembers(
+    memberIds: string[],
+    client: BungieClient = getBungieClient(),
+    limit: number = DEFAULT_MEMBER_RESOLVE_LIMIT
+): Promise<number> {
+    if (limit <= 0) return 0;
+
+    const uniqueIds = [...new Set(memberIds.filter(Boolean))];
+    if (uniqueIds.length === 0) return 0;
+
+    const known = getExistingPlayerIds(uniqueIds);
+    const unknown = uniqueIds.filter((id) => !known.has(id)).slice(0, limit);
+    if (unknown.length === 0) return 0;
+
+    let resolved = 0;
+    for (const membershipId of unknown) {
+        try {
+            const response = await client.getLinkedProfiles(membershipId);
+            const player = pickPrimaryLinkedProfile(response.Response, membershipId);
+            if (player) {
+                upsertPlayer(player);
+                resolved++;
+            }
+        } catch (error) {
+            if (isBungieSystemDisabledError(error)) throw error;
+            // Private/deleted/unresolvable — leave the membership-id fallback in place.
+        }
+    }
+
+    if (resolved > 0) {
+        console.log(`[SESSIONS] Resolved ${resolved}/${unknown.length} unknown fireteam members`);
+    }
+    return resolved;
+}
+
+/** Collect all fireteam membershipIds across a set of sessions (for member resolution). */
+export function collectPartyMemberIds(sessions: RaidSession[]): string[] {
+    const ids: string[] = [];
+    for (const session of sessions) {
+        for (const member of session.players) {
+            if (member?.membershipId) ids.push(member.membershipId);
+        }
+    }
+    return ids;
 }

@@ -13,6 +13,7 @@ import {
 } from '@/lib/db/queries';
 import { withNoStore } from '@/lib/http/cache';
 import { getClientIp } from '@/lib/http/request-ip';
+import { isTrustedClientWrite } from '@/lib/http/request-auth';
 import type { DestinyProfileResponse } from '@/lib/bungie/types';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
@@ -40,6 +41,19 @@ function buildFallbackIdentity(membershipType: number, membershipId: string): Pl
         bungieGlobalDisplayName: null,
         bungieGlobalDisplayNameCode: null,
     };
+}
+
+// Party members the enricher couldn't resolve to a real identity (no membershipType => not in
+// the players table). The browser resolves these via GetLinkedProfiles and POSTs them to
+// /api/players/identity so their cards show Name#Code + a clickable link.
+function unresolvedMemberIds(
+    partyMembers: Array<{ membershipId?: string; membershipType?: number }> | undefined,
+    selfMembershipId: string
+): string[] {
+    if (!partyMembers) return [];
+    return partyMembers
+        .filter((m) => !!m.membershipId && m.membershipId !== selfMembershipId && typeof m.membershipType !== 'number')
+        .map((m) => m.membershipId as string);
 }
 
 function buildPlayerPayload(identity: PlayerIdentity) {
@@ -96,6 +110,10 @@ function sanitizeStartTimes(profileResponse: DestinyProfileResponse): void {
 // The server makes NO Bungie call — it only parses the supplied JSON, upserts identity +
 // active session, and returns the enriched session for display.
 export async function POST(request: NextRequest) {
+    if (!isTrustedClientWrite(request)) {
+        return withNoStore(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
+    }
+
     let body: UpdateBody;
     try {
         body = await request.json();
@@ -181,11 +199,13 @@ export async function POST(request: NextRequest) {
         // We could read their activity hash directly → store + show their own session.
         if (result.status === 'active') {
             const stored = getActiveSessionForPlayer(membershipId, 600);
+            const activeSession = buildActiveSessionPayload(stored, identity, { enrichPartyMembers: true });
             return withNoStore(NextResponse.json({
                 updated: true,
                 privacyRestricted: isPrivate,
                 player: buildPlayerPayload(identity),
-                activeSession: buildActiveSessionPayload(stored, identity, { enrichPartyMembers: true }),
+                activeSession,
+                unresolvedMemberIds: unresolvedMemberIds(activeSession?.partyMembers, membershipId),
             }));
         }
 
@@ -243,6 +263,7 @@ export async function POST(request: NextRequest) {
                     partyMembers: enrichedParty,
                 },
                 candidateMembers,
+                unresolvedMemberIds: unresolvedMemberIds(enrichedParty, membershipId),
             }));
         }
 

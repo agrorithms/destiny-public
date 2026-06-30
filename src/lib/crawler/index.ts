@@ -10,7 +10,7 @@ import {
     getPlayersInColdBucket,
 } from '../db/queries';
 import { crawlPlayer } from './players';
-import { pollActiveSessions } from './active-sessions';
+import { pollActiveSessions, resolveUnknownPartyMembers, collectPartyMemberIds } from './active-sessions';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
 import {
@@ -460,6 +460,10 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
             for (const [raid, count] of byRaid) {
                 console.log(`  🎮 ${raid}: ${count} active sessions`);
             }
+
+            // Resolve fireteam members not yet in the players table so their cards show
+            // Name#Code instead of a raw membership id (capped per cycle).
+            await resolveUnknownPartyMembers(collectPartyMemberIds(sessions));
         } catch (error) {
             if (isBungieSystemDisabledError(error)) {
                 recordBungieMaintenancePause('active session poll');

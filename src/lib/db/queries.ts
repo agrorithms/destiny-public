@@ -121,6 +121,25 @@ export function bulkUpsertPlayers(players: PlayerInfo[]): void {
     bulkTx(players);
 }
 
+/** Return the subset of the given membershipIds that already exist in the players table. */
+export function getExistingPlayerIds(membershipIds: string[]): Set<string> {
+    const found = new Set<string>();
+    const ids = [...new Set(membershipIds.filter(Boolean))];
+    if (ids.length === 0) return found;
+
+    const db = getDb();
+    const CHUNK = 500; // stay well under SQLite's bound-parameter limit
+    for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const placeholders = chunk.map(() => '?').join(',');
+        const rows = db.prepare(
+            `SELECT membership_id FROM players WHERE membership_id IN (${placeholders})`
+        ).all(...chunk) as { membership_id: string }[];
+        for (const row of rows) found.add(row.membership_id);
+    }
+    return found;
+}
+
 export function getSessionPollingCandidateLimit(limit: number): number {
     const configuredCandidateLimit = parseInt(
         process.env.CRAWLER_SESSION_POLLING_CANDIDATE_LIMIT || '',

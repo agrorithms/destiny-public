@@ -5,6 +5,11 @@ export const BungieEndpoints = {
     getProfile: (membershipType: number, membershipId: string, components: number[]) =>
         `${BASE_URL}/Destiny2/${membershipType}/Profile/${membershipId}/?components=${components.join(',')}`,
 
+    // Resolve a bare Destiny membershipId (no membershipType known) to its identity.
+    // membershipType -1 (All) lets Bungie locate the account from the id alone.
+    getLinkedProfiles: (membershipId: string, membershipType: number = -1) =>
+        `${BASE_URL}/Destiny2/${membershipType}/Profile/${membershipId}/LinkedProfiles/`,
+
     getActivityHistory: (
         membershipType: number,
         membershipId: string,

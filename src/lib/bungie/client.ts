@@ -8,6 +8,7 @@ import type {
     DestinyManifestResponse,
     DestinyExactPlayerSearchResponse,
     DestinyUserSearchResponse,
+    DestinyLinkedProfilesResponse,
 } from './types';
 
 export class BungieAPIError extends Error {
@@ -73,6 +74,14 @@ export class BungieClient {
     ): Promise<BungieResponse<DestinyProfileResponse>> {
         const url = BungieEndpoints.getProfile(membershipType, membershipId, components);
         return this.request<DestinyProfileResponse>(url);
+    }
+
+    async getLinkedProfiles(
+        membershipId: string,
+        membershipType: number = -1
+    ): Promise<BungieResponse<DestinyLinkedProfilesResponse>> {
+        const url = BungieEndpoints.getLinkedProfiles(membershipId, membershipType);
+        return this.request<DestinyLinkedProfilesResponse>(url);
     }
 
     async getActivityHistory(

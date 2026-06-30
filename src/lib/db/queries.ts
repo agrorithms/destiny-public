@@ -178,6 +178,7 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
       FROM players
       WHERE is_active = 1
         AND last_seen_at >= ?
+        AND last_seen_at <= unixepoch()
       ORDER BY last_seen_at DESC
       LIMIT ?
     )
@@ -898,6 +899,14 @@ export interface InsertFullPGCRPlayer {
     startSeconds?: number | null;
 }
 
+// A PGCR is only ingested after the activity has ended, so a computed `ended_at` in the future
+// is malformed — it comes from absurd Bungie `activityDurationSeconds` (e.g. multi-day "durations"
+// reported for farm/checkpoint megalobby instances). Such values poison `players.last_seen_at`
+// (which feeds active-session candidate ranking and the crawl tier buckets) and completion-time
+// stats. The skew buffer keeps legitimately just-finished raids (a few seconds/minutes ahead of
+// the ingest clock) while dropping clearly-future corruption.
+export const FUTURE_ENDED_SKEW_SECONDS = 3600;
+
 /**
  * Tiered activity duration (seconds) used to derive `pgcrs.ended_at = period + duration`.
  *   Tier 1 — Bungie's activity-level `activityDurationSeconds` (authoritative).
@@ -963,7 +972,12 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
         }
         insertFullPGCRTx = db.transaction((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPlayer[]) => {
             const duration = computeActivityDurationSeconds(pgcrData.activityDurationSeconds, players);
-            const endedAt = duration != null ? pgcrData.period + duration : null;
+            let endedAt = duration != null ? pgcrData.period + duration : null;
+            // Drop future-dated (corrupt) ended_at to NULL so it never pollutes last_seen_at,
+            // completion-time, or the crawl buckets. The bump below already skips NULL.
+            if (endedAt != null && endedAt > Math.floor(Date.now() / 1000) + FUTURE_ENDED_SKEW_SECONDS) {
+                endedAt = null;
+            }
 
             pgcrStmt.run(
                 pgcrData.instanceId,

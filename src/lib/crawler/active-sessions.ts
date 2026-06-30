@@ -1,7 +1,7 @@
 import { getBungieClient, BungieAPIError, type BungieClient } from '../bungie/client';
 import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes, getExistingPlayerIds, upsertPlayer } from '../db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes, getExistingPlayerIds, upsertPlayer, recordSessionCheck } from '../db/queries';
 import { getDb } from '../db';
 import { pickPrimaryLinkedProfile } from '../bungie/linked-profiles';
 import { processWithConcurrency } from '../utils/concurrent';
@@ -53,6 +53,8 @@ interface StaleSessionRow {
     membership_id: string;
     membership_type: number;
     display_name: string;
+    raid_key: string | null;
+    activity_mode_type: number | null;
     party_members_json: string | null;
 }
 
@@ -229,6 +231,8 @@ export function parseAndStoreActivity(
         session: {
             sessionKey,
             activityHash: currentActivityHash,
+            activityModeHash: currentActivityModeHash || null,
+            activityModeType: currentActivityModeType || null,
             raidName: activityName,
             raidKey: raidKey || 'unknown',
             players: effectivePartyMembers,
@@ -384,8 +388,15 @@ export async function refreshStaleSessionsWithOptions(options?: {
  * Teammates lack membershipType in party_members_json (Bungie transitory data doesn't
  * include it), so we resolve from the players table and skip unresolvable ones. The
  * anchor's single PGCR still credits all 6 participants for this raid.
+ *
+ * Raid-only: non-raid sessions (orbit, strikes, crucible, patrol) ending must NOT enqueue
+ * their fireteam — only a raid produces a PGCR worth crawling for. The row is still deleted
+ * upstream regardless.
  */
 function enqueueEndedSession(session: StaleSessionRow): void {
+    const isRaid = session.raid_key !== null || session.activity_mode_type === 4;
+    if (!isRaid) return;
+
     const toEnqueue: { membershipId: string; membershipType: number; displayName: string | null }[] = [
         {
             membershipId: session.membership_id,
@@ -485,11 +496,52 @@ export async function pollActiveSessions(
         limit: staleReverifyLimit,
     });
 
-    // Step 2: Check new players for active sessions
+    // Step 2: Check players for active sessions.
+    // Fireteam dedup: when a check confirms a fireteam, its members are recorded in
+    // `covered`/`coveredBy`. A later task for a covered batch-teammate skips the getProfile
+    // call entirely and synthesizes their row from the covering session. Because tasks run
+    // concurrently, teammates already dispatched in the same window aren't skipped — so the
+    // savings are workload-dependent (~6x best case), not guaranteed.
+    const batchById = new Map<string, PlayerInfo>();
+    for (const p of toCheck) batchById.set(p.membershipId, p);
+
+    const covered = new Set<string>();
+    const coveredBy = new Map<string, RaidSession>();
+    let skippedViaFireteam = 0;
+
     const sessionResults = await processWithConcurrency(
         toCheck,
         playerCheckConcurrency,
-        async (player) => checkPlayerActivity(player, client),
+        async (player): Promise<RaidSession | null> => {
+            const covering = coveredBy.get(player.membershipId);
+            if (covering) {
+                skippedViaFireteam++;
+                synthesizeSessionFromFireteam(player, covering);
+                recordSessionCheck(player.membershipId, 'online');
+                return covering;
+            }
+
+            const result = await checkPlayerActivityDetailed(player, client);
+
+            if (result.status === 'active' && result.session) {
+                recordSessionCheck(player.membershipId, 'online');
+                // Mark batch-teammates as covered so their tasks skip the API call.
+                for (const member of result.session.players) {
+                    const id = member?.membershipId;
+                    if (id && id !== player.membershipId && batchById.has(id) && !covered.has(id)) {
+                        covered.add(id);
+                        coveredBy.set(id, result.session);
+                    }
+                }
+                return result.session;
+            }
+
+            recordSessionCheck(
+                player.membershipId,
+                result.status === 'privacyRestricted' ? 'privacy' : 'offline'
+            );
+            return null;
+        },
         (checked, total) => {
             if (checked % 50 === 0 || checked === total) {
                 console.log(`[SESSIONS] Checked ${checked}/${total} players...`);
@@ -513,10 +565,33 @@ export async function pollActiveSessions(
     }
 
     console.log(
-        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length} players checked, ${sessions.size} sessions found`
+        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length} players checked` +
+        ` (${skippedViaFireteam} skipped via fireteam), ${sessions.size} sessions found`
     );
 
     return [...sessions.values()];
+}
+
+/**
+ * Synthesize an active_sessions row for a fireteam member we skipped polling (their teammate's
+ * check already confirmed the fireteam online). Reuses the covering session's activity/party
+ * data and the member's own membershipType/displayName from the polling batch, producing the
+ * same row their own getProfile would have written — without spending an API call.
+ */
+function synthesizeSessionFromFireteam(player: PlayerInfo, session: RaidSession): void {
+    const displayName = player.displayName || player.bungieGlobalDisplayName || 'Unknown';
+    upsertActiveSession({
+        membershipId: player.membershipId,
+        membershipType: player.membershipType,
+        displayName,
+        activityHash: session.activityHash,
+        activityModeHash: session.activityModeHash,
+        activityModeType: session.activityModeType,
+        raidKey: session.raidKey && session.raidKey !== 'unknown' ? session.raidKey : undefined,
+        startedAt: session.startedAt,
+        partyMembersJson: JSON.stringify(session.players),
+        playerCount: session.playerCount,
+    });
 }
 
 /**

@@ -3,7 +3,6 @@ import {
     bulkUpsertPlayers,
     cleanupOldPGCRs,
     getDbStats,
-    getSessionPollingCandidateLimit,
     drainCrawlQueue,
     deleteCrawlQueueRows,
     getPlayersInRecentBucket,
@@ -347,7 +346,6 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
  */
 export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<void> {
     const config = { ...DEFAULT_CONFIG, ...overrides };
-    const effectiveSessionPollingCandidateLimit = getSessionPollingCandidateLimit(config.sessionPollingLimit);
 
     if (isRunning) {
         console.warn('⚠️ Crawler is already running');
@@ -374,7 +372,6 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,
         activeSessionStaleReverifyLimit: config.activeSessionStaleReverifyLimit,
         sessionPollingLimit: config.sessionPollingLimit,
-        sessionPollingCandidateLimit: effectiveSessionPollingCandidateLimit,
     });
 
     // Print initial stats

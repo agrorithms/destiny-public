@@ -212,6 +212,8 @@ export interface PlayerInfo {
 export interface RaidSession {
     sessionKey: string;
     activityHash: number;
+    activityModeHash: number | null;
+    activityModeType: number | null;
     raidName: string;
     raidKey: string;
     players: TransitoryPartyMember[];

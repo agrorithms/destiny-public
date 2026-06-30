@@ -162,6 +162,29 @@ export function initializeSchema(db: Database.Database): void {
         // Column already exists.
     }
 
+    // Migration guards for active-session poll scheduling, denormalized onto players
+    // so the candidate selection (getPlayersForSessionPolling) can order/gate from a
+    // single-table indexed scan instead of LEFT JOIN active_sessions + COALESCE sort.
+    // Parallels the crawl-scheduling columns above:
+    //   last_session_check_at      — bumped on EVERY session poll (online or offline).
+    //   consecutive_offline_checks — drives exponential offline backoff; reset on online.
+    //   next_session_eligible_at   — "snooze until"; candidate query skips backing-off rows.
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN last_session_check_at INTEGER DEFAULT 0`).run();
+    } catch {
+        // Column already exists.
+    }
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN consecutive_offline_checks INTEGER DEFAULT 0`).run();
+    } catch {
+        // Column already exists.
+    }
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN next_session_eligible_at INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
+
     // Phase 3 indexes for the ended_at reader cutover. Created here (after the
     // ended_at column exists) so fresh/dev DBs get them automatically; on the
     // large prod DB they are pre-built in an ingestion-paused window via
@@ -184,5 +207,12 @@ export function initializeSchema(db: Database.Database): void {
     db.exec(`
     CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at, last_crawled_at);
     CREATE INDEX IF NOT EXISTS idx_players_last_seen_attempt ON players(last_seen_at, last_attempt_at);
+  `);
+
+    // Index for active-session candidate selection: the recency-window scan orders by
+    // last_seen_at DESC and gates on next_session_eligible_at (offline backoff). Trailing
+    // next_session_eligible_at lets the planner walk last_seen_at order and stop at LIMIT.
+    db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_players_session_poll ON players(last_seen_at, next_session_eligible_at);
   `);
 }

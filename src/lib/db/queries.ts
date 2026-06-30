@@ -140,20 +140,6 @@ export function getExistingPlayerIds(membershipIds: string[]): Set<string> {
     return found;
 }
 
-export function getSessionPollingCandidateLimit(limit: number): number {
-    const configuredCandidateLimit = parseInt(
-        process.env.CRAWLER_SESSION_POLLING_CANDIDATE_LIMIT || '',
-        10
-    );
-    const defaultCandidateLimit = Math.max(limit * 4, 400);
-
-    if (Number.isFinite(configuredCandidateLimit) && configuredCandidateLimit > 0) {
-        return Math.max(configuredCandidateLimit, limit);
-    }
-
-    return defaultCandidateLimit;
-}
-
 /**
  * Get players most likely to be online for active session polling.
  * Prioritizes:
@@ -164,38 +150,28 @@ export function getSessionPollingCandidateLimit(limit: number): number {
 export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     const db = getDb();
     const recentWindowSeconds = Math.floor((Date.now() - 6 * 60 * 60 * 1000) / 1000);
-    const candidateLimit = getSessionPollingCandidateLimit(limit);
 
-    // Strategy: Get players seen in a PGCR within the last 6 hours.
-    // These are the most likely to still be online and raiding. Reads the
-    // denormalized players.last_seen_at (idx_players_last_seen) instead of
-    // aggregating the pgcr_players ⋈ pgcrs join.
+    // Strategy: players seen in a PGCR within the last 6 hours that aren't currently in
+    // session-poll backoff. Reads the denormalized players.last_seen_at and gates on
+    // next_session_eligible_at (offline backoff, maintained by recordSessionCheck) so we
+    // don't re-poll the same offline players every cycle. Ordered by last_seen_at DESC,
+    // served index-ordered + early-terminating by idx_players_session_poll — no join to
+    // active_sessions and no post-join COALESCE sort.
     const recentlyActive = db.prepare(`
-    WITH recent_players AS (
-      SELECT
-        membership_id as membershipId,
-        last_seen_at as lastSeenPeriod
-      FROM players
-      WHERE is_active = 1
-        AND last_seen_at >= ?
-        AND last_seen_at <= unixepoch()
-      ORDER BY last_seen_at DESC
-      LIMIT ?
-    )
     SELECT
-      p.membership_id as membershipId,
-      p.membership_type as membershipType,
-      p.display_name as displayName,
-      p.bungie_global_display_name as bungieGlobalDisplayName
-    FROM recent_players rp
-    INNER JOIN players p ON p.membership_id = rp.membershipId
-    LEFT JOIN active_sessions s ON s.membership_id = rp.membershipId
-    WHERE p.is_active = 1
-    ORDER BY COALESCE(s.checked_at, 0) ASC, rp.lastSeenPeriod DESC
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      bungie_global_display_name as bungieGlobalDisplayName
+    FROM players
+    WHERE is_active = 1
+      AND last_seen_at >= ?
+      AND last_seen_at <= unixepoch()
+      AND (next_session_eligible_at IS NULL OR next_session_eligible_at <= unixepoch())
+    ORDER BY last_seen_at DESC
     LIMIT ?
   `).all(
         recentWindowSeconds,
-        candidateLimit,
         limit
     ) as PlayerInfo[];
 
@@ -204,20 +180,20 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     }
 
     // If we don't have enough recently active players,
-    // fill the rest with high-priority and recently discovered players
+    // fill the rest with high-priority and recently discovered players (same backoff gate).
     const existingIds = new Set(recentlyActive.map((p) => p.membershipId));
     const remaining = limit - recentlyActive.length;
 
     const fallback = db.prepare(`
     SELECT
-      p.membership_id as membershipId,
-      p.membership_type as membershipType,
-      p.display_name as displayName,
-      p.bungie_global_display_name as bungieGlobalDisplayName
-    FROM players p
-    LEFT JOIN active_sessions s ON s.membership_id = p.membership_id
-    WHERE p.is_active = 1
-    ORDER BY COALESCE(s.checked_at, 0) ASC, priority DESC, discovered_at DESC
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      bungie_global_display_name as bungieGlobalDisplayName
+    FROM players
+    WHERE is_active = 1
+      AND (next_session_eligible_at IS NULL OR next_session_eligible_at <= unixepoch())
+    ORDER BY priority DESC, discovered_at DESC
     LIMIT ?
   `).all(remaining + existingIds.size) as PlayerInfo[];
 
@@ -275,6 +251,65 @@ const MAX_CONSECUTIVE_FAILURES = Math.max(
     1,
     parseInt(process.env.CRAWLER_MAX_CONSECUTIVE_FAILURES || '8', 10)
 );
+
+// Active-session poll backoff for players found offline/private. Far shorter caps than the
+// crawl backoff above: a returning raider must be re-detected by the candidate poll quickly.
+const SESSION_OFFLINE_BACKOFF_BASE_SEC = Math.max(
+    1,
+    parseInt(process.env.SESSION_OFFLINE_BACKOFF_BASE_SEC || '120', 10)
+);
+const SESSION_OFFLINE_BACKOFF_CAP_SEC = Math.max(
+    SESSION_OFFLINE_BACKOFF_BASE_SEC,
+    parseInt(process.env.SESSION_OFFLINE_BACKOFF_CAP_SEC || '960', 10)
+);
+const SESSION_PRIVACY_BACKOFF_SEC = Math.max(
+    1,
+    parseInt(process.env.SESSION_PRIVACY_BACKOFF_SEC || '21600', 10)
+);
+
+/**
+ * Record the outcome of an active-session poll for a player. Maintains the denormalized
+ * scheduling state read by getPlayersForSessionPolling so offline players back off instead
+ * of being re-polled every cycle. Mirrors recordCrawlOutcome's structure.
+ *  - online:  clear backoff; player is live (their active_sessions row is written separately).
+ *  - offline: exponential backoff, base*1 on the first miss, capped.
+ *  - privacy: long fixed backoff — a private profile never surfaces a session.
+ */
+export type SessionCheckOutcome = 'online' | 'offline' | 'privacy';
+
+export function recordSessionCheck(membershipId: string, outcome: SessionCheckOutcome): void {
+    const db = getDb();
+    switch (outcome) {
+        case 'online':
+            db.prepare(`
+        UPDATE players SET
+          last_session_check_at = unixepoch(),
+          consecutive_offline_checks = 0,
+          next_session_eligible_at = NULL
+        WHERE membership_id = ?
+      `).run(membershipId);
+            return;
+        case 'offline':
+            // Backoff uses the pre-increment count (SQLite evaluates all RHS against the old
+            // row), so the first miss waits base*1. Shift clamped at 20 to avoid overflow.
+            db.prepare(`
+        UPDATE players SET
+          last_session_check_at = unixepoch(),
+          consecutive_offline_checks = consecutive_offline_checks + 1,
+          next_session_eligible_at = unixepoch() + MIN(?, ? * (1 << MIN(consecutive_offline_checks, 20)))
+        WHERE membership_id = ?
+      `).run(SESSION_OFFLINE_BACKOFF_CAP_SEC, SESSION_OFFLINE_BACKOFF_BASE_SEC, membershipId);
+            return;
+        case 'privacy':
+            db.prepare(`
+        UPDATE players SET
+          last_session_check_at = unixepoch(),
+          next_session_eligible_at = unixepoch() + ?
+        WHERE membership_id = ?
+      `).run(SESSION_PRIVACY_BACKOFF_SEC, membershipId);
+            return;
+    }
+}
 
 /**
  * Record a crawl attempt's outcome. `last_attempt_at` advances on every outcome

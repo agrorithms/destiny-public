@@ -11,8 +11,10 @@ import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/
 const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
 
 // How long before a session is force-deleted even if re-verification fails
-const MAX_SESSION_AGE_SECONDS = 7200; // 2 hours (no raid we want to show takes longer than this)
-
+const MAX_SESSION_AGE_SECONDS = Math.max(
+    1,
+    parseInt(process.env.MAX_ACTIVE_SESSION_AGE_SECONDS || '7200', 10)
+);
 const DEFAULT_ACTIVE_SESSION_CONCURRENCY = Math.max(
     1,
     parseInt(process.env.ACTIVE_SESSION_CONCURRENCY || process.env.CRAWLER_CONCURRENCY || '4', 10)

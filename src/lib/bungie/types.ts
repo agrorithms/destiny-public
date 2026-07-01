@@ -145,6 +145,28 @@ export type DestinyUserSearchResponse =
 
 export type DestinyExactPlayerSearchResponse = DestinyUserSearchMembership[];
 
+// ---- Linked Profiles (GetLinkedProfiles) ----
+// Resolves a membershipId-only identity to Name#Code + the platform membershipType.
+export interface DestinyLinkedProfile {
+    membershipId: string;
+    membershipType: number;
+    displayName?: string;
+    bungieGlobalDisplayName?: string;
+    bungieGlobalDisplayNameCode?: number;
+    isCrossSavePrimary?: boolean;
+    applicableMembershipTypes?: number[];
+    isPublic?: boolean;
+}
+
+export interface DestinyLinkedProfilesResponse {
+    profiles?: DestinyLinkedProfile[];
+    bnetMembership?: {
+        membershipId?: string;
+        bungieGlobalDisplayName?: string;
+        bungieGlobalDisplayNameCode?: number;
+    };
+}
+
 // ---- Transitory ----
 export interface TransitoryComponent {
     partyMembers: TransitoryPartyMember[];
@@ -190,6 +212,8 @@ export interface PlayerInfo {
 export interface RaidSession {
     sessionKey: string;
     activityHash: number;
+    activityModeHash: number | null;
+    activityModeType: number | null;
     raidName: string;
     raidKey: string;
     players: TransitoryPartyMember[];

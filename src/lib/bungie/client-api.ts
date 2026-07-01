@@ -15,6 +15,7 @@ import {
 import type {
     BungieResponse,
     DestinyExactPlayerSearchResponse,
+    DestinyLinkedProfilesResponse,
     DestinyProfileResponse,
     DestinyUserSearchResponse,
     PlayerInfo,
@@ -131,6 +132,19 @@ export async function fetchPlayerProfileClient(
 ): Promise<DestinyProfileResponse> {
     const url = BungieEndpoints.getProfile(membershipType, membershipId, [100, 204, 1000]);
     const response = await clientRequest<DestinyProfileResponse>(url);
+    return response.Response;
+}
+
+/**
+ * Resolve a bare Destiny membershipId (e.g. a transitory fireteam member with no
+ * membershipType/name) to its identity via GetLinkedProfiles. Uses membershipType -1 (All)
+ * so the lookup works from the id alone. Returns the raw `.Response` for the shared parser.
+ */
+export async function fetchLinkedProfilesClient(
+    membershipId: string
+): Promise<DestinyLinkedProfilesResponse> {
+    const url = BungieEndpoints.getLinkedProfiles(membershipId, -1);
+    const response = await clientRequest<DestinyLinkedProfilesResponse>(url);
     return response.Response;
 }
 

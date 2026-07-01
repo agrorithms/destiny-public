@@ -61,6 +61,7 @@ scripts/find-private-session-players.ts
 
 #seeds
 seeds.txt
+nopeeking.txt
 dist/
 
 #dev server

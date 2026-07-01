@@ -1,8 +1,9 @@
-import { getBungieClient, BungieAPIError } from '../bungie/client';
+import { getBungieClient, BungieAPIError, type BungieClient } from '../bungie/client';
 import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes } from '../db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes, getExistingPlayerIds, upsertPlayer, recordSessionCheck } from '../db/queries';
 import { getDb } from '../db';
+import { pickPrimaryLinkedProfile } from '../bungie/linked-profiles';
 import { processWithConcurrency } from '../utils/concurrent';
 import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/types';
 
@@ -10,8 +11,10 @@ import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/
 const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
 
 // How long before a session is force-deleted even if re-verification fails
-const MAX_SESSION_AGE_SECONDS = 7200; // 2 hours (no raid we want to show takes longer than this)
-
+const MAX_SESSION_AGE_SECONDS = Math.max(
+    1,
+    parseInt(process.env.MAX_ACTIVE_SESSION_AGE_SECONDS || '7200', 10)
+);
 const DEFAULT_ACTIVE_SESSION_CONCURRENCY = Math.max(
     1,
     parseInt(process.env.ACTIVE_SESSION_CONCURRENCY || process.env.CRAWLER_CONCURRENCY || '4', 10)
@@ -26,6 +29,14 @@ const DEFAULT_STALE_SESSION_REVERIFY_LIMIT = Math.max(
 );
 const IN_ORBIT_MODE_HASHES = [2166136261];
 const STALE_REVERIFY_TEAMMATE_FALLBACK_LIMIT = 2;
+
+// Max number of unknown fireteam members to resolve to Name#Code per active-session cycle.
+// Each resolution is one GetLinkedProfiles call against the crawler's API budget; the rest
+// carry over to following cycles.
+const DEFAULT_MEMBER_RESOLVE_LIMIT = Math.max(
+    0,
+    parseInt(process.env.CRAWLER_MEMBER_RESOLVE_LIMIT || '25', 10)
+);
 
 interface CharacterActivityLike {
     dateActivityStarted?: string;
@@ -44,6 +55,8 @@ interface StaleSessionRow {
     membership_id: string;
     membership_type: number;
     display_name: string;
+    raid_key: string | null;
+    activity_mode_type: number | null;
     party_members_json: string | null;
 }
 
@@ -220,6 +233,8 @@ export function parseAndStoreActivity(
         session: {
             sessionKey,
             activityHash: currentActivityHash,
+            activityModeHash: currentActivityModeHash || null,
+            activityModeType: currentActivityModeType || null,
             raidName: activityName,
             raidKey: raidKey || 'unknown',
             players: effectivePartyMembers,
@@ -375,8 +390,15 @@ export async function refreshStaleSessionsWithOptions(options?: {
  * Teammates lack membershipType in party_members_json (Bungie transitory data doesn't
  * include it), so we resolve from the players table and skip unresolvable ones. The
  * anchor's single PGCR still credits all 6 participants for this raid.
+ *
+ * Raid-only: non-raid sessions (orbit, strikes, crucible, patrol) ending must NOT enqueue
+ * their fireteam — only a raid produces a PGCR worth crawling for. The row is still deleted
+ * upstream regardless.
  */
 function enqueueEndedSession(session: StaleSessionRow): void {
+    const isRaid = session.raid_key !== null || session.activity_mode_type === 4;
+    if (!isRaid) return;
+
     const toEnqueue: { membershipId: string; membershipType: number; displayName: string | null }[] = [
         {
             membershipId: session.membership_id,
@@ -476,11 +498,52 @@ export async function pollActiveSessions(
         limit: staleReverifyLimit,
     });
 
-    // Step 2: Check new players for active sessions
+    // Step 2: Check players for active sessions.
+    // Fireteam dedup: when a check confirms a fireteam, its members are recorded in
+    // `covered`/`coveredBy`. A later task for a covered batch-teammate skips the getProfile
+    // call entirely and synthesizes their row from the covering session. Because tasks run
+    // concurrently, teammates already dispatched in the same window aren't skipped — so the
+    // savings are workload-dependent (~6x best case), not guaranteed.
+    const batchById = new Map<string, PlayerInfo>();
+    for (const p of toCheck) batchById.set(p.membershipId, p);
+
+    const covered = new Set<string>();
+    const coveredBy = new Map<string, RaidSession>();
+    let skippedViaFireteam = 0;
+
     const sessionResults = await processWithConcurrency(
         toCheck,
         playerCheckConcurrency,
-        async (player) => checkPlayerActivity(player, client),
+        async (player): Promise<RaidSession | null> => {
+            const covering = coveredBy.get(player.membershipId);
+            if (covering) {
+                skippedViaFireteam++;
+                synthesizeSessionFromFireteam(player, covering);
+                recordSessionCheck(player.membershipId, 'online');
+                return covering;
+            }
+
+            const result = await checkPlayerActivityDetailed(player, client);
+
+            if (result.status === 'active' && result.session) {
+                recordSessionCheck(player.membershipId, 'online');
+                // Mark batch-teammates as covered so their tasks skip the API call.
+                for (const member of result.session.players) {
+                    const id = member?.membershipId;
+                    if (id && id !== player.membershipId && batchById.has(id) && !covered.has(id)) {
+                        covered.add(id);
+                        coveredBy.set(id, result.session);
+                    }
+                }
+                return result.session;
+            }
+
+            recordSessionCheck(
+                player.membershipId,
+                result.status === 'privacyRestricted' ? 'privacy' : 'offline'
+            );
+            return null;
+        },
         (checked, total) => {
             if (checked % 50 === 0 || checked === total) {
                 console.log(`[SESSIONS] Checked ${checked}/${total} players...`);
@@ -504,8 +567,86 @@ export async function pollActiveSessions(
     }
 
     console.log(
-        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length} players checked, ${sessions.size} sessions found`
+        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length} players checked` +
+        ` (${skippedViaFireteam} skipped via fireteam), ${sessions.size} sessions found`
     );
 
     return [...sessions.values()];
+}
+
+/**
+ * Synthesize an active_sessions row for a fireteam member we skipped polling (their teammate's
+ * check already confirmed the fireteam online). Reuses the covering session's activity/party
+ * data and the member's own membershipType/displayName from the polling batch, producing the
+ * same row their own getProfile would have written — without spending an API call.
+ */
+function synthesizeSessionFromFireteam(player: PlayerInfo, session: RaidSession): void {
+    const displayName = player.displayName || player.bungieGlobalDisplayName || 'Unknown';
+    upsertActiveSession({
+        membershipId: player.membershipId,
+        membershipType: player.membershipType,
+        displayName,
+        activityHash: session.activityHash,
+        activityModeHash: session.activityModeHash,
+        activityModeType: session.activityModeType,
+        raidKey: session.raidKey && session.raidKey !== 'unknown' ? session.raidKey : undefined,
+        startedAt: session.startedAt,
+        partyMembersJson: JSON.stringify(session.players),
+        playerCount: session.playerCount,
+    });
+}
+
+/**
+ * Resolve fireteam members that appear in active sessions but aren't yet in the players table.
+ * Transitory party members carry only a membershipId (no type/Name#Code), so cards fall back to
+ * the raw id. We look up each unknown id via GetLinkedProfiles and upsert its identity; the
+ * read-time enricher then supplies Name#Code and makes the card clickable on the next render.
+ *
+ * Capped per cycle (CRAWLER_MEMBER_RESOLVE_LIMIT) to bound API-budget cost; any leftover unknown
+ * members are picked up on subsequent cycles. Failures (private/deleted/unresolvable) are skipped.
+ */
+export async function resolveUnknownPartyMembers(
+    memberIds: string[],
+    client: BungieClient = getBungieClient(),
+    limit: number = DEFAULT_MEMBER_RESOLVE_LIMIT
+): Promise<number> {
+    if (limit <= 0) return 0;
+
+    const uniqueIds = [...new Set(memberIds.filter(Boolean))];
+    if (uniqueIds.length === 0) return 0;
+
+    const known = getExistingPlayerIds(uniqueIds);
+    const unknown = uniqueIds.filter((id) => !known.has(id)).slice(0, limit);
+    if (unknown.length === 0) return 0;
+
+    let resolved = 0;
+    for (const membershipId of unknown) {
+        try {
+            const response = await client.getLinkedProfiles(membershipId);
+            const player = pickPrimaryLinkedProfile(response.Response, membershipId);
+            if (player) {
+                upsertPlayer(player);
+                resolved++;
+            }
+        } catch (error) {
+            if (isBungieSystemDisabledError(error)) throw error;
+            // Private/deleted/unresolvable — leave the membership-id fallback in place.
+        }
+    }
+
+    if (resolved > 0) {
+        console.log(`[SESSIONS] Resolved ${resolved}/${unknown.length} unknown fireteam members`);
+    }
+    return resolved;
+}
+
+/** Collect all fireteam membershipIds across a set of sessions (for member resolution). */
+export function collectPartyMemberIds(sessions: RaidSession[]): string[] {
+    const ids: string[] = [];
+    for (const session of sessions) {
+        for (const member of session.players) {
+            if (member?.membershipId) ids.push(member.membershipId);
+        }
+    }
+    return ids;
 }

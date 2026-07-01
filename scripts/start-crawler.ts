@@ -16,6 +16,8 @@ const CRAWLER_CONFIG = {
     activeSessionIntervalMs: parseInt(process.env.CRAWLER_ACTIVE_SESSION_INTERVAL_MS || '120000', 10), // 2 minutes
     cleanupIntervalMs: 1800000, // 30 minutes
     cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '48', 10),
+    // CRAWLER_MEMBER_RESOLVE_LIMIT (default 25): max unknown fireteam members resolved to
+    // Name#Code per active-session cycle via GetLinkedProfiles. Read in src/lib/crawler/active-sessions.ts.
 };
 
 // ============================================

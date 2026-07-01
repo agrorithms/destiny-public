@@ -3,14 +3,13 @@ import {
     bulkUpsertPlayers,
     cleanupOldPGCRs,
     getDbStats,
-    getSessionPollingCandidateLimit,
     drainCrawlQueue,
     deleteCrawlQueueRows,
     getPlayersInRecentBucket,
     getPlayersInColdBucket,
 } from '../db/queries';
 import { crawlPlayer } from './players';
-import { pollActiveSessions } from './active-sessions';
+import { pollActiveSessions, resolveUnknownPartyMembers, collectPartyMemberIds } from './active-sessions';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
 import {
@@ -60,6 +59,7 @@ export interface CrawlerConfig {
     coldCrawlCount: number;
     maxPages: number;
     charIdTtlDays: number;
+    recrawlBufferSeconds: number;
     // Tiered bucket percentages
     bucketHotHours: number;
     bucketWarmHours: number;
@@ -106,6 +106,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     coldCrawlCount: parseInt(process.env.CRAWLER_COLD_CRAWL_COUNT || '50', 10),
     maxPages: parseInt(process.env.CRAWLER_MAX_PAGES || '5', 10),
     charIdTtlDays: parseInt(process.env.CRAWLER_CHARACTER_IDS_TTL_DAYS || '14', 10),
+    recrawlBufferSeconds: Math.max(0, parseInt(process.env.CRAWLER_RECRAWL_BUFFER_MINUTES || '30', 10)) * 60,
     // Tiered bucket percentages
     bucketHotHours: parseInt(process.env.CRAWLER_BUCKET_HOT_HOURS || '6', 10),
     bucketWarmHours: parseInt(process.env.CRAWLER_BUCKET_WARM_HOURS || '48', 10),
@@ -145,6 +146,7 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
         maxBackfillHours: config.maxBackfillHours,
         maxPages: config.maxPages,
         charIdTtlSeconds,
+        recrawlBufferSeconds: config.recrawlBufferSeconds,
     };
 
     // --- Step 1: Drain crawl_queue (additional, capped) ---
@@ -344,7 +346,6 @@ async function crawlCycle(config: CrawlerConfig): Promise<{
  */
 export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<void> {
     const config = { ...DEFAULT_CONFIG, ...overrides };
-    const effectiveSessionPollingCandidateLimit = getSessionPollingCandidateLimit(config.sessionPollingLimit);
 
     if (isRunning) {
         console.warn('⚠️ Crawler is already running');
@@ -365,12 +366,12 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         pageCounts: `hot=${config.hotRecrawlCount} cold=${config.coldCrawlCount} maxPages=${config.maxPages}`,
         maxBackfillHours: config.maxBackfillHours,
         charIdTtlDays: config.charIdTtlDays,
+        recrawlBufferMin: config.recrawlBufferSeconds / 60,
         activeSessionIntervalMs: config.activeSessionIntervalMs,
         activeSessionConcurrency: config.activeSessionConcurrency,
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,
         activeSessionStaleReverifyLimit: config.activeSessionStaleReverifyLimit,
         sessionPollingLimit: config.sessionPollingLimit,
-        sessionPollingCandidateLimit: effectiveSessionPollingCandidateLimit,
     });
 
     // Print initial stats
@@ -456,6 +457,10 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
             for (const [raid, count] of byRaid) {
                 console.log(`  🎮 ${raid}: ${count} active sessions`);
             }
+
+            // Resolve fireteam members not yet in the players table so their cards show
+            // Name#Code instead of a raw membership id (capped per cycle).
+            await resolveUnknownPartyMembers(collectPartyMemberIds(sessions));
         } catch (error) {
             if (isBungieSystemDisabledError(error)) {
                 recordBungieMaintenancePause('active session poll');

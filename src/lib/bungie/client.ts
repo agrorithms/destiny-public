@@ -11,6 +11,11 @@ import type {
     DestinyLinkedProfilesResponse,
 } from './types';
 
+function getFetchTimeoutMs(): number {
+    const parsed = parseInt(process.env.BUNGIE_FETCH_TIMEOUT_MS || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+}
+
 export class BungieAPIError extends Error {
     public errorCode: number;
     public errorStatus: string;
@@ -41,6 +46,9 @@ export class BungieClient {
                 'X-API-Key': this.apiKey,
                 ...options?.headers,
             },
+            // A hung Bungie connection would otherwise stall a crawler/scanner worker
+            // slot indefinitely. Callers already treat rejections as transient errors.
+            signal: AbortSignal.timeout(getFetchTimeoutMs()),
         });
 
         if (!response.ok) {

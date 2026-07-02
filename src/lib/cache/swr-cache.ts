@@ -4,8 +4,9 @@
  *
  * Built generic (not leaderboard-specific) so other endpoints can adopt it.
  * The store lives on `globalThis` so it survives Next.js dev HMR module
- * re-evaluation and is shared process-wide (the `web` PM2 process is fork
- * mode / single instance, so a module singleton is globally coherent).
+ * re-evaluation and is shared across Next's per-entrypoint module copies
+ * within one process. Under PM2 cluster mode each web worker is its own
+ * process with its own independent store — cache warmth is per-worker.
  *
  * Note: `compute` may be synchronous (e.g. better-sqlite3). When it runs it
  * still blocks the event loop for its duration — the value here is that the

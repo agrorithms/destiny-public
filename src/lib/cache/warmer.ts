@@ -54,6 +54,17 @@ export function startLeaderboardWarmer(): void {
         return;
     }
 
+    // Under PM2 cluster mode each worker has its own in-process cache, so every
+    // worker running a warmer just duplicates the heavy 7d/30d queries with no
+    // shared benefit. Only instance 0 warms; the other workers fill their caches
+    // on demand. NODE_APP_INSTANCE is set by PM2 — unset (dev, plain `npm run
+    // start`) means single process, so the warmer runs.
+    const instance = process.env.NODE_APP_INSTANCE;
+    if (instance !== undefined && instance !== '0') {
+        console.log(`[warmer] skipped on cluster instance ${instance} (instance 0 owns warming)`);
+        return;
+    }
+
     const g = globalThis as unknown as Record<string, NodeJS.Timeout | undefined>;
     if (g[GLOBAL_KEY]) {
         return;

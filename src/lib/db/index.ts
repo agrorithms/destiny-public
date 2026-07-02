@@ -8,7 +8,20 @@ export const DB_PATH = process.env.RAID_TRACKER_DB_PATH
     ? path.resolve(process.env.RAID_TRACKER_DB_PATH)
     : path.join(process.cwd(), 'data', 'raid-tracker.db');
 
-let dbInstance: Database.Database | null = null;
+// Next.js production builds can instantiate this module once per server entrypoint
+// (instrumentation, each route bundle), so a bare module-level singleton yields one
+// connection — and one 64 MB page cache — per copy. That's the repeated
+// "database initialized" log at startup. Stash the handle on globalThis (same
+// pattern as swr-cache.ts) so every copy shares a single connection per process.
+const GLOBAL_DB_KEY = '__destinyFarmFinderDb__';
+
+function getGlobalDbRef(): { instance: Database.Database | null } {
+    const g = globalThis as unknown as Record<string, { instance: Database.Database | null } | undefined>;
+    if (!g[GLOBAL_DB_KEY]) {
+        g[GLOBAL_DB_KEY] = { instance: null };
+    }
+    return g[GLOBAL_DB_KEY]!;
+}
 
 export class DatabaseMaintenanceError extends Error {
     constructor(message: string = 'Database maintenance is in progress') {
@@ -25,7 +38,10 @@ function configureDatabase(db: Database.Database): void {
 }
 
 export function isDatabaseMaintenanceError(error: unknown): error is DatabaseMaintenanceError {
-    return error instanceof DatabaseMaintenanceError;
+    // Also match by name: with per-entrypoint module copies (see GLOBAL_DB_KEY note),
+    // an error thrown by one copy's class fails `instanceof` against another copy's.
+    return error instanceof DatabaseMaintenanceError
+        || (error instanceof Error && error.name === 'DatabaseMaintenanceError');
 }
 
 export function getDb(): Database.Database {
@@ -34,24 +50,27 @@ export function getDb(): Database.Database {
         throw new DatabaseMaintenanceError();
     }
 
-    if (!dbInstance) {
+    const ref = getGlobalDbRef();
+    if (!ref.instance) {
         fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-        dbInstance = new Database(DB_PATH);
+        const db = new Database(DB_PATH);
 
-        configureDatabase(dbInstance);
+        configureDatabase(db);
 
-        initializeSchema(dbInstance);
+        initializeSchema(db);
 
+        ref.instance = db;
         console.log(`📂 SQLite database initialized at ${DB_PATH}`);
     }
-    return dbInstance;
+    return ref.instance;
 }
 
 export function closeDb(): void {
-    if (dbInstance) {
-        dbInstance.close();
-        dbInstance = null;
+    const ref = getGlobalDbRef();
+    if (ref.instance) {
+        ref.instance.close();
+        ref.instance = null;
         console.log('📂 SQLite database closed');
     }
 }

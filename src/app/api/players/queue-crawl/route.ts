@@ -4,28 +4,15 @@ import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { getClientIp } from '@/lib/http/request-ip';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
+import { CooldownGate, FixedWindowLimiter } from '@/lib/http/rate-limit';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
 
 // Per-player cooldown: don't re-enqueue the same player more than once per 2 minutes.
-const PLAYER_COOLDOWN_MS = 120_000;
-const recentEnqueue = new Map<string, number>();
+const enqueueCooldown = new CooldownGate(120_000);
 
 // Per-IP fixed window: at most 10 queue requests per minute per IP.
-const IP_WINDOW_MS = 60_000;
-const IP_MAX_PER_WINDOW = 10;
-const ipWindow = new Map<string, { windowStart: number; count: number }>();
-
-function ipRateLimited(ip: string): boolean {
-    const now = Date.now();
-    const entry = ipWindow.get(ip);
-    if (!entry || now - entry.windowStart >= IP_WINDOW_MS) {
-        ipWindow.set(ip, { windowStart: now, count: 1 });
-        return false;
-    }
-    entry.count += 1;
-    return entry.count > IP_MAX_PER_WINDOW;
-}
+const ipLimiter = new FixedWindowLimiter(10, 60_000);
 
 interface QueueCrawlBody {
     membershipId?: unknown;
@@ -59,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ip = getClientIp(request);
-    if (ipRateLimited(ip)) {
+    if (ipLimiter.isRateLimited(ip)) {
         return withNoStore(NextResponse.json(
             { queued: false, reason: 'rate_limited' },
             { status: 429 }
@@ -67,15 +54,13 @@ export async function POST(request: NextRequest) {
     }
 
     const key = `${membershipType}:${membershipId}`;
-    const now = Date.now();
-    const last = recentEnqueue.get(key);
-    if (last !== undefined && now - last < PLAYER_COOLDOWN_MS) {
+    if (enqueueCooldown.isCoolingDown(key)) {
         return withNoStore(NextResponse.json({ queued: false, reason: 'recently_refreshed' }));
     }
 
     try {
         enqueueCrawl([{ membershipId, membershipType, displayName }], 'profile-view');
-        recentEnqueue.set(key, now);
+        enqueueCooldown.record(key);
         return withNoStore(NextResponse.json({ queued: true }, { status: 202 }));
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {

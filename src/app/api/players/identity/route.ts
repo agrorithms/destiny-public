@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { upsertPlayer } from '@/lib/db/queries';
+import { upsertPlayerFillOnly } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { getClientIp } from '@/lib/http/request-ip';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
+import { CooldownGate } from '@/lib/http/rate-limit';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
 
 // Per-IP + per-player cooldown: at most one identity write per player per 30s from a given IP.
-const PER_PLAYER_COOLDOWN_MS = 30_000;
-const recentWrite = new Map<string, number>();
+const writeCooldown = new CooldownGate(30_000);
 
 interface IdentityBody {
     membershipId?: unknown;
@@ -20,8 +20,11 @@ interface IdentityBody {
 
 // The browser resolves an unknown fireteam member via GetLinkedProfiles (public key) and POSTs
 // the resolved identity here so the member's card shows Name#Code instead of a raw membership id.
-// The server makes NO Bungie call — it validates and upserts. Spoofing is bounded by the
-// request-authenticity guard (same-origin + page token) plus the per-IP/player cooldown.
+// The server makes NO Bungie call — it validates and fill-only upserts: names are written only
+// for players the DB doesn't already know, so a forged request can't rename an existing player
+// (the crawler stays authoritative and corrects names on the next crawl). Spoofing is further
+// bounded by the request-authenticity guard (same-origin + page token) and the per-IP/player
+// cooldown.
 export async function POST(request: NextRequest) {
     if (!isTrustedClientWrite(request)) {
         return withNoStore(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
@@ -57,15 +60,13 @@ export async function POST(request: NextRequest) {
 
     const ip = getClientIp(request);
     const rateKey = `${ip}:${membershipType}:${membershipId}`;
-    const now = Date.now();
-    const last = recentWrite.get(rateKey);
-    if (last !== undefined && now - last < PER_PLAYER_COOLDOWN_MS) {
+    if (writeCooldown.isCoolingDown(rateKey)) {
         return withNoStore(NextResponse.json({ stored: false, reason: 'recently_updated' }));
     }
-    recentWrite.set(rateKey, now);
+    writeCooldown.record(rateKey);
 
     try {
-        upsertPlayer({
+        upsertPlayerFillOnly({
             membershipId,
             membershipType,
             displayName: bungieGlobalDisplayName,

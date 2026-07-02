@@ -8,19 +8,19 @@ import {
     getActiveSessionContainingPlayer,
     getActiveSessionForPlayer,
     getPlayerIdentity,
-    upsertPlayer,
+    upsertPlayerFillOnly,
     type PlayerIdentity,
 } from '@/lib/db/queries';
 import { withNoStore } from '@/lib/http/cache';
 import { getClientIp } from '@/lib/http/request-ip';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
+import { CooldownGate } from '@/lib/http/rate-limit';
 import type { DestinyProfileResponse } from '@/lib/bungie/types';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
 
 // Per-IP + per-player cooldown: at most one update per player per 30s from a given IP.
-const PER_PLAYER_COOLDOWN_MS = 30_000;
-const recentUpdate = new Map<string, number>();
+const updateCooldown = new CooldownGate(30_000);
 
 // Reasonableness bounds for a session start time.
 const MAX_FUTURE_SKEW_MS = 5 * 60_000;
@@ -142,12 +142,10 @@ export async function POST(request: NextRequest) {
     if (!privacyRestricted) {
         const ip = getClientIp(request);
         const rateKey = `${ip}:${membershipType}:${membershipId}`;
-        const now = Date.now();
-        const last = recentUpdate.get(rateKey);
-        if (last !== undefined && now - last < PER_PLAYER_COOLDOWN_MS) {
+        if (updateCooldown.isCoolingDown(rateKey)) {
             return withNoStore(NextResponse.json({ skipped: true, reason: 'recently_updated' }));
         }
-        recentUpdate.set(rateKey, now);
+        updateCooldown.record(rateKey);
     }
 
     try {
@@ -168,9 +166,11 @@ export async function POST(request: NextRequest) {
         const profile = profileResponse as DestinyProfileResponse;
 
         // Hydrate identity from component 100 (so untracked players become known).
+        // Fill-only: the payload is client-supplied, so it must never overwrite a
+        // name the crawler already established for an existing player.
         const userInfo = profile.profile?.data?.userInfo;
         if (userInfo?.membershipId) {
-            upsertPlayer({
+            upsertPlayerFillOnly({
                 membershipId: userInfo.membershipId,
                 membershipType: userInfo.membershipType,
                 displayName: userInfo.displayName,

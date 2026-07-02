@@ -121,6 +121,42 @@ export function bulkUpsertPlayers(players: PlayerInfo[]): void {
     bulkTx(players);
 }
 
+/**
+ * Untrusted (browser-supplied) identity write, used by the client-write endpoints
+ * (players/identity, active-session-update). Inserts unknown players, but only fills
+ * fields the DB doesn't already know — it never overwrites an existing display name,
+ * so a forged request can't rename a player already on the leaderboard.
+ * Name and code are written as a pair (gated on the name being NULL) so a mismatched
+ * Name#Code can't be assembled from two writes. The crawler's trusted
+ * upsertPlayer/bulkUpsertPlayers remain the authoritative, overwriting writers.
+ */
+export function upsertPlayerFillOnly(player: PlayerInfo): void {
+    // Callers feed this client-supplied data (e.g. profileResponse.userInfo), so the
+    // membership-type check lives here rather than trusting every route to pre-validate.
+    if (!isValidMembershipType(player.membershipType)) return;
+    const db = getDb();
+    db.prepare(`
+    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(membership_id) DO UPDATE SET
+      display_name = COALESCE(display_name, excluded.display_name),
+      bungie_global_display_name = CASE
+        WHEN bungie_global_display_name IS NULL THEN excluded.bungie_global_display_name
+        ELSE bungie_global_display_name
+      END,
+      bungie_global_display_name_code = CASE
+        WHEN bungie_global_display_name IS NULL THEN excluded.bungie_global_display_name_code
+        ELSE bungie_global_display_name_code
+      END
+  `).run(
+        player.membershipId,
+        player.membershipType,
+        player.displayName ?? null,
+        player.bungieGlobalDisplayName || null,
+        player.bungieGlobalDisplayNameCode ?? null
+    );
+}
+
 /** Return the subset of the given membershipIds that already exist in the players table. */
 export function getExistingPlayerIds(membershipIds: string[]): Set<string> {
     const found = new Set<string>();
@@ -143,9 +179,9 @@ export function getExistingPlayerIds(membershipIds: string[]): Set<string> {
 /**
  * Get players most likely to be online for active session polling.
  * Prioritizes:
- *   1. Players who were recently seen in a PGCR (active raiders)
- *   2. Players who were recently discovered (fresh in the system)
- *   3. Seed players / high priority players
+ *   1. Players who were recently seen in a PGCR (active raiders, last 6h)
+ *   2. Fallback fill: next-most-recently-seen players beyond the 6h window,
+ *      with never-seen (NULL last_seen_at) players last
  */
 export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     const db = getDb();
@@ -179,8 +215,12 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
         return recentlyActive;
     }
 
-    // If we don't have enough recently active players,
-    // fill the rest with high-priority and recently discovered players (same backoff gate).
+    // If we don't have enough recently active players (quiet hours, fresh DB),
+    // continue down the same recency ranking past the 6h window: players seen
+    // 8h/12h/yesterday ago are the next-most-likely to be online, and never-seen
+    // players (NULL last_seen_at) sort last under DESC, preserving bootstrap fill.
+    // Same backoff gate; served index-ordered + early-terminating by
+    // idx_players_session_poll (no temp B-tree sort over the full table).
     const existingIds = new Set(recentlyActive.map((p) => p.membershipId));
     const remaining = limit - recentlyActive.length;
 
@@ -193,7 +233,7 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     FROM players
     WHERE is_active = 1
       AND (next_session_eligible_at IS NULL OR next_session_eligible_at <= unixepoch())
-    ORDER BY priority DESC, discovered_at DESC
+    ORDER BY last_seen_at DESC
     LIMIT ?
   `).all(remaining + existingIds.size) as PlayerInfo[];
 
@@ -206,23 +246,6 @@ export function getPlayersForSessionPolling(limit: number = 200): PlayerInfo[] {
     }
 
     return recentlyActive;
-}
-
-
-export function getPlayersToCrawl(limit: number = 50): PlayerInfo[] {
-    const db = getDb();
-    return db.prepare(`
-    SELECT 
-      membership_id as membershipId, 
-      membership_type as membershipType,
-      display_name as displayName, 
-      bungie_global_display_name as bungieGlobalDisplayName,
-      last_crawled_at as lastCrawledAt
-    FROM players
-    WHERE is_active = 1
-    ORDER BY priority DESC, last_crawled_at ASC
-    LIMIT ?
-  `).all(limit) as PlayerInfo[];
 }
 
 /**

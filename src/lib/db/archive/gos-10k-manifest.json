@@ -1,6 +1,6 @@
 {
     "database": "gos-10k",
-    "builtAt": "2026-09-04T23:38:50.669Z",
+    "builtAt": "2026-09-07T20:24:30.665Z",
     "builtBy": "scripts/build-gos10k-serving-db.ts",
     "master": {
         "path": "gos10k/destiny_pgcrs.db",
@@ -8,8 +8,8 @@
         "bytes": 119275520
     },
     "serving": {
-        "sha256": "61b17fce951cb1e77cd6b609eba6d65e98765d1be5c34aa1e186c0a9e265fa26",
-        "bytes": 66473984
+        "sha256": "cee1c550e3635795baeee874bbc2fcf045c446a719102fc26d3bb5ac2819d269",
+        "bytes": 66637824
     },
     "droppedTables": [
         "gos_10k_pgcr_raw"
@@ -18,5 +18,9 @@
         "gos_10k_runs": 13420,
         "gos_10k_pgcr_players": 79168,
         "gos_10k_pgcr_weapons": 435816
+    },
+    "invariants": {
+        "maxClearNumber": 10000,
+        "runsWithClearNumber": 10000
     }
 }

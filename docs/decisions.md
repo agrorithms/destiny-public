@@ -434,6 +434,8 @@ Behavioural suite: `bash .claude/hooks/test-hooks.sh` (87 assertions).
 
 ## 2026-09-04 — Shipping the GoS 10k Archive: cache headers and the copy runbook
 
+*Cache behaviour verified against prod on 2026-09-05; the observed values are below.*
+
 Two halves of the Archive (ADR 0007) live partly outside this repo: the Cloudflare rule that
 decides what a browser actually caches for `/gos10k`, and the manual copy that puts the database
 on the box. Neither can be enforced by a code comment, so both are here.
@@ -456,28 +458,55 @@ For `/gos10k` a 4h browser TTL would be harmless — it is less than what the or
 failure that matters here is the opposite one: a rule that *shortens* it, or a Bypass rule matching
 `/gos10k` because it looked dynamic.
 
-**Required verification, on prod, after the first deploy** — not from the code, from the wire:
+**Verified on prod, 2026-09-05.** Run from the Oracle box over `ssh`, not from the dev laptop —
+see the ISP note at the end of this section:
 
 ```bash
-curl -sSI https://destinyfarmfinder.qzz.io/gos10k | grep -iE 'cache-control|cf-cache-status|age'
+curl -sSI https://destinyfarmfinder.qzz.io/gos10k | grep -iE 'cache-control|cf-cache-status|age|vary'
 ```
-
-Expected: the `max-age` and `immutable` the route sets, and `cf-cache-status: HIT` on the second
-request. `DYNAMIC` means no cache rule matches the path — a miss, not an error, but the page is
-then uncached at the edge and every hit reads SQLite on the box. `BYPASS` means a rule is actively
-excluding it. **Record the observed values here when the check is run; until then this section
-describes intent, not confirmed behaviour.**
-
-**Observed locally, 2026-09-04** (`next start` on port 3123, no Cloudflare in front):
 
 ```
 cache-control: public, max-age=86400, s-maxage=86400, immutable
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+cf-cache-status: DYNAMIC
 ```
 
-That settles the half of the question that does not need prod: Next does *not* overwrite the
-middleware header with the `private, no-cache, no-store` it emits for dynamic routes, which was the
-plausible silent failure. What the edge does with it is still unverified, and the `curl` above is
-still required.
+**The origin header survived byte-identical**, which is the half of the question this entry was
+written to ask. Neither named failure occurred: no rule shortened the TTL, and no unset Browser TTL
+fell back to the 4h zone default. **Do not "fix" `src/lib/http/cache.ts`** — it emits exactly what
+reaches the wire. (Locally, against `next start` with no Cloudflare in front, the same header
+appears, which separately settles that Next does not overwrite the middleware header with the
+`private, no-cache, no-store` it emits for dynamic routes.)
+
+**`DYNAMIC` is the accepted answer, not a gap to close.** It costs less than it looks: `immutable`
+is a *browser* directive and it arrives intact, so repeat visitors do not re-request. Only the edge
+is uncached, so each first visit plus crawler read hits SQLite on the box — noise at ~5 visitors/day
+against a read-only file.
+
+**Why no cache rule was added.** The `vary` header above is Next's app-router RSC negotiation, and
+**Cloudflare ignores `Vary` on non-image responses for anything but `Accept-Encoding`**. A naive
+`/gos10k*` rule with an Edge TTL therefore risks the edge caching one representation and serving it
+to requests wanting the other — an RSC flight payload returned to a document request, or the
+reverse. The symptom is a broken page for *some* visitors, cached, which is strictly worse than an
+uncached page. Next does append `?_rsc=<hash>` to RSC requests precisely so CDNs key them apart, and
+Cloudflare's default cache key includes the query string, which would largely defuse this — but that
+was **not verified**, and it is an interaction between two systems neither of which is in this repo.
+A future session that wants edge caching must verify it rather than assume it. Until traffic makes
+origin reads actually hurt, the cheap correct answer is no rule.
+
+**Still unverified: `/gos10k/opengraph-image`.** Separate dynamic route, a ~124 KB PNG rather than
+HTML, hit by crawlers rather than browsers. It may land in a different rule. Same `curl`, from the
+box.
+
+**The dev laptop cannot reach the site.** `curl` to the domain fails with
+`error:1408F10B ... wrong version number` — Charter/Spectrum's CUJO filter, which cannot serve a
+redirect on :443 and kills the handshake instead (plain HTTP to the same host 302s to
+`block.charter-prod.hosted.cujo.io`). Isolated to the hostname: the same Cloudflare IP with
+`cloudflare.com` as SNI works, bare `qzz.io` fails, and proxy env, `~/.curlrc`, `/etc/hosts` and DNS
+were all ruled out. **A `curl` failure from the dev machine is the ISP filter, not a regression.**
+Any prod check runs from the box, over cellular, or after allowlisting the domain in the My Spectrum
+app. Not blanket-Spectrum: the site is reachable from other Spectrum connections, so this is one
+account with the filter enabled rather than a subscriber-wide block.
 
 ### Copy runbook: two files, by hand, no CI check
 

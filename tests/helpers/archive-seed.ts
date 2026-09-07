@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import { replayArchiveRows, type ArchiveRow } from './archive-replay';
 import seedJson from '../fixtures/archive-seed.json';
 
 /**
@@ -61,25 +62,7 @@ export function buildFixtureArchive(dbPath: string = process.env.GOS10K_ARCHIVE_
     const seed = readArchiveSeed();
     const db = new Database(dbPath);
 
-    // The schema is the master's own DDL, captured at extract time, so the fixture
-    // cannot drift from the database the queries actually run against in production.
-    for (const statement of seed.schema) {
-        db.exec(statement);
-    }
-
-    for (const [table, rows] of Object.entries(seed.tables)) {
-        if (rows.length === 0) continue;
-        const columns = Object.keys(rows[0]);
-        const insert = db.prepare(
-            `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
-        );
-        const insertAll = db.transaction((batch: Array<Record<string, unknown>>) => {
-            for (const row of batch) {
-                insert.run(columns.map((column) => row[column] as null));
-            }
-        });
-        insertAll(rows);
-    }
+    replayArchiveRows(db, seed.schema, seed.tables as Record<string, ArchiveRow[]>);
 
     db.close();
     return dbPath;

@@ -51,15 +51,22 @@ function hasClearNumberColumn(db: Database.Database): boolean {
  */
 export function deriveClearNumbers(db: Database.Database): ArchiveInvariants {
     const derive = db.transaction(() => {
-        if (!hasClearNumberColumn(db)) {
+        if (hasClearNumberColumn(db)) {
+            // Only a re-derive reaches this. A fresh ADD COLUMN is already all-NULL, so
+            // resetting there would rewrite every row of the serving copy for nothing.
+            db.exec('UPDATE gos_10k_runs SET clear_number = NULL');
+        } else {
             db.exec('ALTER TABLE gos_10k_runs ADD COLUMN clear_number INTEGER');
         }
-
-        db.exec('UPDATE gos_10k_runs SET clear_number = NULL');
 
         // `instance_id` breaks period ties, so the same input always produces the same
         // ranking — a fixture whose ordinals shuffled between extractions would make
         // every assertion below it a coin toss.
+        //
+        // UPDATE ... FROM, so the ranking is joined once. Written as a correlated
+        // subquery it is a linear probe into an unindexed CTE per updated row, and
+        // SQLite may decline to materialise a CTE containing a window function — which
+        // re-runs ROW_NUMBER() and its sort on every probe.
         db.exec(`
             WITH ranked AS (
                 SELECT
@@ -69,11 +76,9 @@ export function deriveClearNumbers(db: Database.Database): ArchiveInvariants {
                 WHERE ${PINNED_FULL_CLEAR}
             )
             UPDATE gos_10k_runs
-            SET clear_number = (
-                SELECT ranked.clear_number FROM ranked
-                WHERE ranked.instance_id = gos_10k_runs.instance_id
-            )
-            WHERE instance_id IN (SELECT instance_id FROM ranked)
+            SET clear_number = ranked.clear_number
+            FROM ranked
+            WHERE ranked.instance_id = gos_10k_runs.instance_id
         `);
 
         // A Clear Number range must be a range scan, not a re-ranking of 13,420 Runs.
@@ -82,32 +87,40 @@ export function deriveClearNumbers(db: Database.Database): ArchiveInvariants {
 
     derive();
 
-    return readArchiveInvariants(db);
+    const invariants = readArchiveInvariants(db);
+    assertContiguousClearNumbers(invariants);
+    return invariants;
 }
 
 /**
- * Reads the invariants off a database that already carries the derivation.
- *
- * Also the structural check the build script has no other way to make: the ordinals are
- * contiguous from 1, so the maximum and the count are the same number. They disagree
- * only if the ranking skipped or duplicated a row, which no correct derivation does and
- * which no row count would reveal.
+ * Reads the invariants off a database that carries the derivation. A reader, nothing
+ * more: the caller decides what a surprising answer means, because at build time it
+ * means "refuse to write a manifest" and at open time it means "this file disagrees
+ * with the manifest", which are different errors for different people.
  */
 export function readArchiveInvariants(db: Database.Database): ArchiveInvariants {
-    const row = db.prepare(`
+    return db.prepare(`
         SELECT
             COALESCE(MAX(clear_number), 0) AS maxClearNumber,
             COUNT(clear_number) AS runsWithClearNumber
         FROM gos_10k_runs
     `).get() as ArchiveInvariants;
+}
 
-    if (row.maxClearNumber !== row.runsWithClearNumber) {
+/**
+ * The structural check the build script has no other way to make: the ordinals are
+ * contiguous from 1, so the maximum and the count are the same number. They disagree
+ * only if the ranking skipped or duplicated a row, which no row count would reveal.
+ *
+ * Build-time only. At open the manifest comparison already catches this — a file whose
+ * ordinals went non-contiguous no longer matches the figures that were recorded.
+ */
+export function assertContiguousClearNumbers(invariants: ArchiveInvariants): void {
+    if (invariants.maxClearNumber !== invariants.runsWithClearNumber) {
         throw new Error(
-            `clear_number is not contiguous: maximum ${row.maxClearNumber} over ` +
-            `${row.runsWithClearNumber} Runs carrying one. The ranking skipped or duplicated ` +
-            `a Run; refusing to report invariants that would then be asserted at open.`
+            `clear_number is not contiguous: maximum ${invariants.maxClearNumber} over ` +
+            `${invariants.runsWithClearNumber} Runs carrying one. The ranking skipped or ` +
+            `duplicated a Run; refusing to report invariants that would then be asserted at open.`
         );
     }
-
-    return row;
 }

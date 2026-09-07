@@ -1,6 +1,6 @@
 {
     "database": "gos-10k",
-    "builtAt": "2026-09-07T20:24:30.665Z",
+    "builtAt": "2026-09-07T21:02:50.838Z",
     "builtBy": "scripts/build-gos10k-serving-db.ts",
     "master": {
         "path": "gos10k/destiny_pgcrs.db",
@@ -8,8 +8,8 @@
         "bytes": 119275520
     },
     "serving": {
-        "sha256": "cee1c550e3635795baeee874bbc2fcf045c446a719102fc26d3bb5ac2819d269",
-        "bytes": 66637824
+        "sha256": "12030b4a30f2a5a172b0e295f0050c1fa359e212b4c73b9eaf8259066ba5c4de",
+        "bytes": 66633728
     },
     "droppedTables": [
         "gos_10k_pgcr_raw"

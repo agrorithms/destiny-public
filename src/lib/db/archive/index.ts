@@ -48,6 +48,14 @@ export class ArchiveUnavailableError extends Error {
     }
 }
 
+/**
+ * The remediation half of every manifest-mismatch message. One constant because the two
+ * checks below diagnose different failures but ask the operator for the same thing, and
+ * a fix that lands in one copy of that sentence is a fix half the operators never read.
+ */
+const REBUILD_AND_RECOPY =
+    'rebuild with `npm run build-gos10k` and re-copy it. See docs/decisions.md.';
+
 export function isArchiveUnavailableError(error: unknown): error is ArchiveUnavailableError {
     // By name as well as by class: with per-entrypoint module copies, an error thrown
     // by one copy's class fails `instanceof` against another copy's.
@@ -97,8 +105,7 @@ export function verifyArchiveRowCounts(
             `The Archive at ${dbPath} does not match the manifest committed at ` +
             `src/lib/db/archive/gos-10k-manifest.json (built ${manifest.builtAt}): ` +
             `${mismatches.join('; ')}. The file on disk is stale, truncated or from a ` +
-            `different build — rebuild with \`npm run build-gos10k\` and re-copy it. ` +
-            `See docs/decisions.md.`
+            `different build — ${REBUILD_AND_RECOPY}`
         );
     }
 }
@@ -126,12 +133,14 @@ export function verifyArchiveInvariants(
     try {
         actual = readArchiveInvariants(db);
     } catch (error) {
-        // A missing column, or ordinals that are not contiguous. Either way the build
-        // that produced this file is the thing at fault, so it reads like a mismatch.
+        // The read itself failing means the column is not there to read — a serving copy
+        // built before the derivation existed. Contiguity is not re-checked here: a file
+        // whose ordinals went non-contiguous no longer matches the recorded figures, so
+        // the comparison below catches it as the mismatch it is.
         throw new ArchiveUnavailableError(
             `The Archive at ${dbPath} does not carry a usable clear_number: ` +
-            `${error instanceof Error ? error.message : String(error)} Rebuild it with ` +
-            `\`npm run build-gos10k\` and re-copy it. See docs/decisions.md.`
+            `${error instanceof Error ? error.message : String(error)}. It was built before ` +
+            `the derivation existed, or the column was dropped — ${REBUILD_AND_RECOPY}`
         );
     }
 
@@ -148,7 +157,7 @@ export function verifyArchiveInvariants(
             `committed at src/lib/db/archive/gos-10k-manifest.json (built ${manifest.builtAt}): ` +
             `${mismatches.join('; ')}. The row counts can be right while this is wrong — a ` +
             `clear_number ranked over the wrong full-clear rule is the case this catches. ` +
-            `Rebuild with \`npm run build-gos10k\` and re-copy it. See docs/decisions.md.`
+            `To fix, ${REBUILD_AND_RECOPY}`
         );
     }
 }

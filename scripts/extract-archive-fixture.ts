@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { deriveClearNumbers } from '../src/lib/db/archive/derive-clear-number';
+import { replayArchiveRows, type ArchiveRow } from '../tests/helpers/archive-replay';
 
 /**
  * Extracts a small fixture Archive from the GoS 10k master into
@@ -103,20 +104,11 @@ function deriveSample(
     schema: string[],
     tables: Record<string, unknown[]>
 ): { schema: string[]; tables: Record<string, unknown[]> } {
+    // Replayed through the same helper tests/helpers/archive-seed.ts uses to rebuild the
+    // committed result, so the two ends of the round trip cannot disagree about how a row
+    // becomes SQL.
     const db = new Database(':memory:');
-    for (const statement of schema) db.exec(statement);
-
-    for (const [table, rows] of Object.entries(tables)) {
-        if (rows.length === 0) continue;
-        const columns = Object.keys(rows[0] as Record<string, unknown>);
-        const insert = db.prepare(
-            `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`
-        );
-        const insertAll = db.transaction((batch: Array<Record<string, unknown>>) => {
-            for (const row of batch) insert.run(columns.map((column) => row[column] as null));
-        });
-        insertAll(rows as Array<Record<string, unknown>>);
-    }
+    replayArchiveRows(db, schema, tables as Record<string, ArchiveRow[]>);
 
     deriveClearNumbers(db);
 

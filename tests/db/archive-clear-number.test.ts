@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { buildFixtureArchive } from '../helpers/archive-seed';
 import { ARCHIVE_DB_PATH, closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
 import {
+    assertContiguousClearNumbers,
     CLEAR_NUMBER_INDEX,
     deriveClearNumbers,
     readArchiveInvariants,
@@ -138,10 +139,15 @@ describe('re-deriving over a database that already carries the column', () => {
 
     it('refuses to report invariants when the ordinals are not contiguous', () => {
         // Not a mistake this derivation makes — it is the assertion that would catch one,
-        // and the build script reports it rather than writing a manifest asserting it.
+        // so that a build cannot write a manifest asserting a ranking that skipped a Run.
+        // The reader stays a reader: it reports 99 over 4, and the assertion is what
+        // decides that is unusable.
         deriveClearNumbers(db);
         db.prepare('UPDATE gos_10k_runs SET clear_number = 99 WHERE clear_number = 4').run();
 
-        expect(() => readArchiveInvariants(db)).toThrow(/not contiguous/);
+        const invariants = readArchiveInvariants(db);
+
+        expect(invariants).toEqual({ maxClearNumber: 99, runsWithClearNumber: 4 });
+        expect(() => assertContiguousClearNumbers(invariants)).toThrow(/not contiguous/);
     });
 });

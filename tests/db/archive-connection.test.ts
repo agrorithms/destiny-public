@@ -39,6 +39,11 @@ afterEach(() => {
     closeArchiveDb();
 });
 
+/** A second handle on the fixture, for the verifiers that are tested directly. */
+function openFixture(): Database.Database {
+    return new Database(ARCHIVE_DB_PATH, { readonly: true, fileMustExist: true });
+}
+
 describe('the Archive connection', () => {
     it('opens the throwaway fixture, not the real database', () => {
         expect(ARCHIVE_DB_PATH).toBe(process.env.DFF_TEST_GOS10K_DB_SENTINEL);
@@ -62,10 +67,6 @@ describe('the Archive connection', () => {
 });
 
 describe('the manifest row-count check', () => {
-    function openFixture(): Database.Database {
-        return new Database(ARCHIVE_DB_PATH, { readonly: true, fileMustExist: true });
-    }
-
     it('passes when the file matches what was built', () => {
         const db = openFixture();
         expect(() =>
@@ -98,10 +99,6 @@ describe('the manifest row-count check', () => {
 });
 
 describe('the manifest invariant assertions', () => {
-    function openFixture(): Database.Database {
-        return new Database(ARCHIVE_DB_PATH, { readonly: true, fileMustExist: true });
-    }
-
     it('passes when the derived column matches what was built', () => {
         // Four of the fixture's nine runs are Pinned Full Clears, ranked 1..4.
         const db = openFixture();
@@ -148,6 +145,7 @@ describe('the manifest invariant assertions', () => {
         } catch (error) {
             expect(isArchiveUnavailableError(error)).toBe(true);
             expect((error as Error).message).toContain('usable clear_number');
+            expect((error as Error).message).toContain('npm run build-gos10k');
         }
         db.close();
     });

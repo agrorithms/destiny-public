@@ -1,0 +1,103 @@
+import Database from 'better-sqlite3';
+import { buildFixtureArchive, readArchiveSeed } from '../../tests/helpers/archive-seed';
+import { fixtureArchiveDbPath, fixtureRunId } from './fixture-db';
+
+/**
+ * The fixture Archive every /gos10k spec asserts against, plus the canary that
+ * proves the running server actually opened it.
+ *
+ * The file is built by the *shared* loader in tests/helpers/archive-seed.ts —
+ * unmodified, and deliberately so: the same committed seed and the same replay
+ * path back both runners, so a fixture that drifts drifts for both at once.
+ *
+ * The canary is added here rather than in that loader because the Vitest
+ * Archive must stay byte-deterministic. tests/db/archive-clear-number.test.ts
+ * asserts exact ordinals and getArchiveOverview() counts helpers; a per-run
+ * nonce in the shared seed would make those assertions depend on which runner
+ * built the file. So the e2e Archive is knowingly *not* identical to the Vitest
+ * one — it carries one extra helper — and that difference lives on this side of
+ * the fence where it can be read.
+ *
+ * ## The read-only wrinkle, and why it is smaller than it looks
+ *
+ * The Tracker's canary is a row written into a database the app also writes to.
+ * The Archive is opened `readonly` by getArchiveDb(), so the obvious reading is
+ * that it cannot carry a canary and the mechanism has to be replaced.
+ *
+ * It does not. `readonly` is a property of the *app's* connection, not of the
+ * file: this module mints the file before the server boots and opens it
+ * read-write to do so, exactly as buildFixtureArchive() already does. So the
+ * Tracker's mechanism transfers unchanged — a per-run nonce baked into a row,
+ * observed back through the running server. Nothing about the Archive's
+ * read-only posture is weakened, because the app's connection is still readonly
+ * and still `fileMustExist`.
+ *
+ * What was rejected: proving the binding by asserting a fixture-only *magnitude*
+ * ("9 runs entered" against production's 13,420). That has no nonce, so a server
+ * left over from an earlier e2e run holds an equally valid 9-run fixture and the
+ * check passes green against the wrong database. The nonce is the whole point of
+ * the Tracker's canary and it survives the move.
+ */
+
+/** Sorts before every real Bungie membership id (they all start `4611686018…`),
+ *  so the canary wins getTopHelpers' `ORDER BY runs DESC, fullClears DESC,
+ *  membershipId` tiebreak rather than landing wherever the data puts it. */
+const CANARY_MEMBERSHIP_ID = '0000000000000000001';
+const CANARY_CHARACTER_ID = '0000000000000000002';
+const CANARY_CODE = 9999;
+
+/** The bare global display name, carrying this run's nonce. */
+export function archiveCanaryName(): string {
+    return `Gos10kCanary${fixtureRunId()}`;
+}
+
+/** `Name#Code` as formatBungieDisplayName renders it into the Helper board. */
+export function archiveCanaryDisplayName(): string {
+    return `${archiveCanaryName()}#${CANARY_CODE}`;
+}
+
+/**
+ * Builds the fixture Archive at the minted path and adds the canary helper.
+ *
+ * The canary is joined to *every* Run in the seed. The fixture has 40 distinct
+ * helpers and the page renders getTopHelpers(25), so a canary on one Run would
+ * not rank and the check would fail for a reason unrelated to the binding.
+ * Joined to all of them it holds the maximum possible `runs`, and the membership
+ * id above settles the tie — the canary is deterministically the first row of
+ * the Helper board.
+ */
+export function mintCanariedArchive(): string {
+    const dbPath = fixtureArchiveDbPath();
+    buildFixtureArchive(dbPath);
+
+    const seed = readArchiveSeed();
+    const instanceIds = seed.tables.gos_10k_runs.map((run) => String(run.instance_id));
+    if (instanceIds.length === 0) {
+        throw new Error(
+            'The committed Archive seed contains no runs, so the canary helper would rank ' +
+            'nowhere and prove nothing. Re-extract with `npm run extract-archive-fixture`.'
+        );
+    }
+
+    const db = new Database(dbPath);
+    try {
+        const insert = db.prepare(`
+            INSERT INTO gos_10k_pgcr_players (
+                instance_id, character_id, membership_id, membership_type,
+                display_name, bungie_global_display_name, bungie_global_display_name_code,
+                character_class, completed
+            ) VALUES (?, ?, ?, 3, ?, ?, ?, 'Titan', 1)
+        `);
+        const name = archiveCanaryName();
+        const insertAll = db.transaction((ids: string[]) => {
+            for (const instanceId of ids) {
+                insert.run(instanceId, CANARY_CHARACTER_ID, CANARY_MEMBERSHIP_ID, name, name, CANARY_CODE);
+            }
+        });
+        insertAll(instanceIds);
+    } finally {
+        db.close();
+    }
+
+    return dbPath;
+}

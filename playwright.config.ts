@@ -83,10 +83,14 @@ export default defineConfig({
 
     projects: [
         {
-            // Proves the running server is on this run's fixture database before
-            // any spec asserts anything. A project dependency rather than a step
-            // inside globalSetup, so the ordering is guaranteed by Playwright
-            // rather than by an assumption about when webServer boots.
+            // Proves the running server is on this run's fixture databases —
+            // both of them — before any spec asserts anything. A project
+            // dependency rather than a step inside globalSetup, so the ordering
+            // is guaranteed by Playwright rather than by an assumption about
+            // when webServer boots.
+            //
+            // The pattern is a suffix match, so ./support/archive-canary.setup.ts
+            // joins this project by being named for it.
             name: 'canary',
             testMatch: /canary\.setup\.ts$/,
             use: { ...devices['Desktop Chrome'] },
@@ -115,6 +119,18 @@ export default defineConfig({
         env: {
             RAID_TRACKER_DB_PATH: dbPath,
             DFF_TEST_DB_SENTINEL: dbPath,
+            // The Archive is a second database with its own guard and its own
+            // sentinel. Read from process.env rather than re-minted, because
+            // mintFixtureDbPath() above set them and is idempotent across worker
+            // re-loads of this config.
+            //
+            // Belt-and-braces, like the Tracker's two above: `webServer.env` is
+            // merged into the child's environment rather than replacing it, so the
+            // child would inherit these from the runner anyway. Stated explicitly
+            // so the server's database configuration is readable in one place, and
+            // so a future `env` that stops inheriting cannot silently repoint it.
+            GOS10K_ARCHIVE_DB_PATH: process.env.GOS10K_ARCHIVE_DB_PATH!,
+            DFF_TEST_GOS10K_DB_SENTINEL: process.env.DFF_TEST_GOS10K_DB_SENTINEL!,
             DFF_E2E: '1',
             DFF_E2E_RUN_ID: process.env.DFF_E2E_RUN_ID!,
 

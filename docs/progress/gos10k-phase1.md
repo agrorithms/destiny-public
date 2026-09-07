@@ -25,7 +25,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 ## Tickets
 
 - [x] **#84** Materialise Clear Number at Archive build time — the prefactor. Not demoable.
-- [ ] **#96** Playwright harness for the Archive — must land before #88 and #90.
+- [x] **#96** Playwright harness for the Archive — must land before #88 and #90.
 - [ ] **#86** Page shell
 - [ ] **#95** Cache lifetime + share-card fallback
 - [ ] **#85** Widen the Archive fixture
@@ -43,7 +43,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 
 Per ticket, so a reviewer can see which diff belongs to which chunk.
 
-### #84 — Clear Number (this chunk)
+### #84 — Clear Number
 
 - [x] `src/lib/db/archive/predicates.ts` — **new.** The three full-clear predicate constants,
       moved out of `queries.ts` so the build script can import the pinned rule without
@@ -63,6 +63,24 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
 - [x] `CONTEXT.md` — `Clear Number` added; `Checkpoint Run` gains the "there are 8" note.
       `Reset` is #93's, deliberately not added here.
 
+### #96 — Playwright harness for the Archive (this chunk)
+
+- [x] `e2e/support/fixture-db.ts` — mints the fixture Archive path as a sibling of the
+      Tracker's in the same `mkdtemp` dir; `GOS10K_ARCHIVE_DB_PATH` and
+      `DFF_TEST_GOS10K_DB_SENTINEL` added to `FIXTURE_DB_ENV_KEYS`; `fixtureArchiveDbPath()`.
+- [x] `e2e/support/archive-world.ts` — **new.** Builds the fixture Archive through the
+      *unmodified* shared loader, then adds the per-run canary helper. Holds the reasoning
+      for why the read-only file can still carry a nonce.
+- [x] `e2e/support/archive-canary.setup.ts` — **new.** Proves the binding through the running
+      server before any spec runs. Joins the existing `canary` project by filename.
+- [x] `e2e/support/global-setup.ts` — mints the canaried Archive alongside the Tracker seed.
+- [x] `playwright.config.ts` — the Archive's two env vars on `webServer`.
+- [x] `e2e/gos10k-smoke.spec.ts` — **new.** One smoke spec: renders, canary present, no
+      console errors. Deliberately asserts no counts — #85 widens the fixture next.
+- [x] `docs/handoffs/260803-playwright-e2e.md` — coverage statement updated to include the
+      Archive.
+- [x] `CLAUDE.md` — the `npm run e2e` entry now says the suite mints two fixture databases.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
@@ -71,6 +89,12 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
   none today. #87's milestone presets must anchor to the Archive's own span, not to now.
 - **#95's shortened cache `max-age` is restored to a long value after Wave 3.** Nothing else
   will remind you.
+- **The e2e Archive is knowingly *not* identical to the Vitest one.** It carries one extra
+  helper — the per-run canary — so the Helper board and the class split differ by those rows.
+  Nothing asserts either, and the difference lives in `e2e/support/archive-world.ts` rather
+  than in the shared seed, which stays byte-deterministic for #84's ordinal assertions.
+- **#80's decisions 2 and 4 are still open.** #96 built the harness and one smoke spec only;
+  which behaviours earn assertions is answered while building #87, #88 and #90.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
   the new invariant assertions make that failure loud.

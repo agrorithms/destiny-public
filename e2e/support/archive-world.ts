@@ -81,6 +81,14 @@ export function mintCanariedArchive(): string {
 
     const db = new Database(dbPath);
     try {
+        // Only the columns the canary's job needs. Everything else — class_hash,
+        // light_level, the kill and duration columns, the weapon rows — is left NULL
+        // *deliberately*: this row exists to be found by name, not to be analysed, and
+        // inventing plausible stats for it would make it indistinguishable from the real
+        // sampled rows the fixture is built from. A panel that reads those columns (#94's
+        // class split, #88's timeline) should expect one NULL-heavy helper here and take
+        // it as a reminder that this Archive carries a synthetic row. `character_class`
+        // is the one exception, set so the Helper board renders it like any other row.
         const insert = db.prepare(`
             INSERT INTO gos_10k_pgcr_players (
                 instance_id, character_id, membership_id, membership_type,

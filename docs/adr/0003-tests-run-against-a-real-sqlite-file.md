@@ -78,11 +78,56 @@ close it:
    so without it the check would pass while every spec read a stale database.
    `reuseExistingServer: false` avoids that case rather than merely detecting it.
 
+   > **Amended 2026-09-07:** there are now two canaries, one per database. See the
+   > 2026-09-07 amendment below.
+
 `tests/setup/test-db-path.ts` could not be reused — it imports `afterAll` from
 `vitest` — so `e2e/support/fixture-db.ts` mints the path instead, using the same
 technique. It is idempotent because `playwright.config.ts` is re-loaded in every
 worker process, and a second mint would create a directory nothing else knows
 about.
+
+## Amendment (2026-09-07): the browser suite mints *two* throwaway databases
+
+The 2026-08-03 amendment above says "one throwaway database per run". That stopped being
+true when issue #96 gave the Archive a Playwright harness; both statements above — the
+single database, and `canary.setup.ts` as "the only layer that observes" — should be read
+with this amendment.
+
+`mintFixtureDbPath()` now mints a fixture Archive alongside the Tracker's, as a sibling in
+the same `mkdtemp` directory, and sets `GOS10K_ARCHIVE_DB_PATH` +
+`DFF_TEST_GOS10K_DB_SENTINEL` beside the Tracker's pair. `FIXTURE_DB_ENV_KEYS` covers all
+four, so the config-load fail-fast covers both databases.
+
+**The mechanism transferred; the reasoning behind it needed one correction.** The Archive
+is opened `readonly`, which reads as though it cannot carry a canary row. It can:
+`readonly` is a property of `getArchiveDb()`'s connection, not of the file, and the harness
+mints the file read-write before the server boots — `buildFixtureArchive()` already did
+exactly that. So the nonce survives the move unchanged, and the Archive's posture is
+untouched (still `readonly`, still `fileMustExist`).
+
+Three differences from the Tracker's canary, all forced by the Archive:
+
+1. **It is built, not seeded.** The Archive is frozen in production, so
+   `e2e/support/archive-world.ts` mints the whole file from the committed seed through the
+   *unmodified* shared loader, then adds the canary helper. The canary lives on the e2e
+   side rather than in `tests/helpers/`, because the Vitest Archive must stay
+   byte-deterministic for the `clear_number` ordinal assertions. The e2e Archive is
+   therefore knowingly one helper wider than the Vitest one.
+2. **It is observed through rendered HTML, not an API route.** There is no `/api/gos10k`,
+   and adding one would be application code written for a test. Reading the page is the
+   stronger proof anyway — same `getArchiveDb()` singleton, same server component the
+   specs exercise.
+3. **It sends `no-cache`.** The Tracker's canary asks a `no-store` JSON route; `/gos10k` is
+   HTML whose cache lifetime issue #95 is about to change.
+
+**One thing this amendment corrects about the layer above it.** `webServer.env` is *merged*
+into the child's environment rather than replacing it, so the `next start` child inherits
+the fixture paths from the runner whether or not they are listed there. The explicit
+`webServer.env` entries are readability and override protection; layer 1
+(`FIXTURE_DB_ENV_KEYS`) is what actually prevents a missing path, because if the mint never
+sets a variable, nothing downstream does. Verified by deleting the Archive's two entries
+from `webServer.env` and watching the server still open the fixture.
 
 ## Amendment (2026-09-04): the guard covers every database this app opens
 
@@ -128,7 +173,8 @@ relative imports only — Playwright's loader does not apply tsconfig `paths` to
   the only failure mode here that hides, since one that wrongly refuses breaks
   every test file at once.
 - Both sentinels are minted by the same setup file and point into the same `mkdtemp` directory, so
-  there is one thing to break rather than two. A connection added later without a sentinel of its
+  there is one thing to break rather than two. The same is true of the browser suite's pair, in
+  `e2e/support/fixture-db.ts`. A connection added later without a sentinel of its
   own is the failure this amendment does not prevent; adding one is three lines.
 - `openMaintenanceDb()` is deliberately *not* guarded: nothing in the suite reaches
   it today. Its callers (`src/lib/bungie/maintenance.ts`) `VACUUM` through it, so a

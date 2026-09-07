@@ -102,31 +102,32 @@ export function fixtureRunId(): string {
 }
 
 /**
- * The minted Tracker path, for code running after config load. Throws rather than
- * falling back, because a silent fallback here is the live 5.5 GB database.
+ * A minted fixture path, for code running after config load.
+ *
+ * Throws rather than falling back, because every fallback available here is a real
+ * database: the live 5.5 GB Tracker, or `data/gos-10k.db`, the 63 MB Archive serving
+ * copy. Parameterised by env var for the same reason `assertDbPathAllowed()` is —
+ * the app opens N databases and the check is per-database, so a second copy of this
+ * function is a second place to forget the `DFF_E2E` half of the guard.
  */
-export function fixtureDbPath(): string {
-    const dbPath = process.env.RAID_TRACKER_DB_PATH;
+function mintedFixturePath(envVar: string, label: string): string {
+    const dbPath = process.env[envVar];
     if (!dbPath || !process.env.DFF_E2E) {
         throw new Error(
-            'The e2e fixture database was never minted. mintFixtureDbPath() runs from ' +
-            'playwright.config.ts at config load — if you are seeing this, that did not happen.'
+            `The e2e fixture ${label} was never minted (${envVar} is unset). ` +
+            'mintFixtureDbPath() runs from playwright.config.ts at config load — if you ' +
+            'are seeing this, that did not happen.'
         );
     }
     return path.resolve(dbPath);
 }
 
-/**
- * The minted Archive path. Throws for the same reason as fixtureDbPath(): a silent
- * fallback here is `data/gos-10k.db`, the real serving copy.
- */
+/** The minted Tracker database. */
+export function fixtureDbPath(): string {
+    return mintedFixturePath('RAID_TRACKER_DB_PATH', 'Tracker database');
+}
+
+/** The minted Archive. The file itself is built by ./archive-world.ts. */
 export function fixtureArchiveDbPath(): string {
-    const dbPath = process.env.GOS10K_ARCHIVE_DB_PATH;
-    if (!dbPath || !process.env.DFF_E2E) {
-        throw new Error(
-            'The e2e fixture Archive path was never minted. mintFixtureDbPath() runs from ' +
-            'playwright.config.ts at config load — if you are seeing this, that did not happen.'
-        );
-    }
-    return path.resolve(dbPath);
+    return mintedFixturePath('GOS10K_ARCHIVE_DB_PATH', 'Archive');
 }

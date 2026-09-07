@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
 import { ARCHIVE_DB_PATH, closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
 import {
@@ -101,6 +101,28 @@ describe('re-deriving over a database that already carries the column', () => {
         db = new Database(ARCHIVE_DB_PATH);
     });
 
+    // In the `it` body a failed assertion would leak the handle, and the next rebuild
+    // deletes the file underneath it.
+    afterEach(() => {
+        db.close();
+    });
+
+    it('reproduces the ordinals the committed fixture already carries', () => {
+        // The assertions above this describe read a seed whose clear_numbers were written
+        // by scripts/extract-archive-fixture.ts, which needs the master and so cannot run
+        // in CI. On their own they would keep passing against a broken derivation until
+        // someone re-extracted. This runs the derivation live and demands the same answer.
+        const before = db.prepare(
+            'SELECT instance_id AS id, clear_number AS n FROM gos_10k_runs ORDER BY instance_id'
+        ).all();
+
+        deriveClearNumbers(db);
+
+        expect(db.prepare(
+            'SELECT instance_id AS id, clear_number AS n FROM gos_10k_runs ORDER BY instance_id'
+        ).all()).toEqual(before);
+    });
+
     it('clears an ordinal off a Run that is not a Pinned Full Clear', () => {
         db.prepare('UPDATE gos_10k_runs SET clear_number = 99 WHERE instance_id = ?')
             .run('8249673559');
@@ -112,7 +134,6 @@ describe('re-deriving over a database that already carries the column', () => {
             db.prepare('SELECT clear_number AS n FROM gos_10k_runs WHERE instance_id = ?')
                 .get('8249673559')
         ).toEqual({ n: null });
-        db.close();
     });
 
     it('refuses to report invariants when the ordinals are not contiguous', () => {
@@ -122,6 +143,5 @@ describe('re-deriving over a database that already carries the column', () => {
         db.prepare('UPDATE gos_10k_runs SET clear_number = 99 WHERE clear_number = 4').run();
 
         expect(() => readArchiveInvariants(db)).toThrow(/not contiguous/);
-        db.close();
     });
 });

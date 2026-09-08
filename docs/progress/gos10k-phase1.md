@@ -26,7 +26,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 
 - [x] **#84** Materialise Clear Number at Archive build time — the prefactor. Not demoable.
 - [x] **#96** Playwright harness for the Archive — must land before #88 and #90.
-- [ ] **#86** Page shell
+- [x] **#86** Page shell
 - [ ] **#95** Cache lifetime + share-card fallback
 - [ ] **#85** Widen the Archive fixture
 - [ ] **#87** The range filter (largest ticket; gates Wave 3)
@@ -63,7 +63,7 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
 - [x] `CONTEXT.md` — `Clear Number` added; `Checkpoint Run` gains the "there are 8" note.
       `Reset` is #93's, deliberately not added here.
 
-### #96 — Playwright harness for the Archive (this chunk)
+### #96 — Playwright harness for the Archive
 
 - [x] `e2e/support/fixture-db.ts` — mints the fixture Archive path as a sibling of the
       Tracker's in the same `mkdtemp` dir; `GOS10K_ARCHIVE_DB_PATH` and
@@ -80,6 +80,28 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
 - [x] `docs/handoffs/260803-playwright-e2e.md` — coverage statement updated to include the
       Archive.
 - [x] `CLAUDE.md` — the `npm run e2e` entry now says the suite mints two fixture databases.
+
+### #86 — Page shell (this chunk)
+
+- [x] `src/app/gos10k/page.tsx` — the header becomes the real shell: the Pinned Full Clear
+      headline with the population it counts, the dated "complete through <last Run>" band,
+      the Archive's first/last Run dates, and the full-clear methodology moved into a
+      `<details>` that is closed by default. The pinned-clear tile was dropped from the
+      stat grid (it is the headline now) and the grid is `sm:grid-cols-3`; every other
+      panel below is untouched and still unfiltered.
+- [x] `e2e/gos10k-shell.spec.ts` — **new.** Three specs, covering only the two acceptance
+      criteria with no other seam: the disclosure is closed until clicked, and the shell
+      renders at 360 px with no horizontal page scroll and no clipped headline. Verified
+      red against the pre-#86 page. Asserts no counts and no dates — #85 widens the fixture
+      next.
+- [x] `docs/handoffs/260803-playwright-e2e.md` — coverage statement updated; the "nothing
+      about /gos10k's behaviour" line is now marked partly superseded.
+- [x] `CLAUDE.md` — the browser-suite flow count and list.
+
+**No query-module change and no Vitest change.** `getArchiveOverview()` already returns
+`pinnedFullClears`, `firstRunAt` and `lastRunAt`, and `tests/db/archive-predicates.test.ts`
+already asserts them. Nothing on this page is numerically new, which is why the only new
+tests are the browser ones.
 
 ## Notes and traps carried forward
 
@@ -98,3 +120,10 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
   the new invariant assertions make that failure loud.
+- **Two `data-testid`s now exist on `/gos10k`** — `archive-headline-figure` and
+  `archive-headline-population`, added by #86 because the headline is a bare number with no
+  role and no accessible name. Locating it by its *value* would break the moment #85 widens
+  the fixture. Every other locator in the browser suite is still role- or text-based; keep
+  it that way.
+- **The stat grid no longer carries a pinned-full-clear tile.** #86 promoted it to the
+  headline. A panel ticket that "restores" it would state the page's own name twice.

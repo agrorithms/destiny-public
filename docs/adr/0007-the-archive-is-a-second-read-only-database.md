@@ -102,3 +102,8 @@ this codebase called "full clear"; all four are named apart on purpose.
   else there.
 - **No browser coverage.** The e2e suite mints its own Tracker database and knows nothing about the
   Archive. `/gos10k` is verified by Vitest and by hand, and by nothing in Chromium.
+  **Superseded 2026-09-07.** #96 gave the e2e suite a second fixture database and its own canary, and
+  #86 added the first specs about the page's behaviour. `/gos10k` now has Chromium coverage: a smoke
+  test, and the two page-shell properties with no other seam. The panels themselves are still
+  uncovered. Issue #80 rewrites this consequence properly once the phase settles what earns a spec;
+  this note exists so nothing reads the paragraph above as current in the meantime.

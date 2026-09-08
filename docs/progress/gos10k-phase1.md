@@ -98,10 +98,21 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
       about /gos10k's behaviour" line is now marked partly superseded.
 - [x] `CLAUDE.md` — the browser-suite flow count and list.
 
+- [x] `docs/adr/0007-…md` — its "No browser coverage" consequence marked superseded, with a
+      pointer to #80 for the proper rewrite. #96 was the change that actually falsified it;
+      it went unamended then, and a normative paragraph should not stay wrong for ten more
+      tickets.
+
 **No query-module change and no Vitest change.** `getArchiveOverview()` already returns
 `pinnedFullClears`, `firstRunAt` and `lastRunAt`, and `tests/db/archive-predicates.test.ts`
 already asserts them. Nothing on this page is numerically new, which is why the only new
 tests are the browser ones.
+
+**Verified:** `npm run lint` 0 errors / 29 pre-existing warnings · `npm run build` OK (both
+tsconfigs) · `npm test` 287 tests, 25 files · `npm run e2e` 32 specs. The three new specs
+were confirmed red against the pre-#86 page first (stash the page, rebuild, run the file).
+Note `npm run e2e` is **not** in `npm test` and runs on `pull_request` only, so a push to
+this branch does not exercise them.
 
 ## Notes and traps carried forward
 

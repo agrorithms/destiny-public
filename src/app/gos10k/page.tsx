@@ -65,12 +65,14 @@ export default function Gos10kPage() {
                     >
                         Pinned Full Clears
                     </p>
-                    {/* Every panel on this page states the population it counts. This is
-                        the headline's, and it is also the page default. */}
+                    {/* Every figure on this page states the population it counts; this is
+                        the headline's. Deliberately not phrased as a page-wide default: the
+                        tiles below count three other populations, and #87's filter and the
+                        panel tickets behind it are what make the default true. */}
                     <p className="ui-text-secondary text-sm leading-6">
                         Garden of Salvation runs one Guardian entered at the first encounter and
-                        finished himself. Every figure below counts that population unless its own
-                        panel says otherwise.
+                        finished himself — the strictest of the two defensible counts, and the one
+                        this page is named for.
                     </p>
                 </div>
 
@@ -87,7 +89,7 @@ export default function Gos10kPage() {
                 </p>
 
                 <p className="ui-text-secondary text-sm leading-6">
-                    Every Garden of Salvation run he ever entered, from{' '}
+                    Every Garden of Salvation run that Guardian ever entered, from{' '}
                     {formatDate(overview.firstRunAt)} to {formatDate(overview.lastRunAt)} — and the{' '}
                     {overview.helpers.toLocaleString()} people who showed up for them.
                 </p>

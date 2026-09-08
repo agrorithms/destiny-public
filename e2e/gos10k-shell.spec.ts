@@ -16,7 +16,10 @@ import { expect, test } from './support/test-fixtures';
  * The headline is located by its label, not by its value.
  */
 test.describe('the GoS 10k page shell', () => {
-    test('leads with the Pinned Full Clear figure and states the population it counts', async ({ page }) => {
+    // Structural, not an ordering assertion: it anchors the two specs below and
+    // checks the headline names its population. That the figure comes *first* is a
+    // reading-order property no assertion here would catch honestly.
+    test('renders a headline figure labelled with the population it counts', async ({ page }) => {
         await page.goto('/gos10k');
 
         const headline = page.getByTestId('archive-headline-figure');
@@ -31,7 +34,10 @@ test.describe('the GoS 10k page shell', () => {
         const methodology = page.getByText('two defensible answers');
         await expect(methodology).toBeHidden();
 
-        await page.getByRole('group').getByText('How the 10,000 is counted').click();
+        // Located by the summary's own words rather than by `details` or by
+        // getByRole('group'): a second disclosure on this page — any panel ticket —
+        // would make an unscoped group locator strict-mode-ambiguous.
+        await page.getByText('How the 10,000 is counted').click();
         await expect(methodology).toBeVisible();
     });
 

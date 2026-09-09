@@ -16,7 +16,7 @@ export const OG_ACCENT = '#f5c542';
 export const OG_BG = '#0b0e14';
 export const OG_MUTED = '#8a93a6';
 
-interface CardStat {
+export interface CardStat {
     value: string;
     label: string;
 }

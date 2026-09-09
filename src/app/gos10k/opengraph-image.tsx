@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { brandedCard, OG_SIZE, OG_CONTENT_TYPE } from '@/lib/og/branded-card';
+import { brandedCard, OG_SIZE, OG_CONTENT_TYPE, type CardStat } from '@/lib/og/branded-card';
 import { getArchiveOverview } from '@/lib/db/archive/queries';
 
 export const runtime = 'nodejs';
@@ -27,7 +27,7 @@ export default function Image() {
     // produced a confident, correct-looking card — the exact failure the Archive's whole
     // verify-on-open story exists to prevent, reproduced in the one artifact that gets
     // shared onward. So: read or say nothing. Never guess. (#95)
-    let stats: { value: string; label: string }[] | undefined;
+    let stats: CardStat[] | undefined;
     try {
         const overview = getArchiveOverview();
         stats = [

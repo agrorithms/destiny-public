@@ -38,6 +38,9 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [ ] **#93** Resets panel
 - [ ] **#94** Participants panel + class split
 - [ ] **#80** Close: record the two browser-coverage decisions, update ADR 0007's consequence
+  - [ ] Restore the Archive's browser cache lifetime to 86400 (#95 dropped it to 60 for UI
+        iteration; collapse `ARCHIVE_BROWSER_MAX_AGE_SECONDS` back into
+        `ARCHIVE_SHARED_MAX_AGE_SECONDS` in `src/lib/http/cache.ts`)
 
 ## Files
 
@@ -119,12 +122,16 @@ this branch does not exercise them.
 - [x] `src/lib/http/cache.ts` — `ARCHIVE_MAX_AGE_SECONDS` 86400 → **60**, at the single
       constant. `immutable` retained; the emitted header's shape, the one call site
       (`middleware.ts`) and everything the 2026-09-04 decisions entry verified on the wire are
-      untouched, and no Cloudflare rule was added. The constant carries a **RESTORE to 86400**
-      comment naming #81's closing action.
+      untouched, and no Cloudflare rule was added. `s-maxage` **stays at 86400** — the two
+      lifetimes are now two constants, because one constant feeding both would have moved the
+      shared-cache value that #81 does not ask about and #95 forbids changing (found by the
+      Spec review axis, not on the way in). The browser constant carries a **RESTORE to 86400**
+      comment naming #80's closing action, which is now also a checkbox above.
 - [x] `src/app/gos10k/opengraph-image.tsx` — the `10000` / `5455` fallbacks are gone. The stat
       array is built only inside the `try`; on a throw it stays `undefined` and
       `brandedCard()` omits the stat block, so the card still renders with no figures rather
-      than with confident wrong ones. The unfurl never fails outright.
+      than with confident wrong ones. The unfurl never fails outright. `CardStat` is now
+      exported from `branded-card.tsx` and imported here rather than re-typed inline.
 - [x] `docs/decisions.md` — the 2026-09-08 entry: the temporary lifetime and its expiry, the
       card change, the scope call below, and why there is no test.
 
@@ -144,8 +151,9 @@ route stays listed as uncovered in `docs/handoffs/260803-playwright-e2e.md`.
 Both #95 behaviours were then checked against a real `next start` on port 3200, which is the
 only way either is checkable:
 
-- `curl -sSI /gos10k` → `cache-control: public, max-age=60, s-maxage=60, immutable`, with
-  `/api/leaderboard` still `max-age=0, s-maxage=60, stale-while-revalidate=240` for contrast.
+- `curl -sSI /gos10k` → `cache-control: public, max-age=60, s-maxage=86400, immutable`, and
+  `/gos10k/opengraph-image` the same (the middleware matcher covers it). `/api/leaderboard` still
+  `max-age=0, s-maxage=60, stale-while-revalidate=240`, i.e. unaffected.
 - `/gos10k/opengraph-image` with the real `data/gos-10k.db` → 200 `image/png`, card shows
   **10,000 full clears** and **5,455 guardians who helped**, read from the database.
 - Restarted with `GOS10K_ARCHIVE_DB_PATH=/nonexistent/gos-10k.db`: `/gos10k` → **500** (loud,
@@ -166,6 +174,15 @@ only way either is checkable:
 - **The share card asserts nothing it did not read.** If a panel ticket adds a figure to
   `opengraph-image.tsx`, it goes inside the `try` — a hardcoded fallback there is the exact
   failure ADR 0007's verify-on-open exists to prevent, in the one artifact that gets shared.
+- **`/gos10k`'s card is the only one that behaves this way.** The three sibling
+  `opengraph-image.tsx` routes under `src/app/` still `catch { clears = 0 }`, i.e. they fall back
+  to a figure. That is defensible for live Tracker data — 0 is not a claim about a frozen
+  dataset — but it means copying a sibling reintroduces the pattern #95 removed. Left alone
+  deliberately: they read the Tracker, not the Archive, and are outside #95.
+- **The unfurl's *prose* still names 10,000 and 5,455**, in `src/app/gos10k/layout.tsx`'s
+  OpenGraph description and the OG route's `alt`. Decided, not missed — see the 2026-09-08
+  decisions entry — but it does leave #81's story 42 partly open, and a broken Archive shows a
+  figureless card beside prose that still asserts both numbers.
 - **The e2e Archive is knowingly *not* identical to the Vitest one.** It carries one extra
   helper — the per-run canary — so the Helper board and the class split differ by those rows.
   Nothing asserts either, and the difference lives in `e2e/support/archive-world.ts` rather

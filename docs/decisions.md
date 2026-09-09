@@ -548,7 +548,7 @@ stands in for the build-time failure the dynamic rendering choice gave up — a 
 Issue **#95**, under spec **#81** (the GoS 10k Phase 1 UI). Two operational changes, both narrow,
 one of which is explicitly a setting to undo later.
 
-### `ARCHIVE_MAX_AGE_SECONDS` is 60, and goes back to 86400
+### The browser lifetime is 60, and goes back to 86400
 
 The 2026-09-04 entry above establishes that a long `max-age` plus `immutable` is the *correct*
 header for a frozen dataset, and that the origin emits it byte-identical on the wire — Cloudflare
@@ -556,19 +556,31 @@ is not rewriting it. None of that has changed and none of it was touched here.
 
 What changed is that `/gos10k`'s **markup** is now under active development several times a week,
 and a day-long browser cache means a maintainer ships a panel and then reviews yesterday's page.
-So `ARCHIVE_MAX_AGE_SECONDS` in `src/lib/http/cache.ts` drops from 86400 to **60** for the
-duration of Phase 1.
+So the **browser** lifetime in `src/lib/http/cache.ts` drops from 86400 to **60** for the duration
+of Phase 1.
 
 - **The lifetime is the only lever.** Dropping `immutable` instead would change nothing: a browser
   will not revalidate inside `max-age` whether or not the response says `immutable`. `immutable` is
   retained.
-- **The emitted header's shape is unchanged** — still `public, max-age=N, s-maxage=N, immutable`,
+- **`max-age` and `s-maxage` are now two constants, not one.** They previously shared a single
+  `ARCHIVE_MAX_AGE_SECONDS`, so shortening "the lifetime" moved the shared-cache value too — which
+  #81 does not ask for ("the only lever is the max-age value", and story 41 is about the browser)
+  and which #95 forbids ("nothing else about the emitted cache header changes").
+  `ARCHIVE_SHARED_MAX_AGE_SECONDS` stays at 86400; `ARCHIVE_BROWSER_MAX_AGE_SECONDS` is the
+  temporary 60, and restoring collapses them back into one. This was caught on review, not on the
+  way in: the first cut moved both and claimed only that the header's *shape* was unchanged, which
+  sidesteps the value question rather than answering it.
+- **The emitted header's shape is unchanged** — still `public, max-age=N, s-maxage=M, immutable`,
   still set in exactly one place (`archiveCacheControl()`, called once from `middleware.ts`). No
   call site was touched and **no Cloudflare cache rule was added**; the route stays `DYNAMIC` at
-  the edge, which is the accepted decision recorded above.
+  the edge, which is the accepted decision recorded above — and is why the `s-maxage` value is
+  inert today either way.
+- **The share card gets the same header.** `middleware.ts` matches `/gos10k/*`, so
+  `/gos10k/opengraph-image` is covered too and its browser TTL drops to 60 as well. Harmless, and
+  arguably wanted while the card is changing, but worth naming rather than discovering.
 - **Restoring 86400 is a real outstanding action**, not a nice-to-have. It is the closing action on
-  #81, is repeated in `docs/progress/gos10k-phase1.md`, and the constant's own comment says so.
-  Nothing else will remind anyone.
+  **#80**, is a checkbox in `docs/progress/gos10k-phase1.md`, and the constant's own comment says
+  so. Nothing else will remind anyone.
 
 At ~5 visitors/day the cache buys the site almost nothing either way; this is a developer-ergonomics
 setting, which is exactly why it needs a written expiry rather than living only in a diff.
@@ -599,6 +611,15 @@ itself already 500s loudly, so the failure is never silent overall.
 
 If they are ever wrong it is because the Archive was rebuilt wrongly, and the answer to that is the
 manifest invariants (ADR 0008), not templating the marketing copy.
+
+**The residual, recorded as a known limitation rather than argued away.** #81's story 42 asks that
+"the social unfurl … stop asserting numbers it did not read from the database", and an unfurl is
+the card *plus* the title, description and alt text around it. So with a broken Archive, Discord
+shows a figureless card beside prose that still says "10,000 … 5,455". #95's own criterion is
+narrower — it asks only that the card not *fall back* to hardcoded numbers, and `layout.tsx` has no
+fallback to remove — so this closes #95 while leaving story 42 partly open, by choice. Anyone
+reopening it should weigh removing the figures from the prose (cheap, no new read, weaker unfurl
+copy) against making it dynamic (rejected above).
 
 ### No test
 

@@ -53,18 +53,26 @@ export default function Gos10kPage() {
                     Archive rather than written down: a hardcoded 10,000 would keep
                     reading 10,000 against a database that had stopped saying so. */}
                 <div className="space-y-1">
-                    <div
-                        data-testid="archive-headline-figure"
-                        className="text-5xl font-bold leading-none ui-accent-text sm:text-6xl"
-                    >
-                        {overview.pinnedFullClears.toLocaleString()}
-                    </div>
-                    <p
-                        data-testid="archive-headline-population"
-                        className="text-base font-medium ui-text-primary"
-                    >
-                        Pinned Full Clears
-                    </p>
+                    {/* A real `figure`/`figcaption` pair rather than two unrelated blocks:
+                        the number is a bare string with no role and no accessible name of
+                        its own, so without this a screen reader reads it out unlinked from
+                        the population it counts. It also gives the browser suite a
+                        role-based locator — `getByRole('figure', { name: … })` — instead of
+                        a second test-only attribute. */}
+                    <figure className="space-y-1">
+                        {/* The remaining testid: the value moves whenever the fixture
+                            changes, so locating this element by its text would break the
+                            phone-layout spec for no reason. */}
+                        <div
+                            data-testid="archive-headline-figure"
+                            className="text-5xl font-bold leading-none ui-accent-text sm:text-6xl"
+                        >
+                            {overview.pinnedFullClears.toLocaleString()}
+                        </div>
+                        <figcaption className="text-base font-medium ui-text-primary">
+                            Pinned Full Clears
+                        </figcaption>
+                    </figure>
                     {/* Every figure on this page states the population it counts; this is
                         the headline's. Deliberately not phrased as a page-wide default: the
                         tiles below count three other populations, and #87's filter and the

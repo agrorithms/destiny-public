@@ -131,10 +131,11 @@ this branch does not exercise them.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
   the new invariant assertions make that failure loud.
-- **Two `data-testid`s now exist on `/gos10k`** — `archive-headline-figure` and
-  `archive-headline-population`, added by #86 because the headline is a bare number with no
-  role and no accessible name. Locating it by its *value* would break the moment #85 widens
-  the fixture. Every other locator in the browser suite is still role- or text-based; keep
-  it that way.
+- **One `data-testid` now exists on `/gos10k`** — `archive-headline-figure`, because the
+  headline's *value* moves the moment #85 widens the fixture, so no text locator can hold it.
+  Its label needs no testid: the headline is a `figure`/`figcaption` pair, so the suite
+  locates it as `getByRole('figure', { name: 'Pinned Full Clears' })`. A panel ticket
+  rendering the same number-plus-label shape should reach for that structure, not a testid —
+  every other locator in the browser suite is role- or text-based.
 - **The stat grid no longer carries a pinned-full-clear tile.** #86 promoted it to the
   headline. A panel ticket that "restores" it would state the page's own name twice.

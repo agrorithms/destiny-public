@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { archiveCanaryDisplayName } from './archive-world';
+import { fixtureRunId } from './fixture-db';
 
 /**
  * The Archive's half of the fixture-database proof: it *observes* which Archive
@@ -21,11 +22,14 @@ import { archiveCanaryDisplayName } from './archive-world';
  *      anyway: it goes through the same getArchiveDb() singleton and the same
  *      server component the specs exercise, not a parallel endpoint that could
  *      diverge from it.
- *   2. The page is HTML, not a `no-store` JSON route, so `no-cache` is sent
- *      explicitly. `reuseExistingServer: false` means a cold server per run and
- *      /gos10k is `force-dynamic`, so today nothing could serve a stale render —
- *      but issue #95 is about to change this route's cache lifetime, and a
- *      binding proof that quietly depends on cache behaviour is not a proof.
+ *   2. The page is HTML, not a `no-store` JSON route, so the request carries a
+ *      per-run cache-buster in the URL. `reuseExistingServer: false` means a cold
+ *      server per run and /gos10k is `force-dynamic`, so today nothing could serve
+ *      a stale render — but issue #95 is about to change this route's cache
+ *      lifetime, and a binding proof that quietly depends on cache behaviour is not
+ *      a proof. A request `Cache-Control` header would not buy this: Next's
+ *      route cache and Cloudflare are both keyed on the URL and neither revalidates
+ *      because a client asked. A unique URL is what actually defeats them.
  *
  * Still `request` rather than `page`, like its sibling: this is a configuration
  * proof, not a rendering test. The rendering is gos10k-smoke.spec.ts's job.
@@ -33,7 +37,7 @@ import { archiveCanaryDisplayName } from './archive-world';
 test('the server is serving this run\'s fixture Archive', async ({ request }) => {
     const expected = archiveCanaryDisplayName();
 
-    const response = await request.get('/gos10k', { headers: { 'Cache-Control': 'no-cache' } });
+    const response = await request.get(`/gos10k?canary=${fixtureRunId()}`);
 
     // A 500 here is the Archive's designed failure mode (ADR 0007): a missing or
     // mismatched file takes out this one route and nothing else. Report it as

@@ -22,9 +22,10 @@ test.describe('the GoS 10k page shell', () => {
     test('renders a headline figure labelled with the population it counts', async ({ page }) => {
         await page.goto('/gos10k');
 
-        const headline = page.getByTestId('archive-headline-figure');
-        await expect(headline).toBeVisible();
-        await expect(page.getByTestId('archive-headline-population')).toContainText('Pinned Full Clears');
+        // By role and accessible name: the figure is named by its own figcaption, so
+        // this asserts the number and its label are programmatically related rather
+        // than merely adjacent — which is the property a screen reader depends on.
+        await expect(page.getByRole('figure', { name: 'Pinned Full Clears' })).toBeVisible();
     });
 
     test('keeps the methodology closed until the reader asks for it', async ({ page }) => {

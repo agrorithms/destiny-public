@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { buildFixtureArchive, readArchiveSeed } from '../../tests/helpers/archive-seed';
+import { replayArchiveRows } from '../../tests/helpers/archive-replay';
 import { fixtureArchiveDbPath, fixtureRunId } from './fixture-db';
 
 /**
@@ -46,8 +47,9 @@ const CANARY_MEMBERSHIP_ID = '0000000000000000001';
 const CANARY_CHARACTER_ID = '0000000000000000002';
 const CANARY_CODE = 9999;
 
-/** The bare global display name, carrying this run's nonce. */
-export function archiveCanaryName(): string {
+/** The bare global display name, carrying this run's nonce. Not exported: the
+ *  Archive's canary is only ever matched in rendered HTML, as `Name#Code`. */
+function archiveCanaryName(): string {
     return `Gos10kCanary${fixtureRunId()}`;
 }
 
@@ -79,30 +81,36 @@ export function mintCanariedArchive(): string {
         );
     }
 
+    // Only the columns the canary's job needs. Everything else — class_hash,
+    // light_level, the kill and duration columns, the weapon rows — is omitted
+    // *deliberately* and lands NULL: this row exists to be found by name, not to be
+    // analysed, and inventing plausible stats for it would make it indistinguishable
+    // from the real sampled rows the fixture is built from. A panel that reads those
+    // columns (#94's class split, #88's timeline) should expect one NULL-heavy helper
+    // here and take it as a reminder that this Archive carries a synthetic row.
+    // `character_class` is the one exception, set so the Helper board renders it like
+    // any other row.
+    const name = archiveCanaryName();
+    const canaryRows = instanceIds.map((instanceId) => ({
+        instance_id: instanceId,
+        character_id: CANARY_CHARACTER_ID,
+        membership_id: CANARY_MEMBERSHIP_ID,
+        membership_type: 3,
+        display_name: name,
+        bungie_global_display_name: name,
+        bungie_global_display_name_code: CANARY_CODE,
+        character_class: 'Titan',
+        completed: 1,
+    }));
+
     const db = new Database(dbPath);
     try {
-        // Only the columns the canary's job needs. Everything else — class_hash,
-        // light_level, the kill and duration columns, the weapon rows — is left NULL
-        // *deliberately*: this row exists to be found by name, not to be analysed, and
-        // inventing plausible stats for it would make it indistinguishable from the real
-        // sampled rows the fixture is built from. A panel that reads those columns (#94's
-        // class split, #88's timeline) should expect one NULL-heavy helper here and take
-        // it as a reminder that this Archive carries a synthetic row. `character_class`
-        // is the one exception, set so the Helper board renders it like any other row.
-        const insert = db.prepare(`
-            INSERT INTO gos_10k_pgcr_players (
-                instance_id, character_id, membership_id, membership_type,
-                display_name, bungie_global_display_name, bungie_global_display_name_code,
-                character_class, completed
-            ) VALUES (?, ?, ?, 3, ?, ?, ?, 'Titan', 1)
-        `);
-        const name = archiveCanaryName();
-        const insertAll = db.transaction((ids: string[]) => {
-            for (const instanceId of ids) {
-                insert.run(instanceId, CANARY_CHARACTER_ID, CANARY_MEMBERSHIP_ID, name, name, CANARY_CODE);
-            }
-        });
-        insertAll(instanceIds);
+        // Through the shared replay helper rather than a literal INSERT: that module
+        // exists so everything writing rows into this Archive agrees on how a row
+        // becomes SQL, and a third hand-written writer is the drift it was created to
+        // prevent. An empty schema array is a no-op — buildFixtureArchive() above
+        // already replayed the DDL.
+        replayArchiveRows(db, [], { gos_10k_pgcr_players: canaryRows });
     } finally {
         db.close();
     }

@@ -118,8 +118,11 @@ Three differences from the Tracker's canary, all forced by the Archive:
    and adding one would be application code written for a test. Reading the page is the
    stronger proof anyway — same `getArchiveDb()` singleton, same server component the
    specs exercise.
-3. **It sends `no-cache`.** The Tracker's canary asks a `no-store` JSON route; `/gos10k` is
-   HTML whose cache lifetime issue #95 is about to change.
+3. **It cache-busts by URL.** The Tracker's canary asks a `no-store` JSON route; `/gos10k` is
+   HTML whose cache lifetime issue #95 is about to change. A request `Cache-Control` header
+   would not survive that — Next's route cache and Cloudflare are keyed on the URL and
+   neither revalidates because a client asked — so the canary appends the run nonce as a
+   query parameter instead.
 
 **One thing this amendment corrects about the layer above it.** `webServer.env` is *merged*
 into the child's environment rather than replacing it, so the `next start` child inherits
@@ -127,7 +130,9 @@ the fixture paths from the runner whether or not they are listed there. The expl
 `webServer.env` entries are readability and override protection; layer 1
 (`FIXTURE_DB_ENV_KEYS`) is what actually prevents a missing path, because if the mint never
 sets a variable, nothing downstream does. Verified by deleting the Archive's two entries
-from `webServer.env` and watching the server still open the fixture.
+from `webServer.env` and watching the server still open the fixture. Those entries are now
+spread from `FIXTURE_DB_ENV_KEYS` rather than retyped, so the readable block and the
+authoritative list cannot disagree about which databases exist.
 
 ## Amendment (2026-09-04): the guard covers every database this app opens
 

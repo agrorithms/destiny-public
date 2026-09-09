@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive, readArchiveSeed } from '../helpers/archive-seed';
 import { closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
-import { SUBJECT_MEMBERSHIP_ID } from '@/lib/db/archive/queries';
+import {
+    PINNED_FULL_CLEAR,
+    STARTED_FROM_BEGINNING,
+    SUBJECT_MEMBERSHIP_ID,
+} from '@/lib/db/archive/queries';
 
 /**
  * The fixture's *shape*, as opposed to any query's answer.
@@ -18,6 +22,11 @@ import { SUBJECT_MEMBERSHIP_ID } from '@/lib/db/archive/queries';
  * the extraction script's `COHORTS` comments — when it fails, the fix is in
  * scripts/extract-archive-fixture.ts, not in a query.
  *
+ * The populations are named through the shared predicates rather than spelled out
+ * here. This file is about how many Runs of each kind the sample holds, not about
+ * what makes a Run one kind or the other — and re-expressing a full-clear rule with
+ * a conjunct quietly dropped is the mistake this whole Archive is careful about.
+ *
  * Figures are exact wherever the sample is deterministic, because "at least three
  * trios" is a threshold a re-extraction can satisfy while quietly dropping the four
  * duos. Where a figure is genuinely a floor — 15-clear Helpers exist on both sides —
@@ -31,16 +40,14 @@ beforeAll(() => {
     buildFixtureArchive();
 });
 
-function scalar(sql: string): number {
-    return (getArchiveDb().prepare(sql).get() as { n: number }).n;
+function scalar(sql: string, ...params: unknown[]): number {
+    return (getArchiveDb().prepare(sql).get(...params) as { n: number }).n;
 }
 
 describe('the widened fixture', () => {
     it('holds hundreds of Runs, most of them Pinned Full Clears', () => {
         expect(scalar('SELECT COUNT(*) AS n FROM gos_10k_runs')).toBe(406);
-        expect(scalar(
-            'SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 1'
-        )).toBe(346);
+        expect(scalar(`SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE ${PINNED_FULL_CLEAR}`)).toBe(346);
         // The Clear Numbers are 1..346 over the sample, not the instance's real place
         // among the 10,000 — the ranking rule is what the fixture is for.
         expect(scalar('SELECT COALESCE(MAX(clear_number), 0) AS n FROM gos_10k_runs')).toBe(346);
@@ -56,6 +63,7 @@ describe('the widened fixture', () => {
         for (const target of seed.targets) {
             expect(present.has(target.instanceId)).toBe(true);
         }
+        expect(present.has(seed.pinInstanceId)).toBe(true);
     });
 });
 
@@ -64,23 +72,27 @@ describe('the populations Phase 1 panels count', () => {
         // #93's Resets panel is about these three, and the participants panel is about a
         // population that is not the clears either. A sample of clears alone would leave
         // all of them unexercised.
+        //
+        // A Reset is deliberately not the negation of is_full_clear: that column folds in
+        // "at least one player completed", so the third conjunct is what makes this the
+        // Runs nobody finished rather than the Runs *he* did not finish.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE (r.activity_was_started_from_beginning = 1 OR r.starting_phase_index = 0)
-              AND r.completed = 0 AND r.is_full_clear = 0
+            WHERE ${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0
         `)).toBe(26);   // 24 from the cohort, plus the two abandoned-run hazard targets.
         expect(scalar(
             'SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0'
         )).toBe(6);
         // Post-pin, flag 0, phase 0, completed: the 20 Runs the disjunctive rule counts
         // and the pinned rule does not. All 20 of them are here, so the two rules differ
-        // in the fixture by the same rows they differ by in production.
+        // in the fixture by the same rows they differ by in production. Written out
+        // rather than named, because no predicate expresses "the gap between the two".
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
             WHERE r.starting_phase_index = 0 AND COALESCE(r.activity_was_started_from_beginning, 0) = 0
               AND r.completed = 1
-              AND r.period > (SELECT period FROM gos_10k_runs WHERE instance_id = '10141395454')
-        `)).toBe(20);
+              AND r.period > (SELECT period FROM gos_10k_runs WHERE instance_id = ?)
+        `, readArchiveSeed().pinInstanceId)).toBe(20);
         // Checkpoint Runs — he joined partway. There are 8 in the whole Archive and all 8
         // are here; the term barely applies to this dataset, which is itself the point.
         expect(scalar(`
@@ -96,7 +108,7 @@ describe('the populations Phase 1 panels count', () => {
                 SELECT r.instance_id, COUNT(DISTINCT p.membership_id) AS n
                 FROM gos_10k_runs r
                 JOIN gos_10k_pgcr_players p ON p.instance_id = r.instance_id
-                WHERE r.is_full_clear = 1 AND r.completed = 1
+                WHERE ${PINNED_FULL_CLEAR}
                 GROUP BY r.instance_id
             )
             GROUP BY bucket ORDER BY bucket
@@ -107,8 +119,8 @@ describe('the populations Phase 1 panels count', () => {
         expect(buckets).toEqual([
             { bucket: '2', runs: 4 },
             { bucket: '3', runs: 7 },
-            { bucket: '4', runs: 4 },
-            { bucket: '5', runs: 2 },
+            { bucket: '4', runs: 3 },
+            { bucket: '5', runs: 3 },
             { bucket: '6', runs: 307 },
             { bucket: '7+', runs: 22 },
         ]);
@@ -116,20 +128,22 @@ describe('the populations Phase 1 panels count', () => {
 });
 
 describe('the shapes the Helper boards need', () => {
+    /** Clears each Helper was present for, the subject excluded. */
+    const CLEARS_PER_HELPER = `
+        SELECT p.membership_id, COUNT(DISTINCT p.instance_id) AS clears
+        FROM gos_10k_pgcr_players p
+        JOIN gos_10k_runs r ON r.instance_id = p.instance_id
+        WHERE ${PINNED_FULL_CLEAR} AND p.membership_id <> ?
+        GROUP BY p.membership_id
+    `;
+
     it('has Helpers on both sides of a 15-clear floor', () => {
         // #92's median speed board requires 15 clears within the active range. A fixture
         // whose best Helper had 9 would make the board empty and the floor untestable;
         // one where every Helper cleared the floor would never exercise the exclusion.
         const bands = getArchiveDb().prepare(`
             SELECT clears >= 15 AS above, COUNT(*) AS helpers
-            FROM (
-                SELECT p.membership_id, COUNT(DISTINCT p.instance_id) AS clears
-                FROM gos_10k_pgcr_players p
-                JOIN gos_10k_runs r ON r.instance_id = p.instance_id
-                WHERE r.is_full_clear = 1 AND r.completed = 1 AND p.membership_id <> ?
-                GROUP BY p.membership_id
-            )
-            GROUP BY above
+            FROM (${CLEARS_PER_HELPER}) GROUP BY above
         `).all(SUBJECT_MEMBERSHIP_ID) as Array<{ above: number; helpers: number }>;
 
         expect(bands).toEqual([
@@ -139,16 +153,13 @@ describe('the shapes the Helper boards need', () => {
     });
 
     it('gives its busiest Helper enough clears for a median to mean something', () => {
-        expect(scalar(`
-            SELECT MAX(clears) AS n FROM (
-                SELECT COUNT(DISTINCT p.instance_id) AS clears
-                FROM gos_10k_pgcr_players p
-                JOIN gos_10k_runs r ON r.instance_id = p.instance_id
-                WHERE r.is_full_clear = 1 AND r.completed = 1
-                  AND p.membership_id <> '${SUBJECT_MEMBERSHIP_ID}'
-                GROUP BY p.membership_id
-            )
-        `)).toBeGreaterThanOrEqual(60);
+        // A floor, not an exact figure: which Helper is busiest is a property of the
+        // spine era, and the claim being made is only that a median over their clears is
+        // worth computing at all.
+        expect(scalar(
+            `SELECT MAX(clears) AS n FROM (${CLEARS_PER_HELPER})`,
+            SUBJECT_MEMBERSHIP_ID
+        )).toBeGreaterThanOrEqual(60);
     });
 });
 
@@ -159,7 +170,7 @@ describe('the shape the timeline needs', () => {
             FROM gos_10k_runs GROUP BY month ORDER BY month
         `).all() as Array<{ month: string; runs: number }>;
 
-        expect(months).toHaveLength(27);
+        expect(months).toHaveLength(26);
         // 2021-12 through 2022-08 is the sampled dense era, and 2022-03 is absent from
         // the master entirely — a real empty bucket in the middle of a busy stretch,
         // which is the case #88's monthly bars must render rather than skip.

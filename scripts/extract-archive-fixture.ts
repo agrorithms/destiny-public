@@ -168,8 +168,15 @@ const COHORTS: Cohort[] = [
     },
     {
         name: 'undermanned-clears',
-        why: 'The earliest four- and five-participant Pinned Full Clears, so no bucket between duo and six is empty and a bucketing that collapses the middle is visible.',
-        sql: `SELECT instance_id FROM (${CLEAR_PARTICIPANT_COUNTS}) WHERE participants IN (4, 5) ORDER BY participants, period, instance_id LIMIT 6`,
+        why: 'Up to three of each of the four- and five-participant Pinned Full Clears, so no bucket between duo and six is empty and a bucketing that collapses the middle is visible. Taken per participant count rather than as one LIMIT over both: the master holds exactly four four-participant clears today, and a flat limit would quietly empty the five bucket the day a fifth appeared.',
+        sql: `
+            SELECT instance_id FROM (
+                SELECT instance_id, participants,
+                       ROW_NUMBER() OVER (PARTITION BY participants ORDER BY period, instance_id) AS rn
+                FROM (${CLEAR_PARTICIPANT_COUNTS})
+                WHERE participants IN (4, 5)
+            ) WHERE rn <= 3
+        `,
     },
     {
         name: 'crowded-clears',
@@ -199,8 +206,12 @@ const COHORTS: Cohort[] = [
         sql: 'SELECT instance_id FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0 ORDER BY r.period, r.instance_id LIMIT 6',
     },
     {
-        name: 'pre-pin-clears',
-        why: 'All 20 Runs after the pin that carry phase 0 with the flag unset and completed — the entire population the disjunctive rule counts and the pinned rule does not. Taking all of them means the two rules differ in the fixture by exactly the rows they differ by in production.',
+        // #85 calls this population "pre-pin clears". It is not: every one of these Runs
+        // is *after* the pin, and what makes them look pre-pin is that they carry phase 0
+        // with the flag unset, which is the shape the pin exists to stop trusting. Named
+        // for the rule that counts them rather than for the ticket's wording.
+        name: 'disjunctive-only-clears',
+        why: 'All 20 Runs after the pin that carry phase 0 with the flag unset and completed — the entire population the disjunctive rule counts and the pinned rule does not. Taking all of them means the two rules differ in the fixture by exactly the rows they differ by in production. #85 calls these "pre-pin clears"; they are post-pin, and only resemble pre-pin Runs.',
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
             WHERE r.starting_phase_index = 0
@@ -219,6 +230,21 @@ const COHORTS: Cohort[] = [
         `,
     },
 ];
+
+/** A cohort as the seed records it: what it was for, and how many Runs it brought. */
+type SelectedCohort = Omit<Cohort, 'sql'> & { runs: number };
+
+/** The committed seed's shape, as {@link serializeSeed} writes it. */
+interface ArchiveSeedFile {
+    generatedAt: string;
+    generatedBy: string;
+    source: string;
+    pinInstanceId: string;
+    targets: Target[];
+    cohorts: SelectedCohort[];
+    schema: string[];
+    tables: Record<string, unknown[]>;
+}
 
 const TABLES = ['gos_10k_runs', 'gos_10k_pgcr_players', 'gos_10k_pgcr_weapons'] as const;
 
@@ -265,16 +291,12 @@ function deriveSample(
  * being reviewed. One row per line keeps the whole file around the size the nine-run
  * seed already was, and makes an added or removed Run exactly one line of diff.
  */
-function serializeSeed(seed: Record<string, unknown>): string {
-    const entries: string[] = [];
-
-    for (const [key, value] of Object.entries(seed)) {
-        if (key === 'tables') continue;
+function serializeSeed({ tables, ...envelope }: ArchiveSeedFile): string {
+    const entries = Object.entries(envelope).map(([key, value]) => {
         const rendered = JSON.stringify(value, null, 4).split('\n').join('\n    ');
-        entries.push(`    ${JSON.stringify(key)}: ${rendered}`);
-    }
+        return `    ${JSON.stringify(key)}: ${rendered}`;
+    });
 
-    const tables = seed.tables as Record<string, unknown[]>;
     const tableBlocks = Object.entries(tables).map(([table, rows]) => {
         if (rows.length === 0) return `        ${JSON.stringify(table)}: []`;
         const lines = rows.map((row) => `            ${JSON.stringify(row)}`).join(',\n');
@@ -298,7 +320,7 @@ function main(): void {
 
     const targetIds = TARGETS.map((target) => target.instanceId);
     const selected = new Set<string>(targetIds);
-    const cohortSizes: Array<{ name: string; why: string; runs: number }> = [];
+    const cohortSizes: SelectedCohort[] = [];
 
     for (const cohort of COHORTS) {
         const ids = (db.prepare(cohort.sql).all() as Array<{ instance_id: string }>)
@@ -347,7 +369,7 @@ function main(): void {
     // either.
     const derived = deriveSample(schema, tables);
 
-    const seed = {
+    const seed: ArchiveSeedFile = {
         generatedAt: new Date().toISOString(),
         generatedBy: 'scripts/extract-archive-fixture.ts',
         source: path.relative(process.cwd(), MASTER_PATH),

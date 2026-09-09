@@ -172,8 +172,8 @@ only way either is checkable:
       and **every data row on one line** — at four-space indent the player table alone
       would be ~70,000 lines, and a committed fixture nobody can read the diff of is one
       that changes without being reviewed.
-- [x] `tests/fixtures/archive-seed.json` — regenerated. **406 Runs, 2,481 player rows, 263
-      weapon rows, 346 Clear Numbers**, 27 months spanned. 3,258 lines (was 3,798 for nine
+- [x] `tests/fixtures/archive-seed.json` — regenerated. **406 Runs, 2,482 player rows, 263
+      weapon rows, 346 Clear Numbers**, 26 months spanned. 3,259 lines (was 3,798 for nine
       Runs), 1.8 MB. Gains a `cohorts` array beside `targets`.
 - [x] `tests/db/archive-fixture-shape.test.ts` — **new.** Asserts the sample rather than any
       query: the hazard rows all survive, every non-clear population is present, every
@@ -181,6 +181,9 @@ only way either is checkable:
       a 15-clear floor, 2022-03 is an empty bucket inside the dense era, and weapon rows are
       targets-only. This is the file that fails if a re-extraction quietly drops a
       population; without it a panel's tests would stay green over data they no longer have.
+      It names the populations through `PINNED_FULL_CLEAR` / `STARTED_FROM_BEGINNING` rather
+      than spelling either out — the file counts Runs of each kind, and re-expressing a rule
+      with a conjunct dropped is the mistake this Archive is careful about.
 - [x] `tests/db/archive-predicates.test.ts` — figures updated (AC8). `runs` 9 → **406**,
       `completions` 6 → **369**, `pinnedFullClears` 4 → **346**, `disjunctiveFullClears` 5 →
       **366**, stored `is_full_clear = 1` 5 → **352**, `getRunsByYear()` 2020 `{runs: 2,
@@ -200,6 +203,13 @@ only way either is checkable:
 
 **#86's three shell specs and the smoke spec were not touched**, as the ticket predicted:
 they assert no counts and no dates, and all 32 browser specs passed unchanged.
+
+**Review fixes (second commit).** `undermanned-clears` took `LIMIT 6` over both the four- and
+five-participant clears ordered by participant count, so the five bucket survived only because
+the master happens to hold exactly four fours; it now takes up to three of each. The cohort
+named `pre-pin-clears` selects *post*-pin Runs — #85's wording, not the data's — and is renamed
+`disjunctive-only-clears`. Re-extracting moved two figures: 2,482 player rows (was 2,481) and 26
+months (was 27), and the four/five buckets are 3/3 rather than 4/2.
 
 **Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
 `npm run build` OK (both tsconfigs) · `npm test` **295 tests, 26 files** · `npm run e2e` 32

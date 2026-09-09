@@ -40,7 +40,7 @@ in question, so each is a real observed run rather than a hypothetical.
 ## Not a PGCR: `archive-seed.json`
 
 `archive-seed.json` is the GoS 10k Archive fixture, and everything above about PGCRs applies to it
-in spirit rather than in mechanism. It is 406 real Runs (2,481 player rows, 263 weapon rows)
+in spirit rather than in mechanism. It is 406 real Runs (2,482 player rows, 263 weapon rows)
 extracted from the Archive master by `npm run extract-archive-fixture`, together with the master's
 own DDL read from `sqlite_master` so the fixture schema cannot drift from the real one. Nine of the
 Runs are `targets`, each carrying a `why` naming the hazard it exists for — the pin instant, a

@@ -27,7 +27,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#84** Materialise Clear Number at Archive build time — the prefactor. Not demoable.
 - [x] **#96** Playwright harness for the Archive — must land before #88 and #90.
 - [x] **#86** Page shell
-- [ ] **#95** Cache lifetime + share-card fallback
+- [x] **#95** Cache lifetime + share-card fallback
 - [ ] **#85** Widen the Archive fixture
 - [ ] **#87** The range filter (largest ticket; gates Wave 3)
 - [ ] **#91** Fastest-clears list (owns the shared duration formatter)
@@ -81,7 +81,7 @@ Per ticket, so a reviewer can see which diff belongs to which chunk.
       Archive.
 - [x] `CLAUDE.md` — the `npm run e2e` entry now says the suite mints two fixture databases.
 
-### #86 — Page shell (this chunk)
+### #86 — Page shell
 
 - [x] `src/app/gos10k/page.tsx` — the header becomes the real shell: the Pinned Full Clear
       headline with the population it counts, the dated "complete through <last Run>" band,
@@ -114,14 +114,58 @@ were confirmed red against the pre-#86 page first (stash the page, rebuild, run 
 Note `npm run e2e` is **not** in `npm test` and runs on `pull_request` only, so a push to
 this branch does not exercise them.
 
+### #95 — Cache lifetime + share-card fallback (this chunk)
+
+- [x] `src/lib/http/cache.ts` — `ARCHIVE_MAX_AGE_SECONDS` 86400 → **60**, at the single
+      constant. `immutable` retained; the emitted header's shape, the one call site
+      (`middleware.ts`) and everything the 2026-09-04 decisions entry verified on the wire are
+      untouched, and no Cloudflare rule was added. The constant carries a **RESTORE to 86400**
+      comment naming #81's closing action.
+- [x] `src/app/gos10k/opengraph-image.tsx` — the `10000` / `5455` fallbacks are gone. The stat
+      array is built only inside the `try`; on a throw it stays `undefined` and
+      `brandedCard()` omits the stat block, so the card still renders with no figures rather
+      than with confident wrong ones. The unfurl never fails outright.
+- [x] `docs/decisions.md` — the 2026-09-08 entry: the temporary lifetime and its expiry, the
+      card change, the scope call below, and why there is no test.
+
+**Deliberately not changed:** `src/app/gos10k/layout.tsx`'s OpenGraph `description` and the OG
+route's `alt` also spell out "10,000" and "5,455". Decided explicitly, not missed — they are
+static strings that never read the Archive, so no read failure can make them lie; making them
+dynamic would add a per-request Archive read to a path that currently cannot fail, i.e. add the
+failure mode #95 removes. Reasoning in the decisions entry.
+
+**No test, and no seam invented for one.** #95 touches none of Phase 1's three agreed seams.
+The cache value is checkable only against a running server; the card's no-figures branch has no
+seam, and building one to reach a `catch` is application code changed to be testable. The OG
+route stays listed as uncovered in `docs/handoffs/260803-playwright-e2e.md`.
+
+**Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
+`npm run build` OK (both tsconfigs) · `npm test` 287 tests, 25 files · `npm run e2e` 32 specs.
+Both #95 behaviours were then checked against a real `next start` on port 3200, which is the
+only way either is checkable:
+
+- `curl -sSI /gos10k` → `cache-control: public, max-age=60, s-maxage=60, immutable`, with
+  `/api/leaderboard` still `max-age=0, s-maxage=60, stale-while-revalidate=240` for contrast.
+- `/gos10k/opengraph-image` with the real `data/gos-10k.db` → 200 `image/png`, card shows
+  **10,000 full clears** and **5,455 guardians who helped**, read from the database.
+- Restarted with `GOS10K_ARCHIVE_DB_PATH=/nonexistent/gos-10k.db`: `/gos10k` → **500** (loud,
+  per ADR 0007) while `/gos10k/opengraph-image` → **200 `image/png`** rendering wordmark,
+  title and subtitle with **no figures at all**. Both PNGs were opened and read, not just
+  size-compared.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
   across the two databases; the Archive's two each carry "and the subject finished it".
 - **No `Date.now()` / `new Date()` in `src/lib/db/archive/` or `src/app/gos10k/`.** There is
   none today. #87's milestone presets must anchor to the Archive's own span, not to now.
-- **#95's shortened cache `max-age` is restored to a long value after Wave 3.** Nothing else
-  will remind you.
+- **The Archive's cache `max-age` is 60 and must go back to 86400.** #95 shortened it for UI
+  iteration; restoring it is the closing action on #81 and nothing but this line, the
+  constant's comment and `docs/decisions.md` will remind you. Do not "fix" anything else about
+  that header — the origin value was verified byte-identical on the wire on 2026-09-05.
+- **The share card asserts nothing it did not read.** If a panel ticket adds a figure to
+  `opengraph-image.tsx`, it goes inside the `try` — a hardcoded fallback there is the exact
+  failure ADR 0007's verify-on-open exists to prevent, in the one artifact that gets shared.
 - **The e2e Archive is knowingly *not* identical to the Vitest one.** It carries one extra
   helper — the per-run canary — so the Helper board and the class split differ by those rows.
   Nothing asserts either, and the difference lives in `e2e/support/archive-world.ts` rather

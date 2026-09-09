@@ -4,7 +4,18 @@ export function cacheControl(sMaxAgeSeconds: number, staleWhileRevalidateSeconds
     return `public, max-age=0, s-maxage=${sMaxAgeSeconds}, stale-while-revalidate=${staleWhileRevalidateSeconds}`;
 }
 
-const ARCHIVE_MAX_AGE_SECONDS = 86400;
+/**
+ * TEMPORARY — shortened for active UI iteration on /gos10k (issue #95, spec #81).
+ *
+ * The correct lifetime for a frozen dataset is long; 86400 is what this was and what it
+ * goes back to. While Phase 1 is landing a panel at a time, a day-long browser cache means
+ * a maintainer ships a change and then reviews yesterday's page. The lever is the lifetime,
+ * not the directive: dropping `immutable` would change nothing, because a browser will not
+ * revalidate inside `max-age` either way.
+ *
+ * RESTORE to 86400 once the /gos10k UI settles — tracked as the closing action on #81.
+ */
+const ARCHIVE_MAX_AGE_SECONDS = 60;
 
 /**
  * For the Archive: a frozen, complete dataset whose last row was written before the

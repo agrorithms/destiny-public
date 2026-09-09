@@ -4,11 +4,7 @@ export function cacheControl(sMaxAgeSeconds: number, staleWhileRevalidateSeconds
     return `public, max-age=0, s-maxage=${sMaxAgeSeconds}, stale-while-revalidate=${staleWhileRevalidateSeconds}`;
 }
 
-/**
- * The Archive's shared-cache lifetime. A frozen dataset's correct value, unchanged, and
- * inert in practice: the route is DYNAMIC at the Cloudflare edge by an accepted decision
- * (docs/decisions.md, 2026-09-04) and no cache rule stores it.
- */
+/** The Archive's shared-cache lifetime: a frozen dataset's correct value, unchanged. */
 const ARCHIVE_SHARED_MAX_AGE_SECONDS = 86400;
 
 /**
@@ -20,10 +16,9 @@ const ARCHIVE_SHARED_MAX_AGE_SECONDS = 86400;
  * dropping `immutable` would change nothing, because a browser will not revalidate inside
  * `max-age` either way.
  *
- * Deliberately separate from the shared lifetime above, rather than one constant feeding
- * both. #81 scopes this to the browser — "the only lever is the max-age value" — and #95
- * requires that nothing else about the emitted header change. Collapsing the two would
- * quietly move `s-maxage` too.
+ * It is a second constant, rather than a smaller value on the one above, because #81 scopes
+ * this to the browser and #95 requires the rest of the header hold still — one constant
+ * feeding both directives would quietly move `s-maxage` as well.
  *
  * RESTORE to 86400 once the /gos10k UI settles, which collapses this back into the
  * constant above — tracked as the closing action on #80.

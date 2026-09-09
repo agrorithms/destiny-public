@@ -40,12 +40,18 @@ in question, so each is a real observed run rather than a hypothetical.
 ## Not a PGCR: `archive-seed.json`
 
 `archive-seed.json` is the GoS 10k Archive fixture, and everything above about PGCRs applies to it
-in spirit rather than in mechanism. It is 9 real runs (60 player rows, 263 weapon rows) extracted
-from the Archive master by `npm run extract-archive-fixture`, together with the master's own DDL
-read from `sqlite_master` so the fixture schema cannot drift from the real one. Each run carries a
-`why` naming the hazard it exists for — the pin instant, a `is_full_clear = 1` run the subject did
-not finish, a duplicate-character run, a NULL name code. `tests/helpers/archive-seed.ts` builds a
-real SQLite file from it; see ADR 0003's 2026-09-04 amendment and `../README.md`.
+in spirit rather than in mechanism. It is 406 real Runs (2,481 player rows, 263 weapon rows)
+extracted from the Archive master by `npm run extract-archive-fixture`, together with the master's
+own DDL read from `sqlite_master` so the fixture schema cannot drift from the real one. Nine of the
+Runs are `targets`, each carrying a `why` naming the hazard it exists for — the pin instant, a
+`is_full_clear = 1` run the subject did not finish, a duplicate-character run, a NULL name code —
+and the rest come from the `cohorts`, SQL-defined slices that give Phase 1's panels a population to
+count. Weapon rows are pulled for the nine targets only.
+
+Every data row is written on **one line**, deliberately: at four-space indent the player table alone
+would run to some seventy thousand lines, and a committed fixture nobody can read the diff of is one
+that changes without being reviewed. `tests/helpers/archive-seed.ts` builds a real SQLite file from
+it; see ADR 0003's 2026-09-04 amendment and `../README.md`.
 
 ## The fixtures
 

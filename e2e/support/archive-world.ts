@@ -34,8 +34,8 @@ import { fixtureArchiveDbPath, fixtureRunId } from './fixture-db';
  * and still `fileMustExist`.
  *
  * What was rejected: proving the binding by asserting a fixture-only *magnitude*
- * ("9 runs entered" against production's 13,420). That has no nonce, so a server
- * left over from an earlier e2e run holds an equally valid 9-run fixture and the
+ * ("406 runs entered" against production's 13,420). That has no nonce, so a server
+ * left over from an earlier e2e run holds an equally valid 406-run fixture and the
  * check passes green against the wrong database. The nonce is the whole point of
  * the Tracker's canary and it survives the move.
  */
@@ -61,12 +61,12 @@ export function archiveCanaryDisplayName(): string {
 /**
  * Builds the fixture Archive at the minted path and adds the canary helper.
  *
- * The canary is joined to *every* Run in the seed. The fixture has 40 distinct
+ * The canary is joined to *every* Run in the seed. The fixture has 553 distinct
  * helpers and the page renders getTopHelpers(25), so a canary on one Run would
  * not rank and the check would fail for a reason unrelated to the binding.
- * Joined to all of them it holds the maximum possible `runs`, and the membership
- * id above settles the tie — the canary is deterministically the first row of
- * the Helper board.
+ * Joined to all of them it holds the maximum possible `runs` — 406, comfortably
+ * clear of the busiest real Helper's 97 — and the membership id above settles any
+ * tie, so the canary is deterministically the first row of the Helper board.
  */
 export function mintCanariedArchive(): string {
     const dbPath = fixtureArchiveDbPath();

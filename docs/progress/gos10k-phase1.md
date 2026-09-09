@@ -28,7 +28,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#96** Playwright harness for the Archive — must land before #88 and #90.
 - [x] **#86** Page shell
 - [x] **#95** Cache lifetime + share-card fallback
-- [ ] **#85** Widen the Archive fixture
+- [x] **#85** Widen the Archive fixture
 - [ ] **#87** The range filter (largest ticket; gates Wave 3)
 - [ ] **#91** Fastest-clears list (owns the shared duration formatter)
 - [ ] **#92** Median speed board (imports #91's formatter)
@@ -117,7 +117,7 @@ were confirmed red against the pre-#86 page first (stash the page, rebuild, run 
 Note `npm run e2e` is **not** in `npm test` and runs on `pull_request` only, so a push to
 this branch does not exercise them.
 
-### #95 — Cache lifetime + share-card fallback (this chunk)
+### #95 — Cache lifetime + share-card fallback
 
 - [x] `src/lib/http/cache.ts` — `ARCHIVE_MAX_AGE_SECONDS` 86400 → **60**, at the single
       constant. `immutable` retained; the emitted header's shape, the one call site
@@ -161,6 +161,50 @@ only way either is checkable:
   title and subtitle with **no figures at all**. Both PNGs were opened and read, not just
   size-compared.
 
+### #85 — Widen the Archive fixture (this chunk)
+
+- [x] `scripts/extract-archive-fixture.ts` — rows now get in two ways. `TARGETS` is the
+      original nine hazard rows, unchanged and each still carrying its `why`; `COHORTS` is
+      nine SQL-defined slices, each stating the population a Phase 1 panel needs from it.
+      The cohort SQL imports `PINNED_FULL_CLEAR` and `STARTED_FROM_BEGINNING` from
+      `src/lib/db/archive/predicates.ts` rather than re-expressing either. Weapon rows are
+      pulled for the nine targets only. The seed is serialised with the envelope indented
+      and **every data row on one line** — at four-space indent the player table alone
+      would be ~70,000 lines, and a committed fixture nobody can read the diff of is one
+      that changes without being reviewed.
+- [x] `tests/fixtures/archive-seed.json` — regenerated. **406 Runs, 2,481 player rows, 263
+      weapon rows, 346 Clear Numbers**, 27 months spanned. 3,258 lines (was 3,798 for nine
+      Runs), 1.8 MB. Gains a `cohorts` array beside `targets`.
+- [x] `tests/db/archive-fixture-shape.test.ts` — **new.** Asserts the sample rather than any
+      query: the hazard rows all survive, every non-clear population is present, every
+      participant bucket from duo to seven-plus is non-empty, Helpers exist on both sides of
+      a 15-clear floor, 2022-03 is an empty bucket inside the dense era, and weapon rows are
+      targets-only. This is the file that fails if a re-extraction quietly drops a
+      population; without it a panel's tests would stay green over data they no longer have.
+- [x] `tests/db/archive-predicates.test.ts` — figures updated (AC8). `runs` 9 → **406**,
+      `completions` 6 → **369**, `pinnedFullClears` 4 → **346**, `disjunctiveFullClears` 5 →
+      **366**, stored `is_full_clear = 1` 5 → **352**, `getRunsByYear()` 2020 `{runs: 2,
+      fullClears: 1}` → **`{runs: 20, fullClears: 11}`**. The two rules' gap is now **20**
+      rather than 1, and deliberately so: the fixture carries *all* 20 post-pin phase-0
+      Runs, so the gap in the fixture is the 10,000-vs-10,020 difference itself.
+- [x] `tests/db/archive-clear-number.test.ts` — ordinals `[1,2,3,4]` → **1..346**;
+      invariants `{4, 4}` → **`{346, 346}`**. The non-contiguity probe writes **9999**
+      rather than 99, which is now a real ordinal.
+- [x] `tests/db/archive-connection.test.ts` — manifest figures `9` → **406** and `{4, 4}` →
+      **`{346, 346}`**; the wrong-rule probe is `{366, 366}`.
+- [x] `tests/helpers/archive-seed.ts` — `ArchiveSeed` gains `cohorts`. Still no `vitest`
+      import and no `@/` alias (AC7).
+- [x] `e2e/support/archive-world.ts`, `e2e/gos10k-smoke.spec.ts`,
+      `src/lib/db/archive/index.ts`, `tests/README.md`, `tests/fixtures/README.md` —
+      comments and prose that stated the nine-run size.
+
+**#86's three shell specs and the smoke spec were not touched**, as the ticket predicted:
+they assert no counts and no dates, and all 32 browser specs passed unchanged.
+
+**Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
+`npm run build` OK (both tsconfigs) · `npm test` **295 tests, 26 files** · `npm run e2e` 32
+specs, all green. The shape test was confirmed red against the nine-run seed first.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
@@ -198,5 +242,14 @@ only way either is checkable:
   locates it as `getByRole('figure', { name: 'Pinned Full Clears' })`. A panel ticket
   rendering the same number-plus-label shape should reach for that structure, not a testid —
   every other locator in the browser suite is role- or text-based.
+- **The fixture's figures are 406 / 346, not 9 / 4.** Four test files pin them. A panel
+  ticket asserting a count reads them off the built fixture, and
+  `tests/db/archive-fixture-shape.test.ts` is where the sample's *shape* is guaranteed — if
+  a panel needs a population the sample lacks, widen a cohort there rather than working
+  around it in the panel's test.
+- **Weapon rows in the fixture cover the nine hazard Runs only.** Phase 2's weapon work
+  needs a wider pull; it is a one-line change to the extractor, and it needs the master.
+- **The seed is one JSON row per line and must stay that way.** Reformatting it with
+  `JSON.stringify(…, null, 4)` would produce a ~70,000-line file.
 - **The stat grid no longer carries a pinned-full-clear tile.** #86 promoted it to the
   headline. A panel ticket that "restores" it would state the page's own name twice.

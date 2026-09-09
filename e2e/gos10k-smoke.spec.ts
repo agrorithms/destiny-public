@@ -11,9 +11,9 @@ import { archiveCanaryDisplayName } from './support/archive-world';
  * test can: the page renders in Chromium against the fixture Archive, the
  * fixture is the one being read, and the page produces no console errors.
  *
- * Deliberately asserts **no counts** — not "9 runs", not the date range, not the
- * class percentages. Issue #85 widens the fixture Archive immediately after
- * this, and every one of those would break for no benefit.
+ * Deliberately asserts **no counts** — not the run total, not the date range, not
+ * the class percentages. Issue #85 widened the fixture Archive from 9 Runs to 406
+ * without touching this file, which is the property that made it worth having.
  */
 test.describe('the GoS 10k Archive page', () => {
     test('renders in Chromium against the fixture Archive with no console errors', async ({ page }) => {

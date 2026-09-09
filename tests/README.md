@@ -185,14 +185,21 @@ check the missing-file error, or replacing it to check the manifest mismatch. Th
 `beforeEach`, because the previous test left no file to reuse. `tests/db/archive-connection.test.ts`
 is the example; anything only *reading* the Archive wants `beforeAll`.
 
-The seed is generated, not hand-written: `npm run extract-archive-fixture` pulls nine real runs and
-their player and weapon rows out of the master, along with the master's own DDL, so the fixture
-schema cannot drift. The nine are chosen for their hazards rather than for being typical — the run
-whose flag says full clear but that the subject did not finish, the player who brought two
-characters, the NULL name code, one run either side of the 2022-02-21 pin. Each carries its reason
-in the file's `targets`. Regenerating needs the master, which lives only where the crawl was run.
+The seed is generated, not hand-written: `npm run extract-archive-fixture` pulls 406 real Runs out
+of the master, along with the master's own DDL, so the fixture schema cannot drift. Rows get in two
+ways, and both are recorded in the seed file. **`targets`** are nine hazard rows named one at a time
+— the run whose flag says full clear but that the subject did not finish, the player who brought two
+characters, the NULL name code, one run either side of the 2022-02-21 pin — each carrying its own
+reason. **`cohorts`** are SQL-defined slices, each there because a panel needs a population nine rows
+cannot express: Helpers on both sides of a 15-clear floor, monthly buckets including an empty one,
+and Runs at every participant count from duo to seven-plus. Weapon rows are pulled for the nine
+targets only, so the committed file stays readable in a diff.
 
-`getArchiveDb()` skips its production row-count check for this file, because a nine-run sample
+`tests/db/archive-fixture-shape.test.ts` asserts that shape, so a re-extraction that quietly drops a
+population fails there rather than leaving a panel's tests green over data it no longer contains.
+Regenerating needs the master, which lives only where the crawl was run.
+
+`getArchiveDb()` skips its production row-count check for this file, because a 406-Run sample
 cannot satisfy a 13,420-row manifest. That check is tested directly in
 `tests/db/archive-connection.test.ts` instead.
 

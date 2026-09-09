@@ -14,8 +14,9 @@ import seedJson from '../fixtures/archive-seed.json';
  * same getArchiveDb() production uses.
  *
  * The rows and the schema both come from tests/fixtures/archive-seed.json, extracted
- * from the real master by scripts/extract-archive-fixture.ts. They are real rows chosen
- * for their hazards — read `targets` in that file for what each one is for.
+ * from the real master by scripts/extract-archive-fixture.ts. They are real rows, chosen
+ * either for their hazards or for the population a panel needs — read `targets` and
+ * `cohorts` in that file for what each one is for.
  *
  * Lives in tests/helpers/ and therefore, per CLAUDE.md: no import from `vitest`
  * (Playwright loads this directory too and has no `vi`), and relative imports only
@@ -26,7 +27,10 @@ interface ArchiveSeed {
     generatedAt: string;
     source: string;
     pinInstanceId: string;
+    /** Hazard rows, named one at a time in the extraction script with a reason each. */
     targets: Array<{ instanceId: string; why: string }>;
+    /** SQL-defined slices, each sized for a population a Phase 1 panel has to count. */
+    cohorts: Array<{ name: string; why: string; runs: number }>;
     schema: string[];
     tables: Record<string, Array<Record<string, unknown>>>;
 }

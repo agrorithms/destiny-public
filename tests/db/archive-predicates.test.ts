@@ -12,9 +12,12 @@ import {
  * Pins the Archive's two full-clear rules against each other, and the three data
  * hazards documented in src/lib/db/archive/queries.ts.
  *
- * The fixture is nine real runs from the master, chosen because each one is a case
- * where a plausible-looking query gives the wrong answer — read `targets` in
- * tests/fixtures/archive-seed.json. What makes the pair worth testing together is that
+ * The fixture is 406 real Runs from the master: nine hazard rows chosen one at a time
+ * because each is a case where a plausible-looking query gives the wrong answer, plus
+ * nine SQL-defined cohorts sized so Phase 1's panels have a population to count at all.
+ * Read `targets` and `cohorts` in tests/fixtures/archive-seed.json, and
+ * ./archive-fixture-shape.test.ts for the shape those cohorts are there to guarantee.
+ * What makes the pair of rules worth testing together is that
  * neither rule is wrong: the pinned rule reconciles to 10,000 and the disjunctive rule
  * to 10,020 on the real data, and a change that quietly collapses them onto one another
  * still returns a number that looks right.
@@ -30,19 +33,21 @@ beforeAll(() => {
 describe('the Archive fixture', () => {
     it('is the throwaway file, built from the committed seed', () => {
         const seed = readArchiveSeed();
-        expect(seed.tables.gos_10k_runs).toHaveLength(9);
-        expect(getArchiveOverview().runs).toBe(9);
+        expect(seed.tables.gos_10k_runs).toHaveLength(406);
+        expect(getArchiveOverview().runs).toBe(406);
     });
 });
 
 describe('the two full-clear rules', () => {
-    it('disagree by exactly the flag-0 / phase-0 run after the pin', () => {
+    it('disagree by exactly the flag-0 / phase-0 runs after the pin', () => {
         const overview = getArchiveOverview();
 
-        // 14537310174: after the pin, flag 0, phase 0, completed. The disjunctive rule
-        // reads phase 0 as a fresh start; the pinned rule trusts only the flag once the
-        // flag is live. That single row is the 10,000-vs-10,020 difference in miniature.
-        expect(overview.disjunctiveFullClears - overview.pinnedFullClears).toBe(1);
+        // After the pin, flag 0, phase 0, completed. The disjunctive rule reads phase 0
+        // as a fresh start; the pinned rule trusts only the flag once the flag is live.
+        // There are 20 such Runs in the whole Archive — the 10,000-vs-10,020 difference —
+        // and the fixture carries all 20, so the gap here is that difference itself
+        // rather than a sample of it. 14537310174 is the one named in `targets`.
+        expect(overview.disjunctiveFullClears - overview.pinnedFullClears).toBe(20);
     });
 
     it('both exclude the run he did not finish himself', () => {
@@ -52,22 +57,24 @@ describe('the two full-clear rules', () => {
         // from the start without him. Dropping the completed conjunct from either rule
         // adds it, which on the real data is a 0.4% error: too small to notice, and the
         // exact reason the conjunct lives inside the named predicate.
-        expect(overview.completions).toBe(6);
-        expect(overview.pinnedFullClears).toBe(4);
-        expect(overview.disjunctiveFullClears).toBe(5);
-        // Five of the nine runs carry is_full_clear = 1, and one of those five is
-        // 8249673559. Reading the stored column alone gives 5, not 4.
+        expect(overview.completions).toBe(369);
+        expect(overview.pinnedFullClears).toBe(346);
+        expect(overview.disjunctiveFullClears).toBe(366);
+        // 352 of the 406 Runs carry is_full_clear = 1, and six of those are Runs the
+        // fireteam cleared without him. Reading the stored column alone gives 352, not
+        // 346 — a 1.7% error here, and a 0.4% one on the real data.
         expect(readArchiveSeed().tables.gos_10k_runs.filter((run) => run.is_full_clear === 1))
-            .toHaveLength(5);
+            .toHaveLength(352);
     });
 
     it('count a pre-pin phase-0 run and reject a pre-pin checkpoint run', () => {
         // Before 2022-02-21 no run carries the flag at all, so a rule reading the flag
-        // alone would return zero clears for the first two years of the dataset.
-        // 2020 holds both pre-pin runs: 7085305400 at phase 0 (a clear) and 7072900493
-        // at phase 5 (a checkpoint run). Neither carries the flag, because no run before
-        // 2022-02-21 does.
-        expect(getRunsByYear()).toContainEqual({ year: '2020', runs: 2, fullClears: 1 });
+        // alone would return zero clears for the first two years of the dataset. None of
+        // the fixture's 20 Runs in 2020 is flagged, and 8 of them start past phase 0 —
+        // the whole Checkpoint Run population, 7072900493 among them. So 11 of the 20 are
+        // Pinned Full Clears on the strength of the phase index alone, and a flag-only
+        // rule would report 0 for the year.
+        expect(getRunsByYear()).toContainEqual({ year: '2020', runs: 20, fullClears: 11 });
     });
 });
 

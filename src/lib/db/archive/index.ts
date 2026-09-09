@@ -121,8 +121,8 @@ export function verifyArchiveRowCounts(
  * That is the failure ADR 0008 says these two lines exist for.
  *
  * Exported and tested directly against real files, for the same reason as its sibling:
- * getArchiveDb() skips both for the throwaway fixture, whose nine runs cannot satisfy
- * production figures by construction.
+ * getArchiveDb() skips both for the throwaway fixture, whose 406 sampled Runs cannot
+ * satisfy production figures by construction.
  */
 export function verifyArchiveInvariants(
     db: Database.Database,

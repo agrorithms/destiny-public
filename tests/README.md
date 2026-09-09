@@ -196,6 +196,17 @@ in the file's `targets`. Regenerating needs the master, which lives only where t
 cannot satisfy a 13,420-row manifest. That check is tested directly in
 `tests/db/archive-connection.test.ts` instead.
 
+**The browser suite builds the same fixture, one row wider.** `e2e/support/archive-world.ts` calls
+the same `buildFixtureArchive()` — unmodified, which is why `helpers/archive-seed.ts` and
+`helpers/archive-replay.ts` must keep obeying the two `tests/helpers/` rules above — and then adds
+one canary helper whose name carries a per-run nonce, so `e2e/support/archive-canary.setup.ts` can
+prove through the running server which Archive it opened. That extra row is why the canary lives on
+the e2e side rather than in this directory: the Vitest Archive has to stay byte-deterministic for the
+`clear_number` ordinal assertions in `tests/db/archive-clear-number.test.ts`. If you are adding a
+Vitest test that counts helpers or player rows, you are counting the seed's own rows and the e2e
+canary is not among them. See [ADR 0003](../docs/adr/0003-tests-run-against-a-real-sqlite-file.md)'s
+2026-09-07 amendment.
+
 ## Writing them
 
 Name a test as a claim about behaviour, not a description of code. `excludes a run that nobody

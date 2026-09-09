@@ -2,6 +2,8 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
+import { deriveClearNumbers } from '../src/lib/db/archive/derive-clear-number';
+import { replayArchiveRows, type ArchiveRow } from '../tests/helpers/archive-replay';
 
 /**
  * Extracts a small fixture Archive from the GoS 10k master into
@@ -20,6 +22,13 @@ import Database from 'better-sqlite3';
  * The schema is captured from the master too, so there is no second schema definition
  * that can drift from the one the serving copy has.
  *
+ * The sampled rows are then passed through the *production* derivation — the same
+ * deriveClearNumbers() the build script runs — in an in-memory database, and the schema is
+ * captured back off that. So the seed carries `clear_number` and its index, and a Clear
+ * Number test exercises the shipped ranking instead of a re-implementation of it (ADR 0008).
+ * The ordinals are 1..N over the sample, not the instance's real place among the 10,000;
+ * the ranking rule is what the fixture is for, not the absolute number.
+ *
  *   npm run extract-archive-fixture      # needs the master; regenerate and commit
  */
 
@@ -29,7 +38,7 @@ const MASTER_PATH = process.env.GOS10K_MASTER_DB_PATH
 
 const OUTPUT_PATH = path.join(process.cwd(), 'tests', 'fixtures', 'archive-seed.json');
 
-/** The pin instant. See PINNED_FULL_CLEAR in src/lib/db/archive/queries.ts. */
+/** The pin instant. See PINNED_FULL_CLEAR in src/lib/db/archive/predicates.ts. */
 const PIN_INSTANCE_ID = 10141395454;
 
 interface Target {
@@ -78,6 +87,41 @@ const TARGETS: Target[] = [
 
 const TABLES = ['gos_10k_runs', 'gos_10k_pgcr_players', 'gos_10k_pgcr_weapons'] as const;
 
+function readSchema(db: Database.Database, tables: readonly string[]): string[] {
+    return (db.prepare(`
+        SELECT sql FROM sqlite_master
+        WHERE sql IS NOT NULL AND tbl_name IN (${tables.map(() => '?').join(', ')})
+        ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
+    `).all(...tables) as Array<{ sql: string }>).map((row) => row.sql);
+}
+
+/**
+ * Replays the sampled rows into an in-memory database, derives, and reads both the rows
+ * and the schema back out. In-memory because there is nothing to keep: the artifact is
+ * the JSON, and a temp file on disk would be one more thing to clean up after a throw.
+ */
+function deriveSample(
+    schema: string[],
+    tables: Record<string, unknown[]>
+): { schema: string[]; tables: Record<string, unknown[]> } {
+    // Replayed through the same helper tests/helpers/archive-seed.ts uses to rebuild the
+    // committed result, so the two ends of the round trip cannot disagree about how a row
+    // becomes SQL.
+    const db = new Database(':memory:');
+    replayArchiveRows(db, schema, tables as Record<string, ArchiveRow[]>);
+
+    deriveClearNumbers(db);
+
+    const derivedTables: Record<string, unknown[]> = {};
+    for (const table of Object.keys(tables)) {
+        derivedTables[table] = db.prepare(`SELECT * FROM ${table} ORDER BY instance_id`).all();
+    }
+    const derivedSchema = readSchema(db, Object.keys(tables));
+    db.close();
+
+    return { schema: derivedSchema, tables: derivedTables };
+}
+
 function main(): void {
     if (!fs.existsSync(MASTER_PATH)) {
         throw new Error(`No master at ${MASTER_PATH}. Set GOS10K_MASTER_DB_PATH to point elsewhere.`);
@@ -89,11 +133,7 @@ function main(): void {
 
     // Captured, not hand-written: the fixture's schema is the master's schema by
     // construction, so it cannot drift from what the serving copy actually has.
-    const schema = (db.prepare(`
-        SELECT sql FROM sqlite_master
-        WHERE sql IS NOT NULL AND tbl_name IN (${TABLES.map(() => '?').join(', ')})
-        ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name
-    `).all(...TABLES) as Array<{ sql: string }>).map((row) => row.sql);
+    const schema = readSchema(db, TABLES);
 
     const tables: Record<string, unknown[]> = {};
     for (const table of TABLES) {
@@ -111,22 +151,31 @@ function main(): void {
 
     db.close();
 
+    // The build script's derivation, over the sample, in memory. Reading the schema back
+    // off this database rather than off the master is what puts `clear_number` and its
+    // index into the seed's DDL, so tests/helpers/archive-seed.ts needs no knowledge of
+    // either.
+    const derived = deriveSample(schema, tables);
+
     const seed = {
         generatedAt: new Date().toISOString(),
         generatedBy: 'scripts/extract-archive-fixture.ts',
         source: path.relative(process.cwd(), MASTER_PATH),
         pinInstanceId: String(PIN_INSTANCE_ID),
         targets: TARGETS,
-        schema,
-        tables,
+        schema: derived.schema,
+        tables: derived.tables,
     };
 
     fs.writeFileSync(OUTPUT_PATH, `${JSON.stringify(seed, null, 4)}\n`);
 
     console.log(`📝 ${path.relative(process.cwd(), OUTPUT_PATH)}`);
     for (const table of TABLES) {
-        console.log(`   ${table.padEnd(24)} ${String(tables[table].length).padStart(5)} rows`);
+        console.log(`   ${table.padEnd(24)} ${String(derived.tables[table].length).padStart(5)} rows`);
     }
+    const clears = (derived.tables.gos_10k_runs as Array<{ clear_number: number | null }>)
+        .filter((run) => run.clear_number !== null).length;
+    console.log(`   ${'clear_number'.padEnd(24)} ${String(clears).padStart(5)} runs ranked`);
 }
 
 main();

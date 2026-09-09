@@ -38,6 +38,13 @@ export const E2E_PAGE_TOKEN_SECRET = 'e2e-page-token-secret-not-a-real-credentia
 export const FIXTURE_DB_ENV_KEYS = [
     'RAID_TRACKER_DB_PATH',
     'DFF_TEST_DB_SENTINEL',
+    // The app opens two databases, and the Archive's guard is a separate opt-in:
+    // assertDbPathAllowed() in src/lib/db/archive/index.ts compares against its own
+    // sentinel. Listed here so the fail-fast covers them too — unset, the `next start`
+    // child inherits nothing and opens data/gos-10k.db, the real 63 MB serving copy,
+    // and every /gos10k spec would assert against production data.
+    'GOS10K_ARCHIVE_DB_PATH',
+    'DFF_TEST_GOS10K_DB_SENTINEL',
     'DFF_E2E',
     'DFF_E2E_RUN_ID',
 ] as const;
@@ -58,12 +65,23 @@ export function mintFixtureDbPath(): string {
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dff-e2e-'));
     const dbPath = path.join(dir, 'e2e.db');
+    // Sibling of the Tracker fixture in the same mkdtemp directory: one directory
+    // is the whole run's state, so the two fixture databases cannot collide and
+    // there is one path on screen when a failure sends you to a sqlite3 shell.
+    // Mirrors tests/setup/test-db-path.ts, which does the same for Vitest.
+    const archiveDbPath = path.join(dir, 'gos-10k-e2e.db');
 
     process.env.RAID_TRACKER_DB_PATH = dbPath;
     // The one database any process in this run is allowed to open. getDb()
     // compares DB_PATH against it and refuses anything else while DFF_E2E is
     // set — see assertDbPathAllowed() in src/lib/db/index.ts.
     process.env.DFF_TEST_DB_SENTINEL = dbPath;
+    // The Archive's equivalent pair. Unlike the Tracker's, the file itself is not
+    // created here: getArchiveDb() opens `fileMustExist`, and e2e/support/archive-world.ts
+    // mints it from the committed seed in globalSetup. Setting the path without
+    // minting the file is a loud 500 on /gos10k, never a silently empty database.
+    process.env.GOS10K_ARCHIVE_DB_PATH = archiveDbPath;
+    process.env.DFF_TEST_GOS10K_DB_SENTINEL = archiveDbPath;
     process.env.DFF_E2E = '1';
     // Unique per run, and baked into the canary row. A server left over from an
     // earlier run would still hold a canary — just the *previous* run's — so
@@ -84,16 +102,32 @@ export function fixtureRunId(): string {
 }
 
 /**
- * The minted path, for code running after config load. Throws rather than
- * falling back, because a silent fallback here is the live 5.5 GB database.
+ * A minted fixture path, for code running after config load.
+ *
+ * Throws rather than falling back, because every fallback available here is a real
+ * database: the live 5.5 GB Tracker, or `data/gos-10k.db`, the 63 MB Archive serving
+ * copy. Parameterised by env var for the same reason `assertDbPathAllowed()` is —
+ * the app opens N databases and the check is per-database, so a second copy of this
+ * function is a second place to forget the `DFF_E2E` half of the guard.
  */
-export function fixtureDbPath(): string {
-    const dbPath = process.env.RAID_TRACKER_DB_PATH;
+function mintedFixturePath(envVar: string, label: string): string {
+    const dbPath = process.env[envVar];
     if (!dbPath || !process.env.DFF_E2E) {
         throw new Error(
-            'The e2e fixture database was never minted. mintFixtureDbPath() runs from ' +
-            'playwright.config.ts at config load — if you are seeing this, that did not happen.'
+            `The e2e fixture ${label} was never minted (${envVar} is unset). ` +
+            'mintFixtureDbPath() runs from playwright.config.ts at config load — if you ' +
+            'are seeing this, that did not happen.'
         );
     }
     return path.resolve(dbPath);
+}
+
+/** The minted Tracker database. */
+export function fixtureDbPath(): string {
+    return mintedFixturePath('RAID_TRACKER_DB_PATH', 'Tracker database');
+}
+
+/** The minted Archive. The file itself is built by ./archive-world.ts. */
+export function fixtureArchiveDbPath(): string {
+    return mintedFixturePath('GOS10K_ARCHIVE_DB_PATH', 'Archive');
 }

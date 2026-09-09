@@ -17,7 +17,7 @@ import { E2E_BASE_URL, E2E_PORT } from './e2e/support/server';
 // freezes at import time, and it must therefore happen at config load — the
 // earliest point this run controls. Idempotent: config is re-loaded in every
 // worker, and workers inherit the runner's env.
-const dbPath = mintFixtureDbPath();
+mintFixtureDbPath();
 
 // Also at config load, and in every worker: specs mint page tokens in the
 // runner process and they have to be signed with the same secret the server is
@@ -83,10 +83,14 @@ export default defineConfig({
 
     projects: [
         {
-            // Proves the running server is on this run's fixture database before
-            // any spec asserts anything. A project dependency rather than a step
-            // inside globalSetup, so the ordering is guaranteed by Playwright
-            // rather than by an assumption about when webServer boots.
+            // Proves the running server is on this run's fixture databases —
+            // both of them — before any spec asserts anything. A project
+            // dependency rather than a step inside globalSetup, so the ordering
+            // is guaranteed by Playwright rather than by an assumption about
+            // when webServer boots.
+            //
+            // The pattern is a suffix match, so ./support/archive-canary.setup.ts
+            // joins this project by being named for it.
             name: 'canary',
             testMatch: /canary\.setup\.ts$/,
             use: { ...devices['Desktop Chrome'] },
@@ -113,10 +117,18 @@ export default defineConfig({
         stdout: 'pipe',
         stderr: 'pipe',
         env: {
-            RAID_TRACKER_DB_PATH: dbPath,
-            DFF_TEST_DB_SENTINEL: dbPath,
-            DFF_E2E: '1',
-            DFF_E2E_RUN_ID: process.env.DFF_E2E_RUN_ID!,
+            // Every fixture variable mintFixtureDbPath() sets, forwarded from the one
+            // list that owns them. Hand-repeating the keys here is how the two lists
+            // drift: a database added to FIXTURE_DB_ENV_KEYS would pass the fail-fast
+            // above in the runner and then silently never reach `next start`.
+            //
+            // Belt-and-braces either way: `webServer.env` is merged into the child's
+            // environment rather than replacing it, so the child would inherit these
+            // from the runner anyway. Stated here so the server's database
+            // configuration is readable in one place, and so a future `env` that stops
+            // inheriting cannot silently repoint it. The non-null assertion is safe
+            // because the loop above has already refused to run without each key.
+            ...Object.fromEntries(FIXTURE_DB_ENV_KEYS.map((key) => [key, process.env[key]!])),
 
             // NEXT_PUBLIC_BUNGIE_PUBLIC_API_KEY is deliberately NOT set here, and
             // cannot usefully be: Next inlines NEXT_PUBLIC_* at *build* time, so a

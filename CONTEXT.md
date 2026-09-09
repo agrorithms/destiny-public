@@ -76,6 +76,11 @@ _Avoid_: complete run, fresh run
 **Checkpoint Run**:
 A raid entered partway through, at a saved encounter. Observed and stored like any other run, but
 never counted toward a leaderboard. The majority of raids we see.
+
+**In the Archive the term barely applies**: there are **8** Checkpoint Runs in the entire GoS 10k
+history. Any framing that contrasts clears with checkpoint farming is describing something this
+dataset does not contain — the 3,352 Runs nobody finished were started from the beginning, not
+entered at a checkpoint.
 _Avoid_: partial run, CP run
 
 **Completion**:
@@ -111,6 +116,16 @@ In the Archive, one raid instance the subject entered — **not necessarily one 
 started and abandoned). A count of Runs is a count of attempts, and any question about *clears*
 must say so with one of the Full Clear rules above.
 _Avoid_: clear, raid, activity
+
+**Clear Number**:
+The ordinal of a Pinned Full Clear within an Archive, by `period` ascending: 1 for the first,
+10,000 for the last. **Undefined for every other Run** — a Checkpoint Run, a Run nobody finished,
+a Run the fireteam cleared without him, and a clear the Disjunctive rule counts but the Pinned
+rule rejects all carry no Clear Number. It is a stored, indexed column written by the Archive build script
+rather than something a query re-derives, because every panel on the analytics page inherits the
+ranking and an ordinal eight call sites re-derive is one they can re-derive differently. See
+ADR 0008.
+_Avoid_: clear index, run number, rank
 
 **Helper**:
 Anyone other than the Archive's subject who appears in one of his Runs, identified by `Name#Code`

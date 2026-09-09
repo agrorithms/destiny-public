@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
+import { deriveClearNumbers, readArchiveInvariants } from '../src/lib/db/archive/derive-clear-number';
 
 /**
  * Builds the GoS 10k Archive serving copy from the collection master.
@@ -22,6 +23,10 @@ import Database from 'better-sqlite3';
  * What the serving copy drops: `gos_10k_pgcr_raw`, ~48 MB of stored PGCR JSON whose entire
  * purpose is re-parsing locally without touching Bungie. It has no function in production.
  * Weapons are kept deliberately — see ADR 0007.
+ *
+ * What it adds: `clear_number`, derived and indexed. The script is no longer only a trimmer,
+ * so skipping a rebuild can now produce wrong *analytics* rather than merely stale counts —
+ * which is why the manifest carries invariant assertions the app re-checks at open (ADR 0008).
  *
  *   npm run build-gos10k
  *
@@ -93,6 +98,11 @@ function main(): void {
         scratch.exec(`DROP TABLE IF EXISTS ${table}`);
         console.log(`🗑️  dropped  ${table} (${masterCounts[table]?.toLocaleString() ?? 0} rows)`);
     }
+    // Derived here, on the scratch copy, so the second vacuum compacts the new column and
+    // its index into the file that ships. The master is opened readonly and stays untouched.
+    const derived = deriveClearNumbers(scratch);
+    console.log(`🔢 derived  clear_number 1..${derived.maxClearNumber.toLocaleString()}`);
+
     scratch.prepare('VACUUM INTO ?').run(OUTPUT_PATH);
     scratch.close();
     fs.rmSync(scratchPath);
@@ -101,6 +111,7 @@ function main(): void {
     // that ships rather than the one we believe it was made from.
     const serving = new Database(OUTPUT_PATH, { readonly: true, fileMustExist: true });
     const rowCounts = countRows(serving, VERIFIED_TABLES);
+    const invariants = readArchiveInvariants(serving);
     serving.close();
 
     for (const table of VERIFIED_TABLES) {
@@ -127,6 +138,7 @@ function main(): void {
         },
         droppedTables: DROPPED_TABLES,
         rowCounts,
+        invariants,
     };
 
     fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 4)}\n`);
@@ -135,6 +147,8 @@ function main(): void {
     for (const table of VERIFIED_TABLES) {
         console.log(`   ${table.padEnd(24)} ${rowCounts[table].toLocaleString().padStart(9)}`);
     }
+    console.log(`   ${'clear_number max'.padEnd(24)} ${invariants.maxClearNumber.toLocaleString().padStart(9)}`);
+    console.log(`   ${'clear_number rows'.padEnd(24)} ${invariants.runsWithClearNumber.toLocaleString().padStart(9)}`);
     console.log(`📝 manifest ${path.relative(process.cwd(), MANIFEST_PATH)} — commit it.`);
     console.log('👉 Next: scp both databases to the box, then pm2 restart web. See docs/decisions.md.');
 }

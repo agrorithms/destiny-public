@@ -1,5 +1,5 @@
 {
-    "generatedAt": "2026-09-04T05:56:14.263Z",
+    "generatedAt": "2026-09-07T21:02:40.761Z",
     "generatedBy": "scripts/extract-archive-fixture.ts",
     "source": "gos10k/destiny_pgcrs.db",
     "pinInstanceId": "10141395454",
@@ -44,8 +44,9 @@
     "schema": [
         "CREATE TABLE gos_10k_pgcr_players (\n      instance_id     TEXT NOT NULL,\n      character_id    TEXT NOT NULL,\n      membership_id   TEXT NOT NULL,\n      membership_type INTEGER NOT NULL,\n      display_name                    TEXT,\n      bungie_global_display_name      TEXT,\n      -- Name#Code, in full. Storing the name without the code was a real bug in\n      -- this repo; two guardians can share a global display name.\n      bungie_global_display_name_code INTEGER,\n      character_class TEXT,\n      -- Hashes, not names. characterClass is a localized string; the hash is\n      -- stable. Resolution to names is a separate, re-runnable manifest script.\n      class_hash      INTEGER,\n      race_hash       INTEGER,\n      gender_hash     INTEGER,\n      emblem_hash     INTEGER,\n      light_level     INTEGER,\n      completed         INTEGER,\n      completion_reason INTEGER,\n      kills   INTEGER DEFAULT 0,\n      deaths  INTEGER DEFAULT 0,\n      assists INTEGER DEFAULT 0,\n      start_seconds       INTEGER DEFAULT 0,\n      time_played_seconds INTEGER DEFAULT 0,\n      -- From extended.values. No DEFAULT: NULL means \"no extended block\",\n      -- which is a different fact from zero kills.\n      precision_kills INTEGER,\n      grenade_kills   INTEGER,\n      melee_kills     INTEGER,\n      super_kills     INTEGER,\n      ability_kills   INTEGER,\n      -- LOSSY. Bungie serializes fireteamId as a JSON number\n      -- (6.607053075707733E+18) so the exact int64 is gone before it reaches us,\n      -- and displayValue is a garbage -2147483648. A weak \"did these people\n      -- queue together\" hint only. Never an identity or a join key — the column\n      -- name carries the warning because a silently-colliding fireteam_id would\n      -- be a far worse bug than no column at all.\n      fireteam_id_approx REAL,\n      PRIMARY KEY (instance_id, character_id),\n      FOREIGN KEY (instance_id) REFERENCES gos_10k_runs(instance_id)\n    )",
         "CREATE TABLE gos_10k_pgcr_weapons (\n      instance_id     TEXT NOT NULL,\n      character_id    TEXT NOT NULL,\n      weapon_hash     INTEGER NOT NULL,\n      kills           INTEGER DEFAULT 0,\n      precision_kills INTEGER DEFAULT 0,\n      PRIMARY KEY (instance_id, character_id, weapon_hash),\n      -- No ON DELETE CASCADE, deliberately. Nothing here deletes player rows in\n      -- normal operation, and if something ever tries, failing loudly is the\n      -- right outcome — a cascade would quietly destroy weapon rows during a\n      -- rerun, which is the exact class of loss this FK exists to prevent.\n      FOREIGN KEY (instance_id, character_id)\n        REFERENCES gos_10k_pgcr_players(instance_id, character_id)\n    )",
-        "CREATE TABLE gos_10k_runs (\n      instance_id TEXT PRIMARY KEY,\n      character_id TEXT NOT NULL,\n      activity_hash INTEGER NOT NULL,\n      raid_key TEXT,\n      period INTEGER NOT NULL,\n      ended_at INTEGER,\n      duration_seconds INTEGER DEFAULT 0,\n      completion_reason INTEGER,\n      -- NULL until a later backfill pass reads them off the PGCR endpoint.\n      -- Activity History does not carry either field, so anything written here\n      -- from a history row would be invented.\n      starting_phase_index INTEGER,\n      activity_was_started_from_beginning INTEGER,\n      completed INTEGER DEFAULT 0,\n      player_count INTEGER DEFAULT 0,\n      source TEXT DEFAULT 'unknown',\n      fetched_at INTEGER NOT NULL DEFAULT (unixepoch())\n    , pgcr_fetched_at INTEGER, pgcr_fetch_status TEXT, activity_difficulty_tier INTEGER, is_private INTEGER, entry_count INTEGER, duration_disagreement INTEGER, is_full_clear INTEGER)",
+        "CREATE TABLE gos_10k_runs (\n      instance_id TEXT PRIMARY KEY,\n      character_id TEXT NOT NULL,\n      activity_hash INTEGER NOT NULL,\n      raid_key TEXT,\n      period INTEGER NOT NULL,\n      ended_at INTEGER,\n      duration_seconds INTEGER DEFAULT 0,\n      completion_reason INTEGER,\n      -- NULL until a later backfill pass reads them off the PGCR endpoint.\n      -- Activity History does not carry either field, so anything written here\n      -- from a history row would be invented.\n      starting_phase_index INTEGER,\n      activity_was_started_from_beginning INTEGER,\n      completed INTEGER DEFAULT 0,\n      player_count INTEGER DEFAULT 0,\n      source TEXT DEFAULT 'unknown',\n      fetched_at INTEGER NOT NULL DEFAULT (unixepoch())\n    , pgcr_fetched_at INTEGER, pgcr_fetch_status TEXT, activity_difficulty_tier INTEGER, is_private INTEGER, entry_count INTEGER, duration_disagreement INTEGER, is_full_clear INTEGER, clear_number INTEGER)",
         "CREATE INDEX idx_gos_10k_players_membership\n      ON gos_10k_pgcr_players(membership_id)",
+        "CREATE INDEX idx_gos_10k_runs_clear_number ON gos_10k_runs(clear_number)",
         "CREATE INDEX idx_gos_10k_runs_period ON gos_10k_runs(period)",
         "CREATE INDEX idx_gos_10k_weapons_hash\n      ON gos_10k_pgcr_weapons(weapon_hash)"
     ],
@@ -72,7 +73,8 @@
                 "is_private": 0,
                 "entry_count": 8,
                 "duration_disagreement": 0,
-                "is_full_clear": 1
+                "is_full_clear": 1,
+                "clear_number": 2
             },
             {
                 "instance_id": "10141395454",
@@ -95,7 +97,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 1
+                "is_full_clear": 1,
+                "clear_number": 3
             },
             {
                 "instance_id": "14537310174",
@@ -118,7 +121,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 0
+                "is_full_clear": 0,
+                "clear_number": null
             },
             {
                 "instance_id": "14874038172",
@@ -141,7 +145,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 0
+                "is_full_clear": 0,
+                "clear_number": null
             },
             {
                 "instance_id": "14874226958",
@@ -164,7 +169,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 0
+                "is_full_clear": 0,
+                "clear_number": null
             },
             {
                 "instance_id": "14874351447",
@@ -187,7 +193,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 1
+                "is_full_clear": 1,
+                "clear_number": 4
             },
             {
                 "instance_id": "7072900493",
@@ -210,7 +217,8 @@
                 "is_private": 0,
                 "entry_count": 10,
                 "duration_disagreement": 0,
-                "is_full_clear": 0
+                "is_full_clear": 0,
+                "clear_number": null
             },
             {
                 "instance_id": "7085305400",
@@ -233,7 +241,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 1
+                "is_full_clear": 1,
+                "clear_number": 1
             },
             {
                 "instance_id": "8249673559",
@@ -256,7 +265,8 @@
                 "is_private": 0,
                 "entry_count": 6,
                 "duration_disagreement": 0,
-                "is_full_clear": 1
+                "is_full_clear": 1,
+                "clear_number": null
             }
         ],
         "gos_10k_pgcr_players": [

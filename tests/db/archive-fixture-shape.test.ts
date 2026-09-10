@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive, readArchiveSeed } from '../helpers/archive-seed';
 import { closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
 import {
+    DISJUNCTIVE_FULL_CLEAR,
     PINNED_FULL_CLEAR,
     STARTED_FROM_BEGINNING,
     SUBJECT_MEMBERSHIP_ID,
@@ -83,21 +84,21 @@ describe('the populations Phase 1 panels count', () => {
         expect(scalar(
             'SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0'
         )).toBe(6);
-        // Post-pin, flag 0, phase 0, completed: the 20 Runs the disjunctive rule counts
-        // and the pinned rule does not. All 20 of them are here, so the two rules differ
-        // in the fixture by the same rows they differ by in production. Written out
-        // rather than named, because no predicate expresses "the gap between the two".
+        // The 20 Runs the disjunctive rule counts and the pinned rule does not. All 20 are
+        // here, so the two rules differ in the fixture by the same rows they differ by in
+        // production. Expressed as the difference between the two named rules — the pinned
+        // one is stored in `is_full_clear` — rather than by re-deriving the pin boundary
+        // from the raw columns, which is the drift the named predicates exist to stop.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE r.starting_phase_index = 0 AND COALESCE(r.activity_was_started_from_beginning, 0) = 0
-              AND r.completed = 1
-              AND r.period > (SELECT period FROM gos_10k_runs WHERE instance_id = ?)
-        `, readArchiveSeed().pinInstanceId)).toBe(20);
-        // Checkpoint Runs — he joined partway. There are 8 in the whole Archive and all 8
-        // are here; the term barely applies to this dataset, which is itself the point.
+            WHERE ${DISJUNCTIVE_FULL_CLEAR} AND r.is_full_clear = 0
+        `)).toBe(20);
+        // Checkpoint Runs — he joined partway, which is exactly not starting from the
+        // beginning. There are 8 in the whole Archive and all 8 are here; the term barely
+        // applies to this dataset, which is itself the point.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE r.starting_phase_index > 0 AND COALESCE(r.activity_was_started_from_beginning, 0) = 0
+            WHERE NOT (${STARTED_FROM_BEGINNING})
         `)).toBe(8);
     });
 

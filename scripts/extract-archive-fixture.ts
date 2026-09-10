@@ -3,8 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { deriveClearNumbers } from '../src/lib/db/archive/derive-clear-number';
-import { PINNED_FULL_CLEAR, STARTED_FROM_BEGINNING } from '../src/lib/db/archive/predicates';
+import {
+    DISJUNCTIVE_FULL_CLEAR,
+    PINNED_FULL_CLEAR,
+    STARTED_FROM_BEGINNING,
+} from '../src/lib/db/archive/predicates';
 import { replayArchiveRows, type ArchiveRow } from '../tests/helpers/archive-replay';
+import type { ArchiveSeed, SeedCohort, SeedTarget } from '../tests/helpers/archive-seed';
 
 /**
  * Extracts a fixture Archive from the GoS 10k master into
@@ -73,12 +78,7 @@ const SPINE_LAST_MONTH = '2022-08';
 /** Pinned Full Clears taken per spine month. 40 × 8 months ≈ 320 Runs. */
 const SPINE_RUNS_PER_MONTH = 40;
 
-interface Target {
-    instanceId: string;
-    why: string;
-}
-
-const TARGETS: Target[] = [
+const TARGETS: SeedTarget[] = [
     {
         instanceId: '10141395454',
         why: 'The pin itself: 2022-02-21, phase 0, flag 0, completed. Counted by both full-clear rules — the pinned one because it is at or before the pin and phase 0.',
@@ -138,23 +138,34 @@ const CLEAR_PARTICIPANT_COUNTS = `
     GROUP BY r.instance_id
 `;
 
+/**
+ * The first `limit` Runs matching `predicate` in each month of the spine era.
+ *
+ * Two cohorts sample this way — the spine itself and the Resets inside it — and they
+ * differ only in the predicate and the cap. Written once so the windowing (which month
+ * a Run falls in, how ties break) cannot drift between them.
+ */
+function perSpineMonth(predicate: string, limit: number): string {
+    return `
+        SELECT instance_id FROM (
+            SELECT r.instance_id AS instance_id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY strftime('%Y-%m', r.period, 'unixepoch')
+                       ORDER BY r.period, r.instance_id
+                   ) AS rn
+            FROM gos_10k_runs r
+            WHERE ${predicate}
+              AND strftime('%Y-%m', r.period, 'unixepoch')
+                  BETWEEN '${SPINE_FIRST_MONTH}' AND '${SPINE_LAST_MONTH}'
+        ) WHERE rn <= ${limit}
+    `;
+}
+
 const COHORTS: Cohort[] = [
     {
         name: 'spine',
         why: `Up to ${SPINE_RUNS_PER_MONTH} Pinned Full Clears from each month of ${SPINE_FIRST_MONTH}..${SPINE_LAST_MONTH}. The bulk of the fixture, and the only cohort large enough to give the Helper boards a 15-clear floor with people on both sides of it and a median over a meaningful number of clears. 2022-03 has no Runs in the master, so the era carries an empty monthly bucket in its middle.`,
-        sql: `
-            SELECT instance_id FROM (
-                SELECT r.instance_id AS instance_id,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY strftime('%Y-%m', r.period, 'unixepoch')
-                           ORDER BY r.period, r.instance_id
-                       ) AS rn
-                FROM gos_10k_runs r
-                WHERE ${PINNED_FULL_CLEAR}
-                  AND strftime('%Y-%m', r.period, 'unixepoch')
-                      BETWEEN '${SPINE_FIRST_MONTH}' AND '${SPINE_LAST_MONTH}'
-            ) WHERE rn <= ${SPINE_RUNS_PER_MONTH}
-        `,
+        sql: perSpineMonth(PINNED_FULL_CLEAR, SPINE_RUNS_PER_MONTH),
     },
     {
         name: 'duo-clears',
@@ -186,19 +197,7 @@ const COHORTS: Cohort[] = [
     {
         name: 'resets',
         why: 'Up to three Runs per spine month that he started from the first encounter and nobody finished. #93 reports how many there were and how long they lasted; a fixture with none would make both figures untestable. Not the negation of is_full_clear — that column folds in "somebody completed".',
-        sql: `
-            SELECT instance_id FROM (
-                SELECT r.instance_id AS instance_id,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY strftime('%Y-%m', r.period, 'unixepoch')
-                           ORDER BY r.period, r.instance_id
-                       ) AS rn
-                FROM gos_10k_runs r
-                WHERE ${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0
-                  AND strftime('%Y-%m', r.period, 'unixepoch')
-                      BETWEEN '${SPINE_FIRST_MONTH}' AND '${SPINE_LAST_MONTH}'
-            ) WHERE rn <= 3
-        `,
+        sql: perSpineMonth(`${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0`, 3),
     },
     {
         name: 'cleared-without-him',
@@ -211,40 +210,29 @@ const COHORTS: Cohort[] = [
         // with the flag unset, which is the shape the pin exists to stop trusting. Named
         // for the rule that counts them rather than for the ticket's wording.
         name: 'disjunctive-only-clears',
-        why: 'All 20 Runs after the pin that carry phase 0 with the flag unset and completed — the entire population the disjunctive rule counts and the pinned rule does not. Taking all of them means the two rules differ in the fixture by exactly the rows they differ by in production. #85 calls these "pre-pin clears"; they are post-pin, and only resemble pre-pin Runs.',
+        why: 'All 20 Runs the disjunctive rule counts and the pinned rule does not — the entire gap between them. Taking all of them means the two rules differ in the fixture by exactly the rows they differ by in production. #85 calls these "pre-pin clears"; they are post-pin, and only resemble pre-pin Runs.',
+        // The set difference between the two named rules, not a re-derivation of the pin
+        // boundary from raw columns. `is_full_clear` already stores the pinned rule, so
+        // this is DISJUNCTIVE minus PINNED by construction and stays correct if the pin
+        // instant is ever revised. (PINNED is a subset of DISJUNCTIVE: is_full_clear = 1
+        // implies phase 0 or flag set, so the difference is 10,020 - 10,000 = 20.)
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
-            WHERE r.starting_phase_index = 0
-              AND COALESCE(r.activity_was_started_from_beginning, 0) = 0
-              AND r.completed = 1
-              AND r.period > (SELECT period FROM gos_10k_runs WHERE instance_id = '${PIN_INSTANCE_ID}')
+            WHERE ${DISJUNCTIVE_FULL_CLEAR} AND r.is_full_clear = 0
         `,
     },
     {
         name: 'checkpoint-runs',
         why: 'All 8 Checkpoint Runs in the Archive — he joined partway through. There are only 8 in 13,420, which is itself the fact #93 reports, so the whole population fits and nothing has to be sampled.',
+        // Literally the negation of the named rule: a Checkpoint Run is a Run not started
+        // from the beginning. Neither raw column is nullable in the master, so this and a
+        // COALESCE-guarded rewrite select the same 8 rows.
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
-            WHERE r.starting_phase_index > 0
-              AND COALESCE(r.activity_was_started_from_beginning, 0) = 0
+            WHERE NOT (${STARTED_FROM_BEGINNING})
         `,
     },
 ];
-
-/** A cohort as the seed records it: what it was for, and how many Runs it brought. */
-type SelectedCohort = Omit<Cohort, 'sql'> & { runs: number };
-
-/** The committed seed's shape, as {@link serializeSeed} writes it. */
-interface ArchiveSeedFile {
-    generatedAt: string;
-    generatedBy: string;
-    source: string;
-    pinInstanceId: string;
-    targets: Target[];
-    cohorts: SelectedCohort[];
-    schema: string[];
-    tables: Record<string, unknown[]>;
-}
 
 const TABLES = ['gos_10k_runs', 'gos_10k_pgcr_players', 'gos_10k_pgcr_weapons'] as const;
 
@@ -256,6 +244,10 @@ function readSchema(db: Database.Database, tables: readonly string[]): string[] 
     `).all(...tables) as Array<{ sql: string }>).map((row) => row.sql);
 }
 
+/** The seed's row and table shapes, so this end of the round trip matches the reader's. */
+type SeedRow = Record<string, unknown>;
+type SeedTables = ArchiveSeed['tables'];
+
 /**
  * Replays the sampled rows into an in-memory database, derives, and reads both the rows
  * and the schema back out. In-memory because there is nothing to keep: the artifact is
@@ -263,8 +255,8 @@ function readSchema(db: Database.Database, tables: readonly string[]): string[] 
  */
 function deriveSample(
     schema: string[],
-    tables: Record<string, unknown[]>
-): { schema: string[]; tables: Record<string, unknown[]> } {
+    tables: SeedTables
+): { schema: string[]; tables: SeedTables } {
     // Replayed through the same helper tests/helpers/archive-seed.ts uses to rebuild the
     // committed result, so the two ends of the round trip cannot disagree about how a row
     // becomes SQL.
@@ -273,9 +265,11 @@ function deriveSample(
 
     deriveClearNumbers(db);
 
-    const derivedTables: Record<string, unknown[]> = {};
+    const derivedTables: SeedTables = {};
     for (const table of Object.keys(tables)) {
-        derivedTables[table] = db.prepare(`SELECT * FROM ${table} ORDER BY instance_id`).all();
+        derivedTables[table] = db.prepare(
+            `SELECT * FROM ${table} ORDER BY instance_id`
+        ).all() as SeedRow[];
     }
     const derivedSchema = readSchema(db, Object.keys(tables));
     db.close();
@@ -291,7 +285,7 @@ function deriveSample(
  * being reviewed. One row per line keeps the whole file around the size the nine-run
  * seed already was, and makes an added or removed Run exactly one line of diff.
  */
-function serializeSeed({ tables, ...envelope }: ArchiveSeedFile): string {
+function serializeSeed({ tables, ...envelope }: ArchiveSeed): string {
     const entries = Object.entries(envelope).map(([key, value]) => {
         const rendered = JSON.stringify(value, null, 4).split('\n').join('\n    ');
         return `    ${JSON.stringify(key)}: ${rendered}`;
@@ -320,7 +314,7 @@ function main(): void {
 
     const targetIds = TARGETS.map((target) => target.instanceId);
     const selected = new Set<string>(targetIds);
-    const cohortSizes: SelectedCohort[] = [];
+    const cohortSizes: SeedCohort[] = [];
 
     for (const cohort of COHORTS) {
         const ids = (db.prepare(cohort.sql).all() as Array<{ instance_id: string }>)
@@ -337,13 +331,13 @@ function main(): void {
     const ids = [...selected].sort();
     const placeholders = ids.map(() => '?').join(', ');
 
-    const tables: Record<string, unknown[]> = {
+    const tables: SeedTables = {
         gos_10k_runs: db.prepare(
             `SELECT * FROM gos_10k_runs WHERE instance_id IN (${placeholders}) ORDER BY instance_id`
-        ).all(...ids),
+        ).all(...ids) as SeedRow[],
         gos_10k_pgcr_players: db.prepare(
             `SELECT * FROM gos_10k_pgcr_players WHERE instance_id IN (${placeholders}) ORDER BY instance_id, character_id`
-        ).all(...ids),
+        ).all(...ids) as SeedRow[],
         // Targets only — see the header. The weapon table stays populated (the FK to
         // the player rows still resolves, because every target is in the sample) without
         // the fixture growing a table Phase 1 does not read.
@@ -351,7 +345,7 @@ function main(): void {
             `SELECT * FROM gos_10k_pgcr_weapons
              WHERE instance_id IN (${targetIds.map(() => '?').join(', ')})
              ORDER BY instance_id, character_id, weapon_hash`
-        ).all(...targetIds),
+        ).all(...targetIds) as SeedRow[],
     };
 
     const missing = targetIds.filter(
@@ -369,7 +363,7 @@ function main(): void {
     // either.
     const derived = deriveSample(schema, tables);
 
-    const seed: ArchiveSeedFile = {
+    const seed: ArchiveSeed = {
         generatedAt: new Date().toISOString(),
         generatedBy: 'scripts/extract-archive-fixture.ts',
         source: path.relative(process.cwd(), MASTER_PATH),

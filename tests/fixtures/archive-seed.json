@@ -1,5 +1,5 @@
 {
-    "generatedAt": "2026-09-09T21:58:59.124Z",
+    "generatedAt": "2026-09-10T02:31:15.618Z",
     "generatedBy": "scripts/extract-archive-fixture.ts",
     "source": "gos10k/destiny_pgcrs.db",
     "pinInstanceId": "10141395454",
@@ -79,7 +79,7 @@
         },
         {
             "name": "disjunctive-only-clears",
-            "why": "All 20 Runs after the pin that carry phase 0 with the flag unset and completed — the entire population the disjunctive rule counts and the pinned rule does not. Taking all of them means the two rules differ in the fixture by exactly the rows they differ by in production. #85 calls these \"pre-pin clears\"; they are post-pin, and only resemble pre-pin Runs.",
+            "why": "All 20 Runs the disjunctive rule counts and the pinned rule does not — the entire gap between them. Taking all of them means the two rules differ in the fixture by exactly the rows they differ by in production. #85 calls these \"pre-pin clears\"; they are post-pin, and only resemble pre-pin Runs.",
             "runs": 20
         },
         {

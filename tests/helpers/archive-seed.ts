@@ -23,14 +23,34 @@ import seedJson from '../fixtures/archive-seed.json';
  * (Playwright's loader does not apply tsconfig `paths` to globalSetup).
  */
 
-interface ArchiveSeed {
+/** A hazard row, named one at a time in the extraction script with a reason each. */
+export interface SeedTarget {
+    instanceId: string;
+    why: string;
+}
+
+/** A SQL-defined slice, sized for a population a Phase 1 panel has to count. */
+export interface SeedCohort {
+    name: string;
+    why: string;
+    runs: number;
+}
+
+/**
+ * The committed seed's shape.
+ *
+ * Declared here rather than in the extraction script because this is the reading end:
+ * the script imports it back as a type so the writer and the reader cannot describe
+ * the same file differently. Type-only, so nothing of this module — including the
+ * ~1.8 MB JSON import above — is pulled into the script at runtime.
+ */
+export interface ArchiveSeed {
     generatedAt: string;
+    generatedBy: string;
     source: string;
     pinInstanceId: string;
-    /** Hazard rows, named one at a time in the extraction script with a reason each. */
-    targets: Array<{ instanceId: string; why: string }>;
-    /** SQL-defined slices, each sized for a population a Phase 1 panel has to count. */
-    cohorts: Array<{ name: string; why: string; runs: number }>;
+    targets: SeedTarget[];
+    cohorts: SeedCohort[];
     schema: string[];
     tables: Record<string, Array<Record<string, unknown>>>;
 }

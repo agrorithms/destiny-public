@@ -32,7 +32,17 @@ test.describe('the GoS 10k Archive page', () => {
         // The same canary the setup project checked over HTTP, re-checked through
         // a real render. The setup proves the *server* opened the fixture; this
         // proves the fixture survives into the DOM a spec would assert against.
-        await expect(page.getByText(archiveCanaryDisplayName())).toBeVisible();
+        //
+        // Scoped to a table cell, which on this page means the Helper board — the one
+        // place the canary is *designed* to appear, deterministically as its first row
+        // (see mintCanariedArchive). It is joined to every Run in the seed, so since
+        // #91 it also renders as a chip in all ten fastest-clear rows and an unscoped
+        // getByText is strict-mode ambiguous. Narrowing beats `.first()`: the binding
+        // this asserts is that the Helper board read the fixture, and `.first()` would
+        // quietly start passing on whichever panel happened to render first.
+        await expect(
+            page.getByRole('cell', { name: archiveCanaryDisplayName(), exact: true })
+        ).toBeVisible();
 
         expect(consoleErrors, 'the page logged console errors').toEqual([]);
     });

@@ -370,9 +370,44 @@ does not contain. Reconciled by hand instead, running this query's SQL against t
 6 people**, rendering as **7:33**. The next four are 455, 456, 461 and 465. The formatter's
 `453 → 7:33` is pinned in Vitest.
 
+**Review fixes (second commit).** Both axes ran against #91 with #81 as parent.
+
+- **`participant` was on CONTEXT.md's _Avoid_ list three times** (Standards, hard) — under
+  **Roster**, **Helper** and **Player-Run**, all Tracker entries. But #81 mandates the word for
+  the Archive ("the participants column… labelled as people who entered, not fireteam size"), so
+  the glossary and the parent spec genuinely disagreed. Resolved by amending rather than
+  renaming: the three _Avoid_ lines now point at a new **Participant** (Archive) entry, which
+  states the distinct-membership rule, the 430 seven-plus clears, and why a Roster is a weaker
+  claim than who demonstrably entered. **Fastest Clear** (Archive) added alongside it, carrying
+  the Runs-not-players rationale that had lived only in a TSX comment.
+- **"The 1 fastest Pinned Full Clears"** (Spec) — reachable, and this ticket's own one-clear-range
+  test proves it. The panel now says "The fastest Pinned Full Clear … everyone who was in it".
+- **The `MAX()` name projection was duplicated** across `getTopHelpers` and `getFastestClears`
+  (Standards), and taking each name column's `MAX()` independently could in principle splice one
+  row's name onto another's code (Spec). One `PLAYER_NAME_PROJECTION` now, and the splice was
+  **checked rather than argued**: across all 217 duplicate (instance, membership) pairs in the
+  shipped Archive, zero disagree on any of the three name columns. The Archive cannot gain a row
+  (ADR 0007), so that check cannot go stale — the constant's comment says both halves.
+- **One e2e spec was dropped** (Spec, scope creep). Asserting every row has a non-empty
+  participant list is Vitest's fact, not a browser-only one; #81 rules browser coverage out of
+  Phase 1 except where a behaviour has no other seam, and only the chip wrapping qualifies.
+- **The duration formatter's comment argued the wrong thing** (Standards). It rebutted importing
+  from the Tracker's `'use client'` file without considering extraction to a pure shared module —
+  which is what `predicates.ts` already did for the same shape of problem. The duplication stands
+  (extracting touches a Tracker feature; #91 is an Archive ticket) but the comment now says so
+  instead of arguing it away. **Open follow-up, not a closed question.**
+- **`docs/handoffs/260803-playwright-e2e.md` gained its entry** — CLAUDE.md points at that file as
+  the coverage list and the nine→ten bump had contradicted it. It is gitignored, so it does not
+  appear in the diff.
+- **Not changed:** the `scope` prop name on `FastestClears` (flagged as a mysterious name). `scope`
+  is what #87 named this string in `page.tsx`; repo precedent overrides the baseline smell.
+- **Kept deliberately, unasked:** the `clear {n}` field on each row. #91 asks for "rank, duration
+  and date"; the Clear Number ties the record to the range control above it, which is the page's
+  own denomination (ADR 0008). One span, easily dropped if unwanted.
+
 **Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
 `npm run build` OK (both tsconfigs) · `npm test` **349 tests, 30 files** · `npm run e2e`
-**40 specs**.
+**39 specs**.
 
 ## Notes and traps carried forward
 

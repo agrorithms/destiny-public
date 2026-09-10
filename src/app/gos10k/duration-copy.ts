@@ -11,12 +11,19 @@
  * Page-level copy rather than SQL, which is why it sits beside range-copy.ts under
  * src/app/gos10k/ instead of in the query module. It needs no database and no range.
  *
- * The Tracker's player profile has a formatter of the same shape, private to
- * PlayerProfileClient.tsx. It is deliberately not imported here: that file is a
- * thousand-line `'use client'` component, and pulling a server component's copy out of
- * it would drag the client boundary across the two databases the repo keeps apart. The
- * duplication is one function and it is named here so a future reader knows it was
- * weighed rather than missed.
+ * **There is a second formatter of this shape in the repo** — a private `formatDuration`
+ * in the Tracker's PlayerProfileClient.tsx, differing only in mapping null to `'N/A'`.
+ * It is not imported here, and the honest reason is scope rather than architecture: the
+ * argument that importing it would drag a `'use client'` boundary across the two
+ * databases is true of *that* file but does not rule out the obvious third option, which
+ * is extracting a pure `formatDuration` both call — exactly what ./predicates.ts already
+ * did when the build script needed a fragment out of a module it could not import.
+ *
+ * That extraction touches a Tracker feature and #91 is an Archive ticket, so it is left
+ * undone and written down instead of argued away. #91's own criterion — one duration
+ * implementation shared by this panel and #92's median speed board — is satisfied by
+ * this file. Collapsing the Tracker's into it is a follow-up, not a thing this comment
+ * should pretend was already decided.
  */
 
 /**

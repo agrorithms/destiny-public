@@ -20,22 +20,11 @@ import { expect, test } from './support/test-fixtures';
  * does not: the fixture's figures belong to the Vitest seam.
  */
 test.describe('the fastest clears panel', () => {
-    test('lists Runs with their whole fireteam named on each row', async ({ page }) => {
-        await page.goto('/gos10k');
-
-        const rows = page.getByTestId('archive-fastest-clear-row');
-        await expect(rows.first()).toBeVisible();
-
-        // Structural: every row carries a participant list, and the lists are not
-        // empty. A row whose fireteam failed to render is the panel's most plausible
-        // silent failure — the record would still look right.
-        const count = await rows.count();
-        for (let i = 0; i < count; i++) {
-            const chips = rows.nth(i).getByTestId('archive-fastest-clear-participants').locator('li');
-            expect(await chips.count(), `row ${i + 1} named nobody`).toBeGreaterThan(0);
-        }
-    });
-
+    // Deliberately only the phone spec. An earlier draft also asserted that every row
+    // carries a non-empty participant list; that is not a browser-only fact — it is what
+    // tests/db/archive-fastest-clears.test.ts checks with actual names — and #81 rules
+    // browser coverage out of Phase 1 except where a behaviour has no other seam. The
+    // chip wrapping is the one behaviour here that qualifies, so it is the only one here.
     test.describe('on a phone', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 

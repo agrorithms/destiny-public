@@ -33,7 +33,7 @@ _Avoid_: live session, current activity, in-progress raid
 The players making up a fireteam, as reported by Bungie. May be incomplete — Bungie does not
 always disclose every member — so a roster of one usually means limited visibility rather than a
 genuine solo run.
-_Avoid_: party members, participants, players in session
+_Avoid_: party members, participants, players in session (but see **Participant** (Archive))
 
 **Tracked Player**:
 A player the system knows about and will poll for activity. Identified by `Name#Code`; a player
@@ -160,7 +160,7 @@ Anyone other than the Archive's subject who appears in one of his Runs, identifi
 like any other player. Named for what the dataset is about — the people who got him to 10,000 —
 and deliberately not "teammate": a Helper is a fact about one player's history, not a symmetric
 relationship, and someone who joined a checkpoint run he abandoned is still a Helper.
-_Avoid_: teammate, fireteam member, participant
+_Avoid_: teammate, fireteam member, participant (but see **Participant** (Archive))
 
 **Player-Run**:
 One player in one raid instance — the datum every population statistic is counted in. Distinct
@@ -168,7 +168,29 @@ from a Completion, which requires the run to be a finished Full Clear: a Player-
 they cleared, joined at a checkpoint, or dropped out. A player who brought two characters to the
 same instance is still one Player-Run, and today only their first-observed character's kills,
 deaths and assists are kept.
-_Avoid_: participant, entry, appearance
+_Avoid_: participant, entry, appearance (but see **Participant** (Archive))
+
+**Participant** (Archive):
+One of the distinct people who *entered* a given Run — the Archive's unit for "who was in this
+raid", and deliberately not its Roster. A Run has as many Participants as there were distinct
+memberships in it, so 430 of the 10,000 Pinned Full Clears have seven or more because people left
+and were replaced; there is no way to recover a maximum-concurrent figure from this data and
+inventing one was rejected. Always counted on `membership_id`, never on player rows: one person
+who brought three characters is one Participant (hazard 1). Labelled in the UI as **people who
+entered**, never as fireteam size.
+
+The Tracker's **Roster**, **Helper** and **Player-Run** entries each list "participant" as a term
+to avoid, and that still holds *for the Tracker* — a Roster is what Bungie reported a fireteam to
+be, which is a different and weaker claim than who demonstrably entered. This term is the Archive's
+alone, and it exists because the two databases genuinely mean different things here.
+
+**Fastest Clear** (Archive):
+A record in the Archive's fastest-clears list: a **Run**, ranked by `duration_seconds` ascending
+within the active **Range**, scoped to Pinned Full Clears. Deliberately a Run rather than a player —
+a board of players ranked by personal best puts the six people in the fastest Run into the top six
+rows with identical times, a tie that says nothing, so the fireteam is the object being ranked.
+Ties break on period ascending, then instance id, so two databases cannot order the same records
+differently.
 
 **All Attempts**:
 Every raid instance observed in a window, whatever became of it — Full Clears, Checkpoint Runs and

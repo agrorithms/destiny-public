@@ -261,6 +261,28 @@ function rangeClause(range: ResolvedArchiveRange): { sql: string; params: number
 }
 
 /**
+ * The five columns formatBungieDisplayName() needs, as they come out of a GROUP BY over
+ * `gos_10k_pgcr_players p`. Written once because two queries below project them
+ * identically and a third will; the same drift argument as ./predicates.ts, one level
+ * down.
+ *
+ * **Each `MAX()` is taken independently, and that is safe only because this dataset is
+ * frozen.** In principle a membership whose duplicate character rows disagreed could
+ * have its name spliced onto another row's code, rendering a `Name#Code` that never
+ * existed. Checked rather than assumed: across all 217 duplicate (instance, membership)
+ * pairs in the shipped Archive, zero disagree on `display_name`,
+ * `bungie_global_display_name` or `bungie_global_display_name_code`. The Archive cannot
+ * gain a row (ADR 0007), so the check cannot go stale — but a *live* table with this
+ * shape would need the name columns taken from one chosen row instead.
+ */
+const PLAYER_NAME_PROJECTION = `
+    MAX(p.membership_type)                 AS membershipType,
+    MAX(p.display_name)                    AS displayName,
+    MAX(p.bungie_global_display_name)      AS bungieGlobalDisplayName,
+    MAX(p.bungie_global_display_name_code) AS bungieGlobalDisplayNameCode
+`;
+
+/**
  * Distinct people who appeared in at least one of his Runs, excluding him.
  *
  * Its own function rather than a field only {@link getArchiveOverview} can produce: the
@@ -365,10 +387,7 @@ export function getTopHelpers(
     const rows = getArchiveDb().prepare(`
         SELECT
             p.membership_id                     AS membershipId,
-            MAX(p.membership_type)              AS membershipType,
-            MAX(p.display_name)                 AS displayName,
-            MAX(p.bungie_global_display_name)   AS bungieGlobalDisplayName,
-            MAX(p.bungie_global_display_name_code) AS bungieGlobalDisplayNameCode,
+            ${PLAYER_NAME_PROJECTION},
             COUNT(DISTINCT r.instance_id)       AS runs,
             COUNT(DISTINCT CASE WHEN ${PINNED_FULL_CLEAR} THEN r.instance_id END) AS fullClears
         FROM gos_10k_pgcr_players p
@@ -528,10 +547,7 @@ export function getFastestClears(
         SELECT
             p.instance_id                       AS instanceId,
             p.membership_id                     AS membershipId,
-            MAX(p.membership_type)              AS membershipType,
-            MAX(p.display_name)                 AS displayName,
-            MAX(p.bungie_global_display_name)   AS bungieGlobalDisplayName,
-            MAX(p.bungie_global_display_name_code) AS bungieGlobalDisplayNameCode,
+            ${PLAYER_NAME_PROJECTION},
             MIN(p.start_seconds)                AS enteredAt
         FROM gos_10k_pgcr_players p
         WHERE p.instance_id IN (${placeholders})

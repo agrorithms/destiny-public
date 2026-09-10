@@ -29,10 +29,14 @@ export function FastestClears({ clears, scope }: { clears: ArchiveFastestClear[]
             {/* Every panel states the population it counts (#81), and after #87 that
                 population has a range attached. `clears.length` rather than a written-down
                 ten: a one-day filter legitimately returns one row, and a heading claiming
-                ten above a list of one is the panel lying about its own contents. */}
+                ten above a list of one is the panel lying about its own contents. That case
+                is reachable — tests/db/archive-fastest-clears.test.ts pins a one-clear range —
+                so the sentence has to survive it rather than read "The 1 fastest". */}
             <p className="ui-text-secondary text-sm leading-6">
-                The {clears.length} fastest Pinned Full Clears across {scope}, and everyone who was
-                in them.
+                {clears.length === 1
+                    ? 'The fastest Pinned Full Clear'
+                    : `The ${clears.length} fastest Pinned Full Clears`}{' '}
+                across {scope}, and everyone who was in {clears.length === 1 ? 'it' : 'them'}.
             </p>
 
             {clears.length === 0 ? (

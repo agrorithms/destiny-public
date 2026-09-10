@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {
+    getArchiveHelperCount,
     getArchiveOverview,
     getArchiveSpan,
     getTopHelpers,
@@ -48,9 +49,11 @@ export default async function Gos10kPage({
 }) {
     // Parsed against the URL's grammar first, then against the data: the two failures
     // are different — "this is not a range" and "this Archive has no such range" — and
-    // only the second one needs a database.
-    const range = resolveArchiveRange(parseArchiveRangeRequest(await searchParams));
+    // only the second one needs a database. The span is read once and handed to both:
+    // the header, the presets and an unfiltered or degraded range all describe the same
+    // extent, and re-deriving it per caller ran the same aggregate twice per request.
     const span = getArchiveSpan();
+    const range = resolveArchiveRange(parseArchiveRangeRequest(await searchParams), span);
     const presets = resolveMilestonePresets(span);
     const scope = describeArchiveRange(range);
 
@@ -62,8 +65,9 @@ export default async function Gos10kPage({
     // The header speaks for the dataset rather than for the selection, so its Helper
     // count is the Archive's own — filtered, it would read as the whole history having
     // shrunk to one February. Unfiltered the two are the same read, so it is not made
-    // twice.
-    const allTime = range.mode === 'all' ? overview : getArchiveOverview();
+    // twice; filtered it is the one count the header wants rather than a second whole
+    // overview whose other five figures would be discarded.
+    const allTimeHelpers = range.mode === 'all' ? overview.helpers : getArchiveHelperCount();
 
     const maxYearRuns = Math.max(...years.map((year) => year.runs), 1);
     const totalPlayerRuns = classes.reduce((sum, row) => sum + row.playerRuns, 0);
@@ -123,7 +127,7 @@ export default async function Gos10kPage({
                 <p className="ui-text-secondary text-sm leading-6">
                     Every Garden of Salvation run that Guardian ever entered, from{' '}
                     {formatArchiveTimestamp(span.firstRunAt)} to {formatArchiveTimestamp(span.lastRunAt)} — and the{' '}
-                    {allTime.helpers.toLocaleString()} people who showed up for them.
+                    {allTimeHelpers.toLocaleString()} people who showed up for them.
                 </p>
 
                 {/* Reachable, closed. 10,000, 10,020 and 10,040 all look equally plausible,

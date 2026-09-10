@@ -141,11 +141,14 @@ export function getArchiveSpan(): ArchiveSpan {
  * Clear Number expression, because "44 Runs, no full clears" is a true and interesting
  * answer that the control states in words.
  */
-export function resolveArchiveRange(request: ArchiveRangeRequest): ResolvedArchiveRange {
+export function resolveArchiveRange(
+    request: ArchiveRangeRequest,
+    span: ArchiveSpan = getArchiveSpan()
+): ResolvedArchiveRange {
     const db = getArchiveDb();
 
     if (request.kind === 'none' || request.kind === 'malformed') {
-        return wholeArchive(request.kind === 'malformed');
+        return wholeArchive(span, request.kind === 'malformed');
     }
 
     if (request.kind === 'clears') {
@@ -176,7 +179,7 @@ export function resolveArchiveRange(request: ArchiveRangeRequest): ResolvedArchi
             clearTo: number | null;
         };
 
-        if (bounds.periodFrom === null || bounds.periodTo === null) return wholeArchive(true);
+        if (bounds.periodFrom === null || bounds.periodTo === null) return wholeArchive(span, true);
 
         return {
             mode: 'clears',
@@ -207,7 +210,7 @@ export function resolveArchiveRange(request: ArchiveRangeRequest): ResolvedArchi
 
     // No Runs at all, rather than no clears: every panel would report zero and the page
     // would look broken. A window holding Runs is kept even when it holds no clears.
-    if (contained.runs === 0) return wholeArchive(true);
+    if (contained.runs === 0) return wholeArchive(span, true);
 
     return {
         mode: 'dates',
@@ -221,10 +224,14 @@ export function resolveArchiveRange(request: ArchiveRangeRequest): ResolvedArchi
     };
 }
 
-/** The unfiltered range, described in both expressions so the control can render it. */
-function wholeArchive(degraded: boolean): ResolvedArchiveRange {
-    const span = getArchiveSpan();
-
+/**
+ * The unfiltered range, described in both expressions so the control can render it.
+ *
+ * Takes the span rather than reading it: the page needs the same span for its header and
+ * its presets, and re-deriving it here made the most common request — the plain,
+ * unfiltered `/gos10k` — run the same aggregate twice.
+ */
+function wholeArchive(span: ArchiveSpan, degraded: boolean): ResolvedArchiveRange {
     return {
         ...UNFILTERED_ARCHIVE_RANGE,
         dateFrom: span.firstRunAt === null ? null : formatArchiveDate(span.firstRunAt),
@@ -241,10 +248,42 @@ function wholeArchive(degraded: boolean): ResolvedArchiveRange {
  * One clause, on `r.period`, in both modes — see the note above {@link
  * ResolvedArchiveRange}. Returned with its parameters rather than interpolated: these
  * are the only user-supplied values in this module's SQL.
+ *
+ * `AND`-prefixed, matching buildRaidFilterClause() on the Tracker side, so it splices
+ * onto a query that already has a `WHERE`. The panels that have no other predicate open
+ * with `WHERE 1 = 1` for it to attach to: the alternative is a clause builder that has
+ * to know each query's other conditions, which is more machinery than four call sites
+ * and one optional predicate are worth.
  */
 function rangeClause(range: ResolvedArchiveRange): { sql: string; params: number[] } {
     if (range.periodFrom === null || range.periodTo === null) return { sql: '', params: [] };
     return { sql: 'AND r.period >= ? AND r.period <= ?', params: [range.periodFrom, range.periodTo] };
+}
+
+/**
+ * Distinct people who appeared in at least one of his Runs, excluding him.
+ *
+ * Its own function rather than a field only {@link getArchiveOverview} can produce: the
+ * page header states the *whole Archive's* helper count even while the panels below it
+ * are filtered, and reading it off a second full overview meant running every other
+ * aggregate in that shape to throw the results away.
+ *
+ * Joined to the Runs table even unfiltered, so that the filtered and unfiltered readings
+ * of "guardians who helped" are the same question asked of two windows.
+ */
+export function getArchiveHelperCount(
+    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
+): number {
+    const scope = rangeClause(range);
+
+    const row = getArchiveDb().prepare(`
+        SELECT COUNT(DISTINCT p.membership_id) AS n
+        FROM gos_10k_pgcr_players p
+        JOIN gos_10k_runs r ON r.instance_id = p.instance_id
+        WHERE p.membership_id != ? ${scope.sql}
+    `).get(SUBJECT_MEMBERSHIP_ID, ...scope.params) as { n: number };
+
+    return row.n;
 }
 
 export interface ArchiveOverview {
@@ -287,21 +326,14 @@ export function getArchiveOverview(
         lastRunAt: number | null;
     };
 
-    // Joined to the Runs table even unfiltered, so that the filtered and unfiltered
-    // readings of "guardians who helped" are the same question asked of two windows.
-    const helpers = db.prepare(`
-        SELECT COUNT(DISTINCT p.membership_id) AS n
-        FROM gos_10k_pgcr_players p
-        JOIN gos_10k_runs r ON r.instance_id = p.instance_id
-        WHERE p.membership_id != ? ${scope.sql}
-    `).get(SUBJECT_MEMBERSHIP_ID, ...scope.params) as { n: number };
+    const helpers = getArchiveHelperCount(range);
 
     return {
         runs: runs.runs,
         completions: runs.completions ?? 0,
         pinnedFullClears: runs.pinnedFullClears ?? 0,
         disjunctiveFullClears: runs.disjunctiveFullClears ?? 0,
-        helpers: helpers.n,
+        helpers,
         firstRunAt: runs.firstRunAt,
         lastRunAt: runs.lastRunAt,
     };

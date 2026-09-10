@@ -20,6 +20,8 @@
  * render the whole Archive, not an error and not an empty page.
  */
 
+import { isoToUnix } from '@/lib/utils/helpers';
+
 /** The URL parameters the control reads and writes. Both modes, four names, no overlap. */
 export const RANGE_PARAMS = {
     fromDate: 'from',
@@ -84,7 +86,7 @@ export function formatArchiveDate(unixSeconds: number): string {
 
 /** The first instant of a `YYYY-MM-DD`, UTC. */
 export function startOfArchiveDay(date: string): number {
-    return Date.parse(`${date}T00:00:00.000Z`) / 1000;
+    return isoToUnix(`${date}T00:00:00.000Z`);
 }
 
 /**
@@ -92,7 +94,7 @@ export function startOfArchiveDay(date: string): number {
  * in both boxes means that whole day, and a range ending at midnight would drop it.
  */
 export function endOfArchiveDay(date: string): number {
-    return Math.floor(Date.parse(`${date}T23:59:59.999Z`) / 1000);
+    return isoToUnix(`${date}T23:59:59.999Z`);
 }
 
 /**

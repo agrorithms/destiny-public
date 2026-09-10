@@ -19,20 +19,25 @@ import type { ResolvedArchiveRange } from '@/lib/db/archive/queries';
  */
 export function formatArchiveDay(date: string | null): string {
     if (date === null) return 'unknown';
-    return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-GB', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'UTC',
-    });
+    // Noon rather than midnight: the instant only has to land inside the right UTC day,
+    // and the middle of it is the one that cannot be moved by a rounding surprise.
+    return formatUtcDate(new Date(`${date}T12:00:00Z`).getTime(), 'short');
 }
 
 /** The long form the header uses for the Archive's own span: `4 July 2020`. */
 export function formatArchiveTimestamp(unixSeconds: number | null): string {
     if (unixSeconds === null) return 'unknown';
-    return new Date(unixSeconds * 1000).toLocaleDateString('en-GB', {
+    return formatUtcDate(unixSeconds * 1000, 'long');
+}
+
+/**
+ * The one `toLocaleDateString` call in this file, so the options that make it UTC-safe
+ * are stated once. Both public formatters differ only in how long the month is.
+ */
+function formatUtcDate(ms: number, month: 'short' | 'long'): string {
+    return new Date(ms).toLocaleDateString('en-GB', {
         year: 'numeric',
-        month: 'long',
+        month,
         day: 'numeric',
         timeZone: 'UTC',
     });

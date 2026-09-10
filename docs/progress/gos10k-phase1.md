@@ -275,8 +275,42 @@ full clears" is a true answer and the control says it in words.
 **A URL carrying both modes is malformed, not resolved in either's favour.** The control
 cannot produce one, and silently picking a winner would apply a filter nobody asked for.
 
+**Browser coverage here is #80's decision 2, not scope creep past #81.** #81 says "No browser
+coverage in this phase" and lists it Out of Scope *because the Archive had no harness*; #96 then
+built one, and both this file and `docs/adr/0007` already record that which behaviours earn
+assertions is answered "while building #87, #88 and #90". The six specs cover only what no other
+seam can see — above all that submitting one mode drops the other mode's parameters, which is a
+browser's form-submission behaviour rather than page code.
+
+**Review fixes (second commit).** Both axes found real items.
+
+- **The stat-tile grid stated no window** (Spec axis) — it was the one panel that read identically
+  for the whole Archive and for one February, against the AC "every panel … states the population
+  it counts". It now carries the same `{scope}` line as its neighbours.
+- **The control is now `sticky top-0 z-10`**, which #81's panel order asked for ("2. **Range
+  filter**, sticky") and #87's checklist does not mention.
+- **A Clear Number range's date expression is the days it *spans*** — its bounds are the two
+  Runs' own instants, so retyping those dates into the necessarily day-granular date form can
+  select a clear or two either side. Documented at `resolveArchiveRange()` and pinned by a test
+  on 2022-02-01, a day carrying thirteen clears: clears 104–105 filter to two, that day holds
+  thirteen. The equivalence AC is unaffected — both modes still resolve to one pair of `period`
+  bounds — and the equivalence test now says its window is aligned *on purpose* and asserts it.
+- **Two date formatters, one of them not UTC-safe** (Standards axis). `page.tsx`'s local
+  `formatDate` had no `timeZone`, so the header's dates were formatted in the server's zone
+  while the filter's were UTC — the previous day for any Run in the small hours, and a different
+  day on a box in another zone. Both now live in `range-copy.ts` and both pass `timeZone: 'UTC'`.
+- **The two forms' markup was duplicated** (Standards axis) — ~45 near-identical lines each. Now
+  one local `RangeForm`. The *two forms* stay two: that is the mutual-exclusion mechanism.
+- **`getArchiveOverview()` ran twice per render** even unfiltered; the second read is now skipped
+  when the range is the whole Archive.
+- **`CONTEXT.md` gained the vocabulary this ticket introduced** (Standards axis): **Range**,
+  **Degraded** — with the clamp-vs-degrade distinction, which had lived only in a code comment —
+  and **Milestone Preset**.
+- **Not changed:** `getTopHelpers(limit, range)` keeps its argument order, so the four existing
+  `getTopHelpers(100)` call sites in `tests/db/archive-predicates.test.ts` stay as they are.
+
 **Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
-`npm run build` OK (both tsconfigs) · `npm test` **334 tests, 28 files** · `npm run e2e`
+`npm run build` OK (both tsconfigs) · `npm test` **335 tests, 28 files** · `npm run e2e`
 **38 specs**.
 
 ## Notes and traps carried forward

@@ -55,7 +55,7 @@ export function ArchiveRangeFilter({
         <section
             aria-labelledby="archive-range-heading"
             data-testid="archive-range-filter"
-            className="ui-card space-y-4 rounded-md border px-4 py-4"
+            className="ui-card sticky top-0 z-10 space-y-4 rounded-md border px-4 py-4"
         >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 id="archive-range-heading" className="text-lg font-semibold ui-text-primary">
@@ -98,93 +98,53 @@ export function ArchiveRangeFilter({
             <div className="grid gap-4 sm:grid-cols-2">
                 {/* Each form posts to the route itself with GET, so submitting is a
                     navigation to a shareable URL and the back button works. */}
-                <form action={ARCHIVE_ROUTE} method="get" className="space-y-2">
-                    <fieldset className="space-y-2">
-                        <legend className="text-sm font-medium ui-text-primary">By date</legend>
-                        <div className="flex flex-wrap items-end gap-2">
-                            <label className="min-w-0 flex-1 space-y-1">
-                                <span className="ui-text-secondary block text-xs">From</span>
-                                <input
-                                    type="date"
-                                    name={RANGE_PARAMS.fromDate}
-                                    defaultValue={dateFrom}
-                                    min={spanFrom}
-                                    max={spanTo}
-                                    className="ui-card w-full rounded-sm border px-2 py-1 text-sm ui-text-primary"
-                                />
-                            </label>
-                            <label className="min-w-0 flex-1 space-y-1">
-                                <span className="ui-text-secondary block text-xs">To</span>
-                                <input
-                                    type="date"
-                                    name={RANGE_PARAMS.toDate}
-                                    defaultValue={dateTo}
-                                    min={spanFrom}
-                                    max={spanTo}
-                                    className="ui-card w-full rounded-sm border px-2 py-1 text-sm ui-text-primary"
-                                />
-                            </label>
-                            <button
-                                type="submit"
-                                className="ui-card rounded-sm border px-3 py-1 text-sm font-medium ui-accent-text"
-                            >
-                                Apply
-                            </button>
-                        </div>
-                        <p className="ui-text-secondary text-xs leading-5">
-                            {/* The inactive mode's reading of the active range, read-only:
-                                what these dates contain. */}
-                            {range.mode === 'dates'
-                                ? `These dates hold ${formatClearNumberRange(range)}.`
-                                : 'Filtering by date replaces any Clear Number range.'}
-                        </p>
-                    </fieldset>
-                </form>
+                <RangeForm
+                    legend="By date"
+                    hint={
+                        // The inactive mode's reading of the active range, read-only:
+                        // what these dates contain.
+                        range.mode === 'dates'
+                            ? `These dates hold ${formatClearNumberRange(range)}.`
+                            : 'Filtering by date replaces any Clear Number range.'
+                    }
+                    from={{
+                        name: RANGE_PARAMS.fromDate,
+                        type: 'date',
+                        defaultValue: dateFrom,
+                        min: spanFrom,
+                        max: spanTo,
+                    }}
+                    to={{
+                        name: RANGE_PARAMS.toDate,
+                        type: 'date',
+                        defaultValue: dateTo,
+                        min: spanFrom,
+                        max: spanTo,
+                    }}
+                />
 
-                <form action={ARCHIVE_ROUTE} method="get" className="space-y-2">
-                    <fieldset className="space-y-2">
-                        <legend className="text-sm font-medium ui-text-primary">
-                            By Clear Number
-                        </legend>
-                        <div className="flex flex-wrap items-end gap-2">
-                            <label className="min-w-0 flex-1 space-y-1">
-                                <span className="ui-text-secondary block text-xs">From</span>
-                                <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    name={RANGE_PARAMS.clearFrom}
-                                    defaultValue={clearFrom}
-                                    min={1}
-                                    max={span.maxClearNumber}
-                                    className="ui-card w-full rounded-sm border px-2 py-1 text-sm ui-text-primary"
-                                />
-                            </label>
-                            <label className="min-w-0 flex-1 space-y-1">
-                                <span className="ui-text-secondary block text-xs">To</span>
-                                <input
-                                    type="number"
-                                    inputMode="numeric"
-                                    name={RANGE_PARAMS.clearTo}
-                                    defaultValue={clearTo}
-                                    min={1}
-                                    max={span.maxClearNumber}
-                                    className="ui-card w-full rounded-sm border px-2 py-1 text-sm ui-text-primary"
-                                />
-                            </label>
-                            <button
-                                type="submit"
-                                className="ui-card rounded-sm border px-3 py-1 text-sm font-medium ui-accent-text"
-                            >
-                                Apply
-                            </button>
-                        </div>
-                        <p className="ui-text-secondary text-xs leading-5">
-                            {range.mode === 'clears'
-                                ? `Those clears span ${formatArchiveDayRange(range)}.`
-                                : `1 to ${span.maxClearNumber.toLocaleString()}, in the order they were cleared.`}
-                        </p>
-                    </fieldset>
-                </form>
+                <RangeForm
+                    legend="By Clear Number"
+                    hint={
+                        range.mode === 'clears'
+                            ? `Those clears span ${formatArchiveDayRange(range)}.`
+                            : `1 to ${span.maxClearNumber.toLocaleString()}, in the order they were cleared.`
+                    }
+                    from={{
+                        name: RANGE_PARAMS.clearFrom,
+                        type: 'number',
+                        defaultValue: clearFrom,
+                        min: 1,
+                        max: span.maxClearNumber,
+                    }}
+                    to={{
+                        name: RANGE_PARAMS.clearTo,
+                        type: 'number',
+                        defaultValue: clearTo,
+                        min: 1,
+                        max: span.maxClearNumber,
+                    }}
+                />
             </div>
 
             {presets.length > 0 ? (
@@ -205,5 +165,69 @@ export function ArchiveRangeFilter({
                 </div>
             ) : null}
         </section>
+    );
+}
+
+/** One bound of one mode: the same input twice per form, four times on the control. */
+interface RangeBound {
+    name: string;
+    type: 'date' | 'number';
+    defaultValue: string | number;
+    min?: string | number;
+    max?: string | number;
+}
+
+/**
+ * One mode of the control, as its own GET form.
+ *
+ * The *two forms* are the mechanism and must stay two — see the note on
+ * {@link ArchiveRangeFilter} — but the markup inside them is the same twice over, and a
+ * second copy of it is a second place for the label wiring and the phone layout to drift.
+ * The legend names the fieldset, so each mode's From/To are addressable as its own pair
+ * rather than as four identically labelled boxes on the page.
+ */
+function RangeForm({
+    legend,
+    hint,
+    from,
+    to,
+}: {
+    legend: string;
+    hint: string;
+    from: RangeBound;
+    to: RangeBound;
+}) {
+    return (
+        <form action={ARCHIVE_ROUTE} method="get" className="space-y-2">
+            <fieldset className="space-y-2">
+                <legend className="text-sm font-medium ui-text-primary">{legend}</legend>
+                <div className="flex flex-wrap items-end gap-2">
+                    {[
+                        { label: 'From', bound: from },
+                        { label: 'To', bound: to },
+                    ].map(({ label, bound }) => (
+                        <label key={label} className="min-w-0 flex-1 space-y-1">
+                            <span className="ui-text-secondary block text-xs">{label}</span>
+                            <input
+                                type={bound.type}
+                                inputMode={bound.type === 'number' ? 'numeric' : undefined}
+                                name={bound.name}
+                                defaultValue={bound.defaultValue}
+                                min={bound.min}
+                                max={bound.max}
+                                className="ui-card w-full rounded-sm border px-2 py-1 text-sm ui-text-primary"
+                            />
+                        </label>
+                    ))}
+                    <button
+                        type="submit"
+                        className="ui-card rounded-sm border px-3 py-1 text-sm font-medium ui-accent-text"
+                    >
+                        Apply
+                    </button>
+                </div>
+                <p className="ui-text-secondary text-xs leading-5">{hint}</p>
+            </fieldset>
+        </form>
     );
 }

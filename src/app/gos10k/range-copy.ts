@@ -9,12 +9,30 @@ import type { ResolvedArchiveRange } from '@/lib/db/archive/queries';
  * be the same sentence for the whole Archive and for one February.
  */
 
-/** A `YYYY-MM-DD` or a raw period, as a reader reads it. Fixed en-GB, like the header. */
+/**
+ * A `YYYY-MM-DD`, as a reader reads it: `1 Feb 2022`.
+ *
+ * `timeZone: 'UTC'` on every formatter in this file, and it is load-bearing rather than
+ * tidy: `period` is UTC and so is every date the range filter parses, so formatting in
+ * the server's local zone would print the previous day for any Run in the small hours —
+ * and would print a *different* day on a box in another zone.
+ */
 export function formatArchiveDay(date: string | null): string {
     if (date === null) return 'unknown';
     return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-GB', {
         year: 'numeric',
         month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+    });
+}
+
+/** The long form the header uses for the Archive's own span: `4 July 2020`. */
+export function formatArchiveTimestamp(unixSeconds: number | null): string {
+    if (unixSeconds === null) return 'unknown';
+    return new Date(unixSeconds * 1000).toLocaleDateString('en-GB', {
+        year: 'numeric',
+        month: 'long',
         day: 'numeric',
         timeZone: 'UTC',
     });

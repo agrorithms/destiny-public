@@ -151,6 +151,16 @@ export function resolveArchiveRange(request: ArchiveRangeRequest): ResolvedArchi
     if (request.kind === 'clears') {
         // Both bounds come from the ranked Runs themselves, so an over-wide request is
         // clamped by the data rather than by arithmetic against MAX(clear_number).
+        //
+        // The bounds are the two Runs' own instants, not their whole days: clears
+        // 104–105 means those two clears, not the thirteen that share 2022-02-01. The
+        // consequence is that the *date* expression this returns is the days the range
+        // spans, and retyping those two dates into the date form — which is necessarily
+        // day-granular — can select a clear or two either side. That is a property of
+        // dates, not a disagreement between the modes: both still resolve to one pair of
+        // period bounds, and both still filter every panel the same way. The control's
+        // copy says "span" for this reason, and
+        // tests/db/archive-range.test.ts pins the case on a day carrying 13 clears.
         const bounds = db.prepare(`
             SELECT
                 MIN(r.period) AS periodFrom,

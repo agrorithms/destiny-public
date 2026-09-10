@@ -9,7 +9,7 @@ import {
 } from '@/lib/db/archive/queries';
 import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
 import { ArchiveRangeFilter } from './ArchiveRangeFilter';
-import { describeArchiveRange } from './range-copy';
+import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
 
 /**
  * The GoS 10k Archive.
@@ -41,15 +41,6 @@ import { describeArchiveRange } from './range-copy';
  */
 export const dynamic = 'force-dynamic';
 
-function formatDate(unixSeconds: number | null): string {
-    if (unixSeconds === null) return 'unknown';
-    return new Date(unixSeconds * 1000).toLocaleDateString('en-GB', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-    });
-}
-
 export default async function Gos10kPage({
     searchParams,
 }: {
@@ -70,8 +61,9 @@ export default async function Gos10kPage({
 
     // The header speaks for the dataset rather than for the selection, so its Helper
     // count is the Archive's own — filtered, it would read as the whole history having
-    // shrunk to one February.
-    const allTime = getArchiveOverview();
+    // shrunk to one February. Unfiltered the two are the same read, so it is not made
+    // twice.
+    const allTime = range.mode === 'all' ? overview : getArchiveOverview();
 
     const maxYearRuns = Math.max(...years.map((year) => year.runs), 1);
     const totalPlayerRuns = classes.reduce((sum, row) => sum + row.playerRuns, 0);
@@ -121,7 +113,7 @@ export default async function Gos10kPage({
                     the Archive stops at, so "finished" has an end rather than being a claim. */}
                 <p className="ui-card ui-text-secondary rounded-md border px-4 py-3 text-sm leading-6">
                     <span className="font-medium ui-text-primary">
-                        Complete through {formatDate(span.lastRunAt)}.
+                        Complete through {formatArchiveTimestamp(span.lastRunAt)}.
                     </span>{' '}
                     This is a finished historical archive, not the live tracker in the navigation
                     above it. It was collected once and will not change; everything else on this
@@ -130,7 +122,7 @@ export default async function Gos10kPage({
 
                 <p className="ui-text-secondary text-sm leading-6">
                     Every Garden of Salvation run that Guardian ever entered, from{' '}
-                    {formatDate(span.firstRunAt)} to {formatDate(span.lastRunAt)} — and the{' '}
+                    {formatArchiveTimestamp(span.firstRunAt)} to {formatArchiveTimestamp(span.lastRunAt)} — and the{' '}
                     {allTime.helpers.toLocaleString()} people who showed up for them.
                 </p>
 
@@ -169,7 +161,13 @@ export default async function Gos10kPage({
 
             {/* The pinned full-clear tile that used to lead this grid is now the headline
                 above; repeating it here would state the page's own name twice. */}
-            <section className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <section className="space-y-3">
+                {/* The one panel that would otherwise read identically for the whole
+                    Archive and for one February: three bare numbers with no window. */}
+                <p className="ui-text-secondary text-sm leading-6">
+                    Across {scope}.
+                </p>
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 {[
                     { value: overview.runs, label: 'runs entered' },
                     { value: overview.completions, label: 'runs finished' },
@@ -182,6 +180,7 @@ export default async function Gos10kPage({
                         <div className="ui-text-secondary text-xs">{stat.label}</div>
                     </div>
                 ))}
+                </div>
             </section>
 
             <section className="space-y-3">

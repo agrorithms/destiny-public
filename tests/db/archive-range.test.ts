@@ -134,6 +134,10 @@ describe('the two modes are the same range', () => {
         // #87's equivalence criterion. Clear Number is defined by period ascending, so
         // the two expressions cannot disagree — unless the filter applies them
         // differently, which is exactly what this catches.
+        // Aligned on purpose: 103 is the first clear of 2022-02-01 and 143 the last of
+        // 2022-02-21, so the window's dates hold exactly the clears the window holds.
+        // The byDates expectation below is what asserts that alignment rather than
+        // assuming it, and the misaligned case is pinned in its own block above.
         const byClears = resolve({ clearFrom: '103', clearTo: '143' });
         const byDates = resolve({ from: byClears.dateFrom!, to: byClears.dateTo! });
 
@@ -142,6 +146,31 @@ describe('the two modes are the same range', () => {
         expect(clearNumbersIn(byDates)).toEqual(expected);
         expect(getArchiveOverview(byDates).pinnedFullClears)
             .toBe(getArchiveOverview(byClears).pinnedFullClears);
+    });
+});
+
+describe('a Clear Number range is described by the days it spans', () => {
+    it('spans the days its clears fall on, which may hold clears either side', () => {
+        // 2022-02-01 carries thirteen clears in the fixture, 103 through 115. Asking for
+        // 104–105 filters to exactly those two — the bounds are the Runs' own instants —
+        // but its *date* expression is that one day, and the date form is necessarily
+        // day-granular, so retyping it selects all thirteen.
+        //
+        // This is a property of dates rather than a disagreement between the modes, and
+        // it is pinned here so that a later change to either resolution has to notice it.
+        // The equivalence criterion above is unaffected: both modes still resolve to one
+        // pair of period bounds and filter every panel through it.
+        const twoClears = resolve({ clearFrom: '104', clearTo: '105' });
+
+        expect(clearNumbersIn(twoClears)).toEqual([104, 105]);
+        expect(twoClears.dateFrom).toBe('2022-02-01');
+        expect(twoClears.dateTo).toBe('2022-02-01');
+
+        const thatDay = resolve({ from: twoClears.dateFrom!, to: twoClears.dateTo! });
+
+        expect(clearNumbersIn(thatDay)).toEqual(
+            Array.from({ length: 13 }, (_, index) => index + 103)
+        );
     });
 });
 

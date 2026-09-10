@@ -29,7 +29,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#86** Page shell
 - [x] **#95** Cache lifetime + share-card fallback
 - [x] **#85** Widen the Archive fixture
-- [ ] **#87** The range filter (largest ticket; gates Wave 3)
+- [x] **#87** The range filter (largest ticket; gates Wave 3)
 - [ ] **#91** Fastest-clears list (owns the shared duration formatter)
 - [ ] **#92** Median speed board (imports #91's formatter)
 - [ ] **#88** Timeline
@@ -161,7 +161,7 @@ only way either is checkable:
   title and subtitle with **no figures at all**. Both PNGs were opened and read, not just
   size-compared.
 
-### #85 — Widen the Archive fixture (this chunk)
+### #85 — Widen the Archive fixture
 
 - [x] `scripts/extract-archive-fixture.ts` — rows now get in two ways. `TARGETS` is the
       original nine hazard rows, unchanged and each still carrying its `why`; `COHORTS` is
@@ -215,12 +215,79 @@ months (was 27), and the four/five buckets are 3/3 rather than 4/2.
 `npm run build` OK (both tsconfigs) · `npm test` **295 tests, 26 files** · `npm run e2e` 32
 specs, all green. The shape test was confirmed red against the nine-run seed first.
 
+### #87 — The global range filter (this chunk)
+
+- [x] `src/lib/db/archive/range.ts` — **new.** The half of the filter that needs no
+      database: `RANGE_PARAMS`, `parseArchiveRangeRequest()`, `archiveRangeHref()`, the UTC
+      day-boundary helpers, and `MILESTONE_PRESETS` + `resolveMilestonePresets()`. Presets
+      are *data* (`{ kind: 'first-clears' | 'final-clears' | 'first-years' | 'final-years' }`)
+      resolved by one audited arithmetic path against an `ArchiveSpan`, never against
+      `Date.now()` — #71's bug class, and the AC with teeth. Everything degrades; nothing
+      throws.
+- [x] `src/lib/db/archive/range.test.ts` — **new**, colocated (pure logic, per
+      `tests/README.md`). Parsing and degradation case by case, the href round-trip, the
+      preset figures against a *synthetic* production-shaped span (clears 9,001–10,000 —
+      the fixture's 346 would collapse "first thousand" and "final thousand" into the same
+      range and prove nothing), and the anchoring test under `vi.setSystemTime()` at two
+      dates five years apart.
+- [x] `src/lib/db/archive/queries.ts` — `getArchiveSpan()`, `resolveArchiveRange()`,
+      `ResolvedArchiveRange`, `UNFILTERED_ARCHIVE_RANGE`, and a private `rangeClause()` every
+      panel query now carries. **Both modes resolve to one pair of `r.period` bounds**, which
+      is what makes the equivalence criterion true by construction rather than by two WHERE
+      clauses kept in agreement. The four panel functions take the range as an optional
+      argument, so the share card and the existing tests still read the whole Archive.
+      `getClassDistribution()` and the overview's Helper count now join `gos_10k_runs` so they
+      can be scoped; `getTopHelpers()` keeps its `COUNT(DISTINCT r.instance_id)` (hazard 1).
+- [x] `tests/db/archive-range.test.ts` — **new.** The arithmetic, against the fixture, with
+      specific dates and specific Clear Numbers: clears 103–143 span 2022-02-01 to
+      2022-02-21; 2022-02-01 to 2022-02-28 holds clears 103–143; both return the *same* 41
+      Pinned Full Clears (the equivalence AC); clamping, the whole-Archive fallbacks, and
+      each panel's filtered figures (44 runs / 41 clears / 58 Helpers, `Antarctica#6606` at
+      24 runs and 22 clears, the Feb class split).
+- [x] `src/app/gos10k/ArchiveRangeFilter.tsx` — **new.** The control: **two GET forms**, which
+      is the whole mutual-exclusion mechanism — a browser submits the inputs of the form it
+      submitted and nothing else, so there is no state to keep in sync and no way for the
+      control to produce both ranges. Both expressions of the active range are read-only
+      text, the presets are links into the same parameters, and "Show the whole Archive"
+      appears only when there is something to clear. No client JavaScript.
+- [x] `src/app/gos10k/range-copy.ts` — **new.** The phrasing shared by the page and the
+      control (`clears 103–143`, `1 Feb 2022 – 21 Feb 2022`, `the whole Archive`), so a panel
+      that states its window and the control that sets it cannot word it differently.
+- [x] `src/app/gos10k/page.tsx` — now `async`, reads `searchParams`, resolves the range once
+      and passes it to every panel. Each panel states the window it counts. The header's
+      "complete through" band, the first/last Run sentence and its Helper count deliberately
+      read `getArchiveSpan()` / the unfiltered overview instead: they are about the dataset,
+      not about the selection.
+- [x] `e2e/gos10k-range-filter.spec.ts` — **new**, six specs. Only the browser-only half:
+      that applying one mode *drops the other mode's parameters* (a form-submission
+      behaviour, not the page's code), the URL round-trip, the clear affordance, a
+      hand-edited link degrading with its note, a preset link, and the control at 360 px.
+      Asserts no fixture counts — the Clear Numbers it uses are typed in by the test.
+
+**Two readings of "out-of-range degrades", and both ship.** A request that merely *overruns*
+the Archive is clamped (`clears 340–9999` → 340–346): it has a real answer and discarding the
+reader's intent would be worse. A request that selects **no Runs at all** — clears 9,001–10,000
+against a 346-clear Archive, dates before it begins — degrades to the whole Archive with
+`degraded: true`, because a page filtered to nothing reads as broken rather than as an answer.
+A date window holding Runs but no clears is *kept* (November 2020: one Run, no clears); "no
+full clears" is a true answer and the control says it in words.
+
+**A URL carrying both modes is malformed, not resolved in either's favour.** The control
+cannot produce one, and silently picking a winner would apply a filter nobody asked for.
+
+**Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
+`npm run build` OK (both tsconfigs) · `npm test` **334 tests, 28 files** · `npm run e2e`
+**38 specs**.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
   across the two databases; the Archive's two each carry "and the subject finished it".
-- **No `Date.now()` / `new Date()` in `src/lib/db/archive/` or `src/app/gos10k/`.** There is
-  none today. #87's milestone presets must anchor to the Archive's own span, not to now.
+- **No `Date.now()` / `new Date()` reading the clock in `src/lib/db/archive/` or
+  `src/app/gos10k/`.** #87's presets anchor to `getArchiveSpan()`, and its test pins that they
+  resolve identically five years apart. The `new Date(...)` calls that exist all *format* a
+  timestamp the database supplied; none of them ask what time it is now, and a panel ticket
+  that introduces one reintroduces #71's bug on a dataset that stopped moving in 2026.
 - **The Archive's cache `max-age` is 60 and must go back to 86400.** #95 shortened it for UI
   iteration; restoring it is the closing action on #81 and nothing but this line, the
   constant's comment and `docs/decisions.md` will remind you. Do not "fix" anything else about
@@ -241,6 +308,17 @@ specs, all green. The shape test was confirmed red against the nine-run seed fir
   helper — the per-run canary — so the Helper board and the class split differ by those rows.
   Nothing asserts either, and the difference lives in `e2e/support/archive-world.ts` rather
   than in the shared seed, which stays byte-deterministic for #84's ordinal assertions.
+- **Every panel from here takes the range.** A new panel query takes
+  `range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE` and carries `rangeClause(range)`,
+  which filters on `r.period` in *both* modes — so a query joining through
+  `gos_10k_pgcr_players` must join `gos_10k_runs` to be scopeable at all. Filtering a Clear
+  Number range on `clear_number` instead would be a second, disagreeing definition of the
+  same window and would quietly break the equivalence AC. The timeline (#88) is the one
+  deliberate exception: it draws the full history and shades the selection.
+- **Two more `data-testid`s on `/gos10k`** — `archive-range-summary` and
+  `archive-range-degraded` (plus `archive-range-filter` and `archive-range-clear`). They
+  exist because the copy they hold is a whole sentence whose *figures* move with the fixture;
+  the forms themselves are located by role (`getByRole('group', { name: 'By date' })`).
 - **#80's decisions 2 and 4 are still open.** #96 built the harness and one smoke spec only;
   which behaviours earn assertions is answered while building #87, #88 and #90.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).

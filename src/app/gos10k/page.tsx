@@ -1,10 +1,15 @@
 import Link from 'next/link';
 import {
     getArchiveOverview,
+    getArchiveSpan,
     getTopHelpers,
     getRunsByYear,
     getClassDistribution,
+    resolveArchiveRange,
 } from '@/lib/db/archive/queries';
+import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
+import { ArchiveRangeFilter } from './ArchiveRangeFilter';
+import { describeArchiveRange } from './range-copy';
 
 /**
  * The GoS 10k Archive.
@@ -21,8 +26,18 @@ import {
  *
  * Issue #86 replaced the placeholder header with the real page shell: the Pinned Full
  * Clear headline, the dated "this is finished, the nav above is not" band, the Archive's
- * span, and the methodology as a closed disclosure. The panels below it are still the
- * unfiltered placeholders — the range filter is #87 and every panel is its own ticket.
+ * span, and the methodology as a closed disclosure.
+ *
+ * Issue #87 added the global range filter. Every figure below the header obeys it, and
+ * every one of them states the window it counts — the same panel copy is otherwise the
+ * same sentence for the whole Archive and for one February. Two things deliberately do
+ * *not* obey it: the "complete through" band and the Archive's own span in the header,
+ * which are about the dataset rather than about the reader's selection, and are read
+ * from getArchiveSpan() for that reason.
+ *
+ * All filter state is URL parameters applied by re-rendering here. There is no client
+ * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
+ * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
  */
 export const dynamic = 'force-dynamic';
 
@@ -35,11 +50,28 @@ function formatDate(unixSeconds: number | null): string {
     });
 }
 
-export default function Gos10kPage() {
-    const overview = getArchiveOverview();
-    const helpers = getTopHelpers(25);
-    const years = getRunsByYear();
-    const classes = getClassDistribution();
+export default async function Gos10kPage({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+    // Parsed against the URL's grammar first, then against the data: the two failures
+    // are different — "this is not a range" and "this Archive has no such range" — and
+    // only the second one needs a database.
+    const range = resolveArchiveRange(parseArchiveRangeRequest(await searchParams));
+    const span = getArchiveSpan();
+    const presets = resolveMilestonePresets(span);
+    const scope = describeArchiveRange(range);
+
+    const overview = getArchiveOverview(range);
+    const helpers = getTopHelpers(25, range);
+    const years = getRunsByYear(range);
+    const classes = getClassDistribution(range);
+
+    // The header speaks for the dataset rather than for the selection, so its Helper
+    // count is the Archive's own — filtered, it would read as the whole history having
+    // shrunk to one February.
+    const allTime = getArchiveOverview();
 
     const maxYearRuns = Math.max(...years.map((year) => year.runs), 1);
     const totalPlayerRuns = classes.reduce((sum, row) => sum + row.playerRuns, 0);
@@ -80,7 +112,7 @@ export default function Gos10kPage() {
                     <p className="ui-text-secondary text-sm leading-6">
                         Garden of Salvation runs one Guardian entered at the first encounter and
                         finished himself — the strictest of the two defensible counts, and the one
-                        this page is named for.
+                        this page is named for. Counting {scope}.
                     </p>
                 </div>
 
@@ -89,7 +121,7 @@ export default function Gos10kPage() {
                     the Archive stops at, so "finished" has an end rather than being a claim. */}
                 <p className="ui-card ui-text-secondary rounded-md border px-4 py-3 text-sm leading-6">
                     <span className="font-medium ui-text-primary">
-                        Complete through {formatDate(overview.lastRunAt)}.
+                        Complete through {formatDate(span.lastRunAt)}.
                     </span>{' '}
                     This is a finished historical archive, not the live tracker in the navigation
                     above it. It was collected once and will not change; everything else on this
@@ -98,8 +130,8 @@ export default function Gos10kPage() {
 
                 <p className="ui-text-secondary text-sm leading-6">
                     Every Garden of Salvation run that Guardian ever entered, from{' '}
-                    {formatDate(overview.firstRunAt)} to {formatDate(overview.lastRunAt)} — and the{' '}
-                    {overview.helpers.toLocaleString()} people who showed up for them.
+                    {formatDate(span.firstRunAt)} to {formatDate(span.lastRunAt)} — and the{' '}
+                    {allTime.helpers.toLocaleString()} people who showed up for them.
                 </p>
 
                 {/* Reachable, closed. 10,000, 10,020 and 10,040 all look equally plausible,
@@ -133,6 +165,8 @@ export default function Gos10kPage() {
                 </details>
             </header>
 
+            <ArchiveRangeFilter range={range} span={span} presets={presets} />
+
             {/* The pinned full-clear tile that used to lead this grid is now the headline
                 above; repeating it here would state the page's own name twice. */}
             <section className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -152,6 +186,9 @@ export default function Gos10kPage() {
 
             <section className="space-y-3">
                 <h2 className="text-xl font-semibold ui-text-primary">By year</h2>
+                <p className="ui-text-secondary text-sm leading-6">
+                    Runs entered and Pinned Full Clears across {scope}.
+                </p>
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="ui-text-secondary text-left text-xs">
@@ -181,6 +218,9 @@ export default function Gos10kPage() {
 
             <section className="space-y-3">
                 <h2 className="text-xl font-semibold ui-text-primary">Who helped most</h2>
+                <p className="ui-text-secondary text-sm leading-6">
+                    The 25 guardians in most of his runs across {scope}.
+                </p>
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="ui-text-secondary text-left text-xs">
@@ -210,7 +250,7 @@ export default function Gos10kPage() {
                                 `${row.characterClass} ${Math.round((row.playerRuns / totalPlayerRuns) * 100)}%`
                         )
                         .join(' · ')}{' '}
-                    across {totalPlayerRuns.toLocaleString()} player-runs.
+                    across {totalPlayerRuns.toLocaleString()} player-runs in {scope}.
                 </p>
             </section>
 

@@ -60,6 +60,23 @@ describe('reading a range out of the URL', () => {
         expect(parseArchiveRangeRequest({ theme: 'dark' })).toEqual({ kind: 'none' });
     });
 
+    it('ignores a parameter that is not part of the range, alone or alongside one', () => {
+        // The browser suite depends on this. e2e/support/archive-canary.setup.ts proves
+        // the running server is bound to this run's fixture Archive by fetching
+        // `/gos10k?canary=<nonce>`, and #96's handoff flagged the coupling when #87 put
+        // real parameters on this route for the first time: `canary` has to be *ignored*
+        // — not treated as a malformed range — or the canary page renders the degraded
+        // note and the check stops meaning what it says.
+        //
+        // Pinned here rather than left to the parser's shape, because tightening the
+        // parser to reject unrecognised parameters would keep `npm test` green and break
+        // the canary instead, which is a failure a long way from its cause.
+        expect(parseArchiveRangeRequest({ canary: 'gos10k-canary-abc123' }))
+            .toEqual({ kind: 'none' });
+        expect(parseArchiveRangeRequest({ canary: 'gos10k-canary-abc123', clearFrom: '1', clearTo: '5' }))
+            .toEqual({ kind: 'clears', clearFrom: 1, clearTo: 5 });
+    });
+
     it('refuses a URL asking for both modes at once', () => {
         // The two forms in the control each submit only their own inputs, so a browser
         // cannot produce this. A hand-edited link can, and #87 is explicit that there is

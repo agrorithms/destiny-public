@@ -403,9 +403,12 @@ does not contain. Reconciled by hand instead, running this query's SQL against t
   appear in the diff.
 - **Not changed:** the `scope` prop name on `FastestClears` (flagged as a mysterious name). `scope`
   is what #87 named this string in `page.tsx`; repo precedent overrides the baseline smell.
-- **Kept deliberately, unasked:** the `clear {n}` field on each row. #91 asks for "rank, duration
-  and date"; the Clear Number ties the record to the range control above it, which is the page's
-  own denomination (ADR 0008). One span, easily dropped if unwanted.
+- **Kept, and since confirmed by the user:** the `clear {n}` field on each row. #91 asks for
+  "rank, duration and date", so this is a fourth field the ticket did not ask for. It stays
+  because the Clear Number ties the record to the range control above it in that control's own
+  denomination (ADR 0008) — `clear 9,701` is a value the reader can paste back into the filter.
+  Raised as scope creep by the Spec review and **put to the user on 2026-09-10, who kept it**.
+  Not an open question any more; a later ticket removing it is changing a decision, not tidying.
 
 **Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
 `npm run build` OK (both tsconfigs) · `npm test` **349 tests, 30 files** · `npm run e2e`

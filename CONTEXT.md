@@ -190,7 +190,9 @@ within the active **Range**, scoped to Pinned Full Clears. Deliberately a Run ra
 a board of players ranked by personal best puts the six people in the fastest Run into the top six
 rows with identical times, a tie that says nothing, so the fireteam is the object being ranked.
 Ties break on period ascending, then instance id, so two databases cannot order the same records
-differently.
+differently. A record renders its rank, duration, date and its **Clear Number** — the last is a
+fourth field beyond what #91 asked for, kept on purpose so a row ties back to the **Range**
+control in that control's own denomination, and confirmed by the user rather than left pending.
 
 **All Attempts**:
 Every raid instance observed in a window, whatever became of it — Full Clears, Checkpoint Runs and

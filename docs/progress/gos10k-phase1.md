@@ -352,15 +352,17 @@ browser's form-submission behaviour rather than page code.
       one-day filter does not print a heading that contradicts the list under it.
 - [x] `src/app/gos10k/page.tsx` — `getFastestClears(10, range)` and the panel, placed after the
       Helper board per #81's render order.
-- [x] `e2e/gos10k-fastest-clears.spec.ts` — **new**, 2 specs. Only what no other seam can see:
+- [x] `e2e/gos10k-fastest-clears.spec.ts` — **new**, 1 spec (2 as first landed; the second was
+      dropped in review, see below). Only what no other seam can see:
       that the chips actually **wrap onto more than one line at 360px** and neither the chip row
       nor the page scrolls sideways. `flex-wrap` is a computed-layout fact — the server-rendered
       DOM carries the class either way. Asserts no counts and no names.
-- [x] `e2e/gos10k-smoke.spec.ts` — the canary locator is now scoped to a table **cell**, i.e. the
-      Helper board. The canary is joined to every Run in the seed, so it renders as a chip in all
-      ten fastest-clear rows too and the old unscoped `getByText` became strict-mode ambiguous —
-      a real consequence of this panel, caught by the suite. Narrowed rather than `.first()`:
-      the binding being asserted is that the *Helper board* read the fixture.
+- [x] `e2e/gos10k-smoke.spec.ts` — the canary locator is now scoped to the Helper board. The
+      canary is joined to every Run in the seed, so it renders as a chip in all ten fastest-clear
+      rows too and the old unscoped `getByText` became strict-mode ambiguous — a real consequence
+      of this panel, caught by the suite. Narrowed rather than `.first()`: the binding being
+      asserted is that the *Helper board* read the fixture. (It landed as `getByRole('cell', …)`
+      and the cleanup pass below replaced that with a testid — see there for why.)
 - [x] `CLAUDE.md` — nine browser flows → ten.
 
 **Production reconciliation (#91's 453 AC).** The fixture is a 406-Run sample and its fastest
@@ -408,6 +410,30 @@ does not contain. Reconciled by hand instead, running this query's SQL against t
 **Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
 `npm run build` OK (both tsconfigs) · `npm test` **349 tests, 30 files** · `npm run e2e`
 **39 specs**.
+
+**Cleanup pass (third commit, `b84a1fd`).** Behaviour-neutral — same lint counts, both tsconfigs
+clean, `npm test` and `npm run e2e` unchanged. Four extractions and one correction:
+
+- **`formatClearNumber(n)` moved into `src/app/gos10k/range-copy.ts`** and both callers use it:
+  the range control's single-clear window and each fastest-clears row. These had been two
+  spellings of `clear 9,701` on one page — the duplication `duration-copy.ts` exists to prevent,
+  missed by both review axes. The `clear {n}` field itself still stands unasked (above).
+- **`expectNoHorizontalPageOverflow(page)` extracted to `e2e/support/viewport.ts`**, replacing
+  the `documentElement.scrollWidth - clientWidth` probe hand-rolled in the shell, range-filter
+  and fastest-clears specs. How page overflow is measured is one decision and three specs
+  should not drift on it. Playwright-only, so it may import `@playwright/test` directly — that
+  restriction binds `tests/helpers/`, which both runners share.
+- **The smoke spec's canary locator became `getByTestId('archive-top-helpers')` + `getByText`**,
+  and the Helper board table gained that testid. `getByRole('cell', …)` had `.first()`'s failure
+  mode one step slower: it binds to "whatever is in a `<table>`", so the first of #88–#94 to ship
+  as a table would silently capture the assertion. Name the panel you mean.
+- **`membershipType` dropped from `ArchiveParticipant`.** Nothing read it —
+  `formatBungieDisplayName()` takes the three name columns and falls back to `membershipId`.
+  `PLAYER_NAME_PROJECTION` still projects the column, because `getTopHelpers` does use it, and
+  its comment now says which callers need which columns. The frozen-dataset caveat and its
+  217-pairs/0-disagreements evidence are untouched.
+- One `isSingle` const in `FastestClears.tsx` replaces the singular-grammar ternary written
+  twice, and the participant map builds with get-or-create instead of get-copy-set. Same output.
 
 ## Notes and traps carried forward
 

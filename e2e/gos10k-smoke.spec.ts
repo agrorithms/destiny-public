@@ -33,15 +33,18 @@ test.describe('the GoS 10k Archive page', () => {
         // a real render. The setup proves the *server* opened the fixture; this
         // proves the fixture survives into the DOM a spec would assert against.
         //
-        // Scoped to a table cell, which on this page means the Helper board — the one
-        // place the canary is *designed* to appear, deterministically as its first row
-        // (see mintCanariedArchive). It is joined to every Run in the seed, so since
-        // #91 it also renders as a chip in all ten fastest-clear rows and an unscoped
-        // getByText is strict-mode ambiguous. Narrowing beats `.first()`: the binding
-        // this asserts is that the Helper board read the fixture, and `.first()` would
-        // quietly start passing on whichever panel happened to render first.
+        // Scoped to the Helper board by testid — the one place the canary is *designed*
+        // to appear, deterministically as its first row (see mintCanariedArchive). It is
+        // joined to every Run in the seed, so since #91 it also renders as a chip in all
+        // ten fastest-clear rows and an unscoped getByText is strict-mode ambiguous.
+        // Named rather than `.first()` or an ARIA role: the binding this asserts is that
+        // the Helper board read the fixture, and either of those would drift onto
+        // whichever panel happened to render first or to use a <table>, silently, as
+        // each new panel ships.
         await expect(
-            page.getByRole('cell', { name: archiveCanaryDisplayName(), exact: true })
+            page
+                .getByTestId('archive-top-helpers')
+                .getByText(archiveCanaryDisplayName(), { exact: true })
         ).toBeVisible();
 
         expect(consoleErrors, 'the page logged console errors').toEqual([]);

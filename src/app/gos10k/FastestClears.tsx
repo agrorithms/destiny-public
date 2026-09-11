@@ -1,6 +1,6 @@
 import type { ArchiveFastestClear } from '@/lib/db/archive/queries';
 import { formatRunDuration } from './duration-copy';
-import { formatArchiveTimestamp } from './range-copy';
+import { formatArchiveTimestamp, formatClearNumber } from './range-copy';
 
 /**
  * The fastest clears list (#91) — records, and the fireteams that set them.
@@ -21,6 +21,10 @@ import { formatArchiveTimestamp } from './range-copy';
  * second place for `453` to become something other than `7:33`.
  */
 export function FastestClears({ clears, scope }: { clears: ArchiveFastestClear[]; scope: string }) {
+    // One condition, read twice by the sentence below. Written out twice inline it was
+    // two ternaries a future editor had to keep in sync by eye to change one wording.
+    const isSingle = clears.length === 1;
+
     return (
         <section aria-labelledby="archive-fastest-heading" className="space-y-3">
             <h2 id="archive-fastest-heading" className="text-xl font-semibold ui-text-primary">
@@ -33,10 +37,10 @@ export function FastestClears({ clears, scope }: { clears: ArchiveFastestClear[]
                 is reachable — tests/db/archive-fastest-clears.test.ts pins a one-clear range —
                 so the sentence has to survive it rather than read "The 1 fastest". */}
             <p className="ui-text-secondary text-sm leading-6">
-                {clears.length === 1
+                {isSingle
                     ? 'The fastest Pinned Full Clear'
                     : `The ${clears.length} fastest Pinned Full Clears`}{' '}
-                across {scope}, and everyone who was in {clears.length === 1 ? 'it' : 'them'}.
+                across {scope}, and everyone who was in {isSingle ? 'it' : 'them'}.
             </p>
 
             {clears.length === 0 ? (
@@ -67,7 +71,7 @@ export function FastestClears({ clears, scope }: { clears: ArchiveFastestClear[]
                                 {/* The Run's own place in the 10,000, which is the fact
                                     that ties this row back to the range control above it. */}
                                 <span className="ui-text-secondary text-xs tabular-nums">
-                                    clear {clear.clearNumber.toLocaleString()}
+                                    {formatClearNumber(clear.clearNumber)}
                                 </span>
                             </div>
                             {/* Not a fireteam of six: everyone who entered, which is seven

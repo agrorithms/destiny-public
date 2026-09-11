@@ -261,10 +261,12 @@ function rangeClause(range: ResolvedArchiveRange): { sql: string; params: number
 }
 
 /**
- * The five columns formatBungieDisplayName() needs, as they come out of a GROUP BY over
- * `gos_10k_pgcr_players p`. Written once because two queries below project them
- * identically and a third will; the same drift argument as ./predicates.ts, one level
- * down.
+ * The four name columns a player row carries, as they come out of a GROUP BY over
+ * `gos_10k_pgcr_players p`. Three of them — `displayName`, `bungieGlobalDisplayName`,
+ * `bungieGlobalDisplayNameCode` — are what formatBungieDisplayName() reads; the fourth,
+ * `membershipType`, rides along for the callers that address a player by platform.
+ * Written once because two queries below project them identically and a third will; the
+ * same drift argument as ./predicates.ts, one level down.
  *
  * **Each `MAX()` is taken independently, and that is safe only because this dataset is
  * frozen.** In principle a membership whose duplicate character rows disagreed could
@@ -475,7 +477,6 @@ export function getClassDistribution(
 /** One person who was in a Run, named once however many characters they brought. */
 export interface ArchiveParticipant {
     membershipId: string;
-    membershipType: number;
     /** `Name#Code` in full, via formatBungieDisplayName. */
     displayName: string;
 }
@@ -556,7 +557,6 @@ export function getFastestClears(
     `).all(...runs.map((run) => run.instanceId)) as Array<{
         instanceId: string;
         membershipId: string;
-        membershipType: number;
         displayName: string | null;
         bungieGlobalDisplayName: string | null;
         bungieGlobalDisplayNameCode: number | null;
@@ -569,13 +569,15 @@ export function getFastestClears(
     // actually carries.
     const byInstance = new Map<string, ArchiveParticipant[]>();
     for (const row of participantRows) {
-        const participants = byInstance.get(row.instanceId) ?? [];
+        let participants = byInstance.get(row.instanceId);
+        if (!participants) {
+            participants = [];
+            byInstance.set(row.instanceId, participants);
+        }
         participants.push({
             membershipId: row.membershipId,
-            membershipType: row.membershipType,
             displayName: formatBungieDisplayName(row),
         });
-        byInstance.set(row.instanceId, participants);
     }
 
     return runs.map((run) => ({

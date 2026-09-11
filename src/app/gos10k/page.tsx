@@ -231,7 +231,7 @@ export default async function Gos10kPage({
                 <p className="ui-text-secondary text-sm leading-6">
                     The 25 guardians in most of his runs across {scope}.
                 </p>
-                <table className="w-full text-sm">
+                <table data-testid="archive-top-helpers" className="w-full text-sm">
                     <thead>
                         <tr className="ui-text-secondary text-left text-xs">
                             <th className="py-1 font-medium">Guardian</th>

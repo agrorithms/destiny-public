@@ -1,4 +1,5 @@
 import { expect, test } from './support/test-fixtures';
+import { expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The fastest-clears panel (#91) — the half of it that only a browser can see.
@@ -56,11 +57,7 @@ test.describe('the fastest clears panel', () => {
 
             // And the page itself, since a wide chip row is exactly how a panel breaks
             // the phone layout the shell spec pins.
-            const pageOverflow = await page.evaluate(() => {
-                const root = document.documentElement;
-                return root.scrollWidth - root.clientWidth;
-            });
-            expect(pageOverflow, 'the page scrolls horizontally at 360px').toBeLessThanOrEqual(0);
+            await expectNoHorizontalPageOverflow(page);
         });
     });
 });

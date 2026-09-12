@@ -127,6 +127,34 @@ ranking and an ordinal eight call sites re-derive is one they can re-derive diff
 ADR 0008.
 _Avoid_: clear index, run number, rank
 
+**Range** (Archive):
+The window every panel on an Archive's page counts over, expressed either as dates or as Clear
+Numbers. The two are **modes of one control, never combined**: Clear Number is defined by `period`
+ascending, so a Clear Number range *is* a date range and ANDing them could only produce an empty
+intersection. Both modes resolve to one pair of `period` bounds, which is what makes the two
+expressions the same window rather than two filters kept in agreement. A Clear Number range
+resolves to the exact instants of its first and last clear; a date range to whole UTC days, so
+the dates a Clear Number range is displayed as are the days it *spans* and can hold a clear or
+two either side of it.
+_Avoid_: filter, window, date filter
+
+**Degraded** (Archive range):
+A range the URL asked for that selected no Runs at all — malformed, reversed, asking for both
+modes, or naming clears or dates the Archive does not contain — and was therefore replaced by
+the whole Archive, with the page saying so. Distinct from **clamping**, which is what happens to
+a range that merely overruns the Archive: `clears 340–9999` against a 346-clear Archive is
+trimmed to 340–346 and is *not* degraded, because it has a real answer. The distinction exists
+because a page filtered to nothing reads as broken rather than as an answer.
+_Avoid_: invalid, rejected, reset
+
+**Milestone Preset**:
+A named link into an Archive range — "the final thousand", "the first year" — from a committed
+constant list, writing exactly the URL parameters manual selection writes. Every preset is
+anchored to the Archive's own first and last Run, never to the current date: on a frozen dataset
+a now-relative boundary drifts daily and eventually selects nothing, which renders as a broken
+filter rather than as an error.
+_Avoid_: shortcut, quick filter, season
+
 **Helper**:
 Anyone other than the Archive's subject who appears in one of his Runs, identified by `Name#Code`
 like any other player. Named for what the dataset is about — the people who got him to 10,000 —

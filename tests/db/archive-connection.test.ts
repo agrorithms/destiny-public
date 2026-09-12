@@ -18,7 +18,7 @@ import {
  * what stands in for the build-time failure that dynamic rendering gave up.
  *
  * verifyArchiveRowCounts() and verifyArchiveInvariants() are exercised directly rather
- * than through getArchiveDb(), which skips both for the fixture: the fixture is a nine-run
+ * than through getArchiveDb(), which skips both for the fixture: the fixture is a 406-run
  * sample and cannot satisfy production figures by construction.
  *
  * The invariant check is the one that catches a third failure the row counts cannot see —
@@ -70,7 +70,7 @@ describe('the manifest row-count check', () => {
     it('passes when the file matches what was built', () => {
         const db = openFixture();
         expect(() =>
-            verifyArchiveRowCounts(db, { gos_10k_runs: 9 }, ARCHIVE_DB_PATH)
+            verifyArchiveRowCounts(db, { gos_10k_runs: 406 }, ARCHIVE_DB_PATH)
         ).not.toThrow();
         db.close();
     });
@@ -84,7 +84,7 @@ describe('the manifest row-count check', () => {
             expect.unreachable('expected the mismatch to throw');
         } catch (error) {
             expect(isArchiveUnavailableError(error)).toBe(true);
-            expect((error as Error).message).toContain('gos_10k_runs: expected 13420, found 9');
+            expect((error as Error).message).toContain('gos_10k_runs: expected 13420, found 406');
             expect((error as Error).message).toContain('npm run build-gos10k');
         }
         db.close();
@@ -100,10 +100,10 @@ describe('the manifest row-count check', () => {
 
 describe('the manifest invariant assertions', () => {
     it('passes when the derived column matches what was built', () => {
-        // Four of the fixture's nine runs are Pinned Full Clears, ranked 1..4.
+        // 346 of the fixture's 406 Runs are Pinned Full Clears, ranked 1..346.
         const db = openFixture();
         expect(() =>
-            verifyArchiveInvariants(db, { maxClearNumber: 4, runsWithClearNumber: 4 }, ARCHIVE_DB_PATH)
+            verifyArchiveInvariants(db, { maxClearNumber: 346, runsWithClearNumber: 346 }, ARCHIVE_DB_PATH)
         ).not.toThrow();
         db.close();
     });
@@ -111,19 +111,20 @@ describe('the manifest invariant assertions', () => {
     it('names both figures when the ranking used the wrong full-clear rule', () => {
         // What that failure looks like in production: 10,020 ordinals over 10,020 Runs, and
         // every row count in the manifest still correct. On the fixture the same mistake is
-        // 5 and 5 against an expected 4 and 4.
+        // 366 and 366 against an expected 346 and 346 — the 20 post-pin phase-0 Runs the
+        // disjunctive rule counts, which the fixture carries in full.
         const db = openFixture();
         try {
             verifyArchiveInvariants(
                 db,
-                { maxClearNumber: 5, runsWithClearNumber: 5 },
+                { maxClearNumber: 366, runsWithClearNumber: 366 },
                 ARCHIVE_DB_PATH
             );
             expect.unreachable('expected the mismatch to throw');
         } catch (error) {
             expect(isArchiveUnavailableError(error)).toBe(true);
-            expect((error as Error).message).toContain('maxClearNumber: expected 5, found 4');
-            expect((error as Error).message).toContain('runsWithClearNumber: expected 5, found 4');
+            expect((error as Error).message).toContain('maxClearNumber: expected 366, found 346');
+            expect((error as Error).message).toContain('runsWithClearNumber: expected 366, found 346');
             expect((error as Error).message).toContain('npm run build-gos10k');
         }
         db.close();
@@ -140,7 +141,7 @@ describe('the manifest invariant assertions', () => {
 
         const db = openFixture();
         try {
-            verifyArchiveInvariants(db, { maxClearNumber: 4, runsWithClearNumber: 4 }, ARCHIVE_DB_PATH);
+            verifyArchiveInvariants(db, { maxClearNumber: 346, runsWithClearNumber: 346 }, ARCHIVE_DB_PATH);
             expect.unreachable('expected the missing column to throw');
         } catch (error) {
             expect(isArchiveUnavailableError(error)).toBe(true);

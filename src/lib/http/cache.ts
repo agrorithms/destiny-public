@@ -4,7 +4,26 @@ export function cacheControl(sMaxAgeSeconds: number, staleWhileRevalidateSeconds
     return `public, max-age=0, s-maxage=${sMaxAgeSeconds}, stale-while-revalidate=${staleWhileRevalidateSeconds}`;
 }
 
-const ARCHIVE_MAX_AGE_SECONDS = 86400;
+/** The Archive's shared-cache lifetime: a frozen dataset's correct value, unchanged. */
+const ARCHIVE_SHARED_MAX_AGE_SECONDS = 86400;
+
+/**
+ * TEMPORARY — shortened for active UI iteration on /gos10k (issue #95, spec #81).
+ *
+ * The correct lifetime for a frozen dataset is long, and 86400 is what this was. But while
+ * Phase 1 lands a panel at a time, a day-long *browser* cache means a maintainer ships a
+ * change and then reviews yesterday's page. The lever is the lifetime, not the directive:
+ * dropping `immutable` would change nothing, because a browser will not revalidate inside
+ * `max-age` either way.
+ *
+ * It is a second constant, rather than a smaller value on the one above, because #81 scopes
+ * this to the browser and #95 requires the rest of the header hold still — one constant
+ * feeding both directives would quietly move `s-maxage` as well.
+ *
+ * RESTORE to 86400 once the /gos10k UI settles, which collapses this back into the
+ * constant above — tracked as the closing action on #80.
+ */
+const ARCHIVE_BROWSER_MAX_AGE_SECONDS = 60;
 
 /**
  * For the Archive: a frozen, complete dataset whose last row was written before the
@@ -18,9 +37,12 @@ const ARCHIVE_MAX_AGE_SECONDS = 86400;
  * to a 4h zone default, which is how /api/live-stats once served max-age=14400 from a
  * repo that had never emitted a non-zero max-age. Check `cf-cache-status` and the header
  * prod returns before trusting this. See docs/decisions.md.
+ *
+ * `middleware.ts` matches `/gos10k/*` as well as `/gos10k`, so this also sets the header on
+ * `/gos10k/opengraph-image` — the share card gets the same lifetimes as the page.
  */
 export function archiveCacheControl(): string {
-    return `public, max-age=${ARCHIVE_MAX_AGE_SECONDS}, s-maxage=${ARCHIVE_MAX_AGE_SECONDS}, immutable`;
+    return `public, max-age=${ARCHIVE_BROWSER_MAX_AGE_SECONDS}, s-maxage=${ARCHIVE_SHARED_MAX_AGE_SECONDS}, immutable`;
 }
 
 export function noStore(): string {

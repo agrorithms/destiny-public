@@ -540,3 +540,91 @@ a process for a file that will never change again.
 counts against the committed manifest on first open and throws if they disagree. That check is what
 stands in for the build-time failure the dynamic rendering choice gave up — a truncated or stale
 `scp` is a loud 500 on `/gos10k`, not a plausible wrong number.
+
+---
+
+## 2026-09-08 — The Archive's cache lifetime is temporarily short, and the share card stops guessing
+
+Issue **#95**, under spec **#81** (the GoS 10k Phase 1 UI). Two operational changes, both narrow,
+one of which is explicitly a setting to undo later.
+
+### The browser lifetime is 60, and goes back to 86400
+
+The 2026-09-04 entry above establishes that a long `max-age` plus `immutable` is the *correct*
+header for a frozen dataset, and that the origin emits it byte-identical on the wire — Cloudflare
+is not rewriting it. None of that has changed and none of it was touched here.
+
+What changed is that `/gos10k`'s **markup** is now under active development several times a week,
+and a day-long browser cache means a maintainer ships a panel and then reviews yesterday's page.
+So the **browser** lifetime in `src/lib/http/cache.ts` drops from 86400 to **60** for the duration
+of Phase 1.
+
+- **The lifetime is the only lever.** Dropping `immutable` instead would change nothing: a browser
+  will not revalidate inside `max-age` whether or not the response says `immutable`. `immutable` is
+  retained.
+- **`max-age` and `s-maxage` are now two constants, not one.** They previously shared a single
+  `ARCHIVE_MAX_AGE_SECONDS`, so shortening "the lifetime" moved the shared-cache value too — which
+  #81 does not ask for ("the only lever is the max-age value", and story 41 is about the browser)
+  and which #95 forbids ("nothing else about the emitted cache header changes").
+  `ARCHIVE_SHARED_MAX_AGE_SECONDS` stays at 86400; `ARCHIVE_BROWSER_MAX_AGE_SECONDS` is the
+  temporary 60, and restoring collapses them back into one. This was caught on review, not on the
+  way in: the first cut moved both and claimed only that the header's *shape* was unchanged, which
+  sidesteps the value question rather than answering it.
+- **The emitted header's shape is unchanged** — still `public, max-age=N, s-maxage=M, immutable`,
+  still set in exactly one place (`archiveCacheControl()`, called once from `middleware.ts`). No
+  call site was touched and **no Cloudflare cache rule was added**; the route stays `DYNAMIC` at
+  the edge, which is the accepted decision recorded above — and is why the `s-maxage` value is
+  inert today either way.
+- **The share card gets the same header.** `middleware.ts` matches `/gos10k/*`, so
+  `/gos10k/opengraph-image` is covered too and its browser TTL drops to 60 as well. Harmless, and
+  arguably wanted while the card is changing, but worth naming rather than discovering.
+- **Restoring 86400 is a real outstanding action**, not a nice-to-have. It is the closing action on
+  **#80**, is a checkbox in `docs/progress/gos10k-phase1.md`, and the constant's own comment says
+  so. Nothing else will remind anyone.
+
+At ~5 visitors/day the cache buys the site almost nothing either way; this is a developer-ergonomics
+setting, which is exactly why it needs a written expiry rather than living only in a diff.
+
+### The share card renders no figures rather than published ones
+
+`src/app/gos10k/opengraph-image.tsx` read the Archive for its two stats and, on a throw, fell back
+to the literals `10000` and `5455`. That is the failure the Archive's verify-on-open design exists
+to prevent — a plausible, confident, unverified number — reproduced in the single artifact that
+travels beyond the site. A pasted link is `/gos10k`'s entire distribution channel.
+
+It now builds the stat array only inside the `try`. On failure the array stays `undefined` and
+`brandedCard()` omits the stat block, so the card still renders: wordmark, title, subtitle, no
+numbers. **The unfurl never fails outright** — a card missing a number beats no card, and the page
+itself already 500s loudly, so the failure is never silent overall.
+
+### Deliberately left alone: the static metadata that also names the figures
+
+`src/app/gos10k/layout.tsx`'s OpenGraph `description` and the route's `alt` string both contain
+"10,000" and "5,455" as prose. This was noticed and left, as a scope call rather than an oversight:
+
+- They are **static strings that never read the Archive**, so no Archive failure can make them
+  disagree with what was read — there is no fallback here to be wrong, only published copy.
+- Making them dynamic would add a per-request Archive read to a metadata path that currently
+  cannot fail, i.e. it would *introduce* the failure mode #95 exists to remove.
+- The figures are constants of a dataset that will never gain a row, and are the reference figures
+  #81 itself quotes.
+
+If they are ever wrong it is because the Archive was rebuilt wrongly, and the answer to that is the
+manifest invariants (ADR 0008), not templating the marketing copy.
+
+**The residual, recorded as a known limitation rather than argued away.** #81's story 42 asks that
+"the social unfurl … stop asserting numbers it did not read from the database", and an unfurl is
+the card *plus* the title, description and alt text around it. So with a broken Archive, Discord
+shows a figureless card beside prose that still says "10,000 … 5,455". #95's own criterion is
+narrower — it asks only that the card not *fall back* to hardcoded numbers, and `layout.tsx` has no
+fallback to remove — so this closes #95 while leaving story 42 partly open, by choice. Anyone
+reopening it should weigh removing the figures from the prose (cheap, no new read, weaker unfurl
+copy) against making it dynamic (rejected above).
+
+### No test
+
+#95 touches neither of Phase 1's agreed test seams (the Archive query module, the shared derivation,
+connection-open verification). The cache change is one constant, verifiable only against a running
+server; the card's no-figures branch has no seam today and inventing one to reach a `catch` would be
+application code changed to be testable, which `CLAUDE.md` forbids without questioning first.
+`docs/handoffs/260803-playwright-e2e.md` continues to list the OG route as uncovered.

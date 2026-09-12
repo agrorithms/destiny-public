@@ -14,19 +14,43 @@ import seedJson from '../fixtures/archive-seed.json';
  * same getArchiveDb() production uses.
  *
  * The rows and the schema both come from tests/fixtures/archive-seed.json, extracted
- * from the real master by scripts/extract-archive-fixture.ts. They are real rows chosen
- * for their hazards — read `targets` in that file for what each one is for.
+ * from the real master by scripts/extract-archive-fixture.ts. They are real rows, chosen
+ * either for their hazards or for the population a panel needs — read `targets` and
+ * `cohorts` in that file for what each one is for.
  *
  * Lives in tests/helpers/ and therefore, per CLAUDE.md: no import from `vitest`
  * (Playwright loads this directory too and has no `vi`), and relative imports only
  * (Playwright's loader does not apply tsconfig `paths` to globalSetup).
  */
 
-interface ArchiveSeed {
+/** A hazard row, named one at a time in the extraction script with a reason each. */
+export interface SeedTarget {
+    instanceId: string;
+    why: string;
+}
+
+/** A SQL-defined slice, sized for a population a Phase 1 panel has to count. */
+export interface SeedCohort {
+    name: string;
+    why: string;
+    runs: number;
+}
+
+/**
+ * The committed seed's shape.
+ *
+ * Declared here rather than in the extraction script because this is the reading end:
+ * the script imports it back as a type so the writer and the reader cannot describe
+ * the same file differently. Type-only, so nothing of this module — including the
+ * ~1.8 MB JSON import above — is pulled into the script at runtime.
+ */
+export interface ArchiveSeed {
     generatedAt: string;
+    generatedBy: string;
     source: string;
     pinInstanceId: string;
-    targets: Array<{ instanceId: string; why: string }>;
+    targets: SeedTarget[];
+    cohorts: SeedCohort[];
     schema: string[];
     tables: Record<string, Array<Record<string, unknown>>>;
 }

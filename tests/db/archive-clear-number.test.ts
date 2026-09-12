@@ -17,13 +17,15 @@ import {
  * Both have the right row count, both look healthy, and both put every downstream panel
  * a few hundred Runs out.
  *
- * The fixture is nine real runs carrying exactly those two traps: 14537310174 (after the
+ * The fixture is 406 real Runs carrying exactly those two traps: 14537310174 (after the
  * pin, flag 0, phase 0 — the disjunctive rule counts it, the pinned rule does not) and
  * 8249673559 (is_full_clear = 1, completed = 0 — the fireteam cleared it without him).
- * Four of the nine are Pinned Full Clears, so the correct derivation ranks 1..4 and the
- * two wrong ones rank 1..5. See `targets` in tests/fixtures/archive-seed.json.
+ * 346 of the 406 are Pinned Full Clears, so the correct derivation ranks 1..346; ranked
+ * over the disjunctive rule it would rank 1..366, because the fixture carries all 20 of
+ * the post-pin phase-0 Runs the two rules disagree about. See `targets` and `cohorts` in
+ * tests/fixtures/archive-seed.json.
  *
- * The ordinals here are 1..4 over the sample rather than a real place among the 10,000:
+ * The ordinals here are 1..346 over the sample rather than a real place among the 10,000:
  * the fixture is extracted, then run through the production derivation by
  * scripts/extract-archive-fixture.ts. It is the rule that is under test, not the numbers.
  */
@@ -50,7 +52,8 @@ describe('the derived Clear Number', () => {
     it('numbers the Pinned Full Clears from 1 by period ascending', () => {
         const ranked = rankedRuns().filter((run) => run.clearNumber !== null);
 
-        expect(ranked.map((run) => run.clearNumber)).toEqual([1, 2, 3, 4]);
+        expect(ranked.map((run) => run.clearNumber))
+            .toEqual(Array.from({ length: 346 }, (_, index) => index + 1));
         // Ascending by period is the definition, not an incidental ordering: the range
         // filter reads a Clear Number range as a date range on the strength of it.
         expect(ranked.map((run) => run.period)).toEqual([...ranked.map((run) => run.period)].sort((a, b) => a - b));
@@ -67,14 +70,14 @@ describe('the derived Clear Number', () => {
 
     it('leaves the flag-0 / phase-0 run after the pin unranked', () => {
         // 14537310174 is the 10,000-vs-10,020 difference in miniature. A derivation ranked
-        // over the disjunctive rule counts it, and then MAX(clear_number) is 5 here and
+        // over the disjunctive rule counts it, and then MAX(clear_number) is 366 here and
         // 10,020 in production, with the right row count either way.
         const disjunctiveOnly = rankedRuns().find((run) => run.instanceId === '14537310174');
 
         expect(disjunctiveOnly?.clearNumber).toBeNull();
         expect(readArchiveInvariants(getArchiveDb())).toEqual({
-            maxClearNumber: 4,
-            runsWithClearNumber: 4,
+            maxClearNumber: 346,
+            runsWithClearNumber: 346,
         });
     });
 
@@ -125,12 +128,15 @@ describe('re-deriving over a database that already carries the column', () => {
     });
 
     it('clears an ordinal off a Run that is not a Pinned Full Clear', () => {
-        db.prepare('UPDATE gos_10k_runs SET clear_number = 99 WHERE instance_id = ?')
+        // 9999, not a plausible ordinal: the fixture already uses 1..346, so a smaller
+        // number would be indistinguishable from a real one if the reset ever stopped
+        // happening.
+        db.prepare('UPDATE gos_10k_runs SET clear_number = 9999 WHERE instance_id = ?')
             .run('8249673559');
 
         const invariants = deriveClearNumbers(db);
 
-        expect(invariants).toEqual({ maxClearNumber: 4, runsWithClearNumber: 4 });
+        expect(invariants).toEqual({ maxClearNumber: 346, runsWithClearNumber: 346 });
         expect(
             db.prepare('SELECT clear_number AS n FROM gos_10k_runs WHERE instance_id = ?')
                 .get('8249673559')
@@ -140,14 +146,14 @@ describe('re-deriving over a database that already carries the column', () => {
     it('refuses to report invariants when the ordinals are not contiguous', () => {
         // Not a mistake this derivation makes — it is the assertion that would catch one,
         // so that a build cannot write a manifest asserting a ranking that skipped a Run.
-        // The reader stays a reader: it reports 99 over 4, and the assertion is what
+        // The reader stays a reader: it reports 9999 over 346, and the assertion is what
         // decides that is unusable.
         deriveClearNumbers(db);
-        db.prepare('UPDATE gos_10k_runs SET clear_number = 99 WHERE clear_number = 4').run();
+        db.prepare('UPDATE gos_10k_runs SET clear_number = 9999 WHERE clear_number = 346').run();
 
         const invariants = readArchiveInvariants(db);
 
-        expect(invariants).toEqual({ maxClearNumber: 99, runsWithClearNumber: 4 });
+        expect(invariants).toEqual({ maxClearNumber: 9999, runsWithClearNumber: 346 });
         expect(() => assertContiguousClearNumbers(invariants)).toThrow(/not contiguous/);
     });
 });

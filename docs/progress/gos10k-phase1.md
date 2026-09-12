@@ -528,11 +528,18 @@ shared rather than forking it).
 - **The panel says "present for"**, not "with": every Run in this Archive is the subject's, so a
   Helper is present for a Pinned Full Clear rather than the owner of one. CONTEXT.md's **Helper**
   entry makes the same distinction.
-- *Not acted on:* the name-hydration statement is the third "rank, then re-read names" block after
-  `getTopHelpers` and `getFastestClears`, and a shared `namesFor(ids)` is the obvious extraction —
-  but the other two hydrate inside their own `GROUP BY` with different projections, so collapsing
-  all three is a refactor of two shipped panels rather than a #92 change. Written down here rather
-  than done quietly, the way #91 left the Tracker's duplicate duration formatter.
+- *Not acted on:* the name-hydration statement is the **second** "rank, then re-read names" block,
+  after `getFastestClears` — **not the third.** The review said third and named `getTopHelpers`
+  alongside it; that is wrong and is corrected here rather than left to mislead the next reader.
+  `getTopHelpers` is a **single statement**: it projects `PLAYER_NAME_PROJECTION` inside its own
+  `GROUP BY p.membership_id` and never re-reads anything, because it already groups on the table
+  the names live in. So there are two such blocks and they are **different shapes** —
+  `getFastestClears` hydrates *participants* per instance (`GROUP BY p.instance_id,
+  p.membership_id`, carrying `MIN(p.start_seconds)` for entry order), `getMedianSpeedBoard`
+  hydrates *names* per membership. A shared `namesFor(ids)` would fit the second and not the
+  first. Left alone because collapsing them is a refactor of a shipped panel rather than a #92
+  change, the way #91 left the Tracker's duplicate duration formatter — but the case for it is
+  weaker than the review made it sound, not stronger.
 - *Not acted on:* **Clear Floor** stays a bolded term inside the **Median Clear Duration** entry
   rather than becoming its own. The user prefers amending an entry over adding a competing one,
   and the floor is not a concept that stands up away from the statistic it gates.

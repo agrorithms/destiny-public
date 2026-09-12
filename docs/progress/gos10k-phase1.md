@@ -31,7 +31,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#85** Widen the Archive fixture
 - [x] **#87** The range filter (largest ticket; gates Wave 3)
 - [x] **#91** Fastest-clears list (owns the shared duration formatter)
-- [ ] **#92** Median speed board (imports #91's formatter)
+- [x] **#92** Median speed board (imports #91's formatter)
 - [ ] **#88** Timeline
 - [ ] **#90** Helper board
 - [ ] **#89** Presence strip
@@ -313,7 +313,7 @@ browser's form-submission behaviour rather than page code.
 `npm run build` OK (both tsconfigs) · `npm test` **335 tests, 28 files** · `npm run e2e`
 **38 specs**.
 
-### #91 — Fastest clears list (this chunk)
+### #91 — Fastest clears list
 
 - [x] `src/app/gos10k/duration-copy.ts` — **new.** `formatRunDuration(seconds)`: `7:33` under an
       hour, `3:23:54` over it. The ticket's own AC is that this is the *only* duration
@@ -437,6 +437,73 @@ clean, `npm test` and `npm run e2e` unchanged. Four extractions and one correcti
   217-pairs/0-disagreements evidence are untouched.
 - One `isSingle` const in `FastestClears.tsx` replaces the singular-grammar ternary written
   twice, and the participant map builds with get-or-create instead of get-copy-set. Same output.
+
+### #92 — Median speed board (this chunk)
+
+- [x] `src/lib/db/archive/queries.ts` — `getMedianSpeedBoard(limit = 15, range)`,
+      `ArchiveMedianSpeedHelper`, and the exported `MEDIAN_SPEED_CLEAR_FLOOR = 15`. #87's panel
+      shape again: range last, defaulted to `UNFILTERED_ARCHIVE_RANGE`, scoped through the
+      private `rangeClause()`. **The floor is exported because the panel has to state it** — a
+      floor a reader cannot see is indistinguishable from a Helper who is missing (the ticket's
+      "in the visitor's terms, not only in the code" criterion).
+      **SQLite has no `median()`**, so it is the standard window-function form: a `DISTINCT
+      (membership, instance, duration)` CTE, `ROW_NUMBER()` and `COUNT(*)` partitioned by
+      membership, then `AVG()` over `position IN ((clears + 1) / 2, (clears + 2) / 2)` — integer
+      division, so an odd count selects one row and an even count the two either side. Reading
+      every (Helper, duration) pair into TypeScript instead is ~60,000 rows per request in
+      production for a fifteen-row board.
+      **The `DISTINCT` is hazard 1**, and it bites twice here: counting player rows would push a
+      multi-character Helper over the floor *and* weight that Run several times in the median.
+      **Two statements, not one join**, as `getFastestClears`: rank first, then read the names of
+      exactly the memberships that made the board, which keeps `LIMIT` denominated in Helpers and
+      the window functions off a query that also has to `GROUP BY` four name columns.
+      **Ordering is `medianSeconds ASC, clears DESC, membershipId ASC`.** The fixture ties two
+      Helpers at 884s on rows 14 and 15 — the cut of a 15-row board — so untied it is the query
+      plan that decides which of them a reader sees. More clears wins: the board is about
+      consistency, and 61 clears is more evidence of it than 15.
+- [x] `tests/db/archive-median-speed.test.ts` — **new**, 10 tests, figures computed independently
+      from `tests/fixtures/archive-seed.json` rather than read back off the query. Unfiltered,
+      28 Helpers clear the floor and the board's top row is `孑孓#4862`, 18 clears, median
+      **725.5** — the ticket's even-count case, and it is rank 1 rather than a corner case.
+      `Azźyyy#2886` sits **exactly on the floor** at 15 clears and rank 6, which is the row a
+      `> 15` drops and nothing else. The odd-count case is that same row (763s, a real Run's own
+      duration). Range scoping is February 2022 (clears 103–143), where exactly one Helper
+      reaches fifteen — a one-row board, which the panel must also survive.
+- [x] `src/app/gos10k/duration-copy.ts` — `formatMedianDuration(seconds)`, delegating to
+      `formatRunDuration` after `Math.round`. **A true median over an even clear count is
+      fractional** (725.5), and `formatRunDuration` floors by design because it renders an integer
+      column of real Run durations. Handing it 725.5 prints the lower of the two middles on every
+      even-count row and looks exactly like a correct answer. The rounding decision is therefore
+      stated once, in copy, and the formatting itself is still the one shared implementation #91
+      introduced — this board cannot render a duration differently from the list above it.
+- [x] `src/app/gos10k/duration-copy.test.ts` — two tests for the wrapper: `725.5 → 12:06` (the
+      fixture's top row) and a whole-second median rendering identically through both functions.
+- [x] `src/app/gos10k/MedianSpeedBoard.tsx` — **new.** Three columns — Guardian, Full clears,
+      Median clear — with the floor and the median-not-mean reasoning in the panel's own copy,
+      beside `describeArchiveRange()`'s scope line. **The empty state is prose, not an empty
+      table**: any single-day range holds one clear, so nobody can reach fifteen, and three
+      headings over nothing reads as a broken panel. Its own `data-testid="archive-median-speed"`
+      rather than a role locator, for the reason #91's cleanup wrote down.
+- [x] `src/app/gos10k/page.tsx` — `getMedianSpeedBoard(15, range)` and the panel, placed directly
+      after the fastest-clears list per #81's render order. The two are adjacent on purpose: one
+      good night and sustained form only read as a comparison side by side.
+- [x] `e2e/gos10k-median-speed.spec.ts` — **new**, 1 spec, and the same rule #91 settled on:
+      assert only what no other seam can see. The medians, the floor, the tie-break and the empty
+      state are Vitest's; what is left is the phone criterion, since a three-column table whose
+      first column is `Name#Code` in full is the likeliest thing on this page to overflow 360px
+      and the server-rendered DOM is identical whether it does or not. Asserts no counts, no
+      names, no durations.
+- [x] `CONTEXT.md` — **Median Clear Duration** (Archive), carrying **Clear Floor** in its second
+      paragraph rather than as a competing entry. Records why the floor is 15 and measured (51 of
+      725 Helpers reach it within clears 9,001–10,000; only 32 reach 25), why it is fixed (URL-driven
+      server rendering — a slider is a full render per drag tick), and that an even count is
+      legitimately fractional.
+- [x] `CLAUDE.md` — ten browser flows → eleven.
+
+**No second median implementation, and no floor knob.** The floor is a module constant, not a
+parameter with a default: a parameter is a knob, and the ticket's reason for fixing it — a slider
+is a full server render per drag tick — is an argument against having one at all. Tests read the
+exported constant rather than the literal 15, so a change to it fails the boundary test loudly.
 
 ## Notes and traps carried forward
 

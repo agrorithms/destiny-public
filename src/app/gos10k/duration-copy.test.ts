@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatRunDuration } from './duration-copy';
+import { formatMedianDuration, formatRunDuration } from './duration-copy';
 
 /**
  * The Archive's one duration formatter (#91).
@@ -41,5 +41,24 @@ describe('formatting a run duration', () => {
         expect(formatRunDuration(0)).toBe('0:00');
         expect(formatRunDuration(59)).toBe('0:59');
         expect(formatRunDuration(3599)).toBe('59:59');
+    });
+});
+
+describe('formatting a median clear duration', () => {
+    it('rounds the half-second an even clear count produces', () => {
+        // A median over an even number of clears is the mean of the two middle ones, so
+        // 725.5 is a real value the query returns (#92's top fixture row, 18 clears).
+        // formatRunDuration floors, which would silently render it as the lower of the
+        // two middles on every even-count row — the plausible wrong number this
+        // codebase cares about. Rounding is the decision, made here once.
+        expect(formatMedianDuration(725.5)).toBe('12:06');
+        expect(formatMedianDuration(731)).toBe('12:11');
+    });
+
+    it('renders a whole-second median exactly as any other duration', () => {
+        // An odd clear count is a real clear's own duration, so the two formatters must
+        // not disagree about it: this is the same rule, reached through the wrapper.
+        expect(formatMedianDuration(763)).toBe(formatRunDuration(763));
+        expect(formatMedianDuration(1039)).toBe('17:19');
     });
 });

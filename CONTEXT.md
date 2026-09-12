@@ -194,6 +194,23 @@ differently. A record renders its rank, duration, date and its **Clear Number** 
 fourth field beyond what #91 asked for, kept on purpose so a row ties back to the **Range**
 control in that control's own denomination, and confirmed by the user rather than left pending.
 
+**Median Clear Duration** (Archive):
+A **Helper**'s middle Pinned Full Clear time within the active **Range** — the statistic the
+median speed board ranks on, and the answer to "who is reliably quick" as distinct from the
+**Fastest Clear** list's "who set records". A median rather than a mean because this dataset
+contains AFK runs of several hours, any one of which moves a mean by minutes and a median not at
+all. Counted on distinct Runs, so a Helper who brought three characters to one raid contributes one
+duration (hazard 1); an even clear count yields the mean of the two middle Runs and is therefore
+legitimately fractional, rounded only when it is rendered.
+
+A Helper appears on that board only above the **Clear Floor**: 15 Pinned Full Clears inside the
+active Range, fixed rather than user-adjustable — this page is URL-driven server rendering, so a
+slider is a full render per drag tick. Fifteen was measured, not picked: within clears 9,001–10,000
+only 51 of the 725 Helpers present reach it and only 32 reach twenty-five, so a higher floor empties
+the board on exactly the narrow filters it is most interesting on. The floor is stated in the
+panel's own copy, because a floor a reader cannot see is indistinguishable from a missing Helper.
+_Avoid_: average clear time, minimum runs, cutoff
+
 **All Attempts**:
 Every raid instance observed in a window, whatever became of it — Full Clears, Checkpoint Runs and
 runs nobody finished. The counterpart to Full Clear, and the broader of the two scopes any

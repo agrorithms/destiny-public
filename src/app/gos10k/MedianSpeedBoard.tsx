@@ -15,6 +15,10 @@ import { formatMedianDuration } from './duration-copy';
  * reason is stated on the page too, because a reader comparing this board to the records
  * above will otherwise assume they are the same statistic.
  *
+ * A Helper is *present for* a Pinned Full Clear rather than the owner of one — every Run
+ * in this Archive is the subject's — which is why the copy reads "present for" and the
+ * column is headed with the population rather than with a possessive.
+ *
  * The floor is written into the panel's own copy rather than only into the query. A
  * reader who expects to see someone and does not is owed the reason — and the reason
  * moves with the range, because fifteen clears in one February is a different bar from
@@ -36,8 +40,8 @@ export function MedianSpeedBoard({
                 state its floor in the same breath: the population *is* "Helpers with at
                 least fifteen clears in this window", not "Helpers". */}
             <p className="ui-text-secondary text-sm leading-6">
-                Guardians with at least {MEDIAN_SPEED_CLEAR_FLOOR} Pinned Full Clears across{' '}
-                {scope}, ranked by their median clear time. A median rather than an average,
+                Guardians present for at least {MEDIAN_SPEED_CLEAR_FLOOR} Pinned Full Clears
+                across {scope}, ranked by their median clear time. A median rather than an average,
                 because one AFK run of several hours would wreck an average.
             </p>
 
@@ -46,8 +50,8 @@ export function MedianSpeedBoard({
                 // can reach fifteen. An empty table with three headings would read as a
                 // broken panel; this says which of the two things happened.
                 <p className="ui-text-secondary text-sm leading-6">
-                    No guardian reached {MEDIAN_SPEED_CLEAR_FLOOR} Pinned Full Clears in this
-                    range, so there is nobody to rank. Widen the range to see the board.
+                    No guardian was present for {MEDIAN_SPEED_CLEAR_FLOOR} Pinned Full Clears in
+                    this range, so there is nobody to rank. Widen the range to see the board.
                 </p>
             ) : (
                 // Its own testid rather than a role locator: `getByRole('table')` binds to

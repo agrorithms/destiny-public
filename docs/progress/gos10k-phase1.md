@@ -487,7 +487,7 @@ clean, `npm test` and `npm run e2e` unchanged. Four extractions and one correcti
 - [x] `src/app/gos10k/page.tsx` — `getMedianSpeedBoard(15, range)` and the panel, placed directly
       after the fastest-clears list per #81's render order. The two are adjacent on purpose: one
       good night and sustained form only read as a comparison side by side.
-- [x] `e2e/gos10k-median-speed.spec.ts` — **new**, 1 spec, and the same rule #91 settled on:
+- [x] `e2e/gos10k-median-speed.spec.ts` — **new**, 2 specs (1 as first landed), and the same rule #91 settled on:
       assert only what no other seam can see. The medians, the floor, the tie-break and the empty
       state are Vitest's; what is left is the phone criterion, since a three-column table whose
       first column is `Name#Code` in full is the likeliest thing on this page to overflow 360px
@@ -499,6 +499,43 @@ clean, `npm test` and `npm run e2e` unchanged. Four extractions and one correcti
       server rendering — a slider is a full render per drag tick), and that an even count is
       legitimately fractional.
 - [x] `CLAUDE.md` — ten browser flows → eleven.
+
+**Review fixes (second commit).** Both axes ran against #92 with #81 as parent.
+
+*Spec axis, 1 finding acted on.* The empty-state criterion says "renders an intelligible empty
+state … **asserted in a test**", and the Vitest assertion only proved the *query* returns nothing
+— its own comment conceded the panel was the other half. The render half is now
+`e2e/gos10k-median-speed.spec.ts`'s second spec, at `?clearFrom=103&clearTo=104`: heading still
+present, table absent, reason stated. A component test would have been the cheaper seam in a repo
+that had one; this one runs Vitest in `node` with no jsdom, and standing up a rendering harness
+for one branch is more machinery than the branch is worth. Three findings were raised and kept as
+they are, with reasons: the browser spec against #81's "no browser coverage" Out of Scope line
+(#91 set the precedent, #80 records that each ticket decides, and the phone criterion has no other
+seam — but it is a deliberate departure, not an oversight); the median tie-break and its test (an
+editorial call the ticket did not make, which fixes real nondeterminism at the 15-row cut); and
+`formatMedianDuration` (an added public function, which is what keeps the one shared formatter
+shared rather than forking it).
+
+*Standards axis, no hard violations; 3 of 5 judgement calls acted on.*
+- **`MEDIAN_SPEED_BOARD_ROWS = 15` is now its own constant**, because `getMedianSpeedBoard(15,
+  range)` had two unrelated fifteens in one call — rows of Helpers and clears per Helper — and the
+  test asserted the row count off the bare literal, so a change to the floor would have read as a
+  change to the board's height. This repo has been bitten by exactly this shape: ADR 0001's
+  active-session cap is two limits in two units.
+- **The unreachable name fallback is gone.** `formatBungieDisplayName`'s last rung is already the
+  membership id, so the fallback object it was being handed added nothing; the miss is now one
+  ternary that says so.
+- **The panel says "present for"**, not "with": every Run in this Archive is the subject's, so a
+  Helper is present for a Pinned Full Clear rather than the owner of one. CONTEXT.md's **Helper**
+  entry makes the same distinction.
+- *Not acted on:* the name-hydration statement is the third "rank, then re-read names" block after
+  `getTopHelpers` and `getFastestClears`, and a shared `namesFor(ids)` is the obvious extraction —
+  but the other two hydrate inside their own `GROUP BY` with different projections, so collapsing
+  all three is a refactor of two shipped panels rather than a #92 change. Written down here rather
+  than done quietly, the way #91 left the Tracker's duplicate duration formatter.
+- *Not acted on:* **Clear Floor** stays a bolded term inside the **Median Clear Duration** entry
+  rather than becoming its own. The user prefers amending an entry over adding a competing one,
+  and the floor is not a concept that stands up away from the statistic it gates.
 
 **No second median implementation, and no floor knob.** The floor is a module constant, not a
 parameter with a default: a parameter is a knob, and the ticket's reason for fixing it — a slider

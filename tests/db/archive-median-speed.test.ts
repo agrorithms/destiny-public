@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
 import { closeArchiveDb } from '@/lib/db/archive';
 import {
+    MEDIAN_SPEED_BOARD_ROWS,
     MEDIAN_SPEED_CLEAR_FLOOR,
     getMedianSpeedBoard,
     resolveArchiveRange,
@@ -42,7 +43,10 @@ describe('ranking Helpers by median clear duration', () => {
     it('ranks the fastest median first and stops at the row limit', () => {
         const board = getMedianSpeedBoard();
 
-        expect(board).toHaveLength(15);
+        // The named row count, not a bare 15: the floor is also 15 and means a
+        // completely different thing, so asserting the literal would let a change to
+        // either one read as a change to the other.
+        expect(board).toHaveLength(MEDIAN_SPEED_BOARD_ROWS);
         expect(board.slice(0, 4).map((helper) => ({
             displayName: helper.displayName,
             clears: helper.clears,
@@ -145,7 +149,10 @@ describe('obeying the global range', () => {
         // February 2022 — clears 103 through 143, the month every other Archive test
         // uses. Exactly one Helper reaches 15 clears inside it, and his median there
         // (1,039s) is nothing like his median across the whole fixture.
-        const board = getMedianSpeedBoard(15, resolve({ clearFrom: '103', clearTo: '143' }));
+        const board = getMedianSpeedBoard(
+            MEDIAN_SPEED_BOARD_ROWS,
+            resolve({ clearFrom: '103', clearTo: '143' })
+        );
 
         expect(board).toEqual([
             expect.objectContaining({
@@ -160,6 +167,11 @@ describe('obeying the global range', () => {
         // A single day holds one clear in this fixture, so nobody can reach fifteen.
         // The panel has to say so rather than render an empty table — this is the
         // query half of that criterion, MedianSpeedBoard.tsx is the other.
-        expect(getMedianSpeedBoard(15, resolve({ from: '2020-10-30', to: '2020-10-30' }))).toEqual([]);
+        expect(
+            getMedianSpeedBoard(
+                MEDIAN_SPEED_BOARD_ROWS,
+                resolve({ from: '2020-10-30', to: '2020-10-30' })
+            )
+        ).toEqual([]);
     });
 });

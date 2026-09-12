@@ -603,6 +603,18 @@ export function getFastestClears(
  */
 export const MEDIAN_SPEED_CLEAR_FLOOR = 15;
 
+/**
+ * How many rows the median speed board renders.
+ *
+ * **Also fifteen, and unrelated to the floor above it** — one is a count of Helpers, the
+ * other a count of each Helper's clears, and they collide on the same literal by
+ * coincidence. Named separately because this repo has been bitten by exactly this shape
+ * before: ADR 0001's active-session cap is two limits in two units, and conflating them
+ * silently dropped the longest-running raids. A caller passing a bare `15` cannot say
+ * which fifteen it meant.
+ */
+export const MEDIAN_SPEED_BOARD_ROWS = 15;
+
 export interface ArchiveMedianSpeedHelper {
     membershipId: string;
     /** `Name#Code` in full, via formatBungieDisplayName. */
@@ -645,7 +657,7 @@ export interface ArchiveMedianSpeedHelper {
  * Helpers, and keeps the window functions off a query that also has to GROUP BY names.
  */
 export function getMedianSpeedBoard(
-    limit: number = 15,
+    limit: number = MEDIAN_SPEED_BOARD_ROWS,
     range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
 ): ArchiveMedianSpeedHelper[] {
     const db = getArchiveDb();
@@ -712,20 +724,16 @@ export function getMedianSpeedBoard(
 
     const names = new Map(nameRows.map((row) => [row.membershipId, row]));
 
-    return ranked.map((helper) => ({
-        membershipId: helper.membershipId,
-        // The name row cannot be missing — these memberships came out of this same
-        // table one statement ago — but the ladder's own last rung is the membership id,
-        // so the honest fallback is to hand it that rather than to assert.
-        displayName: formatBungieDisplayName(
-            names.get(helper.membershipId) ?? {
-                membershipId: helper.membershipId,
-                displayName: null,
-                bungieGlobalDisplayName: null,
-                bungieGlobalDisplayNameCode: null,
-            }
-        ),
-        clears: helper.clears,
-        medianSeconds: helper.medianSeconds,
-    }));
+    return ranked.map((helper) => {
+        const name = names.get(helper.membershipId);
+        return {
+            membershipId: helper.membershipId,
+            // A missing name row is unreachable — these memberships came out of this
+            // same table one statement ago — and the display ladder's own last rung is
+            // the membership id, so there is nothing for a fallback object to add.
+            displayName: name ? formatBungieDisplayName(name) : helper.membershipId,
+            clears: helper.clears,
+            medianSeconds: helper.medianSeconds,
+        };
+    });
 }

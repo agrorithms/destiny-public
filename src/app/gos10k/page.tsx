@@ -6,6 +6,7 @@ import {
     getTopHelpers,
     getFastestClears,
     getMedianSpeedBoard,
+    MEDIAN_SPEED_BOARD_ROWS,
     getRunsByYear,
     getClassDistribution,
     resolveArchiveRange,
@@ -72,7 +73,7 @@ export default async function Gos10kPage({
     const overview = getArchiveOverview(range);
     const helpers = getTopHelpers(25, range);
     const fastestClears = getFastestClears(10, range);
-    const medianSpeed = getMedianSpeedBoard(15, range);
+    const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
     const years = getRunsByYear(range);
     const classes = getClassDistribution(range);
 

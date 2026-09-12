@@ -32,7 +32,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#87** The range filter (largest ticket; gates Wave 3)
 - [x] **#91** Fastest-clears list (owns the shared duration formatter)
 - [x] **#92** Median speed board (imports #91's formatter)
-- [ ] **#88** Timeline
+- [x] **#88** Timeline
 - [ ] **#90** Helper board
 - [ ] **#89** Presence strip
 - [ ] **#93** Resets panel
@@ -549,6 +549,77 @@ parameter with a default: a parameter is a knob, and the ticket's reason for fix
 is a full server render per drag tick — is an argument against having one at all. Tests read the
 exported constant rather than the literal 15, so a change to it fails the boundary test loudly.
 
+### #88 — Timeline (this chunk)
+
+- [x] `src/lib/db/archive/queries.ts` — `getMonthlyClears()`, `ArchiveTimelineMonth`, and the
+      private `monthsBetween()`. **The one panel query that takes no range**, and that is the
+      ticket rather than an oversight: #81 makes the timeline the single deliberate exception to
+      the global filter, so there is no argument through which the history could be narrowed.
+      Writing `getMonthlyClears(range)` and splicing `rangeClause()` into it — the shape every
+      panel since #87 has, and therefore the shape a reader reaches for — compiles, renders, and
+      truncates six years to one February.
+      **Gap-filled**, which is a real step and not a formality: `GROUP BY strftime('%Y-%m', …)`
+      returns only the months holding a Run, and a chart drawn off it renders a two-year pause as
+      the space between two bars. `getRunsByYear()` is the existing `strftime` precedent and does
+      *not* fill — it is a table, where a missing year is a missing row rather than a squashed
+      axis — so it was the wrong thing to copy. Months are enumerated in TypeScript (integer
+      arithmetic over two `YYYY-MM` keys) rather than by a recursive CTE.
+      **Anchored to `MIN`/`MAX(r.period)`, never to a clock** — the standing rule in the Notes
+      below. A timeline ending at "now" grows an empty tail every month against a frozen dataset.
+      Measured on the shipped `data/gos-10k.db`: **4–18 ms**, 75 months, 8 of them empty,
+      cumulative 10,000. The median board remains the page's slowest query at 146 ms.
+- [x] `tests/db/archive-timeline.test.ts` — **new**, 7 tests, figures computed independently from
+      `tests/fixtures/archive-seed.json` with `node -e`, not read back off the query. The fixture
+      spans **68 months of which only 20 hold a clear**, so it is an unusually good witness for
+      the empty-month criterion; 2022-03 is empty *between* two 40-clear months (the extraction
+      script samples across it deliberately), which is the case a reader would actually notice.
+      One test asserts the no-truncation property structurally — `getMonthlyClears.length === 0`,
+      i.e. the function has no parameter to scope through — alongside the behavioural one.
+- [x] `src/app/gos10k/timeline-geometry.ts` + `.test.ts` — **new**, pure, colocated. The x-axis
+      arithmetic: `timelineBand()` and `yearTicks()`, both over `YYYY-MM` keys alone. Extracted
+      rather than inlined because the band is drawn **twice** and the ticket's "the shading reads
+      across both charts" is a claim about them being the same geometry, not similar geometry.
+      **The band's minimum width is one month of the axis, not a percentage picked by eye.** A
+      single day of six years is 0.05% — a third of a pixel on a phone — and the first draft used
+      a flat 1.5%, which is *wider than a month* on a 68-month axis and so widened almost every
+      range anyone would actually pick. One month is self-explanatory against the bars underneath
+      it. The widening slides back inside the chart at the right-hand edge: the Archive's own last
+      day is the likeliest single-day selection, and a band drawn past 100% shades nothing.
+- [x] `src/app/gos10k/ArchiveTimeline.tsx` — **new.** Two `<svg>`s sharing one `viewBox` width,
+      both `w-full`, both `preserveAspectRatio="none"` so the chart is full-bleed at any width
+      with no text inside to smear; the polyline carries `vector-effect="non-scaling-stroke"`
+      because non-uniform scaling would otherwise render the stroke as a wedge. One SVG stacking
+      both regions was rejected: the two heights would become a single scale factor, so the bars
+      would squash whenever the line grew. Year labels are **HTML**, not SVG text, so they stay at
+      a real font size on a phone. **No chart library** — this repo has none, #81 asks for none,
+      and the `By year` bars are already a div with a percentage width; adding a dependency to
+      draw two polylines is a decision for the user, not a default.
+- [x] `src/app/gos10k/page.tsx` — the panel directly under the range control (#81's render order),
+      and `getMonthlyClears()` called with no argument beside a comment saying why.
+- [x] `e2e/gos10k-timeline.spec.ts` — **new**, 3 specs. See the #80 note below.
+- [x] `CONTEXT.md` — **Month Bucket** and **Shaded Band** (Archive), carrying the empty-month rule
+      and the annotation-not-filter distinction.
+- [x] `CLAUDE.md` — eleven browser flows → twelve.
+
+**#80's decision 4 is answered here: the timeline's shading is asserted, structurally.** #88's own
+criterion says the browser-only behaviour is "verified by hand and recorded as unverified by
+automated tests" — written when the Archive had no harness. #96 built one, and #80 names the
+shading as "the item with real regression risk", so the criterion is **superseded rather than
+honoured**, deliberately and on the record (a comment on #80, not only here). The hand
+verification still happened — desktop and 360px, against the production Archive, screenshots taken.
+
+The assertion style, which is the decision #80 actually asks for: **structural, and only about
+geometry no other seam can see.** The bucket counts and the empty months are Vitest's; the band's
+*position* is Vitest's too, in the geometry module's own tests. The browser asserts what rendering
+twice can get wrong — that the band exists when a range is active, that it does not when none is,
+that both charts place it at the same x and width (±1px for independent layout rounding), and that
+it is a band rather than the whole chart. The phone spec asserts both overflow probes plus a
+minimum rendered band width, which is the criterion's "still identifiable" half.
+
+**The phone probe earned its keep immediately**: `expectNoElementOverflow` failed on the first run
+with 13px of overflow, caused by the last year label starting at ~97% of the axis and running off
+the edge. Fixed by flipping labels past 90% to end at their boundary rather than start at it.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
@@ -589,8 +660,8 @@ exported constant rather than the literal 15, so a change to it fails the bounda
   `archive-range-degraded` (plus `archive-range-filter` and `archive-range-clear`). They
   exist because the copy they hold is a whole sentence whose *figures* move with the fixture;
   the forms themselves are located by role (`getByRole('group', { name: 'By date' })`).
-- **#80's decisions 2 and 4 are still open.** #96 built the harness and one smoke spec only;
-  which behaviours earn assertions is answered while building #87, #88 and #90.
+- **#80's decision 2 is recorded (#87) and decision 4 is recorded (#88, above).** What remains
+  for #80 is #90's half of decision 2 and updating ADR 0007's "no browser coverage" consequence.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
   the new invariant assertions make that failure loud.

@@ -737,3 +737,97 @@ export function getMedianSpeedBoard(
         };
     });
 }
+
+/** One calendar month of the Archive's history, whether or not anything happened in it. */
+export interface ArchiveTimelineMonth {
+    /** `YYYY-MM`, UTC — the same zone `period` and the range filter are in. */
+    month: string;
+    /** Pinned Full Clears whose Run began in this month. Zero for an empty month. */
+    clears: number;
+    /** Pinned Full Clears from the Archive's first month through the end of this one. */
+    cumulativeClears: number;
+}
+
+/**
+ * The timeline's data (#88): every calendar month of the Archive, with that month's
+ * Pinned Full Clears and the running total through the end of it.
+ *
+ * **This is the one panel query that takes no range, and that is the ticket's point.**
+ * #81: "The filter is global. Every panel obeys it, with one deliberate exception: the
+ * timeline always draws the full history and shades the selection." Giving this function
+ * a `range` parameter and splicing {@link rangeClause} into it — which is what every
+ * panel since #87 does, so it is the shape a reader will reach for — returns a
+ * correct-looking chart that has silently truncated six years of history to one February.
+ * The shading is the *component's* job, from `periodFrom`/`periodTo` on the resolved
+ * range; there is deliberately no argument here through which the data could be narrowed.
+ *
+ * **The gap-filling is not decoration either.** `GROUP BY strftime('%Y-%m', …)` returns
+ * only the months that hold a Run, so a chart drawn straight off it renders a two-year
+ * pause as the space between two adjacent bars: an x-axis that is no longer proportional
+ * to time and that looks entirely correct. {@link getRunsByYear} is the existing
+ * `strftime` precedent and does *not* fill its gaps — it is a table, where a missing year
+ * is a missing row rather than a squashed axis — so it is the wrong thing to copy here.
+ *
+ * The axis is anchored to the Archive's own extent, from the first Run to the last, and
+ * never to the clock. A timeline ending at "now" would grow an empty tail every month
+ * against a dataset that stopped moving in 2026 (#71's bug class; see the note in
+ * docs/progress/gos10k-phase1.md).
+ *
+ * Months are enumerated in TypeScript rather than by a recursive CTE: the sequence is
+ * plain integer arithmetic over two `YYYY-MM` strings, and doing it in SQL would mean a
+ * date-arithmetic CTE nobody can read for the sake of avoiding a loop over ~68 rows.
+ */
+export function getMonthlyClears(): ArchiveTimelineMonth[] {
+    const db = getArchiveDb();
+
+    // The extent of the whole Archive, in the same UTC month keys the buckets use, so
+    // the two cannot disagree about which month a Run at 23:50 on the last of the month
+    // belongs to.
+    const extent = db.prepare(`
+        SELECT
+            strftime('%Y-%m', MIN(r.period), 'unixepoch') AS firstMonth,
+            strftime('%Y-%m', MAX(r.period), 'unixepoch') AS lastMonth
+        FROM gos_10k_runs r
+    `).get() as { firstMonth: string | null; lastMonth: string | null };
+
+    if (extent.firstMonth === null || extent.lastMonth === null) return [];
+
+    const buckets = db.prepare(`
+        SELECT
+            strftime('%Y-%m', r.period, 'unixepoch') AS month,
+            COUNT(*) AS clears
+        FROM gos_10k_runs r
+        WHERE ${PINNED_FULL_CLEAR}
+        GROUP BY month
+    `).all() as Array<{ month: string; clears: number }>;
+
+    const byMonth = new Map(buckets.map((bucket) => [bucket.month, bucket.clears]));
+
+    let cumulative = 0;
+    return monthsBetween(extent.firstMonth, extent.lastMonth).map((month) => {
+        cumulative += byMonth.get(month) ?? 0;
+        return { month, clears: byMonth.get(month) ?? 0, cumulativeClears: cumulative };
+    });
+}
+
+/**
+ * Every `YYYY-MM` from `first` to `last` inclusive, in order.
+ *
+ * Integer arithmetic on the two strings rather than `Date` stepping: a Date-based loop
+ * has to pick a day-of-month to step from, and stepping from the 31st is how a month
+ * gets skipped. Reads no clock — both ends come from the database.
+ */
+function monthsBetween(first: string, last: string): string[] {
+    const toIndex = (month: string): number => {
+        const [year, monthOfYear] = month.split('-').map(Number);
+        return year * 12 + (monthOfYear - 1);
+    };
+
+    const months: string[] = [];
+    for (let index = toIndex(first); index <= toIndex(last); index += 1) {
+        const year = Math.floor(index / 12);
+        const monthOfYear = (index % 12) + 1;
+        months.push(`${year}-${String(monthOfYear).padStart(2, '0')}`);
+    }
+    return months;
+}

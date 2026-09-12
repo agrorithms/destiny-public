@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { monthsBetween } from '@/lib/db/archive/month-keys';
 import { minimumBandPercent, timelineBand, yearTicks } from './timeline-geometry';
 
 /**
@@ -15,14 +16,15 @@ import { minimumBandPercent, timelineBand, yearTicks } from './timeline-geometry
  * fraction of the full history.
  */
 
-/** 2020-07 … 2026-02, the fixture's own extent: 68 months. */
-const MONTHS = (() => {
-    const months: string[] = [];
-    for (let index = 2020 * 12 + 6; index <= 2026 * 12 + 1; index += 1) {
-        months.push(`${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`);
-    }
-    return months;
-})();
+/**
+ * 2020-07 … 2026-02, the fixture's own extent: 68 months.
+ *
+ * Built with the same helper the query uses, so the axis under test is the axis the page
+ * gets. Spelling the walk out again here would be a third copy of the month arithmetic,
+ * and a test whose expected axis could drift from the real one is a test that passes
+ * while the chart is wrong.
+ */
+const MONTHS = monthsBetween('2020-07', '2026-02');
 
 /** Midday UTC on a given day, in seconds — the shape `period` is stored in. */
 const at = (iso: string): number => Date.parse(`${iso}T12:00:00Z`) / 1000;
@@ -103,5 +105,21 @@ describe('the year ticks', () => {
         expect(ticks.map((tick) => tick.year)).toEqual([
             '2020', '2021', '2022', '2023', '2024', '2025', '2026',
         ]);
+    });
+
+    it('keeps every label on the chart when the month list has gaps', () => {
+        // The list is contiguous in practice — getMonthlyClears() fills it — but this
+        // module is exported and pure and cannot enforce that. Positioning by
+        // `months.indexOf('2022-01')` returns -1 for a year whose January is absent,
+        // which is a negative percentage: a label for a year in the middle of the axis,
+        // drawn off the left-hand edge. Month-key arithmetic has no such dependency.
+        const gapped = ['2021-11', '2021-12', '2022-06', '2022-07'];
+        const ticks = yearTicks(gapped);
+
+        expect(ticks.map((tick) => tick.year)).toEqual(['2021', '2022']);
+        // 2021's January is ten months before the axis starts, so it clamps to the
+        // origin exactly as the real first year does; 2022's is two slots along of four.
+        expect(ticks[0].percent).toBe(0);
+        expect(ticks[1].percent).toBeCloseTo((2 / 4) * 100, 5);
     });
 });

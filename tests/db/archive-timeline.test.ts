@@ -108,6 +108,31 @@ describe('bucketing Pinned Full Clears by month', () => {
         expect(byMonth.get('2022-04')?.cumulativeClears).toBe(183);
     });
 
+    it('reads the cumulative total off the stored Clear Number, and still agrees with the bars', () => {
+        const months = getMonthlyClears();
+
+        // The line is `MAX(clear_number)` per month rather than a running sum of the
+        // bars: ADR 0008 stores that ordinal precisely so the page's panels stop
+        // re-deriving it, and every other panel — the range filter above this one
+        // included — already speaks in it.
+        //
+        // The cost of reading it is that the two halves of this panel now come from two
+        // places, and nothing but this assertion says they must match. They can only
+        // disagree if this query's predicate drifts from the one clear_number was ranked
+        // over, which is exactly the drift worth failing on: a summed line under the
+        // disjunctive rule climbs to 10,020 while the filter still says 10,000, and the
+        // page renders it perfectly.
+        let summed = 0;
+        for (const month of months) {
+            summed += month.clears;
+            expect(month.cumulativeClears).toBe(summed);
+        }
+
+        // And the right-hand edge is the Archive's own MAX(clear_number) — the figure
+        // the header states, in the denomination the filter reads.
+        expect(months[months.length - 1].cumulativeClears).toBe(getArchiveSpan().maxClearNumber);
+    });
+
     it('draws the full history even when a range is active', () => {
         // February 2022 — clears 103–143, the window every other Archive test filters
         // on. Every panel since #87 would return that month alone.

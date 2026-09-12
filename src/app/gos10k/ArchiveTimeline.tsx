@@ -81,7 +81,11 @@ export function ArchiveTimeline({
             <p className="ui-text-secondary text-sm leading-6">
                 Pinned Full Clears across the whole Archive, always — this is the one panel that
                 does not narrow to the filter, so a range keeps its context.{' '}
-                {range.mode === 'all'
+                {/* Driven off `band`, not off `range.mode`: the sentence and the rect are
+                    then the same decision rather than two readings of the range that could
+                    disagree. "The shaded band is clears 103–143" above a chart with no band
+                    on it is the failure, and it is the kind that renders perfectly. */}
+                {band === null
                     ? 'Pick a range above to shade it here.'
                     : `The shaded band is ${scope}.`}
             </p>
@@ -176,7 +180,7 @@ export function ArchiveTimeline({
                     {peak.clears === 0
                         ? 'No Pinned Full Clears in the Archive.'
                         : `Per month: busiest was ${peak.clears.toLocaleString()} in ${formatMonth(peak.month)}.`}
-                    {range.mode !== 'all' && range.dateFrom !== null && range.dateTo !== null
+                    {band !== null && range.dateFrom !== null && range.dateTo !== null
                         ? ` Shaded: ${formatArchiveDay(range.dateFrom)} – ${formatArchiveDay(range.dateTo)}.`
                         : ''}
                 </p>

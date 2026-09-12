@@ -620,6 +620,60 @@ minimum rendered band width, which is the criterion's "still identifiable" half.
 with 13px of overflow, caused by the last year label starting at ~97% of the axis and running off
 the edge. Fixed by flipping labels past 90% to end at their boundary rather than start at it.
 
+### #88 — review fixes (second commit)
+
+Both axes ran against `331d028...HEAD` with #81 as parent. **No hard standards violations and no
+spec gaps**; four judgement calls acted on, one finding rejected on evidence.
+
+- [x] `src/lib/db/archive/month-keys.ts` — **new**. `monthIndex`, `monthKey`, `monthsBetween`. The
+      `YYYY-MM` walk existed three times in the #88 diff (the query's private helper, the geometry
+      module, and the geometry test's expected axis) — three chances to be off by a month against
+      the other two, with no seam that could notice. It lives beside `predicates.ts` and `range.ts`
+      because the key is the Archive's own shape: the query names the bucket and everything
+      downstream reads that name. Pure, no connection, so a script or a component can import it.
+- [x] `src/lib/db/archive/queries.ts` — `cumulativeClears` is `MAX(r.clear_number)` per month,
+      carried forward across empty months, instead of a running sum in TypeScript. ADR 0008 stores
+      that ordinal so the page stops re-deriving it ("an ordinal eight call sites re-derive is an
+      ordinal eight call sites can re-derive *differently*"), and the derivation ranks over this
+      same `PINNED_FULL_CLEAR` by `period ASC` — so the highest ordinal inside a month *is* the
+      count through the end of it. The two agree today; what changes is which failure they produce
+      if this predicate ever drifts to the disjunctive rule. Summed, the line climbs to 10,020
+      while the filter above it still says 10,000 — two axes disagreeing, both plausible. Read off
+      the column, the *bars* break instead, visibly, and a test says so.
+- [x] `src/app/gos10k/timeline-geometry.ts` — `yearTicks` positions each label by month-key
+      arithmetic rather than `months.indexOf('2022-01')`, which returns `-1` for any year whose
+      January is absent: a negative percentage, and a label for a mid-axis year drawn off the left
+      edge. Safe only because `getMonthlyClears()` gap-fills, and this module is exported, pure and
+      unable to enforce that. The first year's pinning to the origin now falls out of the clamp
+      instead of being a special case. The contiguity assumption is stated in the module doc, and
+      `axisPercent` and `yearTicks` share one `offsetPercent`, so the band and the ticks cannot
+      drift onto different scales.
+- [x] `src/app/gos10k/ArchiveTimeline.tsx` — the two sentences about the band are driven off `band`
+      rather than off `range.mode`. The panel was deciding "is there a band" twice from two
+      readings of the range; "The shaded band is clears 103–143" above a chart with no band on it
+      is the failure, and it renders perfectly.
+- [x] `tests/db/archive-timeline.test.ts`, `src/app/gos10k/timeline-geometry.test.ts` — two new
+      tests. The line is asserted to still equal the running sum of the bars (the price of reading
+      the ordinal is that the panel's two halves now come from two places, so their agreement has
+      to be stated rather than structural) and to end at `getArchiveSpan().maxClearNumber`; the
+      ticks are asserted against a deliberately gapped month list. The test's expected axis is now
+      built with `monthsBetween`, so it cannot drift from the one the page gets.
+
+**Rejected, on evidence: the band "misses a one-sided date range".** Standards read
+`timelineBand` returning null unless both `periodFrom` and `periodTo` are set as a gap against a
+range every other panel honours. There is no such state: `parseArchiveRangeRequest` returns
+`malformed` for a truncated pair — deliberately, since "clears 9,001 onwards" is a fourth thing the
+control cannot draw — and every malformed request resolves to the whole Archive. Both period bounds
+are non-null in both real modes. The single-source-of-truth fix above is the defensible half of
+that finding.
+
+**Left alone, as flagged in the handoff:** `formatMonth()` still strips the day off
+`formatArchiveDay()` with a regex rather than adding a fourth formatter to `range-copy.ts`.
+
+lint 0 errors / 29 pre-existing warnings · both tsconfigs clean · `npm test` 376 tests / 33 files ·
+`npm run e2e` 44/44.
+
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

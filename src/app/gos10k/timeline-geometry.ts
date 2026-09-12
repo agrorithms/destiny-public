@@ -1,3 +1,5 @@
+import { monthIndex } from '@/lib/db/archive/month-keys';
+
 /**
  * Where things sit on the timeline's shared x-axis (#88), as percentages of its width.
  *
@@ -6,6 +8,13 @@
  * line, the monthly bars, and the band shading the active range. #88 requires the band
  * to "read across both charts", which is only true if both are positioned by the same
  * arithmetic, so that arithmetic is one module rather than two copies in one component.
+ *
+ * **The month list is assumed contiguous** — every calendar month from the Archive's
+ * first to its last, gaps included, which is exactly what {@link getMonthlyClears} builds.
+ * That is what makes position on the axis mean position in time: a list with months
+ * missing would still draw, and would draw a two-year pause as the gap between two
+ * neighbouring slots. Nothing below breaks on a gapped list, but nothing below can make
+ * it proportional either.
  *
  * Pure, and deliberately free of any clock read: every instant here arrives from the
  * database (`period` bounds on the resolved range) or from the month keys the query
@@ -75,18 +84,25 @@ export function timelineBand(
 /**
  * One tick per calendar year the axis covers, each at the position that year starts.
  *
- * The first year is pinned to the origin: the Archive begins in July 2020, so that
- * year's January is off the left-hand edge, and a tick drawn at its true position would
- * be a negative percentage. The label still belongs on the chart — the leftmost bars
- * *are* 2020 — so it sits where the chart itself begins.
+ * The first year lands at the origin, and does so by arithmetic rather than by a special
+ * case: the Archive begins in July 2020, so that year's January is six months off the
+ * left-hand edge and clamps to zero. The label still belongs on the chart — the leftmost
+ * bars *are* 2020 — so it sits where the chart itself begins.
+ *
+ * Positions come from the month *key*, never from `months.indexOf('2021-01')`: a lookup
+ * returns `-1` for any year whose January is not in the list, which is a negative
+ * percentage and a label off the left edge. That cannot happen against a contiguous list,
+ * which is the only kind {@link getMonthlyClears} produces — but this module is exported,
+ * pure, and has no way to enforce the precondition, so the arithmetic is written not to
+ * need it.
  */
 export function yearTicks(months: string[]): TimelineYearTick[] {
     if (months.length === 0) return [];
 
     const years = [...new Set(months.map((month) => month.slice(0, 4)))];
-    return years.map((year, index) => ({
+    return years.map((year) => ({
         year,
-        percent: index === 0 ? 0 : (months.indexOf(`${year}-01`) / months.length) * 100,
+        percent: clampPercent(offsetPercent(months, monthIndex(`${year}-01`))),
     }));
 }
 
@@ -103,16 +119,21 @@ function axisPercent(months: string[], unixSeconds: number): number {
     const nextMonthStart = Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth() + 1, 1);
     const throughMonth = (unixSeconds * 1000 - monthStart) / (nextMonthStart - monthStart);
 
-    const firstIndex = monthIndex(months[0]);
-    const index =
-        instant.getUTCFullYear() * 12 + instant.getUTCMonth() - firstIndex + throughMonth;
-
-    return (index / months.length) * 100;
+    return offsetPercent(
+        months,
+        instant.getUTCFullYear() * 12 + instant.getUTCMonth() + throughMonth
+    );
 }
 
-function monthIndex(month: string): number {
-    const [year, monthOfYear] = month.split('-').map(Number);
-    return year * 12 + (monthOfYear - 1);
+/**
+ * Where an absolute month index sits on the axis, as a percentage, without clamping.
+ *
+ * Fractional indices are how an instant *within* a month is positioned, so this is the
+ * one place the axis's origin and width are applied — both public functions above go
+ * through it, which is what keeps the band and the year ticks on the same scale.
+ */
+function offsetPercent(months: string[], index: number): number {
+    return ((index - monthIndex(months[0])) / months.length) * 100;
 }
 
 function clampPercent(percent: number): number {

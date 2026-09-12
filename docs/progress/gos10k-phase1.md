@@ -554,7 +554,9 @@ exported constant rather than the literal 15, so a change to it fails the bounda
 - [x] `src/lib/db/archive/queries.ts` — `getMonthlyClears()`, `ArchiveTimelineMonth`, and the
       private `monthsBetween()`. **The one panel query that takes no range**, and that is the
       ticket rather than an oversight: #81 makes the timeline the single deliberate exception to
-      the global filter, so there is no argument through which the history could be narrowed.
+      the global filter, so there is no argument through which the *counts* could be narrowed.
+      (It takes one optional `ArchiveSpan`, added by the cleanup commit below, which fixes the
+      axis's two ends and is not a `ResolvedArchiveRange`.)
       Writing `getMonthlyClears(range)` and splicing `rangeClause()` into it — the shape every
       panel since #87 has, and therefore the shape a reader reaches for — compiles, renders, and
       truncates six years to one February.
@@ -574,7 +576,8 @@ exported constant rather than the literal 15, so a change to it fails the bounda
       the empty-month criterion; 2022-03 is empty *between* two 40-clear months (the extraction
       script samples across it deliberately), which is the case a reader would actually notice.
       One test asserts the no-truncation property structurally — `getMonthlyClears.length === 0`,
-      i.e. the function has no parameter to scope through — alongside the behavioural one.
+      i.e. the function has no *required* parameter to scope through, and its one optional
+      parameter is a span rather than a range — alongside the behavioural one.
 - [x] `src/app/gos10k/timeline-geometry.ts` + `.test.ts` — **new**, pure, colocated. The x-axis
       arithmetic: `timelineBand()` and `yearTicks()`, both over `YYYY-MM` keys alone. Extracted
       rather than inlined because the band is drawn **twice** and the ticket's "the shading reads
@@ -595,7 +598,8 @@ exported constant rather than the literal 15, so a change to it fails the bounda
       and the `By year` bars are already a div with a percentage width; adding a dependency to
       draw two polylines is a decision for the user, not a default.
 - [x] `src/app/gos10k/page.tsx` — the panel directly under the range control (#81's render order),
-      and `getMonthlyClears()` called with no argument beside a comment saying why.
+      and `getMonthlyClears()` called beside a comment saying why it is not handed the range
+      (it takes the `span` the page already read; see the cleanup commit below).
 - [x] `e2e/gos10k-timeline.spec.ts` — **new**, 3 specs. See the #80 note below.
 - [x] `CONTEXT.md` — **Month Bucket** and **Shaded Band** (Archive), carrying the empty-month rule
       and the annotation-not-filter distinction.
@@ -625,7 +629,8 @@ the edge. Fixed by flipping labels past 90% to end at their boundary rather than
 Both axes ran against `331d028...HEAD` with #81 as parent. **No hard standards violations and no
 spec gaps**; four judgement calls acted on, one finding rejected on evidence.
 
-- [x] `src/lib/db/archive/month-keys.ts` — **new**. `monthIndex`, `monthKey`, `monthsBetween`. The
+- [x] `src/lib/db/archive/month-keys.ts` — **new**. `monthIndex` and `monthsBetween` exported,
+      `monthKey` file-local. The
       `YYYY-MM` walk existed three times in the #88 diff (the query's private helper, the geometry
       module, and the geometry test's expected axis) — three chances to be off by a month against
       the other two, with no seam that could notice. It lives beside `predicates.ts` and `range.ts`
@@ -667,11 +672,48 @@ control cannot draw — and every malformed request resolves to the whole Archiv
 are non-null in both real modes. The single-source-of-truth fix above is the defensible half of
 that finding.
 
-**Left alone, as flagged in the handoff:** `formatMonth()` still strips the day off
-`formatArchiveDay()` with a regex rather than adding a fourth formatter to `range-copy.ts`.
+**Left alone at the time, as flagged in the handoff:** `formatMonth()` stripping the day off
+`formatArchiveDay()` with a regex rather than adding a fourth formatter to `range-copy.ts`. The
+cleanup commit below reversed that call and added the formatter.
 
 lint 0 errors / 29 pre-existing warnings · both tsconfigs clean · `npm test` 376 tests / 33 files ·
 `npm run e2e` 44/44.
+
+
+### #88 — cleanup (`c262568`, third commit)
+
+Not review-driven; a pass over the shipped panel after the fixes above. Verified at that commit:
+lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 376 / 33, `npm run e2e`
+44/44 — the three timeline specs included, which is what checks the band's new units.
+
+- **`getMonthlyClears(span: ArchiveSpan = getArchiveSpan())`.** The page reads the span once for
+  the header and the presets; the chart now takes it rather than running a second `MIN`/`MAX(period)`
+  of its own. The point is not the saved aggregate, it is the second *definition* of where the
+  Archive begins: the header stating one extent above a chart drawn to another is a disagreement
+  nothing would catch. **The no-truncation guarantee survives** — a defaulted first parameter keeps
+  `getMonthlyClears.length === 0`, an `ArchiveSpan` is not a `ResolvedArchiveRange` so a range
+  cannot be passed where it goes, and the bucket query stays unfiltered, so no span changes what
+  the chart counts. What it *can* now do, which it could not before, is move the axis's two ends —
+  unreachable in practice, since `getArchiveSpan()` is the one figure set documented as never
+  obeying the range.
+- **`scope` is no longer a prop**; `describeArchiveRange(range)` is derived inside the component,
+  next to the band it describes. This is the review's single-source-of-truth fix carried one step
+  further: the sentence and the rect are two readings of one `range` value rather than two props
+  that could arrive from different ones. The trailing caption goes through `formatArchiveDayRange()`,
+  which already collapses a single-day selection and already answers for null ends.
+- **`formatArchiveMonth()` in `range-copy.ts`** replaces `formatMonth()`'s regex — the one Standards
+  judgement call the fix commit left alone. A label built by stripping `^\d+\s` is coupled to
+  `en-GB` putting the day first, so a locale change or a long month would produce a wrong label
+  rather than a compile error.
+- **`monthIndexAt(instant)` in `month-keys.ts`.** `axisPercent` was still spelling
+  `getUTCFullYear() * 12 + getUTCMonth()` out by hand, which was a fourth copy of the arithmetic the
+  module was extracted to give one home. `monthKey` became file-local in the same pass:
+  `monthsBetween` is its only caller, and an exported inverse nothing imports reads as a contract.
+- **The band is positioned in percentages**, straight onto the `rect`, which SVG resolves against
+  the `viewBox` width — so `ShadedBand` no longer takes `AXIS_WIDTH` as a third prop whose only job
+  was to agree with the axis. The two-charts-agree spec is what proves the units still line up.
+- **`peak` is seeded as `{ month, clears }`** rather than a whole `ArchiveTimelineMonth`, so the
+  reduce's shape says what it is: a max-by-clears, not a month.
 
 
 ## Notes and traps carried forward

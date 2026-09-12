@@ -49,8 +49,12 @@ export function formatArchiveTimestamp(unixSeconds: number | null): string {
 }
 
 /**
- * The one `toLocaleDateString` call in this file, so the options that make it UTC-safe
- * are stated once. Both public formatters differ only in how long the month is.
+ * The day formatters' shared `toLocaleDateString` call, so the options that make it
+ * UTC-safe are stated once for both of them; they differ only in how long the month is.
+ *
+ * {@link formatArchiveMonth} deliberately does not come through here — it wants no `day`
+ * at all, and threading an optional day through this signature would make every caller
+ * read the parameter list to learn whether it prints one.
  */
 function formatUtcDate(ms: number, month: 'short' | 'long'): string {
     return new Date(ms).toLocaleDateString('en-GB', {

@@ -1,12 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
+import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
-import {
-    getFastestClears,
-    resolveArchiveRange,
-    type ResolvedArchiveRange,
-} from '@/lib/db/archive/queries';
-import { parseArchiveRangeRequest } from '@/lib/db/archive/range';
+import { getFastestClears } from '@/lib/db/archive/queries';
 
 /**
  * The fastest-clears list (#91), against the fixture Archive.
@@ -36,11 +32,6 @@ beforeAll(() => {
     closeArchiveDb();
     buildFixtureArchive();
 });
-
-/** Shorthand: a URL's worth of parameters, resolved the way the page resolves them. */
-function resolve(searchParams: Record<string, string>): ResolvedArchiveRange {
-    return resolveArchiveRange(parseArchiveRangeRequest(searchParams));
-}
 
 describe('ranking the fastest clears', () => {
     it('returns the fastest Pinned Full Clears, fastest first', () => {
@@ -95,7 +86,7 @@ describe('naming everyone who was in the Run', () => {
         // renders a seven-person fireteam that never existed.
         //
         // Scoped to the day it happened, where it is the fifth-fastest of seven clears.
-        const clears = getFastestClears(10, resolve({ from: '2021-12-18', to: '2021-12-18' }));
+        const clears = getFastestClears(10, resolveArchiveRangeFromParams({ from: '2021-12-18', to: '2021-12-18' }));
         const run = clears.find((clear) => clear.instanceId === '9780072115');
 
         expect(run).toBeDefined();
@@ -111,7 +102,7 @@ describe('naming everyone who was in the Run', () => {
         // Rohan#4619 entered at four seconds and played 222 of the 896, and Xapus#3699
         // arrived at 285. "Every participant" in #91 means exactly this — the people who
         // entered, not the six who finished.
-        const clears = getFastestClears(10, resolve({ from: '2022-08-03', to: '2022-08-03' }));
+        const clears = getFastestClears(10, resolveArchiveRangeFromParams({ from: '2022-08-03', to: '2022-08-03' }));
         const run = clears.find((clear) => clear.instanceId === '11245834298');
 
         expect(run!.durationSeconds).toBe(896);
@@ -126,7 +117,7 @@ describe('naming everyone who was in the Run', () => {
         // bungie_global_display_name_code; instance 7085305400 is the fixture's. The
         // shared display-name formatter's ladder is what produces `bkuder12` here, and
         // the failure it prevents is a row reading `#null`.
-        const clears = getFastestClears(10, resolve({ from: '2020-10-30', to: '2020-10-30' }));
+        const clears = getFastestClears(10, resolveArchiveRangeFromParams({ from: '2020-10-30', to: '2020-10-30' }));
 
         expect(clears).toHaveLength(1);
         expect(clears[0].instanceId).toBe('7085305400');
@@ -141,7 +132,7 @@ describe('obeying the global range', () => {
     it('ranks within the active range rather than across the whole Archive', () => {
         // February 2022 is the month the range tests use throughout: 44 Runs, 41 of them
         // clears 103 through 143. Its fastest clear is nowhere near the Archive's.
-        const clears = getFastestClears(10, resolve({ clearFrom: '103', clearTo: '143' }));
+        const clears = getFastestClears(10, resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' }));
 
         expect(clears).toHaveLength(10);
         expect(clears[0].instanceId).toBe('10042779628');
@@ -156,6 +147,6 @@ describe('obeying the global range', () => {
     it('returns a short list rather than padding one when the range holds few clears', () => {
         // The panel has to render two rows without looking broken. A range holding one
         // clear is the honest answer to a one-day filter.
-        expect(getFastestClears(10, resolve({ from: '2020-10-30', to: '2020-10-30' }))).toHaveLength(1);
+        expect(getFastestClears(10, resolveArchiveRangeFromParams({ from: '2020-10-30', to: '2020-10-30' }))).toHaveLength(1);
     });
 });

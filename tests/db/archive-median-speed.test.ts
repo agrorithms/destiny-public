@@ -1,14 +1,12 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
+import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
 import {
     MEDIAN_SPEED_BOARD_ROWS,
     MEDIAN_SPEED_CLEAR_FLOOR,
     getMedianSpeedBoard,
-    resolveArchiveRange,
-    type ResolvedArchiveRange,
 } from '@/lib/db/archive/queries';
-import { parseArchiveRangeRequest } from '@/lib/db/archive/range';
 
 /**
  * The median speed board (#92), against the fixture Archive.
@@ -33,11 +31,6 @@ beforeAll(() => {
     closeArchiveDb();
     buildFixtureArchive();
 });
-
-/** Shorthand: a URL's worth of parameters, resolved the way the page resolves them. */
-function resolve(searchParams: Record<string, string>): ResolvedArchiveRange {
-    return resolveArchiveRange(parseArchiveRangeRequest(searchParams));
-}
 
 describe('ranking Helpers by median clear duration', () => {
     it('ranks the fastest median first and stops at the row limit', () => {
@@ -151,7 +144,7 @@ describe('obeying the global range', () => {
         // (1,039s) is nothing like his median across the whole fixture.
         const board = getMedianSpeedBoard(
             MEDIAN_SPEED_BOARD_ROWS,
-            resolve({ clearFrom: '103', clearTo: '143' })
+            resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' })
         );
 
         expect(board).toEqual([
@@ -170,7 +163,7 @@ describe('obeying the global range', () => {
         expect(
             getMedianSpeedBoard(
                 MEDIAN_SPEED_BOARD_ROWS,
-                resolve({ from: '2020-10-30', to: '2020-10-30' })
+                resolveArchiveRangeFromParams({ from: '2020-10-30', to: '2020-10-30' })
             )
         ).toEqual([]);
     });

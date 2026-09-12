@@ -1,5 +1,5 @@
 import { expect, test } from './support/test-fixtures';
-import { expectNoHorizontalPageOverflow } from './support/viewport';
+import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The median speed board (#92) — the half of it that only a browser can see.
@@ -53,8 +53,7 @@ test.describe('the median speed board', () => {
 
             // The table's own box first — a wide unbreakable cell scrolls the table
             // rather than the page when an ancestor has its own overflow.
-            const overflow = await board.evaluate((el) => el.scrollWidth - el.clientWidth);
-            expect(overflow, 'the board scrolls sideways at 360px').toBeLessThanOrEqual(0);
+            await expectNoElementOverflow(board, 'the board');
 
             // And the page, which is how a wide table usually announces itself.
             await expectNoHorizontalPageOverflow(page);

@@ -1,5 +1,5 @@
 import { expect, test } from './support/test-fixtures';
-import { expectNoHorizontalPageOverflow } from './support/viewport';
+import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The page shell from issue #86 — the part of /gos10k that is only checkable in
@@ -51,10 +51,10 @@ test.describe('the GoS 10k page shell', () => {
 
             await expectNoHorizontalPageOverflow(page);
 
-            const clipped = await page.getByTestId('archive-headline-figure').evaluate(
-                (el) => el.scrollWidth - el.clientWidth
+            await expectNoElementOverflow(
+                page.getByTestId('archive-headline-figure'),
+                'the headline figure'
             );
-            expect(clipped, 'the headline figure is clipped at 360px').toBeLessThanOrEqual(0);
         });
     });
 });

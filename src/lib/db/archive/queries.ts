@@ -779,21 +779,28 @@ export interface ArchiveTimelineMonth {
  * would mean a date-arithmetic CTE nobody can read for the sake of avoiding a loop over
  * ~68 rows. The resulting month list is *contiguous*, which the timeline's geometry
  * depends on to treat position on the axis as position in time.
+ *
+ * The axis's two ends come from {@link getArchiveSpan}, defaulted the way
+ * {@link resolveArchiveRange} defaults it, so the page can read the span once and hand
+ * it to the header, the presets and this chart alike. A second MIN/MAX of `period`
+ * spelled out here would be both a second aggregate per request and a second definition
+ * of where the Archive starts — and the header stating one extent above a chart drawn to
+ * another is a disagreement nothing would catch. **A span is not a range**: it narrows
+ * nothing, which is why this is still not the truncation hazard the note above describes.
  */
-export function getMonthlyClears(): ArchiveTimelineMonth[] {
+export function getMonthlyClears(
+    span: ArchiveSpan = getArchiveSpan()
+): ArchiveTimelineMonth[] {
     const db = getArchiveDb();
 
-    // The extent of the whole Archive, in the same UTC month keys the buckets use, so
-    // the two cannot disagree about which month a Run at 23:50 on the last of the month
-    // belongs to.
-    const extent = db.prepare(`
-        SELECT
-            strftime('%Y-%m', MIN(r.period), 'unixepoch') AS firstMonth,
-            strftime('%Y-%m', MAX(r.period), 'unixepoch') AS lastMonth
-        FROM gos_10k_runs r
-    `).get() as { firstMonth: string | null; lastMonth: string | null };
+    if (span.firstRunAt === null || span.lastRunAt === null) return [];
 
-    if (extent.firstMonth === null || extent.lastMonth === null) return [];
+    // The span's instants reduced to the same UTC month keys the buckets use, so the two
+    // cannot disagree about which month a Run at 23:50 on the last of the month belongs
+    // to. `formatArchiveDate` is the one UTC `YYYY-MM-DD` spelling in this database's
+    // code; a month key is its first seven characters.
+    const firstMonth = formatArchiveDate(span.firstRunAt).slice(0, 7);
+    const lastMonth = formatArchiveDate(span.lastRunAt).slice(0, 7);
 
     // `MAX(r.clear_number)` is the cumulative total, read rather than re-derived: the
     // ordinal is ranked over this same predicate by `period` ascending (ADR 0008), so the
@@ -819,7 +826,7 @@ export function getMonthlyClears(): ArchiveTimelineMonth[] {
     const byMonth = new Map(buckets.map((bucket) => [bucket.month, bucket]));
 
     let cumulative = 0;
-    return monthsBetween(extent.firstMonth, extent.lastMonth).map((month) => {
+    return monthsBetween(firstMonth, lastMonth).map((month) => {
         const bucket = byMonth.get(month);
         // An empty month carries the previous total forward: nothing happened, so the
         // line is flat across it rather than absent.

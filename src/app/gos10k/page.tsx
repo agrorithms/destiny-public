@@ -83,8 +83,10 @@ export default async function Gos10kPage({
     const fastestClears = getFastestClears(10, range);
     const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
     // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
-    // render, and quietly truncate six years of history to one February.
-    const timeline = getMonthlyClears();
+    // render, and quietly truncate six years of history to one February. The `span` it
+    // does take is the one already read above: it fixes the axis's two ends, and cannot
+    // narrow what the chart counts.
+    const timeline = getMonthlyClears(span);
     const years = getRunsByYear(range);
     const classes = getClassDistribution(range);
 
@@ -192,7 +194,7 @@ export default async function Gos10kPage({
             {/* #81's render order: the filter, then the timeline, then the panels that
                 obey it. The timeline sits directly under the control because the band it
                 shades is the control's own selection. */}
-            <ArchiveTimeline months={timeline} range={range} scope={scope} />
+            <ArchiveTimeline months={timeline} range={range} />
 
             {/* The pinned full-clear tile that used to lead this grid is now the headline
                 above; repeating it here would state the page's own name twice. */}

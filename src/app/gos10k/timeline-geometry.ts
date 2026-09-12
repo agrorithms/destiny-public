@@ -1,4 +1,4 @@
-import { monthIndex } from '@/lib/db/archive/month-keys';
+import { monthIndex, monthIndexAt } from '@/lib/db/archive/month-keys';
 
 /**
  * Where things sit on the timeline's shared x-axis (#88), as percentages of its width.
@@ -119,10 +119,10 @@ function axisPercent(months: string[], unixSeconds: number): number {
     const nextMonthStart = Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth() + 1, 1);
     const throughMonth = (unixSeconds * 1000 - monthStart) / (nextMonthStart - monthStart);
 
-    return offsetPercent(
-        months,
-        instant.getUTCFullYear() * 12 + instant.getUTCMonth() + throughMonth
-    );
+    // The whole index from month-keys, the fraction from here: the month arithmetic has
+    // one owner, and how far through a month an instant sits is the only part of this
+    // that is about the axis rather than the calendar.
+    return offsetPercent(months, monthIndexAt(instant) + throughMonth);
 }
 
 /**

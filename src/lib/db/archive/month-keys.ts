@@ -24,8 +24,27 @@ export function monthIndex(month: string): number {
     return year * 12 + (monthOfYear - 1);
 }
 
-/** The `YYYY-MM` key of an absolute month index — the inverse of {@link monthIndex}. */
-export function monthKey(index: number): string {
+/**
+ * The absolute month index a UTC instant falls in, ignoring where in the month it is.
+ *
+ * Here rather than at the caller because `year * 12 + month` is this module's convention
+ * and the header above says why it has exactly one home: the timeline's geometry needs
+ * the index of an instant to place the shaded band, and doing that arithmetic itself
+ * would be a fourth copy of the same two operators — the off-by-a-month this module was
+ * extracted to make impossible.
+ */
+export function monthIndexAt(instant: Date): number {
+    return instant.getUTCFullYear() * 12 + instant.getUTCMonth();
+}
+
+/**
+ * The `YYYY-MM` key of an absolute month index — the inverse of {@link monthIndex}.
+ *
+ * File-local: {@link monthsBetween} is the only thing that needs to turn an index back
+ * into a key, and an exported inverse nothing imports reads as a contract someone
+ * depends on.
+ */
+function monthKey(index: number): string {
     const year = Math.floor(index / 12);
     const monthOfYear = (index % 12) + 1;
     return `${year}-${String(monthOfYear).padStart(2, '0')}`;

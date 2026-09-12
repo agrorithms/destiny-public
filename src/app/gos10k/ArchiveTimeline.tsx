@@ -1,5 +1,5 @@
 import type { ArchiveTimelineMonth, ResolvedArchiveRange } from '@/lib/db/archive/queries';
-import { formatArchiveDay } from './range-copy';
+import { describeArchiveRange, formatArchiveDayRange, formatArchiveMonth } from './range-copy';
 import { timelineBand, yearTicks } from './timeline-geometry';
 
 /**
@@ -32,11 +32,9 @@ import { timelineBand, yearTicks } from './timeline-geometry';
 export function ArchiveTimeline({
     months,
     range,
-    scope,
 }: {
     months: ArchiveTimelineMonth[];
     range: ResolvedArchiveRange;
-    scope: string;
 }) {
     // Everything below is in viewBox units of this width, in both charts. It is a
     // resolution rather than a size — `preserveAspectRatio="none"` stretches it to
@@ -47,14 +45,20 @@ export function ArchiveTimeline({
     const BAR_HEIGHT = 48;
 
     const total = months.length === 0 ? 0 : months[months.length - 1].cumulativeClears;
-    const peak = months.reduce(
+    // Seeded with only the two fields the caption reads, so the shape says what this is:
+    // a max-by-clears, not an ArchiveTimelineMonth.
+    const peak = months.reduce<{ month: string; clears: number }>(
         (busiest, month) => (month.clears > busiest.clears ? month : busiest),
-        { month: '', clears: 0, cumulativeClears: 0 }
+        { month: '', clears: 0 }
     );
     // The geometry works in month keys alone — it is the axis, not the data — so both
     // charts and the band are positioned from the same list of `YYYY-MM` strings.
     const monthKeys = months.map((month) => month.month);
     const band = timelineBand(monthKeys, range);
+    // Derived here rather than passed in, next to the band it describes: the sentence and
+    // the rect are then two readings of one `range` value instead of two props that could
+    // arrive from different ones.
+    const scope = describeArchiveRange(range);
     const ticks = yearTicks(monthKeys);
     const step = months.length === 0 ? 0 : AXIS_WIDTH / months.length;
 
@@ -108,7 +112,7 @@ export function ArchiveTimeline({
                     aria-label={`Cumulative Pinned Full Clears, rising to ${total.toLocaleString()}`}
                     className="h-24 w-full ui-accent-text sm:h-32"
                 >
-                    <ShadedBand band={band} height={LINE_HEIGHT} axisWidth={AXIS_WIDTH} />
+                    <ShadedBand band={band} height={LINE_HEIGHT} />
                     {/* `vector-effect` because preserveAspectRatio="none" scales x and y
                         by different factors, which would otherwise render the stroke as a
                         wedge — thin where the chart is wide. */}
@@ -132,7 +136,7 @@ export function ArchiveTimeline({
                     }
                     className="h-12 w-full ui-text-secondary"
                 >
-                    <ShadedBand band={band} height={BAR_HEIGHT} axisWidth={AXIS_WIDTH} />
+                    <ShadedBand band={band} height={BAR_HEIGHT} />
                     {months.map((month, index) => {
                         // A month with no clears draws no bar, and that is the point of
                         // the gap-filled query: it still occupies its slot on the axis, so
@@ -179,10 +183,11 @@ export function ArchiveTimeline({
                 <p className="ui-text-secondary text-xs">
                     {peak.clears === 0
                         ? 'No Pinned Full Clears in the Archive.'
-                        : `Per month: busiest was ${peak.clears.toLocaleString()} in ${formatMonth(peak.month)}.`}
-                    {band !== null && range.dateFrom !== null && range.dateTo !== null
-                        ? ` Shaded: ${formatArchiveDay(range.dateFrom)} – ${formatArchiveDay(range.dateTo)}.`
-                        : ''}
+                        : `Per month: busiest was ${peak.clears.toLocaleString()} in ${formatArchiveMonth(peak.month)}.`}
+                    {/* Through the page's one day-range formatter: it already collapses a
+                        single-day selection to one date and already answers for null ends,
+                        which is what the extra two clauses here used to re-check. */}
+                    {band !== null ? ` Shaded: ${formatArchiveDayRange(range)}.` : ''}
                 </p>
             </div>
         </section>
@@ -201,36 +206,27 @@ export function ArchiveTimeline({
 function ShadedBand({
     band,
     height,
-    axisWidth,
 }: {
     band: { startPercent: number; endPercent: number } | null;
     height: number;
-    axisWidth: number;
 }) {
     // Unfiltered draws nothing: a band covering the whole chart reads as a selection.
     if (band === null) return null;
 
-    const x = (band.startPercent / 100) * axisWidth;
-    const width = ((band.endPercent - band.startPercent) / 100) * axisWidth;
-
+    // Percentages straight onto the rect, which SVG resolves against the viewBox width.
+    // Converting them back into user units would mean this component being handed the
+    // same AXIS_WIDTH its `viewBox` uses and multiplying by it — a third prop whose only
+    // job is to agree with the axis, and a way for it to disagree.
     return (
         <rect
             data-testid="archive-timeline-band"
-            x={x}
+            x={`${band.startPercent}%`}
             y={0}
-            width={width}
+            width={`${band.endPercent - band.startPercent}%`}
             height={height}
             className="ui-accent-text"
             fill="currentColor"
             fillOpacity={0.18}
         />
     );
-}
-
-/** `Feb 2022` from a `YYYY-MM` bucket key, through the page's one date formatter. */
-function formatMonth(month: string): string {
-    // The 15th rather than the 1st: any day inside the month formats to the same month
-    // name, and the middle of it cannot be moved across a boundary by a rounding
-    // surprise. formatArchiveDay is UTC-pinned, as every date on this page is.
-    return formatArchiveDay(`${month}-15`).replace(/^\d+\s/, '');
 }

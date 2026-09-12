@@ -3,6 +3,7 @@ import { buildFixtureArchive } from '../helpers/archive-seed';
 import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
 import { getArchiveSpan, getMonthlyClears } from '@/lib/db/archive/queries';
+import { formatArchiveDate } from '@/lib/db/archive/range';
 
 /**
  * The timeline's monthly bucketing (#88), against the fixture Archive.
@@ -55,8 +56,11 @@ describe('bucketing Pinned Full Clears by month', () => {
         // The axis is anchored to the Archive's own extent — the same span the header
         // states — and not to a clock. A timeline that ended at "now" would grow an
         // empty tail every month against a dataset that stopped moving in 2026.
-        const firstRun = new Date((span.firstRunAt ?? 0) * 1000).toISOString().slice(0, 7);
-        const lastRun = new Date((span.lastRunAt ?? 0) * 1000).toISOString().slice(0, 7);
+        // Through the same formatter the query itself reduces the span with, so the
+        // expected axis is the shipped derivation rather than a second one that could
+        // drift from it.
+        const firstRun = formatArchiveDate(span.firstRunAt!).slice(0, 7);
+        const lastRun = formatArchiveDate(span.lastRunAt!).slice(0, 7);
         expect(months[0].month).toBe(firstRun);
         expect(months[months.length - 1].month).toBe(lastRun);
     });
@@ -140,7 +144,8 @@ describe('bucketing Pinned Full Clears by month', () => {
         expect(range.mode).toBe('clears');
 
         // The timeline takes no range at all, which is the structural half of the same
-        // criterion: there is no argument through which it could be truncated.
+        // criterion: there is no *required* argument, and the one optional argument is an
+        // ArchiveSpan — it fixes the axis's two ends and cannot narrow what is counted.
         expect(getMonthlyClears).toHaveLength(0);
 
         const months = getMonthlyClears();

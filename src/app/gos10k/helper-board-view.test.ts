@@ -41,10 +41,18 @@ describe('reading the board view out of the URL', () => {
         expect(parseHelperBoardView({ helperTime: '' })).toEqual(DEFAULT_HELPER_BOARD_VIEW);
     });
 
-    it('reads the first value of a repeated parameter, as the range parser does', () => {
-        expect(parseHelperBoardView({ helperTime: ['inRun', 'withSubject'] })).toMatchObject({
-            measure: 'inRun',
-        });
+    it('ignores a repeated parameter, exactly as the range parser does', () => {
+        // Not "first one wins". `range.ts` reads a repeated key as a hand-edited link
+        // with no sensible answer and degrades, and both controls on this URL now share
+        // its `singleSearchParam`. This test failed the first time it was written the
+        // other way round, which is the point of having it: two parsers on one page
+        // disagreeing about `?a=x&a=y` is a difference nothing else would surface.
+        expect(parseHelperBoardView({ helperTime: ['inRun', 'withSubject'] })).toEqual(
+            DEFAULT_HELPER_BOARD_VIEW
+        );
+        expect(parseHelperBoardView({ helperRows: ['all', 'all'] })).toEqual(
+            DEFAULT_HELPER_BOARD_VIEW
+        );
     });
 });
 

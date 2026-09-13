@@ -62,8 +62,15 @@ type SearchParamValue = string | string[] | undefined;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DIGITS = /^\d+$/;
 
-/** A repeated parameter is a hand-edited link; there is no sensible "first one wins". */
-function single(value: SearchParamValue): string | undefined {
+/**
+ * A repeated parameter is a hand-edited link; there is no sensible "first one wins".
+ *
+ * Exported because this page has a second parser — the Helper board's view state in
+ * `src/app/gos10k/helper-board-view.ts` — and two controls on one URL reading a
+ * repeated key by different rules is a disagreement nothing would catch. It was
+ * briefly two functions of the same name with different answers.
+ */
+export function singleSearchParam(value: SearchParamValue): string | undefined {
     if (Array.isArray(value)) return undefined;
     return value;
 }
@@ -109,10 +116,10 @@ export function endOfArchiveDay(date: string): number {
 export function parseArchiveRangeRequest(
     searchParams: Record<string, SearchParamValue>
 ): ArchiveRangeRequest {
-    const fromDate = single(searchParams[RANGE_PARAMS.fromDate]);
-    const toDate = single(searchParams[RANGE_PARAMS.toDate]);
-    const clearFrom = single(searchParams[RANGE_PARAMS.clearFrom]);
-    const clearTo = single(searchParams[RANGE_PARAMS.clearTo]);
+    const fromDate = singleSearchParam(searchParams[RANGE_PARAMS.fromDate]);
+    const toDate = singleSearchParam(searchParams[RANGE_PARAMS.toDate]);
+    const clearFrom = singleSearchParam(searchParams[RANGE_PARAMS.clearFrom]);
+    const clearTo = singleSearchParam(searchParams[RANGE_PARAMS.clearTo]);
 
     const asksForDates = RANGE_PARAMS.fromDate in searchParams || RANGE_PARAMS.toDate in searchParams;
     const asksForClears =
@@ -148,7 +155,18 @@ export function parseArchiveRangeRequest(
  * is what makes a preset a link rather than a second filtering mechanism, and what
  * makes any view shareable by copying the address bar.
  */
-export function archiveRangeHref(request: ArchiveRangeRequest): string {
+export function archiveRangeHref(
+    request: ArchiveRangeRequest,
+    /**
+     * A panel's own parameters, appended after the range's.
+     *
+     * Here rather than left to the caller because the alternative is string surgery on
+     * this function's return value — `base.includes('?') ? '&' : '?'` — which is how a
+     * second, subtly different opinion about URL assembly gets into the page. The range
+     * always writes first, so a shared link reads range-then-panel however it was built.
+     */
+    extra?: URLSearchParams
+): string {
     const params = new URLSearchParams();
 
     if (request.kind === 'dates') {
@@ -157,6 +175,10 @@ export function archiveRangeHref(request: ArchiveRangeRequest): string {
     } else if (request.kind === 'clears') {
         params.set(RANGE_PARAMS.clearFrom, String(request.clearFrom));
         params.set(RANGE_PARAMS.clearTo, String(request.clearTo));
+    }
+
+    for (const [key, value] of extra ?? []) {
+        params.append(key, value);
     }
 
     const query = params.toString();

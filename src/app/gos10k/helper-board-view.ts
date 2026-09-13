@@ -1,5 +1,6 @@
 import {
     archiveRangeHref,
+    singleSearchParam,
     type ArchiveRangeRequest,
 } from '@/lib/db/archive/range';
 
@@ -53,12 +54,18 @@ export const HELPER_BOARD_PARAMS = {
  * two disagree — across the top of the board they very nearly do not, which is the
  * point of being able to look.
  */
-export type HelperTimeMeasure = 'withSubject' | 'inRun';
+export const HELPER_TIME_MEASURES = ['withSubject', 'inRun'] as const;
 
-const MEASURE_PARAM_VALUES: Record<string, HelperTimeMeasure> = {
-    withSubject: 'withSubject',
-    inRun: 'inRun',
-};
+export type HelperTimeMeasure = (typeof HELPER_TIME_MEASURES)[number];
+
+/**
+ * One list, three uses: the type above, the recogniser below, and the order the two
+ * toggle pills render in. They were three separate literals, which is three places to
+ * add a third measure and two places to forget.
+ */
+function isHelperTimeMeasure(value: string): value is HelperTimeMeasure {
+    return (HELPER_TIME_MEASURES as readonly string[]).includes(value);
+}
 
 /** The board's `id`, and the fragment every one of its own links ends at. */
 export const HELPER_BOARD_ANCHOR = 'helpers';
@@ -74,22 +81,26 @@ export const DEFAULT_HELPER_BOARD_VIEW: HelperBoardView = {
     showAll: false,
 };
 
-/** The first value of a parameter, matching how ./range.ts reads a repeated key. */
-function single(value: string | string[] | undefined): string | undefined {
-    return Array.isArray(value) ? value[0] : value;
-}
-
 /**
  * Reads the board's view out of the URL. Anything unrecognised is the default view.
+ *
+ * A repeated key is read through the range parser's own {@link singleSearchParam}, not
+ * a local copy of it: a repeated parameter is a hand-edited link, `range.ts` answers
+ * that with "there is no sensible first one wins", and two controls on the same URL
+ * disagreeing about it is a difference no test would think to look for. This file did
+ * briefly hold a same-named helper that took `value[0]` instead.
  */
 export function parseHelperBoardView(
     searchParams: Record<string, string | string[] | undefined>
 ): HelperBoardView {
-    const measure = single(searchParams[HELPER_BOARD_PARAMS.time]);
-    const rows = single(searchParams[HELPER_BOARD_PARAMS.rows]);
+    const measure = singleSearchParam(searchParams[HELPER_BOARD_PARAMS.time]);
+    const rows = singleSearchParam(searchParams[HELPER_BOARD_PARAMS.rows]);
 
     return {
-        measure: (measure && MEASURE_PARAM_VALUES[measure]) || DEFAULT_HELPER_BOARD_VIEW.measure,
+        measure:
+            measure && isHelperTimeMeasure(measure)
+                ? measure
+                : DEFAULT_HELPER_BOARD_VIEW.measure,
         showAll: rows === 'all',
     };
 }
@@ -116,7 +127,6 @@ export function helperBoardHref(
     request: ArchiveRangeRequest,
     view: HelperBoardView
 ): string {
-    const base = archiveRangeHref(request);
     const params = new URLSearchParams();
 
     if (view.measure !== DEFAULT_HELPER_BOARD_VIEW.measure) {
@@ -126,7 +136,5 @@ export function helperBoardHref(
         params.set(HELPER_BOARD_PARAMS.rows, 'all');
     }
 
-    const query = params.toString();
-    const url = !query ? base : base.includes('?') ? `${base}&${query}` : `${base}?${query}`;
-    return `${url}#${HELPER_BOARD_ANCHOR}`;
+    return `${archiveRangeHref(request, params)}#${HELPER_BOARD_ANCHOR}`;
 }

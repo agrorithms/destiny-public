@@ -824,6 +824,46 @@ time-column toggle and the show-all expansion as browser-only behaviour to be ha
 same URL, so both are asserted in Chromium instead — the same substitution #88 made for its
 shaded band. Recorded on #80 rather than left in a commit message.
 
+### #90 — review fixes (second commit)
+
+Both axes ran against `b57aec1` with #81 as parent. Two of the Spec axis's findings were artefacts
+of what it could see — `docs/handoffs/260803-playwright-e2e.md` **was** updated but
+`docs/handoffs/` is gitignored, so it is not in the diff; the #80 comment was posted after the
+commit it reviewed. Four findings were real.
+
+- **Two `single()`s on one page disagreed** (Standards, the one hard finding). `range.ts` reads a
+  repeated key as a hand-edited link with *no* sensible answer and returns `undefined`;
+  `helper-board-view.ts` had a same-named local helper taking `value[0]` — and both its docblock
+  and its test claimed it "matches the range parser". It did not. `singleSearchParam` is exported
+  from `range.ts` and both parsers use it, so `?helperTime=a&helperTime=b` now degrades to the
+  default view the way `?from=a&from=b` degrades to the whole Archive. The test that asserted the
+  wrong rule now asserts the right one and says why it exists.
+- **`archiveRangeHref(request, extra?)`.** `helperBoardHref` was doing
+  `base.includes('?') ? '&' : '?'` on this function's output — a second opinion about URL assembly
+  living in a panel file, and the panel that gets it wrong is the one that silently drops the
+  reader's filter. The range's own parameters are still written first, and three cases are pinned
+  in `src/lib/db/archive/range.test.ts`.
+- **The two measures were enumerated four times** — the union type, a recogniser record, a render
+  order array, and `TIME_COLUMN`. Now `HELPER_TIME_MEASURES` is the single list; the type and the
+  recogniser derive from it and `HelperBoard.tsx` imports it for the pill order. `TIME_COLUMN`
+  stays where it is: it is copy, and copy belongs beside the component that renders it.
+- **"Total time in those clears" overstated the number** (Spec, finding (c), and correct).
+  `secondsInRun` is the *envelope* — first entry to last exit — so for the 217 production
+  (instance, player) pairs with two characters it includes the gap between them. The envelope is
+  not a shortcut: it is what the overlap column has to be measured against, or the two readings
+  would describe different intervals. So the arithmetic stands and the **copy** changed, to
+  "entry to exit in those clears". `CONTEXT.md`'s **Time Alongside** entry says the same.
+
+**Not changed:** the `(request, view)` pair travelling through `HelperBoard`, `TimeMeasureToggle`
+and `helperBoardHref` was flagged as a possible Data Clump. Two props behind a named context type
+is indirection bought with nothing — and the same pair is what the *URL* is, which already has a
+name. Also not changed: `getHelperBoard`'s defaulted `limit`, flagged as mildly speculative
+because `page.tsx` always passes one. A defaulted trailing argument is this module's house shape
+(`getMedianSpeedBoard(limit = 15, range)`), and the tests do rely on the default.
+
+Verified after the fixes: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
+`npm test` 400 / 35, `npm run e2e` 49/49.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

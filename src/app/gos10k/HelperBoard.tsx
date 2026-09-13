@@ -4,6 +4,7 @@ import type { ArchiveRangeRequest } from '@/lib/db/archive/range';
 import { formatPresenceHours } from './duration-copy';
 import {
     HELPER_BOARD_ANCHOR,
+    HELPER_TIME_MEASURES,
     helperBoardHref,
     type HelperBoardView,
     type HelperTimeMeasure,
@@ -181,15 +182,20 @@ const TIME_COLUMN: Record<
     },
     inRun: {
         label: 'Time in Run',
+        // "Entry to exit", not "total time played". The number is the envelope of a
+        // guardian's presence in each clear — first entry to last exit — which for the
+        // few who brought two characters to one raid includes the gap between them. The
+        // envelope is not a shortcut: it is what the overlap column has to be measured
+        // against, so both readings describe the same interval. Saying "total time in
+        // those clears" would overstate it by that gap, for 217 (instance, player) pairs
+        // in production.
         explanation:
-            'Total time in those clears, whether or not he was there for it. Compare it with ' +
+            'Entry to exit in those clears, whether or not he was there for it. Compare it with ' +
             'the other reading: across the top of the board the two barely differ, which is what ' +
             'makes the first one worth trusting.',
         read: (helper) => helper.secondsInRun,
     },
 };
-
-const MEASURES: HelperTimeMeasure[] = ['withSubject', 'inRun'];
 
 /**
  * Two links styled as a segmented control, with the active one rendered as text.
@@ -211,7 +217,7 @@ function TimeMeasureToggle({
             className="flex flex-wrap items-center gap-2"
         >
             <span className="ui-text-secondary text-xs">Measure time as</span>
-            {MEASURES.map((measure) => {
+            {HELPER_TIME_MEASURES.map((measure) => {
                 const active = measure === view.measure;
                 return (
                     <Link

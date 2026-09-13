@@ -229,7 +229,9 @@ taken. That collapse is hazard 1 wearing a third face: without it a player who b
 characters to one raid has two overlapping intervals, the shared stretch is counted twice, and the
 sum can exceed the total time either of them was in the Run at all. Its alternative reading,
 **time in Run**, is that same envelope's own length summed over the same clears, whether or not he
-was there for it; the board offers both because the two barely differ across its top rows, which is
+was there for it — entry to exit, so for the few who brought two characters it includes the gap
+between them, and the panel's copy says "entry to exit" rather than "total time played" for that
+reason; the board offers both because the two barely differ across its top rows, which is
 what makes the first one worth trusting. Both are computed in the query module, never in the page.
 _Avoid_: time together, shared time, playtime
 

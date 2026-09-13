@@ -66,3 +66,29 @@ export function formatRunDuration(seconds: number): string {
 export function formatMedianDuration(seconds: number): string {
     return formatRunDuration(Math.round(seconds));
 }
+
+/**
+ * A Helper's presence, in hours (#90).
+ *
+ * A third rendering of a duration on this page and deliberately not
+ * {@link formatRunDuration}: the Helper board's time columns are tens of hours across
+ * hundreds of Runs, and `28:55:47` reads as a single very long raid rather than as a
+ * total. Hours are the unit #81 asks for — "presence measured in hours as well as in
+ * counts" — and one decimal is enough to separate adjacent rows without implying the
+ * source data is precise to the second.
+ *
+ * The two small cases are the ones worth stating. Exactly zero — a Helper who was in
+ * the Run but had left before he arrived — renders as `0 h` rather than `0.0 h`,
+ * because it is a real nothing rather than a rounded something. Anything under six
+ * minutes renders as `<0.1 h`, because `0.0 h` for a Helper who was demonstrably there
+ * says the opposite of what the row means. Both are reachable on the show-all view,
+ * where the tail of the board is people who appeared once.
+ */
+export function formatPresenceHours(seconds: number): string {
+    const total = Math.max(0, seconds);
+    if (total === 0) return '0 h';
+
+    const hours = total / 3600;
+    if (hours < 0.1) return '<0.1 h';
+    return `${hours.toFixed(1)} h`;
+}

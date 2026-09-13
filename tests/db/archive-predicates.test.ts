@@ -3,7 +3,6 @@ import { buildFixtureArchive, readArchiveSeed } from '../helpers/archive-seed';
 import { closeArchiveDb } from '@/lib/db/archive';
 import {
     getArchiveOverview,
-    getTopHelpers,
     getClassDistribution,
     getRunsByYear,
 } from '@/lib/db/archive/queries';
@@ -79,34 +78,12 @@ describe('the two full-clear rules', () => {
 });
 
 describe('the data hazards', () => {
-    it('counts a helper once per run however many characters they brought', () => {
-        const helpers = getTopHelpers(100);
-
-        // 10014833110 has a player with two character rows. COUNT(*) would give them
-        // one more run than they played.
-        const totalRuns = helpers.reduce((sum, helper) => sum + helper.runs, 0);
-        const playerRows = readArchiveSeed().tables.gos_10k_pgcr_players.length;
-        expect(totalRuns).toBeLessThan(playerRows);
-
-        for (const helper of helpers) {
-            expect(helper.runs).toBeLessThanOrEqual(getArchiveOverview().runs);
-            expect(helper.fullClears).toBeLessThanOrEqual(helper.runs);
-        }
-    });
-
-    it('never renders a name with a missing code as Name#null', () => {
-        // 7085305400 carries a player whose bungie_global_display_name_code is NULL.
-        for (const helper of getTopHelpers(100)) {
-            expect(helper.displayName).not.toContain('#null');
-            expect(helper.displayName).not.toContain('undefined');
-            expect(helper.displayName.length).toBeGreaterThan(0);
-        }
-    });
-
-    it('excludes the subject from the helper list', () => {
-        const helpers = getTopHelpers(100);
-        expect(helpers.some((helper) => helper.membershipId === '4611686018437585442')).toBe(false);
-    });
+    // Hazards 1 and 2 were asserted here through getTopHelpers(), which #90 replaced
+    // with the Helper board. They moved to tests/db/archive-helper-board.test.ts —
+    // the same three properties (a multi-character Helper counted once, no `Name#null`,
+    // the subject excluded) against the query that now renders them, plus the two time
+    // columns they also govern. Duplicating them here would be two files asserting one
+    // board.
 
     it('reports a class for every player-run, unknown included', () => {
         const distribution = getClassDistribution();

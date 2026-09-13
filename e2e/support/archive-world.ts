@@ -41,7 +41,7 @@ import { fixtureArchiveDbPath, fixtureRunId } from './fixture-db';
  */
 
 /** Sorts before every real Bungie membership id (they all start `4611686018…`),
- *  so the canary wins getTopHelpers' `ORDER BY runs DESC, fullClears DESC,
+ *  so the canary wins getHelperBoard's `ORDER BY clears DESC, runs DESC,
  *  membershipId` tiebreak rather than landing wherever the data puts it. */
 const CANARY_MEMBERSHIP_ID = '0000000000000000001';
 const CANARY_CHARACTER_ID = '0000000000000000002';
@@ -62,11 +62,17 @@ export function archiveCanaryDisplayName(): string {
  * Builds the fixture Archive at the minted path and adds the canary helper.
  *
  * The canary is joined to *every* Run in the seed. The fixture has 553 distinct
- * helpers and the page renders getTopHelpers(25), so a canary on one Run would
- * not rank and the check would fail for a reason unrelated to the binding.
- * Joined to all of them it holds the maximum possible `runs` — 406, comfortably
- * clear of the busiest real Helper's 97 — and the membership id above settles any
- * tie, so the canary is deterministically the first row of the Helper board.
+ * helpers and the page renders the first HELPER_BOARD_ROWS of them, so a canary on
+ * one Run would not rank and the check would fail for a reason unrelated to the
+ * binding. Joined to all of them it holds the maximum possible presence — since #90
+ * the board ranks on *clears* present, where the canary's 346 is comfortably clear of
+ * the busiest real Helper's 107 — and the membership id above settles any tie, so the
+ * canary is deterministically the first row of the Helper board.
+ *
+ * Its two time columns render `0 h`: the seeded rows leave `start_seconds` and
+ * `time_played_seconds` at 0, so the canary has a zero-length interval and no overlap
+ * with the subject. That is fine for a canary — it is matched by name, never by a
+ * number — but it is why no spec asserts a duration against this row.
  */
 export function mintCanariedArchive(): string {
     const dbPath = fixtureArchiveDbPath();

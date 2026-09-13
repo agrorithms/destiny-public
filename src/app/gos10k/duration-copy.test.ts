@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMedianDuration, formatRunDuration } from './duration-copy';
+import { formatMedianDuration, formatPresenceHours, formatRunDuration } from './duration-copy';
 
 /**
  * The Archive's one duration formatter (#91).
@@ -60,5 +60,32 @@ describe('formatting a median clear duration', () => {
         // not disagree about it: this is the same rule, reached through the wrapper.
         expect(formatMedianDuration(763)).toBe(formatRunDuration(763));
         expect(formatMedianDuration(1039)).toBe('17:19');
+    });
+});
+
+describe('formatting a Helper\'s presence in hours', () => {
+    it('renders tens of hours to one decimal', () => {
+        // The fixture's top row: 104,118 seconds alongside him across 98 clears. The
+        // same number through formatRunDuration reads `28:55:18`, which looks like one
+        // absurdly long raid rather than a season of them.
+        expect(formatPresenceHours(104118)).toBe('28.9 h');
+        expect(formatPresenceHours(3600)).toBe('1.0 h');
+    });
+
+    it('separates a real nothing from a rounded something', () => {
+        // Both are reachable on the show-all view. `0 h` is a Helper who left before he
+        // arrived — clear 102's pharaloover#4706 is exactly this — and `<0.1 h` is a
+        // Helper who was there, briefly. Rendering both as `0.0 h` would say the same
+        // thing about two different rows.
+        expect(formatPresenceHours(0)).toBe('0 h');
+        expect(formatPresenceHours(1)).toBe('<0.1 h');
+        expect(formatPresenceHours(359)).toBe('<0.1 h');
+        expect(formatPresenceHours(360)).toBe('0.1 h');
+    });
+
+    it('clamps a negative to zero rather than rendering it', () => {
+        // Unreachable through the query, which floors each Run's overlap at zero — the
+        // clamp is here for the same reason formatRunDuration has one.
+        expect(formatPresenceHours(-1)).toBe('0 h');
     });
 });

@@ -7,7 +7,7 @@ import {
     getArchiveSpan,
     getClassDistribution,
     getRunsByYear,
-    getTopHelpers,
+    getHelperBoard,
     PINNED_FULL_CLEAR,
     type ResolvedArchiveRange,
 } from '@/lib/db/archive/queries';
@@ -224,14 +224,14 @@ describe('every panel obeys the range', () => {
     it('scopes the Helper board, still counting distinct instances', () => {
         // Hazard 1: a Helper who brought two characters to one Run is one Run. The
         // range clause must not turn the join into a row count.
-        const [top] = getTopHelpers(1, february());
+        const [top] = getHelperBoard(1, february());
 
-        expect(top).toEqual({
+        expect(top).toMatchObject({
             membershipId: '4611686018447922995',
             membershipType: expect.any(Number),
             displayName: 'Antarctica#6606',
             runs: 24,
-            fullClears: 22,
+            clears: 22,
         });
     });
 

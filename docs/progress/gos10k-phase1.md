@@ -33,7 +33,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#91** Fastest-clears list (owns the shared duration formatter)
 - [x] **#92** Median speed board (imports #91's formatter)
 - [x] **#88** Timeline
-- [ ] **#90** Helper board
+- [x] **#90** Helper board
 - [ ] **#89** Presence strip
 - [ ] **#93** Resets panel
 - [ ] **#94** Participants panel + class split
@@ -716,6 +716,114 @@ lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 376 /
   reduce's shape says what it is: a max-by-clears, not a month.
 
 
+### #90 — Helper board (this chunk)
+
+- [x] `src/lib/db/archive/queries.ts` — **`getTopHelpers` is gone**, replaced by
+      `getHelperBoard(limit: number | null = HELPER_BOARD_ROWS, range)` returning
+      `ArchiveHelperPresence` (`runs`, `clears`, `secondsWithSubject`, `secondsInRun`) plus
+      `getHelperBoardSize(range)` and the exported `HELPER_BOARD_ROWS = 25`. Removed rather than
+      kept beside the new one: its `fullClears` field and the new `clears` are the same number
+      under two names, and two functions ranking the same population differently is the drift
+      this file's docblocks keep warning about.
+      **`limit: null` means every row** (`LIMIT -1` in SQLite), which is what show-all binds.
+      **`getHelperBoardSize` is deliberately not `getArchiveHelperCount(range)`** — the latter
+      counts everyone in any Run, the board's population is everyone in a *Pinned Full Clear*,
+      and in November 2020 that is 0 against a non-zero helper count. Using the wrong one would
+      make the panel's own sentence disagree with the rows under it.
+      **`runs` and `clears` are different columns on purpose** (the ticket's separate-columns
+      criterion): `runs` counts `DISTINCT r.instance_id` over *all* Runs in range, `clears` only
+      the Pinned Full Clears, and the gap between them is what the board exists to show.
+      **The overlap is computed here, in SQL, not in the page** — the ticket says so explicitly.
+      One statement with five CTEs: `clears`, `intervals`, `subject`, `presence`, `names`, `runs`.
+      **`intervals` is hazard 1 wearing a third face.** It collapses each (instance, membership)
+      to one envelope — `MIN(start_seconds)` to `MAX(start_seconds + time_played_seconds)` —
+      before any overlap is taken. Summing overlap across character *pairs* instead double-counts
+      the stretch two of the subject's own characters share, and it is not a rounding error: the
+      first draft returned 105,278s of overlap for `Wolf#6888` against 103,912s he was in those
+      Runs at all, an impossible row on the board's top line, off by 1,366s. Instance 8827366043
+      is the one that does it — the subject's two characters run `[3, 3029]` and `[597, 2233]`.
+      The envelope also matches the ticket's own wording, "his own interval in the same Run",
+      singular. `secondsWithSubject <= secondsInRun` on all 382 fixture rows is pinned as a test.
+      **Ranking is `clears DESC, runs DESC, membershipId`** and does *not* change with the time
+      column: both measures come back on every row from one query, so the toggle swaps a reading
+      of the same board rather than producing a second board. The ticket's "two swaps in the top
+      fifteen" line is the spec author's analysis of a time-ranked board, not a requirement.
+      **A `names` CTE rather than `getFastestClears`' two-statement `IN (...)` pattern**, because
+      show-all would otherwise bind several thousand parameters. `PLAYER_NAME_PROJECTION` is
+      reused, so hazard 2 (174 NULL name codes) still goes through `formatBungieDisplayName`.
+- [x] `tests/db/archive-helper-board.test.ts` — **new**, 15 tests. Named Helpers and specific
+      durations, as the ticket requires: `MESRINE#4991` at `{ secondsInRun: 6486,
+      secondsWithSubject: 1504 }`, `pharaloover#4706` at `{ secondsInRun: 3895,
+      secondsWithSubject: 0 }` (there, but never at the same time as him — the zero the `0 h`
+      rendering exists for), and the top three exact pairs. `KaRNaGxFuRy#5001` is the
+      multi-character row: counted **once** in clear 102, which is hazard 1's assertion.
+      **The empty-board case is November 2020**, not the Archive's last day — the last day does
+      hold clears, and the first draft of that test failed with a dump of them. November 2020 has
+      1 Run and 0 Pinned Full Clears, and the same test asserts `getArchiveHelperCount()` is
+      non-zero there, which is the population difference above, pinned.
+- [x] `src/app/gos10k/helper-board-view.ts` + `.test.ts` — **new**, 8 tests. `helperTime` and
+      `helperRows` as URL parameters rather than client state, for three reasons written into the
+      docblock: a pasted link reproduces the view (#81's ninth story), show-all as client state
+      means shipping several thousand hidden rows to save a navigation, and a `<Link>` is
+      assertable where a `useState` is not. `helperBoardHref` is built **on top of**
+      `archiveRangeHref`, not beside it — a second place spelling out `clearFrom`/`clearTo` is how
+      a "show all" link silently drops the reader's filter, and a test pins the carried range.
+      It takes the `ArchiveRangeRequest`, not the resolved range, so a degraded range is not
+      written back as though the reader had asked for it. Unknown values degrade to the default
+      view, which the `?canary=` nonce also depends on.
+- [x] `src/app/gos10k/duration-copy.ts` + `.test.ts` — `formatPresenceHours`, and 9 tests.
+      **Not `formatRunDuration`**: these columns are tens of hours over hundreds of Runs and
+      `28:55:47` reads as one very long raid. `0 h` and `<0.1 h` are deliberately different
+      strings — the first is a real nothing (a Helper who left before he arrived), the second a
+      Helper who was demonstrably there, and `0.0 h` for the second says the opposite of what the
+      row means. Both are reachable on show-all.
+- [x] `src/app/gos10k/HelperBoard.tsx` — **new**, a server component like every other panel.
+      The two time readings live in one `TIME_COLUMN` record because the header, the cell, the
+      explanatory line and the toggle pill all have to agree what `inRun` means, and a switch in
+      each is four places to disagree. The toggle is two `<Link>`s with `aria-current` on the
+      active one. `data-testid="archive-helper-board"` (the old `archive-top-helpers`),
+      `archive-helper-time-header`, `archive-helper-time-toggle`,
+      `archive-helper-board-expand` — the header and the expand link because their *text*
+      changes with the view, the table because three panels on this page render a `<table>`.
+- [x] `src/app/gos10k/page.tsx` — parses the view, keeps the `ArchiveRangeRequest` beside the
+      resolved range (the panel's links need it), and renders `<HelperBoard>` in #81's slot.
+      The inline placeholder table is gone.
+- [x] `e2e/gos10k-helper-board.spec.ts` — **new**, 4 tests: the default 25 rows and
+      `Time with him` header, the toggle swapping the column *while preserving `clearFrom`/
+      `clearTo`*, show-all expanding and reversing, and the 360px probe over the table, the
+      toggle and the page. No names, counts or durations — those are Vitest's, and repeating
+      them here breaks on every fixture re-extraction.
+- [x] `e2e/gos10k-smoke.spec.ts`, `e2e/support/archive-world.ts` — the canary locator follows the
+      testid rename, and the world's comments follow the new `ORDER BY`. **The canary survives
+      the ranking change**: joined to every Run it holds 346 clears, the fixture maximum, and
+      `0000000000000000001` wins the tie, so it is still deterministically row one. Its time
+      columns render `0 h` — the seeded rows leave `start_seconds`/`time_played_seconds` at 0 —
+      which is written down in `archive-world.ts` so no future spec asserts a duration on it.
+- [x] `tests/db/archive-predicates.test.ts`, `tests/db/archive-range.test.ts` — the three hazard
+      tests that went through `getTopHelpers` moved to the new file (a pointer comment is left
+      behind); the range test now calls `getHelperBoard(1, february())` and asserts `clears: 22`.
+- [x] `CONTEXT.md` — **Presence** and **Time Alongside** (Archive). The second entry is where the
+      envelope collapse is written down in prose, because it is the thing a future panel reading
+      `start_seconds` will otherwise rediscover the same way this one did.
+- [x] `CLAUDE.md`, `docs/handoffs/260803-playwright-e2e.md` — twelve browser flows became
+      thirteen, 44 specs became 49.
+
+**The phone criterion found a real bug, in the hand verification rather than in the suite.**
+At 360px against the *production* Archive, `?helperRows=all` overflowed the **page** by 11px while
+the table's own box measured clean: a 31-character unbreakable name (Bungie caps a name at 26
+characters, plus `#dddd`) made the `w-full` auto-layout table *grow* rather than scroll. The name
+cell is `wrap-anywhere` — `overflow-wrap: anywhere`, not Tailwind's `break-words`, because only the
+former shrinks a cell's min-content width, which is what a table sizes its columns from; the count
+columns are `whitespace-nowrap` so a wrapped `2,488` cannot read as a second row. The fixture
+cannot reproduce it — its longest name has spaces — so the spec that now covers the expanded board
+at 360px is a regression guard and says so.
+
+**#80's decision 2 is answered here, and the ticket's own AC is superseded.** #90 lists the
+time-column toggle and the show-all expansion as browser-only behaviour to be hand-verified and
+*recorded as unverified*. That was written assuming client state. Both shipped as links into the
+same URL, so both are asserted in Chromium instead — the same substitution #88 made for its
+shaded band. Recorded on #80 rather than left in a commit message.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
@@ -756,8 +864,8 @@ lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 376 /
   `archive-range-degraded` (plus `archive-range-filter` and `archive-range-clear`). They
   exist because the copy they hold is a whole sentence whose *figures* move with the fixture;
   the forms themselves are located by role (`getByRole('group', { name: 'By date' })`).
-- **#80's decision 2 is recorded (#87) and decision 4 is recorded (#88, above).** What remains
-  for #80 is #90's half of decision 2 and updating ADR 0007's "no browser coverage" consequence.
+- **#80's decision 2 is recorded (#87 and #90) and decision 4 is recorded (#88, above).** What
+  remains for #80 is updating ADR 0007's "no browser coverage" consequence.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
   the new invariant assertions make that failure loud.

@@ -3,7 +3,9 @@ import {
     getArchiveHelperCount,
     getArchiveOverview,
     getArchiveSpan,
-    getTopHelpers,
+    getHelperBoard,
+    getHelperBoardSize,
+    HELPER_BOARD_ROWS,
     getFastestClears,
     getMedianSpeedBoard,
     MEDIAN_SPEED_BOARD_ROWS,
@@ -14,6 +16,8 @@ import {
 } from '@/lib/db/archive/queries';
 import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
 import { ArchiveRangeFilter } from './ArchiveRangeFilter';
+import { HelperBoard } from './HelperBoard';
+import { parseHelperBoardView } from './helper-board-view';
 import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
@@ -53,6 +57,12 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * whole fireteam. It owns the shared duration formatter in ./duration-copy.ts that #92's
  * median speed board imports, so the same number cannot render two ways on one page.
  *
+ * Issue #90 replaced the placeholder "who helped most" table with the real Helper
+ * board: Runs present and clears present as separate columns, plus presence measured in
+ * hours, toggling between time overlapping his and total time in those Runs. Both of
+ * that panel's controls are links into this same URL rather than client state — see
+ * ./helper-board-view.ts — so the page still ships no client JavaScript.
+ *
  * Issue #92 added the median speed board below it — Helpers rather than Runs, ranked by
  * a median with a stated 15-clear floor, so that the panel above ("who set records") and
  * this one ("who is reliably quick") answer two different questions with one formatter.
@@ -74,12 +84,19 @@ export default async function Gos10kPage({
     // the header, the presets and an unfiltered or degraded range all describe the same
     // extent, and re-deriving it per caller ran the same aggregate twice per request.
     const span = getArchiveSpan();
-    const range = resolveArchiveRange(parseArchiveRangeRequest(await searchParams), span);
+    // The request is kept, not only its resolution: the Helper board's own links have to
+    // write the reader's range back into the URL, and a resolved range that degraded
+    // would otherwise be rewritten as though they had asked for it.
+    const params = await searchParams;
+    const request = parseArchiveRangeRequest(params);
+    const range = resolveArchiveRange(request, span);
     const presets = resolveMilestonePresets(span);
     const scope = describeArchiveRange(range);
 
     const overview = getArchiveOverview(range);
-    const helpers = getTopHelpers(25, range);
+    const helperView = parseHelperBoardView(params);
+    const helpers = getHelperBoard(helperView.showAll ? null : HELPER_BOARD_ROWS, range);
+    const helperPopulation = getHelperBoardSize(range);
     const fastestClears = getFastestClears(10, range);
     const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
     // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
@@ -252,30 +269,13 @@ export default async function Gos10kPage({
                 </table>
             </section>
 
-            <section className="space-y-3">
-                <h2 className="text-xl font-semibold ui-text-primary">Who helped most</h2>
-                <p className="ui-text-secondary text-sm leading-6">
-                    The 25 guardians in most of his runs across {scope}.
-                </p>
-                <table data-testid="archive-top-helpers" className="w-full text-sm">
-                    <thead>
-                        <tr className="ui-text-secondary text-left text-xs">
-                            <th className="py-1 font-medium">Guardian</th>
-                            <th className="py-1 font-medium">Runs together</th>
-                            <th className="py-1 font-medium">Full clears</th>
-                        </tr>
-                    </thead>
-                    <tbody className="ui-text-secondary">
-                        {helpers.map((helper) => (
-                            <tr key={helper.membershipId}>
-                                <td className="py-1 ui-text-primary">{helper.displayName}</td>
-                                <td className="py-1">{helper.runs.toLocaleString()}</td>
-                                <td className="py-1">{helper.fullClears.toLocaleString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </section>
+            <HelperBoard
+                helpers={helpers}
+                population={helperPopulation}
+                view={helperView}
+                request={request}
+                scope={scope}
+            />
 
             {/* #81's render order puts the records below the Helper board: who was
                 there most, then what the best of it looked like. */}

@@ -43,7 +43,7 @@ test.describe('the GoS 10k Archive page', () => {
         // each new panel ships.
         await expect(
             page
-                .getByTestId('archive-top-helpers')
+                .getByTestId('archive-helper-board')
                 .getByText(archiveCanaryDisplayName(), { exact: true })
         ).toBeVisible();
 

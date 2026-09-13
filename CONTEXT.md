@@ -211,6 +211,28 @@ the board on exactly the narrow filters it is most interesting on. The floor is 
 panel's own copy, because a floor a reader cannot see is indistinguishable from a missing Helper.
 _Avoid_: average clear time, minimum runs, cutoff
 
+**Presence** (Archive):
+How much of the Archive a **Helper** was actually there for, measured in two ways the Helper
+board renders side by side. **Runs present** is every **Run** in the active **Range** they
+entered; **clears present** is how many of those are Pinned Full Clears. The two are different
+numbers on purpose — presence and success are different things, and a board that collapsed them
+into one column would hide the gap it exists to show. The board ranks on clears present, with
+Runs present and then membership id breaking ties.
+_Avoid_: appearances, attendance, runs together
+
+**Time Alongside** (Archive):
+The third reading of **Presence**: for each Pinned Full Clear, the overlap between a **Helper**'s
+interval in that Run and the subject's, summed over the **Range** and rendered in hours. An
+interval is derived per (Run, membership) from `start_seconds` and `time_played_seconds`, and both
+sides are collapsed to a single envelope — earliest entry to latest exit — before the overlap is
+taken. That collapse is hazard 1 wearing a third face: without it a player who brought two
+characters to one raid has two overlapping intervals, the shared stretch is counted twice, and the
+sum can exceed the total time either of them was in the Run at all. Its alternative reading,
+**time in Run**, is that same envelope's own length summed over the same clears, whether or not he
+was there for it; the board offers both because the two barely differ across its top rows, which is
+what makes the first one worth trusting. Both are computed in the query module, never in the page.
+_Avoid_: time together, shared time, playtime
+
 **Month Bucket** (Archive):
 One calendar month of the Archive's history on the timeline, in UTC, holding that month's Pinned
 Full Clears and the running total through the end of it. **Every month between the first Run and

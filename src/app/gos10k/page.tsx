@@ -4,7 +4,6 @@ import {
     getArchiveOverview,
     getArchiveSpan,
     getHelperBoard,
-    getHelperBoardSize,
     HELPER_BOARD_ROWS,
     getFastestClears,
     getMedianSpeedBoard,
@@ -95,8 +94,7 @@ export default async function Gos10kPage({
 
     const overview = getArchiveOverview(range);
     const helperView = parseHelperBoardView(params);
-    const helpers = getHelperBoard(helperView.showAll ? null : HELPER_BOARD_ROWS, range);
-    const helperPopulation = getHelperBoardSize(range);
+    const helperBoard = getHelperBoard(helperView.showAll ? null : HELPER_BOARD_ROWS, range);
     const fastestClears = getFastestClears(10, range);
     const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
     // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
@@ -270,8 +268,8 @@ export default async function Gos10kPage({
             </section>
 
             <HelperBoard
-                helpers={helpers}
-                population={helperPopulation}
+                helpers={helperBoard.helpers}
+                population={helperBoard.population}
                 view={helperView}
                 request={request}
                 scope={scope}

@@ -452,88 +452,88 @@ export interface ArchiveHelperPresence {
  *
  * `limit` is `null` for the show-all view. It reaches SQLite as `-1`, which is that
  * engine's spelling of "no limit"; the alternative is two nearly-identical statements.
+ *
+ * ## One pass, and the population with it
+ *
+ * Every column comes out of a single scan of the Range's player rows. `intervals` groups
+ * them per (Run, person) once, over *every* Run in the range, carrying whether that Run
+ * was a clear; `runs` counts those groups, while `clears` and both time columns count
+ * only the ones flagged, and `HAVING` drops a person with none. The first version read
+ * the player table three times — clears, names, and all Runs — for identical rows.
+ *
+ * `population` is `COUNT(*) OVER ()`, which SQLite evaluates before `LIMIT`, so a page
+ * of 25 rows still reports every Helper the board could show. It was a second statement
+ * restating this one's population rule, which is the drift the "25 of 382" copy and the
+ * show-all link would have silently inherited.
  */
+export interface ArchiveHelperBoard {
+    /** The rows to render — the first `limit` of them, or all of them for `null`. */
+    helpers: ArchiveHelperPresence[];
+    /** Every Helper the board *could* show in this range, however many rows were asked for. */
+    population: number;
+}
+
 export function getHelperBoard(
     limit: number | null = HELPER_BOARD_ROWS,
     range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
-): ArchiveHelperPresence[] {
+): ArchiveHelperBoard {
     const scope = rangeClause(range);
 
-    // Positional parameters, in textual order: the clears CTE's range, the subject's
-    // membership three times (the subject CTE, the presence filter, the runs filter),
-    // the runs CTE's range, then the limit. `rangeClause` returns `?`s, so named
-    // parameters cannot be mixed in without rewriting it.
+    // Positional parameters, in textual order: the range, the subject's membership twice
+    // (the subject CTE, the presence filter), then the limit. `rangeClause` returns `?`s,
+    // so named parameters cannot be mixed in without rewriting it.
     const rows = getArchiveDb().prepare(`
-        WITH clears AS (
-            SELECT r.instance_id AS instanceId
-            FROM gos_10k_runs r
-            WHERE ${PINNED_FULL_CLEAR} ${scope.sql}
-        ),
-        intervals AS (
+        WITH intervals AS (
             SELECT
                 p.instance_id                                AS instanceId,
                 p.membership_id                              AS membershipId,
+                MAX(${PINNED_FULL_CLEAR})                    AS isClear,
                 MIN(p.start_seconds)                         AS enteredAt,
-                MAX(p.start_seconds + p.time_played_seconds) AS leftAt
+                MAX(p.start_seconds + p.time_played_seconds) AS leftAt,
+                ${PLAYER_NAME_PROJECTION}
             FROM gos_10k_pgcr_players p
-            JOIN clears c ON c.instanceId = p.instance_id
+            JOIN gos_10k_runs r ON r.instance_id = p.instance_id
+            WHERE 1 = 1 ${scope.sql}
             GROUP BY p.instance_id, p.membership_id
         ),
         subject AS (
-            SELECT instanceId, enteredAt, leftAt FROM intervals WHERE membershipId = ?
+            SELECT instanceId, enteredAt, leftAt
+            FROM intervals
+            WHERE membershipId = ? AND isClear = 1
         ),
         presence AS (
             SELECT
-                h.membershipId                  AS membershipId,
-                COUNT(*)                        AS clears,
-                SUM(h.leftAt - h.enteredAt)     AS secondsInRun,
+                h.membershipId                              AS membershipId,
+                MAX(h.membershipType)                       AS membershipType,
+                MAX(h.displayName)                          AS displayName,
+                MAX(h.bungieGlobalDisplayName)              AS bungieGlobalDisplayName,
+                MAX(h.bungieGlobalDisplayNameCode)          AS bungieGlobalDisplayNameCode,
+                COUNT(*)                                    AS runs,
+                SUM(h.isClear)                              AS clears,
+                SUM(CASE WHEN h.isClear = 1 THEN h.leftAt - h.enteredAt ELSE 0 END)
+                                                            AS secondsInRun,
                 -- LEFT JOIN and COALESCE rather than an inner join: he is in every Run
                 -- of this Archive by construction, and a clear that somehow carried no
                 -- row for him should drop that Run's overlap, never the Helper's row.
+                -- The subject CTE holds clears only, so a non-clear Run joins nothing and
+                -- contributes NULL, which SUM skips.
                 COALESCE(SUM(
                     MAX(0, MIN(h.leftAt, s.leftAt) - MAX(h.enteredAt, s.enteredAt))
-                ), 0)                           AS secondsWithSubject
+                ), 0)                                       AS secondsWithSubject
             FROM intervals h
             LEFT JOIN subject s ON s.instanceId = h.instanceId
             WHERE h.membershipId != ?
             GROUP BY h.membershipId
-        ),
-        names AS (
-            SELECT p.membership_id AS membershipId, ${PLAYER_NAME_PROJECTION}
-            FROM gos_10k_pgcr_players p
-            JOIN clears c ON c.instanceId = p.instance_id
-            GROUP BY p.membership_id
-        ),
-        runs AS (
-            SELECT
-                p.membership_id               AS membershipId,
-                COUNT(DISTINCT r.instance_id) AS runs
-            FROM gos_10k_pgcr_players p
-            JOIN gos_10k_runs r ON r.instance_id = p.instance_id
-            WHERE p.membership_id != ? ${scope.sql}
-            GROUP BY p.membership_id
+            HAVING SUM(h.isClear) > 0
         )
-        SELECT
-            pr.membershipId,
-            n.membershipType,
-            n.displayName,
-            n.bungieGlobalDisplayName,
-            n.bungieGlobalDisplayNameCode,
-            rn.runs,
-            pr.clears,
-            pr.secondsInRun,
-            pr.secondsWithSubject
-        FROM presence pr
-        JOIN names n ON n.membershipId = pr.membershipId
-        JOIN runs rn ON rn.membershipId = pr.membershipId
-        ORDER BY pr.clears DESC, rn.runs DESC, pr.membershipId
+        SELECT *, COUNT(*) OVER () AS population
+        FROM presence
+        ORDER BY clears DESC, runs DESC, membershipId
         LIMIT ?
     `).all(
         ...scope.params,
         SUBJECT_MEMBERSHIP_ID,
         SUBJECT_MEMBERSHIP_ID,
-        SUBJECT_MEMBERSHIP_ID,
-        ...scope.params,
         limit ?? -1
     ) as Array<{
         membershipId: string;
@@ -545,42 +545,22 @@ export function getHelperBoard(
         clears: number;
         secondsInRun: number;
         secondsWithSubject: number;
+        population: number;
     }>;
 
-    return rows.map((row) => ({
-        membershipId: row.membershipId,
-        membershipType: row.membershipType,
-        displayName: formatBungieDisplayName(row),
-        runs: row.runs,
-        clears: row.clears,
-        secondsInRun: row.secondsInRun,
-        secondsWithSubject: row.secondsWithSubject,
-    }));
-}
-
-/**
- * How many Helpers the board has rows for in this range — its whole population, not the
- * page of it being rendered.
- *
- * The panel states both numbers ("25 of 382"), and the show-all link needs the total to
- * be worth offering. Its own statement rather than a second field on every row, and
- * deliberately not `getArchiveHelperCount(range)`: that one counts Helpers across *all*
- * Runs in the window, which is a larger population than this board's and would promise
- * rows that do not exist.
- */
-export function getHelperBoardSize(
-    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
-): number {
-    const scope = rangeClause(range);
-
-    const row = getArchiveDb().prepare(`
-        SELECT COUNT(DISTINCT p.membership_id) AS n
-        FROM gos_10k_pgcr_players p
-        JOIN gos_10k_runs r ON r.instance_id = p.instance_id
-        WHERE p.membership_id != ? AND ${PINNED_FULL_CLEAR} ${scope.sql}
-    `).get(SUBJECT_MEMBERSHIP_ID, ...scope.params) as { n: number };
-
-    return row.n;
+    return {
+        helpers: rows.map((row) => ({
+            membershipId: row.membershipId,
+            membershipType: row.membershipType,
+            displayName: formatBungieDisplayName(row),
+            runs: row.runs,
+            clears: row.clears,
+            secondsInRun: row.secondsInRun,
+            secondsWithSubject: row.secondsWithSubject,
+        })),
+        // No rows means no population: the window has nothing to count over.
+        population: rows[0]?.population ?? 0,
+    };
 }
 
 export interface ArchiveYear {

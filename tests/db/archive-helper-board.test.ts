@@ -8,7 +8,6 @@ import {
     getArchiveHelperCount,
     getArchiveOverview,
     getHelperBoard,
-    getHelperBoardSize,
 } from '@/lib/db/archive/queries';
 
 /**
@@ -57,9 +56,12 @@ function clear102() {
 
 describe('ranking Helpers by presence', () => {
     it('ranks by clears present and stops at the row limit', () => {
-        const board = getHelperBoard();
+        const { helpers: board, population } = getHelperBoard();
 
         expect(board).toHaveLength(HELPER_BOARD_ROWS);
+        // The population is counted before the LIMIT, so a page of rows still reports
+        // the whole board — the "25 of 382" copy and the show-all link read it.
+        expect(population).toBe(382);
         expect(board.slice(0, 4).map((helper) => ({
             displayName: helper.displayName,
             runs: helper.runs,
@@ -76,32 +78,32 @@ describe('ranking Helpers by presence', () => {
         // The whole reason the board carries two count columns: presence is not success.
         // A board reading `runs` off the clears population would render these equal on
         // every row, which is a wrong number that looks like a tidy one.
-        const [wolf] = getHelperBoard(1);
+        const [wolf] = getHelperBoard(1).helpers;
 
         expect(wolf.runs).toBe(107);
         expect(wolf.clears).toBe(98);
     });
 
     it('shows every Helper who was present for a clear when the limit is lifted', () => {
-        const everyone = getHelperBoard(null);
+        const { helpers: everyone, population } = getHelperBoard(null);
 
         // 382 of the fixture's 552 Helpers were present for at least one Pinned Full
         // Clear. The other 170 appear only in Runs that were not clears, and the board's
         // population is the clears — see getHelperBoard.
         expect(everyone).toHaveLength(382);
-        expect(getHelperBoardSize()).toBe(382);
+        expect(population).toBe(382);
         expect(everyone.every((helper) => helper.clears >= 1)).toBe(true);
     });
 
     it('excludes the subject from his own board', () => {
-        const everyone = getHelperBoard(null);
+        const everyone = getHelperBoard(null).helpers;
 
         expect(everyone.some((helper) => helper.membershipId === SUBJECT_MEMBERSHIP_ID)).toBe(false);
     });
 
     it('never renders a name with a missing code as Name#null', () => {
         // 7085305400 carries a player whose bungie_global_display_name_code is NULL.
-        for (const helper of getHelperBoard(null)) {
+        for (const helper of getHelperBoard(null).helpers) {
             expect(helper.displayName).not.toContain('#null');
             expect(helper.displayName).not.toContain('undefined');
             expect(helper.displayName.length).toBeGreaterThan(0);
@@ -113,7 +115,7 @@ describe('counting distinct instances rather than player rows', () => {
     it('counts a Helper once per Run however many characters they brought', () => {
         // Clear 102 is one Run. KaRNaGxFuRy#5001 is in it on two characters, so a count
         // over player rows gives them two clears out of a population of one.
-        const board = getHelperBoard(null, clear102());
+        const board = getHelperBoard(null, clear102()).helpers;
         const karnag = board.find((helper) => helper.displayName === 'KaRNaGxFuRy#5001');
 
         expect(karnag).toMatchObject({ runs: 1, clears: 1 });
@@ -121,7 +123,7 @@ describe('counting distinct instances rather than player rows', () => {
     });
 
     it('keeps every Helper total below the fixture\'s own player-row count', () => {
-        const board = getHelperBoard(null);
+        const board = getHelperBoard(null).helpers;
         const totalRuns = board.reduce((sum, helper) => sum + helper.runs, 0);
         const playerRows = readArchiveSeed().tables.gos_10k_pgcr_players.length;
 
@@ -139,7 +141,7 @@ describe('the two time columns', () => {
         // MESRINE#4991 was there from 2 to 6,488: an hour and 48 minutes in the Run, of
         // which 1,504 seconds were alongside him. An overlap query that forgets to
         // intersect returns 6,486 here and looks entirely reasonable.
-        const board = getHelperBoard(null, clear102());
+        const board = getHelperBoard(null, clear102()).helpers;
         const mesrine = board.find((helper) => helper.displayName === 'MESRINE#4991');
 
         expect(mesrine).toMatchObject({ secondsInRun: 6486, secondsWithSubject: 1504 });
@@ -151,7 +153,7 @@ describe('the two time columns', () => {
         // touch, and an overlap computed as `MIN(ends) - MAX(starts)` without the
         // zero floor returns -1,087, which sums into another Helper's total as a
         // *reduction*.
-        const board = getHelperBoard(null, clear102());
+        const board = getHelperBoard(null, clear102()).helpers;
         const pharaloover = board.find((helper) => helper.displayName === 'pharaloover#4706');
 
         expect(pharaloover).toMatchObject({ secondsInRun: 3895, secondsWithSubject: 0 });
@@ -161,7 +163,7 @@ describe('the two time columns', () => {
         // KaRNaGxFuRy#5001 played [0, 662] on one character and [697, 6488] on another.
         // The Run is 6,488 seconds and their interval spans all of it. Summing the two
         // rows' time played gives 6,453 — close enough to look right, and wrong.
-        const board = getHelperBoard(null, clear102());
+        const board = getHelperBoard(null, clear102()).helpers;
         const karnag = board.find((helper) => helper.displayName === 'KaRNaGxFuRy#5001');
 
         expect(karnag).toMatchObject({ secondsInRun: 6488, secondsWithSubject: 1504 });
@@ -173,7 +175,7 @@ describe('the two time columns', () => {
         // per (Helper row, subject row) pair counts that stretch twice and can exceed
         // the Helper's whole time in the Run — the failure is not hypothetical, it is
         // what the first draft of this query did to Wolf#6888.
-        for (const helper of getHelperBoard(null)) {
+        for (const helper of getHelperBoard(null).helpers) {
             expect(helper.secondsWithSubject).toBeLessThanOrEqual(helper.secondsInRun);
         }
     });
@@ -183,7 +185,7 @@ describe('the two time columns', () => {
         // agree, so switching demonstrates the agreement rather than revealing a
         // discrepancy. Pinned as specific totals, because "nearly agree" is exactly the
         // shape a wrong overlap query also has.
-        const board = getHelperBoard(3);
+        const board = getHelperBoard(3).helpers;
 
         expect(board.map((helper) => ({
             displayName: helper.displayName,
@@ -203,7 +205,7 @@ describe('obeying the active range', () => {
         // tests/db/archive-range.test.ts). Antarctica#6606 tops the unfiltered board's
         // second row and this one's first.
         const february = resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });
-        const [top] = getHelperBoard(1, february);
+        const [top] = getHelperBoard(1, february).helpers;
 
         expect(top).toMatchObject({
             membershipId: '4611686018447922995',
@@ -217,8 +219,10 @@ describe('obeying the active range', () => {
     it('shrinks the board population with the range', () => {
         const february = resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });
 
-        expect(getHelperBoardSize(february)).toBeLessThan(getHelperBoardSize());
-        expect(getHelperBoard(null, february).length).toBe(getHelperBoardSize(february));
+        const board = getHelperBoard(null, february);
+
+        expect(board.population).toBeLessThan(getHelperBoard().population);
+        expect(board.helpers).toHaveLength(board.population);
     });
 
     it('returns an empty board for a range holding Runs but no clears', () => {
@@ -230,8 +234,7 @@ describe('obeying the active range', () => {
         // here: the board's population is the clears.
         const november2020 = resolveArchiveRangeFromParams({ from: '2020-11-01', to: '2020-11-30' });
 
-        expect(getHelperBoard(null, november2020)).toEqual([]);
-        expect(getHelperBoardSize(november2020)).toBe(0);
+        expect(getHelperBoard(null, november2020)).toEqual({ helpers: [], population: 0 });
         expect(getArchiveHelperCount(november2020)).toBeGreaterThan(0);
     });
 });

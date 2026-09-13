@@ -25,9 +25,10 @@ import {
  *    test; a `useState` toggle is only observable in Chromium.
  *
  * The cost, stated plainly: switching the column is a page navigation rather than an
- * instant repaint. On a `force-dynamic` route reading a local SQLite file this is a
- * few milliseconds of server work, and the board's ranking is by presence in either
- * measure — so the rows do not move underneath the reader when they switch.
+ * instant repaint, and on a `force-dynamic` route it re-runs every panel's SQL. The
+ * Helper board is the heaviest of those — about 170ms against the unfiltered production
+ * Archive, a few milliseconds for a narrow range. The board's ranking is by presence in
+ * either measure, so the rows do not move underneath the reader when they switch.
  *
  * ## Unknown values degrade, they never throw
  *

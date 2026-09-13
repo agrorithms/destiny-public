@@ -224,7 +224,7 @@ describe('every panel obeys the range', () => {
     it('scopes the Helper board, still counting distinct instances', () => {
         // Hazard 1: a Helper who brought two characters to one Run is one Run. The
         // range clause must not turn the join into a row count.
-        const [top] = getHelperBoard(1, february());
+        const [top] = getHelperBoard(1, february()).helpers;
 
         expect(top).toMatchObject({
             membershipId: '4611686018447922995',

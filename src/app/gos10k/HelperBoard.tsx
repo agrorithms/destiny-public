@@ -46,6 +46,7 @@ export function HelperBoard({
     scope: string;
 }) {
     const showingAll = view.showAll || helpers.length >= population;
+    const timeColumn = TIME_COLUMN[view.measure];
 
     return (
         <section
@@ -96,7 +97,7 @@ export function HelperBoard({
                                     that silently changed meaning would be worse than no
                                     toggle at all. */}
                                 <th data-testid="archive-helper-time-header" className="py-1 font-medium">
-                                    {TIME_COLUMN[view.measure].label}
+                                    {timeColumn.label}
                                 </th>
                             </tr>
                         </thead>
@@ -129,7 +130,7 @@ export function HelperBoard({
                                         {helper.clears.toLocaleString()}
                                     </td>
                                     <td className="py-1 tabular-nums whitespace-nowrap">
-                                        {formatPresenceHours(TIME_COLUMN[view.measure].read(helper))}
+                                        {formatPresenceHours(timeColumn.read(helper))}
                                     </td>
                                 </tr>
                             ))}
@@ -137,7 +138,7 @@ export function HelperBoard({
                     </table>
 
                     <p className="ui-text-secondary text-sm leading-6">
-                        {TIME_COLUMN[view.measure].explanation}
+                        {timeColumn.explanation}
                     </p>
 
                     {population > HELPER_BOARD_ROWS ? (

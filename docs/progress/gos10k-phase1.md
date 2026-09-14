@@ -983,6 +983,36 @@ board, and differs in production by 0.003 points with the same 5 late joins. Fla
 Verified after the fixes: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
 `npm test` 414 / 36, `npm run e2e` 51/51.
 
+### #89 — cleanup (`0480438`, third commit)
+
+Not review-driven; a `/simplify` pass by a peer session over the two commits above, reviewed here
+before the user committed it. Three files, no rendered copy or figure changed, and the query is
+untouched.
+
+- **`LATE_JOIN_MINUTES` is a module constant in `PresenceStrip.tsx`.** `thresholdMinutes` was
+  computed in `PresenceStrip` and threaded through `PresenceFigures`, which never read it, into
+  `LateJoinSentence`; both sub-components now take only `{ presence }`. The constant sits under
+  the imports — its first placement split `PresenceStrip`'s docblock from the function.
+- **A wrong sentence in `getSubjectPresence`'s docblock.** It claimed the statement was
+  `getHelperBoard`'s `subject` CTE shape. It is not: the Helper board derives `subject` from a
+  range-scoped `intervals` CTE over every player and filters `isClear = 1` there, where this
+  query aggregates his rows first and filters clears on the Runs side. The two share
+  `PLAYER_INTERVAL_PROJECTION`, not a shape, and the docblock now says so. The performance guard
+  ("do not inline `subject`") is unchanged.
+- **`formatMeanDuration`'s test asserts the alias** (`toBe(formatMedianDuration)`) rather than
+  re-testing rounding through it; the median tests own rounding. The `539209 / 346 → 25:58`
+  example went with it.
+
+**Not changed:** merging the two queries' interval CTEs into one fragment (changes
+`getHelperBoard`'s plan, needs a production timing, outside #89); renaming `formatMedianDuration`
+to a behaviour name (touches the median speed board); dropping `formatClearTimeShare`'s
+non-finite branch (deliberate, documented); moving `rangeOfClear` into `tests/helpers/` (one
+caller).
+
+Verified at that commit: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
+`npm test` 414 / 36, the presence e2e specs green; after the constant was moved, tsc, the two
+affected test files and eslint on the three files were re-run clean.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

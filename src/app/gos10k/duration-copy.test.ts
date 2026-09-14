@@ -97,13 +97,11 @@ describe('formatting a Helper\'s presence in hours', () => {
 });
 
 describe('formatting an average clear duration', () => {
-    it('rounds rather than floors, as a median does', () => {
+    it('is the median formatter under a second name', () => {
         // The presence strip's averages are totals divided by a clear count, so they are
-        // fractional on almost every range. The fixture's average clear is 539,209 / 346
-        // = 1,558.41 seconds.
-        expect(formatMeanDuration(539209 / 346)).toBe('25:58');
-        expect(formatMeanDuration(1558.5)).toBe('25:59');
-        expect(formatMeanDuration(1558)).toBe(formatRunDuration(1558));
+        // fractional, and need the same round-not-floor the median tests above pin. An
+        // alias rather than a second body; this fails if one is ever written.
+        expect(formatMeanDuration).toBe(formatMedianDuration);
     });
 });
 

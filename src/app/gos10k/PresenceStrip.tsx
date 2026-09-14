@@ -1,6 +1,8 @@
 import { PRESENCE_LATE_JOIN_SECONDS, type ArchiveSubjectPresence } from '@/lib/db/archive/queries';
 import { formatClearTimeShare, formatMeanDuration } from './duration-copy';
 
+const LATE_JOIN_MINUTES = PRESENCE_LATE_JOIN_SECONDS / 60;
+
 /**
  * The presence strip (#89) — how much of each clear he was actually there for.
  *
@@ -26,8 +28,6 @@ export function PresenceStrip({
     presence: ArchiveSubjectPresence;
     scope: string;
 }) {
-    const thresholdMinutes = PRESENCE_LATE_JOIN_SECONDS / 60;
-
     return (
         <section aria-labelledby="archive-presence-heading" className="space-y-3">
             <h2 id="archive-presence-heading" className="text-xl font-semibold ui-text-primary">
@@ -49,7 +49,7 @@ export function PresenceStrip({
                     No Pinned Full Clears in this range, so there is no presence to measure.
                 </p>
             ) : (
-                <PresenceFigures presence={presence} thresholdMinutes={thresholdMinutes} />
+                <PresenceFigures presence={presence} />
             )}
         </section>
     );
@@ -60,21 +60,15 @@ export function PresenceStrip({
  * the counted phrasing reads "1 of the 1 clear" there, so that case says the same thing
  * about the one Run instead.
  */
-function LateJoinSentence({
-    presence,
-    thresholdMinutes,
-}: {
-    presence: ArchiveSubjectPresence;
-    thresholdMinutes: number;
-}) {
+function LateJoinSentence({ presence }: { presence: ArchiveSubjectPresence }) {
     if (presence.clears === 1) {
         return presence.lateJoins === 1 ? (
             <>
-                He was present for under {thresholdMinutes} minutes of this clear — joined at the very
+                He was present for under {LATE_JOIN_MINUTES} minutes of this clear — joined at the very
                 end.
             </>
         ) : (
-            <>He was present for at least {thresholdMinutes} minutes of this clear.</>
+            <>He was present for at least {LATE_JOIN_MINUTES} minutes of this clear.</>
         );
     }
 
@@ -82,7 +76,7 @@ function LateJoinSentence({
         return (
             <>
                 In none of the {presence.clears.toLocaleString()} clears was he present for under{' '}
-                {thresholdMinutes} minutes.
+                {LATE_JOIN_MINUTES} minutes.
             </>
         );
     }
@@ -93,18 +87,12 @@ function LateJoinSentence({
                 {presence.lateJoins.toLocaleString()}
             </span>{' '}
             of the {presence.clears.toLocaleString()} clears had him present for under{' '}
-            {thresholdMinutes} minutes — joined at the very end.
+            {LATE_JOIN_MINUTES} minutes — joined at the very end.
         </>
     );
 }
 
-function PresenceFigures({
-    presence,
-    thresholdMinutes,
-}: {
-    presence: ArchiveSubjectPresence;
-    thresholdMinutes: number;
-}) {
+function PresenceFigures({ presence }: { presence: ArchiveSubjectPresence }) {
     const share = presence.presentSeconds / presence.durationSeconds;
 
     return (
@@ -143,7 +131,7 @@ function PresenceFigures({
             {/* The sceptical reading, answered with a count rather than a reassurance —
                 and with its threshold in the sentence, so the count can be checked. */}
             <p className="ui-text-secondary text-sm leading-6">
-                <LateJoinSentence presence={presence} thresholdMinutes={thresholdMinutes} />
+                <LateJoinSentence presence={presence} />
             </p>
         </div>
     );

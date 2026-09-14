@@ -663,7 +663,9 @@ export interface ArchiveSubjectPresence {
  * clear: **85 ms**, unfiltered. The fixture is too small for either plan to be slow, so
  * no test here can catch a regression — this note is the guard.
  *
- * It is also getHelperBoard's `subject` CTE shape, which is the other reason to keep it.
+ * getHelperBoard derives its `subject` from a range-scoped `intervals` CTE over every
+ * player instead, because it needs every player's interval anyway; the two statements
+ * share {@link PLAYER_INTERVAL_PROJECTION}, not a shape.
  *
  * ## The join
  *

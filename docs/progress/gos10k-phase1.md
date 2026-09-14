@@ -952,6 +952,37 @@ Verified: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm t
 19:12, 5 of 10,000; clears 9,001–10,000 99.3%, 1 of 1,000; 2023-08-09 renders the empty state; no
 element or page overflow in any of them.
 
+### #89 — review fixes (second commit)
+
+Both axes ran against `9812870` with #81 as parent. Acted on:
+
+- **One definition of "his interval"** (Standards, Duplicated Code). `PLAYER_INTERVAL_PROJECTION`
+  (`MIN(start) AS enteredAt, MAX(start + time_played) AS leftAt`) is now read by both
+  `getHelperBoard`'s `intervals` CTE and `getSubjectPresence`'s `subject` CTE — two panels on one
+  page restating it is how they come to disagree. The `subject` CTE stays pre-aggregated; production
+  re-timed at 41ms with identical figures.
+- **`formatMeanDuration` is an alias of `formatMedianDuration`**, not a second identical body.
+- **The 100% clamp is gone** from both the formatter and the bar width (Spec b1 + Standards
+  duplicated clamp). A share over 100% is a data fault and should be visible as `104%`, not
+  rendered as a clean 100%; the track's `overflow-hidden` bounds the bar.
+- **`formatPresenceShare` → `formatClearTimeShare`**: it is a ratio, and "Presence" already names
+  `formatPresenceHours`.
+- **Test fixes**: `clear(n)` → `rangeOfClear(n)`; the constant-only test deleted; a new test that
+  clears 103–143 equal February 2022 exactly (a multi-clear Clear Number span, not just one clear).
+- **Single-clear wording**: a one-clear range no longer reads "1 of the 1 clear" /
+  "In none of the 1 clear".
+- **`CONTEXT.md`**: **Presence** now opens for "someone" rather than Helpers only; **Late Join** is
+  its own entry with an `_Avoid_`; the UI name "presence strip" and the production figures are out
+  of the glossary.
+
+**Not changed:** the e2e heading-text locator (the median-speed spec does the same); empty state at
+phone width (one short paragraph, nothing to overflow); "joined at the very end" (#81's user story
+16 uses that phrase); and the envelope vs #81's "time played" — deliberate, matches the Helper
+board, and differs in production by 0.003 points with the same 5 late joins. Flagged to the user.
+
+Verified after the fixes: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
+`npm test` 414 / 36, `npm run e2e` 51/51.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

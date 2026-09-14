@@ -286,6 +286,22 @@ const PLAYER_NAME_PROJECTION = `
 `;
 
 /**
+ * One person's interval in one Run, as it comes out of a GROUP BY over
+ * `gos_10k_pgcr_players p` per (Run, membership): earliest entry to latest exit.
+ *
+ * This is hazard 1's collapse for durations — a person who brought several characters to
+ * one raid has one interval, not several that overlap or leave gaps — and it is the one
+ * definition of "his interval" that the Helper board's Time Alongside (#90) and the
+ * presence strip (#89) both read. Written once for the same reason as
+ * {@link PLAYER_NAME_PROJECTION}: two panels on one page restating it separately is how
+ * they come to disagree about the same Run.
+ */
+const PLAYER_INTERVAL_PROJECTION = `
+    MIN(p.start_seconds)                         AS enteredAt,
+    MAX(p.start_seconds + p.time_played_seconds) AS leftAt
+`;
+
+/**
  * Distinct people who appeared in at least one of his Runs, excluding him.
  *
  * Its own function rather than a field only {@link getArchiveOverview} can produce: the
@@ -488,8 +504,7 @@ export function getHelperBoard(
                 p.instance_id                                AS instanceId,
                 p.membership_id                              AS membershipId,
                 MAX(${PINNED_FULL_CLEAR})                    AS isClear,
-                MIN(p.start_seconds)                         AS enteredAt,
-                MAX(p.start_seconds + p.time_played_seconds) AS leftAt,
+                ${PLAYER_INTERVAL_PROJECTION},
                 ${PLAYER_NAME_PROJECTION}
             FROM gos_10k_pgcr_players p
             JOIN gos_10k_runs r ON r.instance_id = p.instance_id
@@ -669,16 +684,19 @@ export function getSubjectPresence(
     const row = getArchiveDb().prepare(`
         WITH subject AS (
             SELECT
-                p.instance_id                                                        AS instanceId,
-                MAX(p.start_seconds + p.time_played_seconds) - MIN(p.start_seconds) AS presentSeconds
+                p.instance_id AS instanceId,
+                ${PLAYER_INTERVAL_PROJECTION}
             FROM gos_10k_pgcr_players p
             WHERE p.membership_id = ?
             GROUP BY p.instance_id
         ),
+        -- The clear filter sits here, on the Runs side, where getHelperBoard puts it on
+        -- the subject side (\`isClear = 1\`). Same effect: in both, only a Pinned Full
+        -- Clear in range contributes his interval.
         clears AS (
             SELECT
-                r.duration_seconds              AS durationSeconds,
-                COALESCE(s.presentSeconds, 0)   AS presentSeconds
+                r.duration_seconds                  AS durationSeconds,
+                COALESCE(s.leftAt - s.enteredAt, 0) AS presentSeconds
             FROM gos_10k_runs r
             LEFT JOIN subject s ON s.instanceId = r.instance_id
             WHERE ${PINNED_FULL_CLEAR} ${scope.sql}

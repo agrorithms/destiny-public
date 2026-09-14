@@ -1,5 +1,5 @@
 import { PRESENCE_LATE_JOIN_SECONDS, type ArchiveSubjectPresence } from '@/lib/db/archive/queries';
-import { formatMeanDuration, formatPresenceShare } from './duration-copy';
+import { formatClearTimeShare, formatMeanDuration } from './duration-copy';
 
 /**
  * The presence strip (#89) — how much of each clear he was actually there for.
@@ -55,6 +55,49 @@ export function PresenceStrip({
     );
 }
 
+/**
+ * The late-join count as a sentence. A one-clear range is reachable (clears 102–102), and
+ * the counted phrasing reads "1 of the 1 clear" there, so that case says the same thing
+ * about the one Run instead.
+ */
+function LateJoinSentence({
+    presence,
+    thresholdMinutes,
+}: {
+    presence: ArchiveSubjectPresence;
+    thresholdMinutes: number;
+}) {
+    if (presence.clears === 1) {
+        return presence.lateJoins === 1 ? (
+            <>
+                He was present for under {thresholdMinutes} minutes of this clear — joined at the very
+                end.
+            </>
+        ) : (
+            <>He was present for at least {thresholdMinutes} minutes of this clear.</>
+        );
+    }
+
+    if (presence.lateJoins === 0) {
+        return (
+            <>
+                In none of the {presence.clears.toLocaleString()} clears was he present for under{' '}
+                {thresholdMinutes} minutes.
+            </>
+        );
+    }
+
+    return (
+        <>
+            <span className="font-medium ui-text-primary tabular-nums">
+                {presence.lateJoins.toLocaleString()}
+            </span>{' '}
+            of the {presence.clears.toLocaleString()} clears had him present for under{' '}
+            {thresholdMinutes} minutes — joined at the very end.
+        </>
+    );
+}
+
 function PresenceFigures({
     presence,
     thresholdMinutes,
@@ -63,13 +106,12 @@ function PresenceFigures({
     thresholdMinutes: number;
 }) {
     const share = presence.presentSeconds / presence.durationSeconds;
-    const clearWord = presence.clears === 1 ? 'clear' : 'clears';
 
     return (
         <div data-testid="archive-presence-strip" className="ui-card space-y-3 rounded-md border px-4 py-3">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-3xl font-bold ui-accent-text tabular-nums">
-                    {formatPresenceShare(share)}
+                    {formatClearTimeShare(share)}
                 </span>
                 <span className="ui-text-secondary text-sm">of the time those clears ran</span>
             </div>
@@ -78,10 +120,11 @@ function PresenceFigures({
                 dims everything inside it, so a faded track would fade the fill with it. */}
             <div aria-hidden className="relative h-2 w-full overflow-hidden rounded-sm">
                 <div className="ui-text-secondary absolute inset-0 bg-current opacity-20" />
-                {/* Clamped as the formatter clamps: a share over 100% is a data fault. */}
+                {/* Not clamped, like the figure beside it: the track's `overflow-hidden`
+                    keeps an impossible share inside the bar, and the text still says it. */}
                 <div
                     className="ui-accent-text absolute inset-y-0 left-0 bg-current"
-                    style={{ width: `${Math.min(100, Math.max(0, share * 100))}%` }}
+                    style={{ width: `${share * 100}%` }}
                 />
             </div>
 
@@ -100,20 +143,7 @@ function PresenceFigures({
             {/* The sceptical reading, answered with a count rather than a reassurance —
                 and with its threshold in the sentence, so the count can be checked. */}
             <p className="ui-text-secondary text-sm leading-6">
-                {presence.lateJoins === 0 ? (
-                    <>
-                        In none of the {presence.clears.toLocaleString()} {clearWord} was he present
-                        for under {thresholdMinutes} minutes.
-                    </>
-                ) : (
-                    <>
-                        <span className="font-medium ui-text-primary tabular-nums">
-                            {presence.lateJoins.toLocaleString()}
-                        </span>{' '}
-                        of the {presence.clears.toLocaleString()} {clearWord} had him present for under{' '}
-                        {thresholdMinutes} minutes — joined at the very end.
-                    </>
-                )}
+                <LateJoinSentence presence={presence} thresholdMinutes={thresholdMinutes} />
             </p>
         </div>
     );

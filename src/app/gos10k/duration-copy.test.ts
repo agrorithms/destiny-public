@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+    formatClearTimeShare,
     formatMeanDuration,
     formatMedianDuration,
     formatPresenceHours,
-    formatPresenceShare,
     formatRunDuration,
 } from './duration-copy';
 
@@ -107,24 +107,29 @@ describe('formatting an average clear duration', () => {
     });
 });
 
-describe('formatting his share of the clears', () => {
+describe('formatting his share of the clears\' time', () => {
     it('renders one decimal, so the reference figure reads as itself', () => {
         // Production is 91.55%. Rounded to a whole number that prints 92% against #81's
         // "roughly 91%", and a reader checking the page against the spec sees a
         // disagreement that is only a rounding choice. The fixture is 494,153 / 539,209.
-        expect(formatPresenceShare(0.915507234335085)).toBe('91.6%');
-        expect(formatPresenceShare(494153 / 539209)).toBe('91.6%');
+        expect(formatClearTimeShare(0.915507234335085)).toBe('91.6%');
+        expect(formatClearTimeShare(494153 / 539209)).toBe('91.6%');
     });
 
-    it('renders the whole Run as 100%, never more', () => {
-        expect(formatPresenceShare(1)).toBe('100%');
-        expect(formatPresenceShare(1.2)).toBe('100%');
+    it('drops the decimal on an exact figure', () => {
+        expect(formatClearTimeShare(1)).toBe('100%');
+        expect(formatClearTimeShare(0)).toBe('0%');
+    });
+
+    it('shows an impossible share rather than clamping it away', () => {
+        // Presence over 100% of a Run is a data fault. Clamped, it would render as a
+        // clean 100% and nobody would look; unclamped, the page says something is wrong.
+        expect(formatClearTimeShare(1.04)).toBe('104%');
     });
 
     it('never renders NaN for a range with no clears', () => {
         // November 2020 is 0 of 0 seconds. The panel guards on the clear count, but a
         // formatter that can print `NaN%` is the one place that guard is not visible.
-        expect(formatPresenceShare(Number.NaN)).toBe('—');
-        expect(formatPresenceShare(0)).toBe('0%');
+        expect(formatClearTimeShare(Number.NaN)).toBe('—');
     });
 });

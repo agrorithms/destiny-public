@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
 import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
-import { PRESENCE_LATE_JOIN_SECONDS, getSubjectPresence } from '@/lib/db/archive/queries';
+import { getSubjectPresence } from '@/lib/db/archive/queries';
 
 /**
  * The presence strip (#89), against the fixture Archive.
@@ -28,7 +28,7 @@ beforeAll(() => {
     buildFixtureArchive();
 });
 
-function clear(clearNumber: number) {
+function rangeOfClear(clearNumber: number) {
     return resolveArchiveRangeFromParams({
         clearFrom: String(clearNumber),
         clearTo: String(clearNumber),
@@ -46,19 +46,13 @@ describe('his presence across the whole Archive', () => {
             lateJoins: 1,
         });
     });
-
-    it('states the late-join threshold as five minutes', () => {
-        // The number the panel names in its copy, and the one #81's "5 clears under five
-        // minutes" reference figure was counted against.
-        expect(PRESENCE_LATE_JOIN_SECONDS).toBe(300);
-    });
 });
 
 describe('what counts as his time in a Run', () => {
     it('counts a late join by his time in the Run, not by the Run\'s length', () => {
         // Clear 31 is the fixture's one late join: a 4,368-second Run he entered for the
         // last 278 seconds of.
-        expect(getSubjectPresence(clear(31))).toEqual({
+        expect(getSubjectPresence(rangeOfClear(31))).toEqual({
             clears: 1,
             presentSeconds: 278,
             durationSeconds: 4368,
@@ -70,7 +64,7 @@ describe('what counts as his time in a Run', () => {
         // Clear 20: he is in it on two characters, [3, 3029] and [597, 2233], in a
         // 3,029-second Run. Summing time played gives 4,662 — more time than the Run
         // lasted. The envelope is 3,026.
-        const presence = getSubjectPresence(clear(20));
+        const presence = getSubjectPresence(rangeOfClear(20));
 
         expect(presence).toMatchObject({ presentSeconds: 3026, durationSeconds: 3029 });
     });
@@ -80,7 +74,7 @@ describe('what counts as his time in a Run', () => {
         // is longer than their summed time played (1,059). Entry to exit is the same
         // definition the Helper board's Time Alongside collapses him to; a second
         // definition of "his interval" on one page is how two panels disagree.
-        expect(getSubjectPresence(clear(52))).toMatchObject({ presentSeconds: 1125 });
+        expect(getSubjectPresence(rangeOfClear(52))).toMatchObject({ presentSeconds: 1125 });
     });
 
     it('never reports more presence than the clears lasted', () => {
@@ -105,11 +99,22 @@ describe('obeying the active range', () => {
         });
     });
 
+    it('gives the same figures for a Clear Number span as for its dates', () => {
+        // Clears 103–143 are exactly February 2022's 41 clears. Resolving both modes to
+        // one pair of period bounds is what makes them the same window (#87); this pins
+        // that the panel inherits it, over a span rather than a single clear.
+        const clears103to143 = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
+        const february = resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });
+
+        expect(getSubjectPresence(clears103to143)).toEqual(getSubjectPresence(february));
+        expect(getSubjectPresence(clears103to143)).toMatchObject({ clears: 41, presentSeconds: 45232 });
+    });
+
     it('agrees with the Helper board about clear 102', () => {
         // tests/db/archive-helper-board.test.ts pins his interval in this Run at 1,504
         // seconds of 6,488, because every Helper still there at the end overlaps him by
         // exactly that. The two panels read one interval.
-        expect(getSubjectPresence(clear(102))).toEqual({
+        expect(getSubjectPresence(rangeOfClear(102))).toEqual({
             clears: 1,
             presentSeconds: 1504,
             durationSeconds: 6488,

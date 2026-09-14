@@ -212,18 +212,23 @@ panel's own copy, because a floor a reader cannot see is indistinguishable from 
 _Avoid_: average clear time, minimum runs, cutoff
 
 **Presence** (Archive):
-How much of the Archive a **Helper** was actually there for, measured in two ways the Helper
-board renders side by side. **Runs present** is every **Run** in the active **Range** they
+How much of the Archive someone was actually there for. For a **Helper** it is measured in two
+ways the Helper board renders side by side. **Runs present** is every **Run** in the active **Range** they
 entered; **clears present** is how many of those are Pinned Full Clears. The two are different
 numbers on purpose — presence and success are different things, and a board that collapsed them
 into one column would hide the gap it exists to show. The board ranks on clears present, with
 Runs present and then membership id breaking ties.
-The subject has a presence too, and the presence strip measures it: his own interval in each
-Pinned Full Clear — the same entry-to-exit envelope **Time Alongside** collapses him to — summed and
-divided by those clears' summed duration. That is time weighted as time (91.55% unfiltered), not the
-mean of each clear's own ratio (98.9%), which lets one long AFK Run count no more than a quick
-clear. A **late join** is a clear he was in for under five minutes: 5 of the 10,000.
+For the subject it is his share of the Pinned Full Clears' time: his own interval in each clear —
+the same entry-to-exit envelope **Time Alongside** collapses him to — summed, over those clears'
+summed duration. Time weighted as time, never the mean of each clear's own ratio, which counts a
+five-hour AFK Run no more than a seven-minute clear.
 _Avoid_: appearances, attendance, runs together
+
+**Late Join** (Archive):
+A Pinned Full Clear the subject was present for under five minutes of — the sceptical reading of
+"10,000 clears", counted rather than argued with. Measured on the same entry-to-exit interval as his
+**Presence**, so two characters in one Run cannot make a late join look longer.
+_Avoid_: carry, leech, joined late (for Helpers — the term is about the subject only)
 
 **Time Alongside** (Archive):
 The third reading of **Presence**: for each Pinned Full Clear, the overlap between a **Helper**'s

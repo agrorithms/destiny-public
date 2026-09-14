@@ -34,7 +34,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#92** Median speed board (imports #91's formatter)
 - [x] **#88** Timeline
 - [x] **#90** Helper board
-- [ ] **#89** Presence strip
+- [x] **#89** Presence strip
 - [ ] **#93** Resets panel
 - [ ] **#94** Participants panel + class split
 - [ ] **#80** Close: record the two browser-coverage decisions, update ADR 0007's consequence
@@ -912,6 +912,45 @@ no figure changed: the 15 query tests still pin Wolf at 107 / 98, a population o
 
 **For #89:** borrow the `intervals` → `subject` shape, but keep the `isClear = 1` filter on the
 subject side, or the presence strip's denominator silently becomes every Run instead of the clears.
+
+### #89 — Presence strip (this chunk)
+
+- [x] `src/lib/db/archive/queries.ts` — `getSubjectPresence(range)` returning `{ clears,
+      presentSeconds, durationSeconds, lateJoins }`, and `PRESENCE_LATE_JOIN_SECONDS = 300`.
+      **The share is total presence ÷ total duration** — 91.55% in production, the reading that
+      reconciles to #81's "roughly 91%". The mean of per-clear ratios is 98.9% and does not.
+      **His interval is the entry-to-exit envelope**, the same one `getHelperBoard`'s `subject`
+      CTE uses; a plain sum of `time_played_seconds` gives the same 5 late joins and a share
+      differing in the fifth decimal, but overshoots the Run on the fixture's clear 20.
+      **The 32,767 note is recorded at this query**: two of his clear rows carry it (clears 207
+      and 1,654, both `start_seconds`), each his only row in the Run, so the envelope is their
+      `time_played_seconds` (730, 802) and no figure moves.
+      **The statement's shape is a performance fix, not style**: the first version joined
+      `gos_10k_runs` to his player rows directly, and SQLite planned that through the membership
+      index, walking ~13,500 rows per clear. It passed every fixture test and **hung the
+      production page** (next-server at 100% CPU, every route blocked; killed at 60s in the CLI).
+      Aggregating his rows once in a `subject` CTE runs in 85ms. The docblock says so, because
+      no fixture test can.
+- [x] `src/app/gos10k/duration-copy.ts` — `formatMeanDuration` (rounds, like the median) and
+      `formatPresenceShare` (one decimal, drops `.0`, clamps to 100%, `—` for non-finite).
+- [x] `src/app/gos10k/PresenceStrip.tsx` — the panel: share, bar, both averages, late-join count
+      with its threshold stated, and an empty state for a range with no clears.
+- [x] `src/app/gos10k/page.tsx` — the strip directly after the timeline, #81's fourth slot.
+- [x] `tests/db/archive-presence.test.ts` — 9 tests: fixture totals (346 clears, 494,153 of
+      539,209s, 1 late join), clear 31 (the late join, 278 of 4,368s), clear 20 (envelope 3,026,
+      not the summed 4,662), clear 52 (envelope 1,125 over a gap), February 2022 (41 clears,
+      45,232 of 49,136s), clear 102 (1,504 of 6,488s, matching the Helper board), November 2020
+      (all zeroes).
+- [x] `src/app/gos10k/duration-copy.test.ts` — the two new formatters.
+- [x] `e2e/gos10k-presence.spec.ts` — 2 specs, no figures: the empty state renders (no `NaN`),
+      and the strip fits 360px.
+- [x] `CONTEXT.md` — the subject's presence and **late join** under **Presence**; `CLAUDE.md` —
+      fourteen browser flows.
+
+Verified: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 413 / 36,
+`npm run e2e` 51/51. By hand against the production Archive at 360px: unfiltered 91.6%, 17:34 of
+19:12, 5 of 10,000; clears 9,001–10,000 99.3%, 1 of 1,000; 2023-08-09 renders the empty state; no
+element or page overflow in any of them.
 
 ## Notes and traps carried forward
 

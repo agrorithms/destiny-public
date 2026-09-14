@@ -218,6 +218,11 @@ entered; **clears present** is how many of those are Pinned Full Clears. The two
 numbers on purpose — presence and success are different things, and a board that collapsed them
 into one column would hide the gap it exists to show. The board ranks on clears present, with
 Runs present and then membership id breaking ties.
+The subject has a presence too, and the presence strip measures it: his own interval in each
+Pinned Full Clear — the same entry-to-exit envelope **Time Alongside** collapses him to — summed and
+divided by those clears' summed duration. That is time weighted as time (91.55% unfiltered), not the
+mean of each clear's own ratio (98.9%), which lets one long AFK Run count no more than a quick
+clear. A **late join** is a clear he was in for under five minutes: 5 of the 10,000.
 _Avoid_: appearances, attendance, runs together
 
 **Time Alongside** (Archive):

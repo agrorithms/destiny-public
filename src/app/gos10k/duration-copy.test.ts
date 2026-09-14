@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatMedianDuration, formatPresenceHours, formatRunDuration } from './duration-copy';
+import {
+    formatMeanDuration,
+    formatMedianDuration,
+    formatPresenceHours,
+    formatPresenceShare,
+    formatRunDuration,
+} from './duration-copy';
 
 /**
  * The Archive's one duration formatter (#91).
@@ -87,5 +93,38 @@ describe('formatting a Helper\'s presence in hours', () => {
         // Unreachable through the query, which floors each Run's overlap at zero — the
         // clamp is here for the same reason formatRunDuration has one.
         expect(formatPresenceHours(-1)).toBe('0 h');
+    });
+});
+
+describe('formatting an average clear duration', () => {
+    it('rounds rather than floors, as a median does', () => {
+        // The presence strip's averages are totals divided by a clear count, so they are
+        // fractional on almost every range. The fixture's average clear is 539,209 / 346
+        // = 1,558.41 seconds.
+        expect(formatMeanDuration(539209 / 346)).toBe('25:58');
+        expect(formatMeanDuration(1558.5)).toBe('25:59');
+        expect(formatMeanDuration(1558)).toBe(formatRunDuration(1558));
+    });
+});
+
+describe('formatting his share of the clears', () => {
+    it('renders one decimal, so the reference figure reads as itself', () => {
+        // Production is 91.55%. Rounded to a whole number that prints 92% against #81's
+        // "roughly 91%", and a reader checking the page against the spec sees a
+        // disagreement that is only a rounding choice. The fixture is 494,153 / 539,209.
+        expect(formatPresenceShare(0.915507234335085)).toBe('91.6%');
+        expect(formatPresenceShare(494153 / 539209)).toBe('91.6%');
+    });
+
+    it('renders the whole Run as 100%, never more', () => {
+        expect(formatPresenceShare(1)).toBe('100%');
+        expect(formatPresenceShare(1.2)).toBe('100%');
+    });
+
+    it('never renders NaN for a range with no clears', () => {
+        // November 2020 is 0 of 0 seconds. The panel guards on the clear count, but a
+        // formatter that can print `NaN%` is the one place that guard is not visible.
+        expect(formatPresenceShare(Number.NaN)).toBe('—');
+        expect(formatPresenceShare(0)).toBe('0%');
     });
 });

@@ -725,6 +725,8 @@ lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 376 /
       kept beside the new one: its `fullClears` field and the new `clears` are the same number
       under two names, and two functions ranking the same population differently is the drift
       this file's docblocks keep warning about.
+      (The statement's shape and `getHelperBoardSize` below are `b57aec1`'s; the cleanup commit
+      below collapsed both into one pass returning `{ helpers, population }`.)
       **`limit: null` means every row** (`LIMIT -1` in SQLite), which is what show-all binds.
       **`getHelperBoardSize` is deliberately not `getArchiveHelperCount(range)`** — the latter
       counts everyone in any Run, the board's population is everyone in a *Pinned Full Clear*,
@@ -863,6 +865,53 @@ because `page.tsx` always passes one. A defaulted trailing argument is this modu
 
 Verified after the fixes: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
 `npm test` 400 / 35, `npm run e2e` 49/49.
+
+### #90 — cleanup (`49b3623`, third commit)
+
+Not review-driven; a pass over the shipped board after the fixes above. Six files, no new tests and
+no figure changed: the 15 query tests still pin Wolf at 107 / 98, a population of 382, MESRINE at
+6,486 / 1,504 and KaRNaGxFuRy at 6,488 / 1,504. Verified at that commit: `npm test` and
+`npm run e2e` green (run by hand), both tsconfigs clean, lint 0 errors / 29 pre-existing warnings.
+
+- **`getHelperBoardSize` is gone; `getHelperBoard` returns `ArchiveHelperBoard { helpers,
+  population }`.** The population is `COUNT(*) OVER ()` on the same statement, which SQLite
+  evaluates before `LIMIT`, so a 25-row page still reports the whole board. The second statement
+  had repeated the board's population rule on its own, and the copy "25 of 382" reads both
+  numbers side by side, so they must never come from different definitions. **The rule itself
+  did not change**: everyone present for at least one Pinned Full Clear, still deliberately not
+  `getArchiveHelperCount(range)`. `page.tsx` makes one call and passes `helperBoard.helpers` /
+  `helperBoard.population`; the tests destructure the new shape and assert `population` on the
+  default page as well as on show-all. November 2020 is now `{ helpers: [], population: 0 }`.
+- **One pass over `gos_10k_pgcr_players` instead of three.** The `clears`, `names` and `runs` CTEs
+  are gone. `intervals` now groups per (Run, person) across **every** Run in range and carries an
+  `isClear = MAX(PINNED_FULL_CLEAR)` flag beside the envelope and `PLAYER_NAME_PROJECTION`.
+  `presence` reads `runs = COUNT(*)`, `clears = SUM(isClear)`, and `secondsInRun` over clear
+  intervals only, with `HAVING SUM(isClear) > 0` keeping the population to clears. `subject` is
+  `intervals WHERE membershipId = ? AND isClear = 1`, so a Helper interval in a non-clear Run
+  joins no subject row, its overlap is NULL, and `SUM` skips it. The ranking, hazard 1's envelope
+  collapse and the zero floor on the overlap are unchanged. The bound parameters dropped from
+  three subject ids plus two copies of the range to one range, two subject ids and the limit.
+  The docblock's new "One pass, and the population with it" section carries the reasoning; it now
+  sits above `export interface ArchiveHelperBoard` rather than directly above the function.
+- **Names now come from every Run in range, not only the clears**, a side effect of the single
+  pass. Checked against the production Archive rather than assumed. 18 memberships do carry more
+  than one name across it, so a person renamed between Runs is a real case, not a hypothetical
+  one. `PLAYER_NAME_PROJECTION` takes each column's `MAX()` independently, and its docblock's
+  safety check only covers duplicate characters *within* a Run. Widening from clears to all Runs
+  changes the projected name for **0** memberships (unfiltered). **0** spliced `Name#Code` pairs
+  that exist on no real row appear under either the old or the new projection. The remaining gap,
+  a narrow range over part of a renamed player's history, is the same one `b57aec1` had, and it
+  belongs in `PLAYER_NAME_PROJECTION`'s docblock (#91) the next time it is touched.
+- **`helper-board-view.ts`'s cost note was measured.** It said a toggle cost "a few milliseconds of
+  server work"; that was never measured. It now says a toggle re-runs every panel's SQL on a
+  `force-dynamic` route, with the Helper board the heaviest at **~170ms against the unfiltered
+  production Archive**, a few ms for a narrow range. That is the cost a reader pays per click, and
+  the reason show-all and the toggle being navigations is a trade rather than free.
+- **`HelperBoard.tsx`** reads `TIME_COLUMN[view.measure]` once into `timeColumn` instead of
+  indexing it at the header, the cell and the explanation.
+
+**For #89:** borrow the `intervals` → `subject` shape, but keep the `isClear = 1` filter on the
+subject side, or the presence strip's denominator silently becomes every Run instead of the clears.
 
 ## Notes and traps carried forward
 

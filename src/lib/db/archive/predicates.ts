@@ -26,7 +26,9 @@
  * covered history: zero runs at or before 2022-02-21 carry it. So the rule trusts the
  * flag after the pin and `starting_phase_index = 0` at or before it. The pin instant
  * is instance 10141395454 — the subject's own last clear before a 40-day gap with no
- * GoS runs at all, which is where the evidence runs out. **The id means nothing else**;
+ * full clears under either rule (the next disjunctive one is 2022-04-02, the next pinned
+ * one 2022-04-09). The gap is not empty of Runs: one unfinished Run falls inside it, on
+ * 2022-02-24. That is where the evidence runs out. **The id means nothing else**;
  * it is not a boundary Bungie chose, and a future reader should not look for one.
  *
  * The 7 runs between the two candidate pins (2022-04-02 to 04-05) are all phase 0,

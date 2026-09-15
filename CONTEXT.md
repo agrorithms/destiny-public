@@ -61,7 +61,8 @@ which one it used:
 
 - **Pinned Full Clear** — the flag after 2022-02-21, `starting_phase_index = 0` at or before it.
   Reconciles to exactly **10,000**, which is why it is the Archive's default. The pin instant is
-  instance `10141395454`, the subject's *own last clear before a 40-day gap with no GoS runs* — it
+  instance `10141395454`, the subject's *own last clear before a 40-day gap with no full clears* under
+  either rule (one unfinished Run falls inside it, on 2022-02-24) — it
   is where the evidence runs out, not a boundary Bungie chose, and the id means nothing else.
 - **Disjunctive Full Clear** — flag set **or** phase index 0, anywhere in the history. **10,020.**
   Comparable to the Tracker, generous by 20 runs — all *after* the pin, phase 0 with the flag unset,

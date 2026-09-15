@@ -1040,7 +1040,8 @@ affected test files and eslint on the three files were re-run clean.
 **Production reconciliation** (by hand, 360px, server against `data/gos-10k.db`): 3,352 Resets
 averaging 7:47 (2,911 inside ten minutes), 40 cleared without him averaging 1:01:02, 20 unpinned
 clears, 8 Checkpoint Runs, 10,000 + … = 13,420. No overflow unfiltered, clears 9,001–10,000,
-April 2022, clear 5,000, 2023-08-09.
+April 2022, clear 5,000, 2023-08-09. **Superseded by the 483 split below**: 2,897 Resets averaging
+5:56 (2,621 inside ten minutes), 40, 483 Checkpoint Runs. The unpinned-clears population is gone.
 
 **Deliberate departures from the ticket's wording:**
 
@@ -1057,6 +1058,7 @@ beginning" because #81's 3,352 was counted that way. Under the *pinned* reading,
 (post-pin, phase 0, flag 0) would not count as started from the beginning — the same kind of Run the
 pinned rule rejects when it is *finished* (the 20) — and 9 of those 455 were in fact finished by
 other players. A pinned-consistent split would be 2,897 Resets and 483 not-started Runs.
+**Resolved 2026-09-15: the user chose the pinned-consistent split. See "the 483 split" below.**
 
 Verified: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 420 / 37,
 `npm run e2e` 53/53.
@@ -1084,7 +1086,8 @@ re-checked against `data/gos-10k.db` before acting.
       "someone completed" only where the pinned start rule holds, so these read 0 whoever
       finished. The `RESET` docblock claimed the conjunct meant "neither did anyone else"; it and
       the **Reset** glossary entry now name the 9. Fixing them means choosing a start reading,
-      and both choices move #81's 3,352 — the open question below, still the user's.
+      and both choices move #81's 3,352 — the open question below, still the user's. (Fixed by
+      the 483 split, next section.)
 - [x] Stale "before the flag was reliable" (Spec) corrected in the `DISJUNCTIVE_FULL_CLEAR`
       docblock and `CONTEXT.md`.
 
@@ -1132,8 +1135,15 @@ clears"), which used the disjunctive reading.
 - [x] `CONTEXT.md` — the **Checkpoint Run** and **Reset** entries are rewritten to use 483 and
       2,897; the note about the 9 exceptions is removed.
 
-**Not changed:** the `PINNED_FULL_CLEAR` docblock's "40-day gap" wording, which was flagged to the
-user separately (the next Run is three days after the pin).
+- [x] **The pin's "40-day gap with no GoS runs"** (`predicates.ts` `PINNED_FULL_CLEAR` docblock,
+      `CONTEXT.md` Full Clear entry), corrected in a fourth commit. Forty days is the gap in *full
+      clears*: the next disjunctive one is 2022-04-02 (40.0 days) and the next pinned one is
+      2022-04-09 (46.9 days). The gap still holds one Run, 10196384447 on 2022-02-24, which nobody
+      finished. The wording now says so.
+
+Verified: lint 0 errors / 29 warnings, build OK, `npm test` 423 / 37, `npm run e2e` 53/53.
+Production through `getNonClearRuns()`: 13,420 = 10,000 + 2,897 + 40 + 483 (23 / 11); warm 6–7 ms,
+about 25 ms on the first call, which includes preparing the statement.
 
 ## Notes and traps carried forward
 

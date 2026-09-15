@@ -1,6 +1,13 @@
 import { getArchiveDb } from './index';
 import { formatBungieDisplayName } from '../queries';
-import { PINNED_FULL_CLEAR, DISJUNCTIVE_FULL_CLEAR, RESET, STARTED_FROM_BEGINNING } from './predicates';
+import {
+    PINNED_FULL_CLEAR,
+    DISJUNCTIVE_FULL_CLEAR,
+    RESET,
+    CLEARED_WITHOUT_SUBJECT,
+    UNPINNED_CLEAR,
+    CHECKPOINT_RUN,
+} from './predicates';
 import { monthsBetween } from './month-keys';
 import {
     endOfArchiveDay,
@@ -44,13 +51,22 @@ export const SUBJECT_MEMBERSHIP_ID = '4611686018437585442';
  */
 
 /**
- * The three named full-clear rules live in ./predicates.ts and are re-exported here, so
+ * The named full-clear rules and the Resets panel's populations live in ./predicates.ts
+ * and are re-exported here, so
  * that `@/lib/db/archive/queries` stays the one import for anything reading this
  * database. They are defined next door only because the build script and the fixture
  * extractor must import the pinned rule without pulling in a connection — see that
  * file's header and ADR 0008.
  */
-export { PINNED_FULL_CLEAR, DISJUNCTIVE_FULL_CLEAR, STARTED_FROM_BEGINNING, RESET } from './predicates';
+export {
+    PINNED_FULL_CLEAR,
+    DISJUNCTIVE_FULL_CLEAR,
+    STARTED_FROM_BEGINNING,
+    RESET,
+    CLEARED_WITHOUT_SUBJECT,
+    UNPINNED_CLEAR,
+    CHECKPOINT_RUN,
+} from './predicates';
 
 /**
  * ------------------------------------------------------------------------------------
@@ -771,11 +787,14 @@ export interface ArchiveNonClearRuns {
  * which include the seven raid.report shows as checkpoint runs (see ./predicates.ts).
  * The field is `unpinnedClears` for that reason.
  *
- * The five are separate predicates rather than one CASE ladder on purpose. A ladder
- * partitions by construction — a Run matching two rungs is silently given to the first —
- * and so could never reveal an overlap. Written independently, the partition is a
- * property the data has to have, and tests/db/archive-resets.test.ts checks that they
- * add back up to `runs` in every range it asserts.
+ * The five are separate named predicates (./predicates.ts) rather than one CASE ladder on
+ * purpose. A ladder partitions by construction — a Run matching two rungs is silently
+ * given to the first — and so could never reveal an overlap. Written independently, the
+ * partition is a property the data has to have: tests/db/archive-resets.test.ts checks
+ * that every fixture Run matches exactly one of them, and that they add back up to `runs`
+ * in every range it asserts. Production also matches exactly one each, all 13,420.
+ *
+ * **The Reset count is 9 high** against its own definition; see {@link RESET}.
  *
  * ## Shape
  *
@@ -791,9 +810,6 @@ export function getNonClearRuns(
     range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
 ): ArchiveNonClearRuns {
     const scope = rangeClause(range);
-    const clearedWithoutSubject = 'r.is_full_clear = 1 AND r.completed = 0';
-    const unpinnedClear = `${STARTED_FROM_BEGINNING} AND r.completed = 1 AND r.is_full_clear = 0`;
-    const checkpointRun = `NOT ${STARTED_FROM_BEGINNING}`;
 
     // COUNT(*) is 0 over an empty window, but SUM() is NULL, hence every COALESCE.
     return getArchiveDb().prepare(`
@@ -803,11 +819,11 @@ export function getNonClearRuns(
             COALESCE(SUM(CASE WHEN ${RESET} THEN 1 ELSE 0 END), 0) AS resets,
             COALESCE(SUM(CASE WHEN ${RESET} THEN r.duration_seconds ELSE 0 END), 0) AS resetSeconds,
             COALESCE(SUM(CASE WHEN ${RESET} AND r.duration_seconds < ? THEN 1 ELSE 0 END), 0) AS quickResets,
-            COALESCE(SUM(CASE WHEN ${clearedWithoutSubject} THEN 1 ELSE 0 END), 0) AS clearedWithoutSubject,
-            COALESCE(SUM(CASE WHEN ${clearedWithoutSubject} THEN r.duration_seconds ELSE 0 END), 0)
+            COALESCE(SUM(CASE WHEN ${CLEARED_WITHOUT_SUBJECT} THEN 1 ELSE 0 END), 0) AS clearedWithoutSubject,
+            COALESCE(SUM(CASE WHEN ${CLEARED_WITHOUT_SUBJECT} THEN r.duration_seconds ELSE 0 END), 0)
                 AS clearedWithoutSubjectSeconds,
-            COALESCE(SUM(CASE WHEN ${unpinnedClear} THEN 1 ELSE 0 END), 0) AS unpinnedClears,
-            COALESCE(SUM(CASE WHEN ${checkpointRun} THEN 1 ELSE 0 END), 0) AS checkpointRuns
+            COALESCE(SUM(CASE WHEN ${UNPINNED_CLEAR} THEN 1 ELSE 0 END), 0) AS unpinnedClears,
+            COALESCE(SUM(CASE WHEN ${CHECKPOINT_RUN} THEN 1 ELSE 0 END), 0) AS checkpointRuns
         FROM gos_10k_runs r
         WHERE 1 = 1 ${scope.sql}
     `).get(RESET_RESTART_SECONDS, ...scope.params) as ArchiveNonClearRuns;

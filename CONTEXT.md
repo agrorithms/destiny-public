@@ -64,7 +64,8 @@ which one it used:
   instance `10141395454`, the subject's *own last clear before a 40-day gap with no GoS runs* — it
   is where the evidence runs out, not a boundary Bungie chose, and the id means nothing else.
 - **Disjunctive Full Clear** — flag set **or** phase index 0, anywhere in the history. **10,020.**
-  Comparable to the Tracker, generous by 20 runs before the flag was reliable.
+  Comparable to the Tracker, generous by 20 runs — all *after* the pin, phase 0 with the flag unset,
+  the shape the pin stops trusting.
 
 Both carry the second half — that the subject himself finished — inside the named rule rather than
 leaving it to the caller. Dropping it returns 10,040 / 13,412: plausible-looking numbers that are
@@ -123,6 +124,9 @@ in it. Overwhelmingly a restart after a bad start rather than a fireteam collaps
 reported with its duration for that reason: a bare count of Resets invites the worse reading. Not
 the negation of a Full Clear — a Run his fireteam cleared without him, a finished Run the Pinned
 rule rejects, and a Checkpoint Run are each their own population, and none of them is a Reset.
+**The shipped count (3,352) holds 9 Runs that break this definition**: post-pin, phase 0, flag
+unset, finished by 4–6 other players. The stored `is_full_clear` cannot see their finishers, so
+they read as Resets rather than as cleared without him. Which start reading fixes it is open.
 _Avoid_: wipe, failed run, abandoned clear, DNF
 
 **Clear Number**:

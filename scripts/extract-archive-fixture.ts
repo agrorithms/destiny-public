@@ -4,10 +4,11 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { deriveClearNumbers } from '../src/lib/db/archive/derive-clear-number';
 import {
-    DISJUNCTIVE_FULL_CLEAR,
+    CHECKPOINT_RUN,
+    CLEARED_WITHOUT_SUBJECT,
     PINNED_FULL_CLEAR,
     RESET,
-    STARTED_FROM_BEGINNING,
+    UNPINNED_CLEAR,
 } from '../src/lib/db/archive/predicates';
 import { replayArchiveRows, type ArchiveRow } from '../tests/helpers/archive-replay';
 import type { ArchiveSeed, SeedCohort, SeedTarget } from '../tests/helpers/archive-seed';
@@ -203,7 +204,7 @@ const COHORTS: Cohort[] = [
     {
         name: 'cleared-without-him',
         why: 'Six of the 40 Runs his fireteam cleared from the start without him. One of them is already a target; the rest are here so an aggregate over this population is not a single row, and so dropping the completed conjunct is wrong by a visible margin rather than by one.',
-        sql: 'SELECT instance_id FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0 ORDER BY r.period, r.instance_id LIMIT 6',
+        sql: `SELECT instance_id FROM gos_10k_runs r WHERE ${CLEARED_WITHOUT_SUBJECT} ORDER BY r.period, r.instance_id LIMIT 6`,
     },
     {
         // #85 calls this population "pre-pin clears". It is not: every one of these Runs
@@ -219,7 +220,7 @@ const COHORTS: Cohort[] = [
         // implies phase 0 or flag set, so the difference is 10,020 - 10,000 = 20.)
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
-            WHERE ${DISJUNCTIVE_FULL_CLEAR} AND r.is_full_clear = 0
+            WHERE ${UNPINNED_CLEAR}
         `,
     },
     {
@@ -230,7 +231,7 @@ const COHORTS: Cohort[] = [
         // COALESCE-guarded rewrite select the same 8 rows.
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
-            WHERE NOT (${STARTED_FROM_BEGINNING})
+            WHERE ${CHECKPOINT_RUN}
         `,
     },
 ];

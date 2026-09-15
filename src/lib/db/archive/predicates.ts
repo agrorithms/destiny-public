@@ -9,10 +9,11 @@
  * re-express inline, and re-expressing this one is exactly the mistake the pinned rule
  * exists to prevent.
  *
- * {@link RESET} — the population the Resets panel (#93) counts — sits here for the same
- * reason: the fixture extractor samples by it.
+ * {@link RESET} and the Resets panel's (#93) other populations sit here for the same
+ * reason: the fixture extractor samples by them, and the shape and partition tests count
+ * them.
  *
- * ./queries.ts re-exports all four, so `@/lib/db/archive/queries` remains the one place
+ * ./queries.ts re-exports every one, so `@/lib/db/archive/queries` remains the one place
  * a reader has to look, and the "all SQL in one query module per database" rule still
  * holds for every actual query.
  */
@@ -48,7 +49,9 @@ export const PINNED_FULL_CLEAR = 'r.is_full_clear = 1 AND r.completed = 1';
 /**
  * **Disjunctive Full Clear** — the Tracker-comparable rule. Flag set *or* phase index
  * 0, anywhere in the history, with no pin. **10,020**: generous by 20 runs against
- * {@link PINNED_FULL_CLEAR}, all of them before the flag was reliable.
+ * {@link PINNED_FULL_CLEAR} ({@link UNPINNED_CLEAR}). All 20 are *after* the pin
+ * (2022-04-02 to 2024-12-15) — phase 0 with the flag unset, the shape the pin stops
+ * trusting — so they only resemble Runs from before the flag was reliable.
  *
  * Kept because the comparison is the interesting thing, and because which number the
  * page headlines is an editorial choice that stays a call site rather than a schema
@@ -82,6 +85,13 @@ export const STARTED_FROM_BEGINNING =
  *   "at least one player completed" fold contributes. Without it, the 40 Runs his
  *   fireteam cleared from the start without him are counted as Resets too.
  *
+ * **That third conjunct is not exact, and 9 Resets are known to be wrong.** The stored
+ * column folds "someone completed" in only where the *pinned* start rule holds. A post-pin
+ * Run at phase 0 with Bungie's flag unset reads `is_full_clear = 0` whoever finished it,
+ * so 9 such Runs with 4–6 finishers each (10646916167, 10656806604, 10661768568,
+ * 10680966329, 10732193084, 10732584295, 10760818572, 12680551981, 16202192642) are
+ * counted here rather than as {@link CLEARED_WITHOUT_SUBJECT}. None is in the fixture.
+ *
  * Here rather than in ./queries.ts for the reason at the top of this file: the fixture
  * extractor samples by it, and a population two callers spell separately is one they can
  * spell differently.
@@ -92,6 +102,29 @@ export const STARTED_FROM_BEGINNING =
  * beginning, and 9 of those 455 were in fact finished by other players. The pinned rule
  * treats the *finished* version of exactly those Runs as not-a-clear (the 20 below the
  * headline), so the two readings disagree about the same kind of Run depending on
- * whether it ended. Recorded rather than resolved; see the #93 handoff.
+ * whether it ended — and the 9 above are exactly where that disagreement shows. Recorded
+ * rather than resolved; it changes #81's reference figure, so it is the user's call.
  */
 export const RESET = `${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0`;
+
+/**
+ * **Cleared without him** — started from the beginning and cleared by his fireteam, but
+ * not finished by him. **40.** Exactly the gap between `is_full_clear = 1` alone and
+ * {@link PINNED_FULL_CLEAR}.
+ */
+export const CLEARED_WITHOUT_SUBJECT = 'r.is_full_clear = 1 AND r.completed = 0';
+
+/**
+ * Finished Runs the Disjunctive rule counts and the Pinned rule rejects — **20**, all
+ * after the pin (see {@link DISJUNCTIVE_FULL_CLEAR}). #81 and #85 call them "pre-pin
+ * clears"; they are not. Written as the difference of the two named rules rather than by
+ * re-deriving the pin boundary, so it stays right if the pin is ever revised.
+ */
+export const UNPINNED_CLEAR = `${DISJUNCTIVE_FULL_CLEAR} AND NOT (${PINNED_FULL_CLEAR})`;
+
+/**
+ * **Checkpoint Run** — not started from the first encounter, finished or not. **8.**
+ * Neither raw column is nullable in practice (0 NULLs across 13,420 Runs, and the Archive
+ * cannot gain a row), so the negation needs no COALESCE.
+ */
+export const CHECKPOINT_RUN = `NOT ${STARTED_FROM_BEGINNING}`;

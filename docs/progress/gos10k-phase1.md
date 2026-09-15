@@ -1061,6 +1061,44 @@ other players. A pinned-consistent split would be 2,897 Resets and 483 not-start
 Verified: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 420 / 37,
 `npm run e2e` 53/53.
 
+### #93 — review fixes (second commit)
+
+Both axes ran against `d3b9679` in a peer session with #81 as parent. Every factual claim was
+re-checked against `data/gos-10k.db` before acting.
+
+- [x] `src/lib/db/archive/predicates.ts` — **`CLEARED_WITHOUT_SUBJECT`, `UNPINNED_CLEAR`,
+      `CHECKPOINT_RUN`** join `RESET` (Standards 1 + 2). "Cleared without him" and the
+      checkpoint negation were each spelled in the query, the extractor and the shape test —
+      the duplication `RESET` had just been moved to end. The handoff's intention 7 kept them
+      local on the grounds of one caller; there were three. `UNPINNED_CLEAR` is now
+      `DISJUNCTIVE_FULL_CLEAR AND NOT (PINNED_FULL_CLEAR)`, the two named rules, instead of
+      hand-restating both. Same rows (0 NULLs in either start column), so the seed is unchanged.
+- [x] `src/lib/db/archive/queries.ts`, `scripts/extract-archive-fixture.ts`,
+      `tests/db/archive-fixture-shape.test.ts` — read the constants; re-exported.
+- [x] `tests/db/archive-resets.test.ts` — **every fixture Run matches exactly one population**
+      (Spec a). The sum-to-`runs` test passes if one bucket double-counts a Run another drops.
+      Checked red: against production, loosening `RESET` to drop `is_full_clear = 0` gives 40
+      misplaced Runs; the real predicates give 0 of 13,420.
+- [x] **The 9 Resets other players finished** (Spec c1) — confirmed, and **documented, not
+      fixed**. All 9 are post-pin, phase 0, flag 0, 4–6 finishers each. `is_full_clear` folds in
+      "someone completed" only where the pinned start rule holds, so these read 0 whoever
+      finished. The `RESET` docblock claimed the conjunct meant "neither did anyone else"; it and
+      the **Reset** glossary entry now name the 9. Fixing them means choosing a start reading,
+      and both choices move #81's 3,352 — the open question below, still the user's.
+- [x] Stale "before the flag was reliable" (Spec) corrected in the `DISJUNCTIVE_FULL_CLEAR`
+      docblock and `CONTEXT.md`.
+
+**Not changed:** the zero/one/many branching in each `*Sentence` (the handoff's trap on the
+one-Reset wording; four sentences with different copy are not one switch); the repeated
+`<p className>` (four siblings, a wrapper is indirection); `scope = rangeClause(range)` (nine query
+functions use that name); the NULL fall-through (0 NULLs in production, and ADR 0007's Archive
+cannot gain a row); no "nobody finished" test (the fixture holds none of the 9, so it would pass
+over a definition production breaks); the scope-creep items (defended in the handoff and accepted
+by the review).
+
+Verified: lint 0 errors / 29 pre-existing warnings, build OK (both tsconfigs), `npm test` 421 / 37,
+`npm run e2e` 53/53 — which also covers the checkpoint clause changed after the first run.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

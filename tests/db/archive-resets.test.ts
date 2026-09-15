@@ -1,8 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
 import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
-import { closeArchiveDb } from '@/lib/db/archive';
-import { getNonClearRuns } from '@/lib/db/archive/queries';
+import { closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
+import {
+    CHECKPOINT_RUN,
+    CLEARED_WITHOUT_SUBJECT,
+    getNonClearRuns,
+    PINNED_FULL_CLEAR,
+    RESET,
+    UNPINNED_CLEAR,
+} from '@/lib/db/archive/queries';
 
 /**
  * The Resets panel (#93), against the fixture Archive.
@@ -62,6 +69,18 @@ describe('the Runs that did not become clears, across the whole Archive', () => 
         const outcomes = getNonClearRuns();
 
         expect(accountedFor(outcomes)).toBe(outcomes.runs);
+    });
+
+    it('puts every Run in exactly one population, not merely the right total', () => {
+        // The sum above passes if one population double-counts a Run that another drops.
+        // Per Run, the five predicates are 0/1 each and must add to exactly 1.
+        const populations = [PINNED_FULL_CLEAR, RESET, CLEARED_WITHOUT_SUBJECT, UNPINNED_CLEAR, CHECKPOINT_RUN];
+        const misplaced = getArchiveDb().prepare(`
+            SELECT r.instance_id FROM gos_10k_runs r
+            WHERE ${populations.map((p) => `(${p})`).join(' + ')} IS NOT 1
+        `).all();
+
+        expect(misplaced).toEqual([]);
     });
 });
 

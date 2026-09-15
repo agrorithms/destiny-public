@@ -35,7 +35,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#88** Timeline
 - [x] **#90** Helper board
 - [x] **#89** Presence strip
-- [ ] **#93** Resets panel
+- [x] **#93** Resets panel
 - [ ] **#94** Participants panel + class split
 - [ ] **#80** Close: record the two browser-coverage decisions, update ADR 0007's consequence
   - [ ] Restore the Archive's browser cache lifetime to 86400 (#95 dropped it to 60 for UI
@@ -1012,6 +1012,54 @@ caller).
 Verified at that commit: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
 `npm test` 414 / 36, the presence e2e specs green; after the constant was moved, tsc, the two
 affected test files and eslint on the three files were re-run clean.
+
+### #93 — Resets panel (this chunk)
+
+- [x] `src/lib/db/archive/predicates.ts` — **`RESET`** (`STARTED_FROM_BEGINNING AND completed = 0
+      AND is_full_clear = 0`), beside the full-clear rules because the fixture extractor samples
+      by it. Its docblock records the open question below.
+- [x] `src/lib/db/archive/queries.ts` — `getNonClearRuns(range)` returning `{ runs,
+      pinnedFullClears, resets, resetSeconds, quickResets, clearedWithoutSubject,
+      clearedWithoutSubjectSeconds, unpinnedClears, checkpointRuns }`, and
+      `RESET_RESTART_SECONDS = 600`. One pass over `gos_10k_runs`, no join, 7 ms in production.
+      **Five independent predicates, not a CASE ladder**, so an overlap is something the tests can
+      catch rather than something the SQL hides. `RESET` re-exported.
+- [x] `src/app/gos10k/ResetsPanel.tsx` — **new.** Population line, four sentences (each with a
+      "none" form and singular wording), a reconciliation equation using the query's own `runs`,
+      and an empty state when every Run in range is a clear.
+- [x] `src/app/gos10k/page.tsx` — the panel after the median speed board, #81's eighth slot.
+- [x] `tests/db/archive-resets.test.ts` — **new**, 6 tests: whole fixture (26 / 13,019 s / 21 quick;
+      6 / 54,479 s; 20; 8), the partition sums to `runs`, February 2022, April 2022 (a 4,045 s Reset
+      kept out of the quick count; 12 unpinned clears), October 2020 (5 Checkpoint Runs, 1 cleared
+      without him), clear 102 alone (zeroes).
+- [x] `tests/db/archive-fixture-shape.test.ts`, `scripts/extract-archive-fixture.ts` — read `RESET`
+      instead of spelling it; same SQL, seed unchanged.
+- [x] `e2e/gos10k-resets.spec.ts` — **new**, 2 specs, no figures: empty state, 360px.
+- [x] `CONTEXT.md` — **Reset** entry with `_Avoid_`. `CLAUDE.md` — fifteen browser flows.
+
+**Production reconciliation** (by hand, 360px, server against `data/gos-10k.db`): 3,352 Resets
+averaging 7:47 (2,911 inside ten minutes), 40 cleared without him averaging 1:01:02, 20 unpinned
+clears, 8 Checkpoint Runs, 10,000 + … = 13,420. No overflow unfiltered, clears 9,001–10,000,
+April 2022, clear 5,000, 2023-08-09.
+
+**Deliberate departures from the ticket's wording:**
+
+- **"61:02" renders as `1:01:02`** — the page's one duration formatter shows hours past sixty
+  minutes (#91's criterion). Same figure.
+- **The restart-versus-collapse copy carries a count** (Resets under ten minutes) beside the mean.
+  The mean alone is pulled up by 49 hour-plus Resets (median 3:04), and in a range whose Resets are
+  long, calling them restarts would be false.
+- **#81's "pre-pin clears" are all *after* the pin** (2022-04-02 to 2024-12-15): phase 0, flag 0,
+  finished. Named `unpinnedClears`, and the copy says why the stricter count leaves them out.
+
+**Open, for the user — not changed:** `RESET` uses the *disjunctive* reading of "started from the
+beginning" because #81's 3,352 was counted that way. Under the *pinned* reading, 455 of the 3,352
+(post-pin, phase 0, flag 0) would not count as started from the beginning — the same kind of Run the
+pinned rule rejects when it is *finished* (the 20) — and 9 of those 455 were in fact finished by
+other players. A pinned-consistent split would be 2,897 Resets and 483 not-started Runs.
+
+Verified: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 420 / 37,
+`npm run e2e` 53/53.
 
 ## Notes and traps carried forward
 

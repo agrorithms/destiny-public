@@ -117,6 +117,14 @@ started and abandoned). A count of Runs is a count of attempts, and any question
 must say so with one of the Full Clear rules above.
 _Avoid_: clear, raid, activity
 
+**Reset** (Archive):
+A Run started from the first encounter that nobody completed — neither the subject nor anyone else
+in it. Overwhelmingly a restart after a bad start rather than a fireteam collapsing an hour in, and
+reported with its duration for that reason: a bare count of Resets invites the worse reading. Not
+the negation of a Full Clear — a Run his fireteam cleared without him, a finished Run the Pinned
+rule rejects, and a Checkpoint Run are each their own population, and none of them is a Reset.
+_Avoid_: wipe, failed run, abandoned clear, DNF
+
 **Clear Number**:
 The ordinal of a Pinned Full Clear within an Archive, by `period` ascending: 1 for the first,
 10,000 for the last. **Undefined for every other Run** — a Checkpoint Run, a Run nobody finished,

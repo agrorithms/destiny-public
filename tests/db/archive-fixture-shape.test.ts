@@ -4,6 +4,7 @@ import { closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
 import {
     DISJUNCTIVE_FULL_CLEAR,
     PINNED_FULL_CLEAR,
+    RESET,
     STARTED_FROM_BEGINNING,
     SUBJECT_MEMBERSHIP_ID,
 } from '@/lib/db/archive/queries';
@@ -79,7 +80,7 @@ describe('the populations Phase 1 panels count', () => {
         // Runs nobody finished rather than the Runs *he* did not finish.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE ${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0
+            WHERE ${RESET}
         `)).toBe(26);   // 24 from the cohort, plus the two abandoned-run hazard targets.
         expect(scalar(
             'SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0'

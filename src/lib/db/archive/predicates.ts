@@ -9,7 +9,10 @@
  * re-express inline, and re-expressing this one is exactly the mistake the pinned rule
  * exists to prevent.
  *
- * ./queries.ts re-exports all three, so `@/lib/db/archive/queries` remains the one place
+ * {@link RESET} — the population the Resets panel (#93) counts — sits here for the same
+ * reason: the fixture extractor samples by it.
+ *
+ * ./queries.ts re-exports all four, so `@/lib/db/archive/queries` remains the one place
  * a reader has to look, and the "all SQL in one query module per database" rule still
  * holds for every actual query.
  */
@@ -65,3 +68,30 @@ export const DISJUNCTIVE_FULL_CLEAR =
  */
 export const STARTED_FROM_BEGINNING =
     '(r.activity_was_started_from_beginning = 1 OR r.starting_phase_index = 0)';
+
+/**
+ * **Reset** — a Run he started from the first encounter that nobody completed. **3,352**,
+ * averaging 7:47: overwhelmingly a restart, not a fireteam collapsing an hour in (#93).
+ *
+ * Three conjuncts, and each one is load-bearing:
+ *
+ * - {@link STARTED_FROM_BEGINNING} rather than `is_full_clear`, for the reason given
+ *   there — this is a question about attempts.
+ * - `completed = 0` — he did not finish it.
+ * - `is_full_clear = 0` — and neither did anyone else, which is what the stored column's
+ *   "at least one player completed" fold contributes. Without it, the 40 Runs his
+ *   fireteam cleared from the start without him are counted as Resets too.
+ *
+ * Here rather than in ./queries.ts for the reason at the top of this file: the fixture
+ * extractor samples by it, and a population two callers spell separately is one they can
+ * spell differently.
+ *
+ * **Uses the disjunctive reading of "started from the beginning", not the pinned one**,
+ * because #81's 3,352 was counted that way. Under the pinned reading, 455 of these —
+ * phase 0 with Bungie's flag unset, after the pin — would not count as started from the
+ * beginning, and 9 of those 455 were in fact finished by other players. The pinned rule
+ * treats the *finished* version of exactly those Runs as not-a-clear (the 20 below the
+ * headline), so the two readings disagree about the same kind of Run depending on
+ * whether it ended. Recorded rather than resolved; see the #93 handoff.
+ */
+export const RESET = `${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0`;

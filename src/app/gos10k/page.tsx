@@ -11,6 +11,7 @@ import {
     getMonthlyClears,
     getRunsByYear,
     getClassDistribution,
+    getNonClearRuns,
     getSubjectPresence,
     resolveArchiveRange,
 } from '@/lib/db/archive/queries';
@@ -22,6 +23,7 @@ import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { PresenceStrip } from './PresenceStrip';
+import { ResetsPanel } from './ResetsPanel';
 import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
 
 /**
@@ -72,6 +74,10 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * answering "how many of these did he join at the very end" before the boards below it
  * start naming the people who were there.
  *
+ * Issue #93 added the Resets panel after the median speed board — the one panel counting
+ * the Runs that are *not* clears, so the 10,000 above is not read as every attempt he
+ * made.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -104,6 +110,7 @@ export default async function Gos10kPage({
     const helperBoard = getHelperBoard(helperView.showAll ? null : HELPER_BOARD_ROWS, range);
     const fastestClears = getFastestClears(10, range);
     const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
+    const nonClears = getNonClearRuns(range);
     // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
     // render, and quietly truncate six years of history to one February. The `span` it
     // does take is the one already read above: it fixes the axis's two ends, and cannot
@@ -295,6 +302,11 @@ export default async function Gos10kPage({
                 The two panels are deliberately adjacent — one good night and sustained
                 form are the comparison, and they only read as a comparison side by side. */}
             <MedianSpeedBoard helpers={medianSpeed} scope={scope} />
+
+            {/* #81's render order: the boards, then the Runs that did not become clears.
+                Everything above counts the 10,000; this is where the page says what else
+                he started. */}
+            <ResetsPanel outcomes={nonClears} scope={scope} />
 
             <section className="space-y-3">
                 <h2 className="text-xl font-semibold ui-text-primary">Classes brought</h2>

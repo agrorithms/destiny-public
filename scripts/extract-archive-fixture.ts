@@ -6,6 +6,7 @@ import { deriveClearNumbers } from '../src/lib/db/archive/derive-clear-number';
 import {
     DISJUNCTIVE_FULL_CLEAR,
     PINNED_FULL_CLEAR,
+    RESET,
     STARTED_FROM_BEGINNING,
 } from '../src/lib/db/archive/predicates';
 import { replayArchiveRows, type ArchiveRow } from '../tests/helpers/archive-replay';
@@ -197,7 +198,7 @@ const COHORTS: Cohort[] = [
     {
         name: 'resets',
         why: 'Up to three Runs per spine month that he started from the first encounter and nobody finished. #93 reports how many there were and how long they lasted; a fixture with none would make both figures untestable. Not the negation of is_full_clear — that column folds in "somebody completed".',
-        sql: perSpineMonth(`${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0`, 3),
+        sql: perSpineMonth(RESET, 3),
     },
     {
         name: 'cleared-without-him',

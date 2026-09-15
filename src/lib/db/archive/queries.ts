@@ -585,3 +585,155 @@ export function getFastestClears(
         participants: byInstance.get(run.instanceId) ?? [],
     }));
 }
+
+/**
+ * How many Pinned Full Clears a Helper needs inside the active range before their
+ * median is worth ranking (#92).
+ *
+ * **Fifteen, and it was measured rather than picked.** Within clears 9,001–10,000 of the
+ * production Archive, 725 Helpers appear, but only 74 have ten or more clears, 51 have
+ * fifteen or more and 32 have twenty-five or more. Twenty-five leaves a board of 32
+ * candidates on the narrowest filter anyone is likely to use; fifteen keeps the board
+ * usable there while still being enough Runs that one good night cannot move a median.
+ *
+ * Fixed rather than user-adjustable, and that is a rendering decision as much as an
+ * editorial one: this page is URL-driven server rendering, so a slider is a full page
+ * render per drag tick. The number is exported because the panel has to *state* it —
+ * a floor a reader cannot see is indistinguishable from a Helper who is missing.
+ */
+export const MEDIAN_SPEED_CLEAR_FLOOR = 15;
+
+/**
+ * How many rows the median speed board renders.
+ *
+ * **Also fifteen, and unrelated to the floor above it** — one is a count of Helpers, the
+ * other a count of each Helper's clears, and they collide on the same literal by
+ * coincidence. Named separately because this repo has been bitten by exactly this shape
+ * before: ADR 0001's active-session cap is two limits in two units, and conflating them
+ * silently dropped the longest-running raids. A caller passing a bare `15` cannot say
+ * which fifteen it meant.
+ */
+export const MEDIAN_SPEED_BOARD_ROWS = 15;
+
+export interface ArchiveMedianSpeedHelper {
+    membershipId: string;
+    /** `Name#Code` in full, via formatBungieDisplayName. */
+    displayName: string;
+    /** Pinned Full Clears in range. Distinct instances, never player rows. */
+    clears: number;
+    /**
+     * Raw seconds, and **fractional for an even clear count** — the mean of the two
+     * middle clears, so 18 clears can legitimately return 725.5. Rendered by
+     * formatMedianDuration() in src/app/gos10k/duration-copy.ts, which is where the
+     * decision to round it is made.
+     */
+    medianSeconds: number;
+}
+
+/**
+ * Helpers ranked by their median Pinned Full Clear duration in range — who is
+ * consistently fast, as distinct from who had one good night (#92).
+ *
+ * **Median rather than mean**, because this dataset contains AFK runs: the fixture's
+ * slowest clear is over five hours, and one of those in a Helper's 20 runs moves a mean
+ * by minutes while leaving a median untouched. The floor is
+ * {@link MEDIAN_SPEED_CLEAR_FLOOR} and is what keeps a two-clear player off the top.
+ *
+ * SQLite has no `median()`, so it is computed the standard way: number each Helper's
+ * clears by duration, then average the middle one or two. `position IN ((clears + 1) /
+ * 2, (clears + 2) / 2)` is integer division, so an odd count selects one row twice over
+ * (both expressions land on the same position, and `IN` is a set) and an even count
+ * selects the two either side of the middle. The alternative — reading every (Helper,
+ * duration) pair into TypeScript — is ~60,000 rows per request in production for a
+ * fifteen-row board.
+ *
+ * `SELECT DISTINCT (membership, instance, duration)` in the first CTE is hazard 1: a
+ * Helper who brought three characters to one raid is one clear with one duration, not
+ * three. Counting rows there would inflate a clear count past the floor *and* weight
+ * that Run three times in the median.
+ *
+ * Two statements rather than one, as {@link getFastestClears}: ranking first and reading
+ * the names of exactly the memberships that made the board keeps `LIMIT` denominated in
+ * Helpers, and keeps the window functions off a query that also has to GROUP BY names.
+ */
+export function getMedianSpeedBoard(
+    limit: number = MEDIAN_SPEED_BOARD_ROWS,
+    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
+): ArchiveMedianSpeedHelper[] {
+    const db = getArchiveDb();
+    const scope = rangeClause(range);
+
+    // `clears DESC, membershipId` after the median is not decoration: the fixture alone
+    // ties two Helpers at 884 seconds on the fifteenth row, so untied it is the query
+    // plan that decides which of them a reader sees at all. More clears wins the tie —
+    // the board is about consistency, and 61 clears is more evidence of it than 15.
+    const ranked = db.prepare(`
+        WITH helper_clears AS (
+            SELECT DISTINCT
+                p.membership_id     AS membershipId,
+                r.instance_id       AS instanceId,
+                r.duration_seconds  AS durationSeconds
+            FROM gos_10k_pgcr_players p
+            JOIN gos_10k_runs r ON r.instance_id = p.instance_id
+            WHERE p.membership_id != ? AND ${PINNED_FULL_CLEAR} ${scope.sql}
+        ),
+        ordered AS (
+            SELECT
+                membershipId,
+                durationSeconds,
+                ROW_NUMBER() OVER (
+                    PARTITION BY membershipId ORDER BY durationSeconds, instanceId
+                ) AS position,
+                COUNT(*) OVER (PARTITION BY membershipId) AS clears
+            FROM helper_clears
+        )
+        SELECT
+            membershipId,
+            clears,
+            AVG(durationSeconds) AS medianSeconds
+        FROM ordered
+        WHERE clears >= ? AND position IN ((clears + 1) / 2, (clears + 2) / 2)
+        GROUP BY membershipId, clears
+        ORDER BY medianSeconds ASC, clears DESC, membershipId ASC
+        LIMIT ?
+    `).all(
+        SUBJECT_MEMBERSHIP_ID,
+        ...scope.params,
+        MEDIAN_SPEED_CLEAR_FLOOR,
+        limit
+    ) as Array<{ membershipId: string; clears: number; medianSeconds: number }>;
+
+    if (ranked.length === 0) return [];
+
+    // Parameterised `IN` over the memberships just ranked — bounded by `limit`, and
+    // every value came out of this database a statement ago.
+    const placeholders = ranked.map(() => '?').join(', ');
+    const nameRows = db.prepare(`
+        SELECT
+            p.membership_id AS membershipId,
+            ${PLAYER_NAME_PROJECTION}
+        FROM gos_10k_pgcr_players p
+        WHERE p.membership_id IN (${placeholders})
+        GROUP BY p.membership_id
+    `).all(...ranked.map((helper) => helper.membershipId)) as Array<{
+        membershipId: string;
+        displayName: string | null;
+        bungieGlobalDisplayName: string | null;
+        bungieGlobalDisplayNameCode: number | null;
+    }>;
+
+    const names = new Map(nameRows.map((row) => [row.membershipId, row]));
+
+    return ranked.map((helper) => {
+        const name = names.get(helper.membershipId);
+        return {
+            membershipId: helper.membershipId,
+            // A missing name row is unreachable — these memberships came out of this
+            // same table one statement ago — and the display ladder's own last rung is
+            // the membership id, so there is nothing for a fallback object to add.
+            displayName: name ? formatBungieDisplayName(name) : helper.membershipId,
+            clears: helper.clears,
+            medianSeconds: helper.medianSeconds,
+        };
+    });
+}

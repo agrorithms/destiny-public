@@ -48,3 +48,21 @@ export function formatRunDuration(seconds: number): string {
     }
     return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
+
+/**
+ * A median clear duration, which is the same rendering rule reached through a rounding
+ * decision (#92).
+ *
+ * The median speed board's query returns a *true* median, so an even clear count gives
+ * the mean of the two middle Runs and lands on a half-second: 725.5 is the top row of
+ * the fixture board. {@link formatRunDuration} floors, by design — it renders an integer
+ * column of real Run durations — so handing it 725.5 would print the lower of the two
+ * middles on every even-count row and look exactly like a correct answer.
+ *
+ * Rounding rather than flooring is therefore stated here, once, and delegated for the
+ * formatting itself: the board must not be able to render a duration differently from
+ * the fastest-clears list above it.
+ */
+export function formatMedianDuration(seconds: number): string {
+    return formatRunDuration(Math.round(seconds));
+}

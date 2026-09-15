@@ -1,5 +1,5 @@
 import { expect, test } from './support/test-fixtures';
-import { expectNoHorizontalPageOverflow } from './support/viewport';
+import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The fastest-clears panel (#91) — the half of it that only a browser can see.
@@ -52,8 +52,7 @@ test.describe('the fastest clears panel', () => {
 
             // Wrapping and still overflowing is possible — a chip wider than the box, or
             // `flex-wrap` defeated by a `min-width`. This is the criterion's other half.
-            const overflow = await chipList.evaluate((el) => el.scrollWidth - el.clientWidth);
-            expect(overflow, 'the chip row scrolls sideways at 360px').toBeLessThanOrEqual(0);
+            await expectNoElementOverflow(chipList, 'the chip row');
 
             // And the page itself, since a wide chip row is exactly how a panel breaks
             // the phone layout the shell spec pins.

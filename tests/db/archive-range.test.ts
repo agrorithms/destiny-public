@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
+import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
 import {
     getArchiveOverview,
@@ -7,11 +8,9 @@ import {
     getClassDistribution,
     getRunsByYear,
     getTopHelpers,
-    resolveArchiveRange,
     PINNED_FULL_CLEAR,
     type ResolvedArchiveRange,
 } from '@/lib/db/archive/queries';
-import { parseArchiveRangeRequest } from '@/lib/db/archive/range';
 
 /**
  * The global range filter, against the fixture Archive — the half of #87 that is
@@ -53,11 +52,6 @@ function clearNumbersIn(range: ResolvedArchiveRange): number[] {
     return rows.map((row) => row.n);
 }
 
-/** Shorthand: a URL's worth of parameters, resolved the way the page resolves them. */
-function resolve(searchParams: Record<string, string>): ResolvedArchiveRange {
-    return resolveArchiveRange(parseArchiveRangeRequest(searchParams));
-}
-
 describe('the Archive span', () => {
     it('is read from the data, first Run to last', () => {
         // Everything anchored — the presets, the clamping, the unfiltered control copy —
@@ -75,7 +69,7 @@ describe('translating a Clear Number range into dates', () => {
         // Clears 103–143 are February 2022 in the fixture. The bounds are the two Runs'
         // own periods, not the first and last instant of a day: a Clear Number range is
         // exactly the window between two Runs.
-        const range = resolve({ clearFrom: '103', clearTo: '143' });
+        const range = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
 
         expect(range.mode).toBe('clears');
         expect(range.clearFrom).toBe(103);
@@ -91,7 +85,7 @@ describe('translating a Clear Number range into dates', () => {
         // "Clears 340 onwards" against a 346-clear Archive is a live question with a real
         // answer; degrading it to the whole Archive would throw the reader's intent away.
         // What is not a live question is clears 9,001–10,000 — see the degradation block.
-        const range = resolve({ clearFrom: '340', clearTo: '9999' });
+        const range = resolveArchiveRangeFromParams({ clearFrom: '340', clearTo: '9999' });
 
         expect(range.clearFrom).toBe(340);
         expect(range.clearTo).toBe(346);
@@ -102,7 +96,7 @@ describe('translating a Clear Number range into dates', () => {
 
 describe('translating a date range into Clear Numbers', () => {
     it('reports the Clear Numbers the dates contain', () => {
-        const range = resolve({ from: '2022-02-01', to: '2022-02-28' });
+        const range = resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });
 
         expect(range.mode).toBe('dates');
         expect(range.clearFrom).toBe(103);
@@ -120,7 +114,7 @@ describe('translating a date range into Clear Numbers', () => {
         // November 2020 has one Run in the fixture and no Pinned Full Clear. The panels
         // below correctly report zero clears over one Run; that is an answer, not a
         // broken page, and the control has to be able to say "no clears" in words.
-        const range = resolve({ from: '2020-11-01', to: '2020-11-30' });
+        const range = resolveArchiveRangeFromParams({ from: '2020-11-01', to: '2020-11-30' });
 
         expect(range.mode).toBe('dates');
         expect(range.clearFrom).toBeNull();
@@ -138,8 +132,8 @@ describe('the two modes are the same range', () => {
         // 2022-02-21, so the window's dates hold exactly the clears the window holds.
         // The byDates expectation below is what asserts that alignment rather than
         // assuming it, and the misaligned case is pinned in its own block above.
-        const byClears = resolve({ clearFrom: '103', clearTo: '143' });
-        const byDates = resolve({ from: byClears.dateFrom!, to: byClears.dateTo! });
+        const byClears = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
+        const byDates = resolveArchiveRangeFromParams({ from: byClears.dateFrom!, to: byClears.dateTo! });
 
         const expected = Array.from({ length: 41 }, (_, index) => index + 103);
         expect(clearNumbersIn(byClears)).toEqual(expected);
@@ -160,13 +154,13 @@ describe('a Clear Number range is described by the days it spans', () => {
         // it is pinned here so that a later change to either resolution has to notice it.
         // The equivalence criterion above is unaffected: both modes still resolve to one
         // pair of period bounds and filter every panel through it.
-        const twoClears = resolve({ clearFrom: '104', clearTo: '105' });
+        const twoClears = resolveArchiveRangeFromParams({ clearFrom: '104', clearTo: '105' });
 
         expect(clearNumbersIn(twoClears)).toEqual([104, 105]);
         expect(twoClears.dateFrom).toBe('2022-02-01');
         expect(twoClears.dateTo).toBe('2022-02-01');
 
-        const thatDay = resolve({ from: twoClears.dateFrom!, to: twoClears.dateTo! });
+        const thatDay = resolveArchiveRangeFromParams({ from: twoClears.dateFrom!, to: twoClears.dateTo! });
 
         expect(clearNumbersIn(thatDay)).toEqual(
             Array.from({ length: 13 }, (_, index) => index + 103)
@@ -178,7 +172,7 @@ describe('degrading to the whole Archive', () => {
     it('describes the whole Archive in both expressions when nothing is asked for', () => {
         // Not a degraded state: the control renders these as the current range, so the
         // unfiltered page still states which clears and which dates it is showing.
-        const range = resolve({});
+        const range = resolveArchiveRangeFromParams({});
 
         expect(range).toMatchObject({
             mode: 'all',
@@ -198,7 +192,7 @@ describe('degrading to the whole Archive', () => {
         ['clears the Archive does not contain', { clearFrom: '9001', clearTo: '10000' }],
         ['dates before the Archive begins', { from: '2019-01-01', to: '2019-12-31' }],
     ])('falls back to the unfiltered view for %s', (_case, params) => {
-        const range = resolve(params);
+        const range = resolveArchiveRangeFromParams(params);
 
         // Filtered to nothing is the failure mode worth naming: it renders as a broken
         // page rather than as an error, and every panel would agree with it.
@@ -213,7 +207,7 @@ describe('degrading to the whole Archive', () => {
 });
 
 describe('every panel obeys the range', () => {
-    const february = () => resolve({ from: '2022-02-01', to: '2022-02-28' });
+    const february = () => resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });
 
     it('scopes the overview figures', () => {
         expect(getArchiveOverview(february())).toMatchObject({

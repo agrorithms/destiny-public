@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * "The page does not scroll sideways at this viewport" — the phone criterion three
@@ -19,4 +19,20 @@ export async function expectNoHorizontalPageOverflow(page: Page): Promise<void> 
         return root.scrollWidth - root.clientWidth;
     });
     expect(overflow, 'the page scrolls horizontally').toBeLessThanOrEqual(0);
+}
+
+/**
+ * "This element does not scroll sideways inside its own box" — the other half of the
+ * phone criterion, and the one {@link expectNoHorizontalPageOverflow} cannot see. An
+ * ancestor with its own `overflow` absorbs a too-wide child, so the page measures clean
+ * while the panel itself is the thing a reader has to drag.
+ *
+ * Extracted for the same reason as its page-level sibling above: the
+ * `scrollWidth - clientWidth` probe had been hand-rolled three times (the shell's
+ * headline figure, the fastest-clears chip row, the median speed board's table), each
+ * with its own copy of the arithmetic and its own wording for the failure.
+ */
+export async function expectNoElementOverflow(element: Locator, what: string): Promise<void> {
+    const overflow = await element.evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow, `${what} scrolls sideways at this viewport`).toBeLessThanOrEqual(0);
 }

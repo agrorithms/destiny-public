@@ -5,6 +5,8 @@ import {
     getArchiveSpan,
     getTopHelpers,
     getFastestClears,
+    getMedianSpeedBoard,
+    MEDIAN_SPEED_BOARD_ROWS,
     getRunsByYear,
     getClassDistribution,
     resolveArchiveRange,
@@ -12,6 +14,7 @@ import {
 import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
 import { ArchiveRangeFilter } from './ArchiveRangeFilter';
 import { FastestClears } from './FastestClears';
+import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
 
 /**
@@ -42,6 +45,10 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * whole fireteam. It owns the shared duration formatter in ./duration-copy.ts that #92's
  * median speed board imports, so the same number cannot render two ways on one page.
  *
+ * Issue #92 added the median speed board below it — Helpers rather than Runs, ranked by
+ * a median with a stated 15-clear floor, so that the panel above ("who set records") and
+ * this one ("who is reliably quick") answer two different questions with one formatter.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -66,6 +73,7 @@ export default async function Gos10kPage({
     const overview = getArchiveOverview(range);
     const helpers = getTopHelpers(25, range);
     const fastestClears = getFastestClears(10, range);
+    const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
     const years = getRunsByYear(range);
     const classes = getClassDistribution(range);
 
@@ -254,6 +262,11 @@ export default async function Gos10kPage({
             {/* #81's render order puts the records below the Helper board: who was
                 there most, then what the best of it looked like. */}
             <FastestClears clears={fastestClears} scope={scope} />
+
+            {/* #81's render order: the records, then who was quick across all of them.
+                The two panels are deliberately adjacent — one good night and sustained
+                form are the comparison, and they only read as a comparison side by side. */}
+            <MedianSpeedBoard helpers={medianSpeed} scope={scope} />
 
             <section className="space-y-3">
                 <h2 className="text-xl font-semibold ui-text-primary">Classes brought</h2>

@@ -12,6 +12,7 @@ import {
     getRunsByYear,
     getClassDistribution,
     getNonClearRuns,
+    getParticipantDistribution,
     getSubjectPresence,
     resolveArchiveRange,
 } from '@/lib/db/archive/queries';
@@ -24,6 +25,8 @@ import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { PresenceStrip } from './PresenceStrip';
 import { ResetsPanel } from './ResetsPanel';
+import { ParticipantsPanel } from './ParticipantsPanel';
+import { ClassSplit } from './ClassSplit';
 import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
 
 /**
@@ -78,6 +81,11 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * the Runs that are *not* clears, so the 10,000 above is not read as every attempt he
  * made.
  *
+ * Issue #94 added the participants panel and replaced the one-line class split with its
+ * own panel, closing #81's render order. The participants panel counts people who
+ * *entered* each Pinned Full Clear, with the trio clears as its headline; the class split
+ * counts characters across every Run in range, and both say which population they mean.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -111,6 +119,7 @@ export default async function Gos10kPage({
     const fastestClears = getFastestClears(10, range);
     const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
     const nonClears = getNonClearRuns(range);
+    const participants = getParticipantDistribution(range);
     // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
     // render, and quietly truncate six years of history to one February. The `span` it
     // does take is the one already read above: it fixes the axis's two ends, and cannot
@@ -127,7 +136,6 @@ export default async function Gos10kPage({
     const allTimeHelpers = range.mode === 'all' ? overview.helpers : getArchiveHelperCount();
 
     const maxYearRuns = Math.max(...years.map((year) => year.runs), 1);
-    const totalPlayerRuns = classes.reduce((sum, row) => sum + row.playerRuns, 0);
 
     return (
         <section className="max-w-4xl space-y-8">
@@ -308,18 +316,13 @@ export default async function Gos10kPage({
                 he started. */}
             <ResetsPanel outcomes={nonClears} scope={scope} />
 
-            <section className="space-y-3">
-                <h2 className="text-xl font-semibold ui-text-primary">Classes brought</h2>
-                <p className="ui-text-secondary text-sm leading-6">
-                    {classes
-                        .map(
-                            (row) =>
-                                `${row.characterClass} ${Math.round((row.playerRuns / totalPlayerRuns) * 100)}%`
-                        )
-                        .join(' · ')}{' '}
-                    across {totalPlayerRuns.toLocaleString()} player-runs in {scope}.
-                </p>
-            </section>
+            {/* #81's render order: the Runs that did not become clears, then how many
+                people were in the ones that did. */}
+            <ParticipantsPanel buckets={participants} scope={scope} />
+
+            {/* #81's last slot. Characters across every Run in range, not the clears —
+                the panel says so, since everything above it but the Resets counts clears. */}
+            <ClassSplit classes={classes} scope={scope} />
 
             <p className="ui-text-secondary text-sm leading-6">
                 Want to see who is raiding right now? Try the{' '}

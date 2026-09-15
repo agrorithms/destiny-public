@@ -87,7 +87,7 @@ describe('the data hazards', () => {
 
     it('reports a class for every player-run, unknown included', () => {
         const distribution = getClassDistribution();
-        const total = distribution.reduce((sum, row) => sum + row.playerRuns, 0);
+        const total = distribution.reduce((sum, row) => sum + row.characters, 0);
         expect(total).toBe(readArchiveSeed().tables.gos_10k_pgcr_players.length);
     });
 });

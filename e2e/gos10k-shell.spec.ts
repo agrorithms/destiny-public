@@ -26,7 +26,12 @@ test.describe('the GoS 10k page shell', () => {
         // By role and accessible name: the figure is named by its own figcaption, so
         // this asserts the number and its label are programmatically related rather
         // than merely adjacent — which is the property a screen reader depends on.
-        await expect(page.getByRole('figure', { name: 'Pinned Full Clears' })).toBeVisible();
+        // `exact`, because accessible names match by substring: #94's trio figure is
+        // captioned with "…Pinned Full Clears that three people entered…", and an inexact
+        // match binds to both figures.
+        await expect(
+            page.getByRole('figure', { name: 'Pinned Full Clears', exact: true })
+        ).toBeVisible();
     });
 
     test('keeps the methodology closed until the reader asks for it', async ({ page }) => {

@@ -36,7 +36,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#90** Helper board
 - [x] **#89** Presence strip
 - [x] **#93** Resets panel
-- [ ] **#94** Participants panel + class split
+- [x] **#94** Participants panel + class split
 - [ ] **#80** Close: record the two browser-coverage decisions, update ADR 0007's consequence
   - [ ] Restore the Archive's browser cache lifetime to 86400 (#95 dropped it to 60 for UI
         iteration; collapse `ARCHIVE_BROWSER_MAX_AGE_SECONDS` back into
@@ -1144,6 +1144,58 @@ clears"), which used the disjunctive reading.
 Verified: lint 0 errors / 29 warnings, build OK, `npm test` 423 / 37, `npm run e2e` 53/53.
 Production through `getNonClearRuns()`: 13,420 = 10,000 + 2,897 + 40 + 483 (23 / 11); warm 6–7 ms,
 about 25 ms on the first call, which includes preparing the statement.
+
+### #94 — Participants panel + class split (this chunk)
+
+- [x] `src/lib/db/archive/queries.ts` — `getParticipantDistribution(range)` returning seven
+      `ArchiveParticipantBucket { people, orMore, clears }`, and `PARTICIPANT_BUCKET_CAP = 7`.
+      **Distinct memberships per Run** (hazard 1), Pinned Full Clears only, range-scoped the house
+      way. **Gap-filled in TypeScript**: `GROUP BY` omits empty buckets and solo is empty everywhere,
+      so the panel could not tell "no solo clears" from "the solo row is missing" — the same step
+      `getMonthlyClears` takes. Production: 0 / 4 / 42 / 4 / 40 / 9,480 / 430 = 10,000, **~21 ms**
+      unfiltered, clears 9,001–10,000 and a single day alike. `EXPLAIN QUERY PLAN`: unfiltered walks
+      Runs → players by the `instance_id` autoindex; filtered scans players → Runs by key. Neither
+      uses the membership index (#89's hang).
+- [x] `src/lib/db/archive/queries.ts` — `getClassDistribution` **field renamed `playerRuns` →
+      `characters`**, ties ordered by class name. The count is unchanged: player rows. **#81's
+      class figures only reconcile as rows** — 34,821 + 30,151 + 14,029 + 167 = 79,168 player rows,
+      against 78,948 distinct (Run, person) pairs — and 206 of the 217 two-character pairs brought
+      two *different* classes, so a per-Player-Run split would have to drop one. The AC's word
+      "Player-Runs" contradicts the glossary's **Player-Run** (two characters = one Player-Run) by
+      220; the figures won, and the name and copy now say *characters*. Checked alternatives:
+      DISTINCT (Run, person, class) gives 34,820 / 30,150 / 14,029 / 158 and reconciles to nothing.
+- [x] `tests/db/archive-composition.test.ts` — **new**, 10 tests, figures computed with `node -e`
+      from the seed. Unfiltered 0/4/7/3/3/307/22; the buckets sum to `pinnedFullClears`; **clear 13**
+      (4 rows, 3 people — row-counting moves the trio to four) and **clear 52** (7 rows, 6 people);
+      clear 10 keeps a duo; February 2022 is 40 sixes + 1 seven-plus; November 2020 all zeroes.
+      Class split unfiltered Warlock 1,359 / Hunter 552 / Titan 533 / Unknown 38; clear 102 counts
+      both of one person's characters; November 2020's non-clear Run still counts.
+- [x] `tests/db/archive-predicates.test.ts`, `tests/db/archive-range.test.ts` — the rename.
+- [x] `src/app/gos10k/share-copy.ts` + `.test.ts` — **new.** `formatShare`, the body of #89's
+      `formatClearTimeShare` moved out, because the class split is the second panel printing a
+      percentage and its shares are of characters, not clear time. `formatClearTimeShare` stays as
+      an alias in `duration-copy.ts` so the presence strip and its tests are untouched; the new test
+      pins the alias and 167/79,168 → `0.2%` (a whole number would print the unknown class as 0%).
+- [x] `src/app/gos10k/ParticipantsPanel.tsx` — **new.** Population line saying "entered at any
+      point, not the size of the fireteam at any one moment"; the **trio count as a
+      `figure`/`figcaption`** above the table, and its row emphasised; column header **"People who
+      entered"**; bars scaled to the largest bucket with a 2px minimum for a populated one; a
+      duos-are-kept note when the range holds any; prose empty state when the range has no clears.
+- [x] `src/app/gos10k/ClassSplit.tsx` — **new**, replacing `page.tsx`'s one-line class sentence
+      (which rounded unknown to 0% and called the total "player-runs"). Per-class count, one-decimal
+      share, bar; population line names characters and every Run, finished or not.
+- [x] `src/app/gos10k/page.tsx` — both panels in #81's last two slots, the inline class section
+      and `totalPlayerRuns` removed, docblock paragraph.
+- [x] `e2e/gos10k-participants.spec.ts` — **new**, 3 specs, no figures: empty state (November
+      2020), the "People who entered" column header + trio figure, both panels at 360px.
+- [x] `e2e/gos10k-shell.spec.ts` — the headline locator is now `exact: true`. The trio figcaption
+      contains "Pinned Full Clears", and Playwright name-matches by substring, so #86's
+      `getByRole('figure', { name: 'Pinned Full Clears' })` became strict-mode ambiguous — caught by
+      the suite, the same shape as #91's canary locator.
+- [x] `CONTEXT.md` — **Class Split** (Archive), with the characters-not-Player-Runs rule and its
+      _Avoid_. **Participant** already carried the people-who-entered rule and was not changed.
+- [x] `CLAUDE.md` — sixteen browser flows. `docs/handoffs/260803-playwright-e2e.md` (gitignored)
+      — #94 entry.
 
 ## Notes and traps carried forward
 

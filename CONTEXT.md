@@ -199,6 +199,16 @@ to avoid, and that still holds *for the Tracker* — a Roster is what Bungie rep
 be, which is a different and weaker claim than who demonstrably entered. This term is the Archive's
 alone, and it exists because the two databases genuinely mean different things here.
 
+**Class Split** (Archive):
+The share of each character class across every **Run** in the active **Range** — finished or not,
+not only the Pinned Full Clears. Counted per *character*, which is the one population count
+through the players table where hazard 1's extra rows are the right unit: class belongs to a
+character, and 206 of the 217 (Run, person) pairs with two characters brought two different
+classes, so counting one class per **Player-Run** would have to drop one of them. Its total is
+therefore the player-row count (79,168), not the Player-Run count (78,948), and the panel says
+"characters" for that reason. A NULL class is **unknown** and stays in the split.
+_Avoid_: player-runs (for this count), class distribution by player
+
 **Fastest Clear** (Archive):
 A record in the Archive's fastest-clears list: a **Run**, ranked by `duration_seconds` ascending
 within the active **Range**, scoped to Pinned Full Clears. Deliberately a Run rather than a player —

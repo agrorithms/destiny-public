@@ -241,9 +241,9 @@ describe('every panel obeys the range', () => {
 
     it('scopes the class split', () => {
         expect(getClassDistribution(february())).toEqual([
-            { characterClass: 'Warlock', playerRuns: 157 },
-            { characterClass: 'Titan', playerRuns: 61 },
-            { characterClass: 'Hunter', playerRuns: 50 },
+            { characterClass: 'Warlock', characters: 157 },
+            { characterClass: 'Titan', characters: 61 },
+            { characterClass: 'Hunter', characters: 50 },
         ]);
     });
 });

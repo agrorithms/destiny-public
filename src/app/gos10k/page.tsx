@@ -7,12 +7,14 @@ import {
     getFastestClears,
     getMedianSpeedBoard,
     MEDIAN_SPEED_BOARD_ROWS,
+    getMonthlyClears,
     getRunsByYear,
     getClassDistribution,
     resolveArchiveRange,
 } from '@/lib/db/archive/queries';
 import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
 import { ArchiveRangeFilter } from './ArchiveRangeFilter';
+import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
@@ -40,6 +42,12 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * *not* obey it: the "complete through" band and the Archive's own span in the header,
  * which are about the dataset rather than about the reader's selection, and are read
  * from getArchiveSpan() for that reason.
+ *
+ * Issue #88 added the timeline directly below the filter — a cumulative line with
+ * monthly bars on a shared x-axis. It is the one panel that does *not* obey the range:
+ * it draws the whole Archive and shades the selection, so a narrow filter keeps its
+ * context. getMonthlyClears() therefore takes no range at all, and the range reaches
+ * the component instead.
  *
  * Issue #91 added the fastest-clears list — Runs rather than players, each naming its
  * whole fireteam. It owns the shared duration formatter in ./duration-copy.ts that #92's
@@ -74,6 +82,11 @@ export default async function Gos10kPage({
     const helpers = getTopHelpers(25, range);
     const fastestClears = getFastestClears(10, range);
     const medianSpeed = getMedianSpeedBoard(MEDIAN_SPEED_BOARD_ROWS, range);
+    // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
+    // render, and quietly truncate six years of history to one February. The `span` it
+    // does take is the one already read above: it fixes the axis's two ends, and cannot
+    // narrow what the chart counts.
+    const timeline = getMonthlyClears(span);
     const years = getRunsByYear(range);
     const classes = getClassDistribution(range);
 
@@ -177,6 +190,11 @@ export default async function Gos10kPage({
             </header>
 
             <ArchiveRangeFilter range={range} span={span} presets={presets} />
+
+            {/* #81's render order: the filter, then the timeline, then the panels that
+                obey it. The timeline sits directly under the control because the band it
+                shades is the control's own selection. */}
+            <ArchiveTimeline months={timeline} range={range} />
 
             {/* The pinned full-clear tile that used to lead this grid is now the headline
                 above; repeating it here would state the page's own name twice. */}

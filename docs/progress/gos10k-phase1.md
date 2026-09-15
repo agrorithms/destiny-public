@@ -32,7 +32,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#87** The range filter (largest ticket; gates Wave 3)
 - [x] **#91** Fastest-clears list (owns the shared duration formatter)
 - [x] **#92** Median speed board (imports #91's formatter)
-- [ ] **#88** Timeline
+- [x] **#88** Timeline
 - [ ] **#90** Helper board
 - [ ] **#89** Presence strip
 - [ ] **#93** Resets panel
@@ -549,6 +549,173 @@ parameter with a default: a parameter is a knob, and the ticket's reason for fix
 is a full server render per drag tick — is an argument against having one at all. Tests read the
 exported constant rather than the literal 15, so a change to it fails the boundary test loudly.
 
+### #88 — Timeline (this chunk)
+
+- [x] `src/lib/db/archive/queries.ts` — `getMonthlyClears()`, `ArchiveTimelineMonth`, and the
+      private `monthsBetween()`. **The one panel query that takes no range**, and that is the
+      ticket rather than an oversight: #81 makes the timeline the single deliberate exception to
+      the global filter, so there is no argument through which the *counts* could be narrowed.
+      (It takes one optional `ArchiveSpan`, added by the cleanup commit below, which fixes the
+      axis's two ends and is not a `ResolvedArchiveRange`.)
+      Writing `getMonthlyClears(range)` and splicing `rangeClause()` into it — the shape every
+      panel since #87 has, and therefore the shape a reader reaches for — compiles, renders, and
+      truncates six years to one February.
+      **Gap-filled**, which is a real step and not a formality: `GROUP BY strftime('%Y-%m', …)`
+      returns only the months holding a Run, and a chart drawn off it renders a two-year pause as
+      the space between two bars. `getRunsByYear()` is the existing `strftime` precedent and does
+      *not* fill — it is a table, where a missing year is a missing row rather than a squashed
+      axis — so it was the wrong thing to copy. Months are enumerated in TypeScript (integer
+      arithmetic over two `YYYY-MM` keys) rather than by a recursive CTE.
+      **Anchored to `MIN`/`MAX(r.period)`, never to a clock** — the standing rule in the Notes
+      below. A timeline ending at "now" grows an empty tail every month against a frozen dataset.
+      Measured on the shipped `data/gos-10k.db`: **4–18 ms**, 75 months, 8 of them empty,
+      cumulative 10,000. The median board remains the page's slowest query at 146 ms.
+- [x] `tests/db/archive-timeline.test.ts` — **new**, 7 tests, figures computed independently from
+      `tests/fixtures/archive-seed.json` with `node -e`, not read back off the query. The fixture
+      spans **68 months of which only 20 hold a clear**, so it is an unusually good witness for
+      the empty-month criterion; 2022-03 is empty *between* two 40-clear months (the extraction
+      script samples across it deliberately), which is the case a reader would actually notice.
+      One test asserts the no-truncation property structurally — `getMonthlyClears.length === 0`,
+      i.e. the function has no *required* parameter to scope through, and its one optional
+      parameter is a span rather than a range — alongside the behavioural one.
+- [x] `src/app/gos10k/timeline-geometry.ts` + `.test.ts` — **new**, pure, colocated. The x-axis
+      arithmetic: `timelineBand()` and `yearTicks()`, both over `YYYY-MM` keys alone. Extracted
+      rather than inlined because the band is drawn **twice** and the ticket's "the shading reads
+      across both charts" is a claim about them being the same geometry, not similar geometry.
+      **The band's minimum width is one month of the axis, not a percentage picked by eye.** A
+      single day of six years is 0.05% — a third of a pixel on a phone — and the first draft used
+      a flat 1.5%, which is *wider than a month* on a 68-month axis and so widened almost every
+      range anyone would actually pick. One month is self-explanatory against the bars underneath
+      it. The widening slides back inside the chart at the right-hand edge: the Archive's own last
+      day is the likeliest single-day selection, and a band drawn past 100% shades nothing.
+- [x] `src/app/gos10k/ArchiveTimeline.tsx` — **new.** Two `<svg>`s sharing one `viewBox` width,
+      both `w-full`, both `preserveAspectRatio="none"` so the chart is full-bleed at any width
+      with no text inside to smear; the polyline carries `vector-effect="non-scaling-stroke"`
+      because non-uniform scaling would otherwise render the stroke as a wedge. One SVG stacking
+      both regions was rejected: the two heights would become a single scale factor, so the bars
+      would squash whenever the line grew. Year labels are **HTML**, not SVG text, so they stay at
+      a real font size on a phone. **No chart library** — this repo has none, #81 asks for none,
+      and the `By year` bars are already a div with a percentage width; adding a dependency to
+      draw two polylines is a decision for the user, not a default.
+- [x] `src/app/gos10k/page.tsx` — the panel directly under the range control (#81's render order),
+      and `getMonthlyClears()` called beside a comment saying why it is not handed the range
+      (it takes the `span` the page already read; see the cleanup commit below).
+- [x] `e2e/gos10k-timeline.spec.ts` — **new**, 3 specs. See the #80 note below.
+- [x] `CONTEXT.md` — **Month Bucket** and **Shaded Band** (Archive), carrying the empty-month rule
+      and the annotation-not-filter distinction.
+- [x] `CLAUDE.md` — eleven browser flows → twelve.
+
+**#80's decision 4 is answered here: the timeline's shading is asserted, structurally.** #88's own
+criterion says the browser-only behaviour is "verified by hand and recorded as unverified by
+automated tests" — written when the Archive had no harness. #96 built one, and #80 names the
+shading as "the item with real regression risk", so the criterion is **superseded rather than
+honoured**, deliberately and on the record (a comment on #80, not only here). The hand
+verification still happened — desktop and 360px, against the production Archive, screenshots taken.
+
+The assertion style, which is the decision #80 actually asks for: **structural, and only about
+geometry no other seam can see.** The bucket counts and the empty months are Vitest's; the band's
+*position* is Vitest's too, in the geometry module's own tests. The browser asserts what rendering
+twice can get wrong — that the band exists when a range is active, that it does not when none is,
+that both charts place it at the same x and width (±1px for independent layout rounding), and that
+it is a band rather than the whole chart. The phone spec asserts both overflow probes plus a
+minimum rendered band width, which is the criterion's "still identifiable" half.
+
+**The phone probe earned its keep immediately**: `expectNoElementOverflow` failed on the first run
+with 13px of overflow, caused by the last year label starting at ~97% of the axis and running off
+the edge. Fixed by flipping labels past 90% to end at their boundary rather than start at it.
+
+### #88 — review fixes (second commit)
+
+Both axes ran against `331d028...HEAD` with #81 as parent. **No hard standards violations and no
+spec gaps**; four judgement calls acted on, one finding rejected on evidence.
+
+- [x] `src/lib/db/archive/month-keys.ts` — **new**. `monthIndex` and `monthsBetween` exported,
+      `monthKey` file-local. The
+      `YYYY-MM` walk existed three times in the #88 diff (the query's private helper, the geometry
+      module, and the geometry test's expected axis) — three chances to be off by a month against
+      the other two, with no seam that could notice. It lives beside `predicates.ts` and `range.ts`
+      because the key is the Archive's own shape: the query names the bucket and everything
+      downstream reads that name. Pure, no connection, so a script or a component can import it.
+- [x] `src/lib/db/archive/queries.ts` — `cumulativeClears` is `MAX(r.clear_number)` per month,
+      carried forward across empty months, instead of a running sum in TypeScript. ADR 0008 stores
+      that ordinal so the page stops re-deriving it ("an ordinal eight call sites re-derive is an
+      ordinal eight call sites can re-derive *differently*"), and the derivation ranks over this
+      same `PINNED_FULL_CLEAR` by `period ASC` — so the highest ordinal inside a month *is* the
+      count through the end of it. The two agree today; what changes is which failure they produce
+      if this predicate ever drifts to the disjunctive rule. Summed, the line climbs to 10,020
+      while the filter above it still says 10,000 — two axes disagreeing, both plausible. Read off
+      the column, the *bars* break instead, visibly, and a test says so.
+- [x] `src/app/gos10k/timeline-geometry.ts` — `yearTicks` positions each label by month-key
+      arithmetic rather than `months.indexOf('2022-01')`, which returns `-1` for any year whose
+      January is absent: a negative percentage, and a label for a mid-axis year drawn off the left
+      edge. Safe only because `getMonthlyClears()` gap-fills, and this module is exported, pure and
+      unable to enforce that. The first year's pinning to the origin now falls out of the clamp
+      instead of being a special case. The contiguity assumption is stated in the module doc, and
+      `axisPercent` and `yearTicks` share one `offsetPercent`, so the band and the ticks cannot
+      drift onto different scales.
+- [x] `src/app/gos10k/ArchiveTimeline.tsx` — the two sentences about the band are driven off `band`
+      rather than off `range.mode`. The panel was deciding "is there a band" twice from two
+      readings of the range; "The shaded band is clears 103–143" above a chart with no band on it
+      is the failure, and it renders perfectly.
+- [x] `tests/db/archive-timeline.test.ts`, `src/app/gos10k/timeline-geometry.test.ts` — two new
+      tests. The line is asserted to still equal the running sum of the bars (the price of reading
+      the ordinal is that the panel's two halves now come from two places, so their agreement has
+      to be stated rather than structural) and to end at `getArchiveSpan().maxClearNumber`; the
+      ticks are asserted against a deliberately gapped month list. The test's expected axis is now
+      built with `monthsBetween`, so it cannot drift from the one the page gets.
+
+**Rejected, on evidence: the band "misses a one-sided date range".** Standards read
+`timelineBand` returning null unless both `periodFrom` and `periodTo` are set as a gap against a
+range every other panel honours. There is no such state: `parseArchiveRangeRequest` returns
+`malformed` for a truncated pair — deliberately, since "clears 9,001 onwards" is a fourth thing the
+control cannot draw — and every malformed request resolves to the whole Archive. Both period bounds
+are non-null in both real modes. The single-source-of-truth fix above is the defensible half of
+that finding.
+
+**Left alone at the time, as flagged in the handoff:** `formatMonth()` stripping the day off
+`formatArchiveDay()` with a regex rather than adding a fourth formatter to `range-copy.ts`. The
+cleanup commit below reversed that call and added the formatter.
+
+lint 0 errors / 29 pre-existing warnings · both tsconfigs clean · `npm test` 376 tests / 33 files ·
+`npm run e2e` 44/44.
+
+
+### #88 — cleanup (`c262568`, third commit)
+
+Not review-driven; a pass over the shipped panel after the fixes above. Verified at that commit:
+lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 376 / 33, `npm run e2e`
+44/44 — the three timeline specs included, which is what checks the band's new units.
+
+- **`getMonthlyClears(span: ArchiveSpan = getArchiveSpan())`.** The page reads the span once for
+  the header and the presets; the chart now takes it rather than running a second `MIN`/`MAX(period)`
+  of its own. The point is not the saved aggregate, it is the second *definition* of where the
+  Archive begins: the header stating one extent above a chart drawn to another is a disagreement
+  nothing would catch. **The no-truncation guarantee survives** — a defaulted first parameter keeps
+  `getMonthlyClears.length === 0`, an `ArchiveSpan` is not a `ResolvedArchiveRange` so a range
+  cannot be passed where it goes, and the bucket query stays unfiltered, so no span changes what
+  the chart counts. What it *can* now do, which it could not before, is move the axis's two ends —
+  unreachable in practice, since `getArchiveSpan()` is the one figure set documented as never
+  obeying the range.
+- **`scope` is no longer a prop**; `describeArchiveRange(range)` is derived inside the component,
+  next to the band it describes. This is the review's single-source-of-truth fix carried one step
+  further: the sentence and the rect are two readings of one `range` value rather than two props
+  that could arrive from different ones. The trailing caption goes through `formatArchiveDayRange()`,
+  which already collapses a single-day selection and already answers for null ends.
+- **`formatArchiveMonth()` in `range-copy.ts`** replaces `formatMonth()`'s regex — the one Standards
+  judgement call the fix commit left alone. A label built by stripping `^\d+\s` is coupled to
+  `en-GB` putting the day first, so a locale change or a long month would produce a wrong label
+  rather than a compile error.
+- **`monthIndexAt(instant)` in `month-keys.ts`.** `axisPercent` was still spelling
+  `getUTCFullYear() * 12 + getUTCMonth()` out by hand, which was a fourth copy of the arithmetic the
+  module was extracted to give one home. `monthKey` became file-local in the same pass:
+  `monthsBetween` is its only caller, and an exported inverse nothing imports reads as a contract.
+- **The band is positioned in percentages**, straight onto the `rect`, which SVG resolves against
+  the `viewBox` width — so `ShadedBand` no longer takes `AXIS_WIDTH` as a third prop whose only job
+  was to agree with the axis. The two-charts-agree spec is what proves the units still line up.
+- **`peak` is seeded as `{ month, clears }`** rather than a whole `ArchiveTimelineMonth`, so the
+  reduce's shape says what it is: a max-by-clears, not a month.
+
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
@@ -589,8 +756,8 @@ exported constant rather than the literal 15, so a change to it fails the bounda
   `archive-range-degraded` (plus `archive-range-filter` and `archive-range-clear`). They
   exist because the copy they hold is a whole sentence whose *figures* move with the fixture;
   the forms themselves are located by role (`getByRole('group', { name: 'By date' })`).
-- **#80's decisions 2 and 4 are still open.** #96 built the harness and one smoke spec only;
-  which behaviours earn assertions is answered while building #87, #88 and #90.
+- **#80's decision 2 is recorded (#87) and decision 4 is recorded (#88, above).** What remains
+  for #80 is #90's half of decision 2 and updating ADR 0007's "no browser coverage" consequence.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
   the new invariant assertions make that failure loud.

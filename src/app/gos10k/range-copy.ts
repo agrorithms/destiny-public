@@ -24,6 +24,24 @@ export function formatArchiveDay(date: string | null): string {
     return formatUtcDate(new Date(`${date}T12:00:00Z`).getTime(), 'short');
 }
 
+/**
+ * A `YYYY-MM` bucket key as a reader reads it: `Feb 2022`.
+ *
+ * Through the same UTC-pinned formatter as every other date on this page, rather than
+ * formatting a whole day and stripping the number off the front: a label built by regex
+ * is coupled to `en-GB` putting the day first, so changing the locale — or asking for a
+ * long month — would quietly produce a wrong label instead of a compile error.
+ */
+export function formatArchiveMonth(month: string): string {
+    // The 15th rather than the 1st: any day inside the month names the same month, and
+    // the middle of it cannot be moved across a boundary by a rounding surprise.
+    return new Date(`${month}-15T12:00:00Z`).toLocaleDateString('en-GB', {
+        year: 'numeric',
+        month: 'short',
+        timeZone: 'UTC',
+    });
+}
+
 /** The long form the header uses for the Archive's own span: `4 July 2020`. */
 export function formatArchiveTimestamp(unixSeconds: number | null): string {
     if (unixSeconds === null) return 'unknown';
@@ -31,8 +49,12 @@ export function formatArchiveTimestamp(unixSeconds: number | null): string {
 }
 
 /**
- * The one `toLocaleDateString` call in this file, so the options that make it UTC-safe
- * are stated once. Both public formatters differ only in how long the month is.
+ * The day formatters' shared `toLocaleDateString` call, so the options that make it
+ * UTC-safe are stated once for both of them; they differ only in how long the month is.
+ *
+ * {@link formatArchiveMonth} deliberately does not come through here — it wants no `day`
+ * at all, and threading an optional day through this signature would make every caller
+ * read the parameter list to learn whether it prints one.
  */
 function formatUtcDate(ms: number, month: 'short' | 'long'): string {
     return new Date(ms).toLocaleDateString('en-GB', {

@@ -211,6 +211,27 @@ the board on exactly the narrow filters it is most interesting on. The floor is 
 panel's own copy, because a floor a reader cannot see is indistinguishable from a missing Helper.
 _Avoid_: average clear time, minimum runs, cutoff
 
+**Month Bucket** (Archive):
+One calendar month of the Archive's history on the timeline, in UTC, holding that month's Pinned
+Full Clears and the running total through the end of it. **Every month between the first Run and
+the last is a bucket, including the ones holding nothing** — 8 of the production Archive's 75, and
+48 of the fixture's 68. Omitting an empty month is the mistake the term exists to name: a `GROUP BY`
+over the period returns only the months that hold a Run, and a chart drawn straight off it renders a
+two-year pause as the gap between two adjacent bars, on an x-axis that is no longer proportional to
+time and that looks entirely correct. Monthly rather than weekly (300+ unreadable bars) or yearly
+(7 bars, which hide everything).
+_Avoid_: month, bar, bin
+
+**Shaded Band** (Archive):
+The part of the timeline covering the active **Range**, drawn identically over both the cumulative
+line and the monthly bars so it reads across the two. It is an annotation on the whole history
+rather than a filter of it: the timeline is the one panel that does **not** narrow to the Range,
+because a narrow filter with no context is how a reader loses the six-year arc the page is about.
+Positioned within a month rather than snapped to one, and widened to a whole month when the Range
+is narrower than that — a single day is a third of a pixel on a phone, and a band nobody can see is
+indistinguishable from a filter that failed to apply.
+_Avoid_: highlight, selection, overlay
+
 **All Attempts**:
 Every raid instance observed in a window, whatever became of it — Full Clears, Checkpoint Runs and
 runs nobody finished. The counterpart to Full Clear, and the broader of the two scopes any

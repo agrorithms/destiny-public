@@ -1,6 +1,7 @@
 import { getArchiveDb } from './index';
 import { formatBungieDisplayName } from '../queries';
 import { PINNED_FULL_CLEAR, DISJUNCTIVE_FULL_CLEAR } from './predicates';
+import { monthsBetween } from './month-keys';
 import {
     endOfArchiveDay,
     formatArchiveDate,
@@ -737,3 +738,100 @@ export function getMedianSpeedBoard(
         };
     });
 }
+
+/** One calendar month of the Archive's history, whether or not anything happened in it. */
+export interface ArchiveTimelineMonth {
+    /** `YYYY-MM`, UTC — the same zone `period` and the range filter are in. */
+    month: string;
+    /** Pinned Full Clears whose Run began in this month. Zero for an empty month. */
+    clears: number;
+    /** Pinned Full Clears from the Archive's first month through the end of this one. */
+    cumulativeClears: number;
+}
+
+/**
+ * The timeline's data (#88): every calendar month of the Archive, with that month's
+ * Pinned Full Clears and the running total through the end of it.
+ *
+ * **This is the one panel query that takes no range, and that is the ticket's point.**
+ * #81: "The filter is global. Every panel obeys it, with one deliberate exception: the
+ * timeline always draws the full history and shades the selection." Giving this function
+ * a `range` parameter and splicing {@link rangeClause} into it — which is what every
+ * panel since #87 does, so it is the shape a reader will reach for — returns a
+ * correct-looking chart that has silently truncated six years of history to one February.
+ * The shading is the *component's* job, from `periodFrom`/`periodTo` on the resolved
+ * range; there is deliberately no argument here through which the data could be narrowed.
+ *
+ * **The gap-filling is not decoration either.** `GROUP BY strftime('%Y-%m', …)` returns
+ * only the months that hold a Run, so a chart drawn straight off it renders a two-year
+ * pause as the space between two adjacent bars: an x-axis that is no longer proportional
+ * to time and that looks entirely correct. {@link getRunsByYear} is the existing
+ * `strftime` precedent and does *not* fill its gaps — it is a table, where a missing year
+ * is a missing row rather than a squashed axis — so it is the wrong thing to copy here.
+ *
+ * The axis is anchored to the Archive's own extent, from the first Run to the last, and
+ * never to the clock. A timeline ending at "now" would grow an empty tail every month
+ * against a dataset that stopped moving in 2026 (#71's bug class; see the note in
+ * docs/progress/gos10k-phase1.md).
+ *
+ * Months are enumerated in TypeScript rather than by a recursive CTE ({@link monthsBetween}):
+ * the sequence is plain integer arithmetic over two `YYYY-MM` strings, and doing it in SQL
+ * would mean a date-arithmetic CTE nobody can read for the sake of avoiding a loop over
+ * ~68 rows. The resulting month list is *contiguous*, which the timeline's geometry
+ * depends on to treat position on the axis as position in time.
+ *
+ * The axis's two ends come from {@link getArchiveSpan}, defaulted the way
+ * {@link resolveArchiveRange} defaults it, so the page can read the span once and hand
+ * it to the header, the presets and this chart alike. A second MIN/MAX of `period`
+ * spelled out here would be both a second aggregate per request and a second definition
+ * of where the Archive starts — and the header stating one extent above a chart drawn to
+ * another is a disagreement nothing would catch. **A span is not a range**: it narrows
+ * nothing, which is why this is still not the truncation hazard the note above describes.
+ */
+export function getMonthlyClears(
+    span: ArchiveSpan = getArchiveSpan()
+): ArchiveTimelineMonth[] {
+    const db = getArchiveDb();
+
+    if (span.firstRunAt === null || span.lastRunAt === null) return [];
+
+    // The span's instants reduced to the same UTC month keys the buckets use, so the two
+    // cannot disagree about which month a Run at 23:50 on the last of the month belongs
+    // to. `formatArchiveDate` is the one UTC `YYYY-MM-DD` spelling in this database's
+    // code; a month key is its first seven characters.
+    const firstMonth = formatArchiveDate(span.firstRunAt).slice(0, 7);
+    const lastMonth = formatArchiveDate(span.lastRunAt).slice(0, 7);
+
+    // `MAX(r.clear_number)` is the cumulative total, read rather than re-derived: the
+    // ordinal is ranked over this same predicate by `period` ascending (ADR 0008), so the
+    // highest ordinal inside a month *is* the count of Pinned Full Clears through the end
+    // of it. Summing `clears` in TypeScript reaches the same number today; it reaches it
+    // by a second derivation of the ordinal every other panel reads from the column, and
+    // ADR 0008 is explicit that "an ordinal eight call sites re-derive is an ordinal eight
+    // call sites can re-derive differently". The failure that buys off: were this
+    // predicate ever to drift to the disjunctive rule, a summed line would climb to 10,020
+    // while the range filter above it still spoke in clear numbers 1-10,000 — two axes
+    // silently disagreeing, both plausible. Reading the column breaks the *bars* instead,
+    // visibly, and the test asserts the two halves still agree.
+    const buckets = db.prepare(`
+        SELECT
+            strftime('%Y-%m', r.period, 'unixepoch') AS month,
+            COUNT(*) AS clears,
+            MAX(r.clear_number) AS lastClearNumber
+        FROM gos_10k_runs r
+        WHERE ${PINNED_FULL_CLEAR}
+        GROUP BY month
+    `).all() as Array<{ month: string; clears: number; lastClearNumber: number }>;
+
+    const byMonth = new Map(buckets.map((bucket) => [bucket.month, bucket]));
+
+    let cumulative = 0;
+    return monthsBetween(firstMonth, lastMonth).map((month) => {
+        const bucket = byMonth.get(month);
+        // An empty month carries the previous total forward: nothing happened, so the
+        // line is flat across it rather than absent.
+        cumulative = bucket?.lastClearNumber ?? cumulative;
+        return { month, clears: bucket?.clears ?? 0, cumulativeClears: cumulative };
+    });
+}
+

@@ -43,6 +43,11 @@ function february() {
     return resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });
 }
 
+/** One Run, and it is not a Pinned Full Clear — the range both panels are tested against. */
+function november() {
+    return resolveArchiveRangeFromParams({ from: '2020-11-01', to: '2020-11-30' });
+}
+
 /** `[1, 2, 3, 4, 5, 6, 7]` → clears, for readable expectations. */
 function clearsByPeople(range?: ReturnType<typeof february>) {
     return getParticipantDistribution(range).map((bucket) => bucket.clears);
@@ -90,15 +95,15 @@ describe('people who entered each Pinned Full Clear', () => {
     });
 
     it('scopes to the range', () => {
-        // February 2022 is clears 103–143: 40 sixes and one seven-plus, no small fireteams.
+        // February 2022 is clears 103–143: 40 sixes and one seven-plus, and nothing
+        // below six. These are people who entered, never fireteam size.
         expect(clearsByPeople(february())).toEqual([0, 0, 0, 0, 0, 40, 1]);
     });
 
     it('returns every bucket empty for a range with Runs but no clears', () => {
         // November 2020: one Run, no Pinned Full Clear — its six player rows must not leak in.
-        const november = resolveArchiveRangeFromParams({ from: '2020-11-01', to: '2020-11-30' });
-        expect(november.degraded).toBe(false);
-        expect(clearsByPeople(november)).toEqual([0, 0, 0, 0, 0, 0, 0]);
+        expect(november().degraded).toBe(false);
+        expect(clearsByPeople(november())).toEqual([0, 0, 0, 0, 0, 0, 0]);
     });
 });
 
@@ -127,8 +132,7 @@ describe('the class split', () => {
 
     it('covers every Run in range, not only the clears', () => {
         // November 2020's one Run is not a clear, and its six characters still count.
-        const november = resolveArchiveRangeFromParams({ from: '2020-11-01', to: '2020-11-30' });
-        expect(getClassDistribution(november)).toEqual([
+        expect(getClassDistribution(november())).toEqual([
             { characterClass: 'Hunter', characters: 3 },
             { characterClass: 'Titan', characters: 2 },
             { characterClass: 'Warlock', characters: 1 },

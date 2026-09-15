@@ -1197,6 +1197,46 @@ about 25 ms on the first call, which includes preparing the statement.
 - [x] `CLAUDE.md` — sixteen browser flows. `docs/handoffs/260803-playwright-e2e.md` (gitignored)
       — #94 entry.
 
+### #94 — review fixes (second commit)
+
+Both axes ran against `6767aa0` in a peer session. Standards found no hard violation; the two
+judgement calls went to the user, who kept characters and kept the zero.
+
+- [x] `src/app/gos10k/ClassSplit.tsx` — the bar gains **`minWidth: '2px'` for a populated
+      class**, which only `ParticipantsPanel` had. The two bars were written together and had
+      already drifted: Unknown is 0.2% of production, so its bar rounded to sub-pixel and a
+      populated class could read as empty — the exact failure the participants bar guards
+      against. **Not extracted into a shared component:** one bar is a table cell in a
+      seven-row table, the other a list item under its own label, and the markup around them
+      differs more than the two-line style object they share.
+- [x] `tests/db/archive-predicates.test.ts` — the test name said "player-run" for a count of
+      characters. The new **Class Split** entry in `CONTEXT.md` lists that word under _Avoid_
+      for this figure; the name now says character.
+- [x] `tests/db/archive-composition.test.ts` — the range-scoping comment said "no small
+      fireteams". The **Participant** entry is explicit that these counts are never fireteam
+      size, and the panel's own copy says so; only the comment was wrong. Now "nothing below
+      six", with the people-who-entered rule restated.
+- [x] `tests/db/archive-composition.test.ts` — **`november()` helper**, matching `february()`.
+      The same range was built inline in the participants empty-range test and the class-split
+      every-Run test.
+
+**User decisions (2026-09-15).** **The class split keeps counting characters**, not the
+Player-Runs #94's AC names: #81's figures only reconcile as the 79,168 player rows, and 206 of
+the 217 two-character pairs brought two *different* classes, so per-person counting drops one.
+The wording in #94/#81 is what should change. The user also raised a **possible Phase 2
+follow-up: weight the class split per Player-Run** — one person totals 1, split across their
+characters by time played as each — which needs per-character time, not a `COUNT`, and is not
+this ticket. **The trio headline still reads "0 trio clears"** on a range with clears but no
+trios (February 2022): honest, and the panel keeps one shape across every range.
+
+**Not changed:** `formatClearTimeShare` staying an alias of `formatShare` (deliberate — the name
+describes clear time, these shares are characters, and dropping it means editing #89's shipped
+presence strip and its tests to tidy one line); `HEADLINE_PEOPLE = 3` beside the bare
+`bucket.people === 2` (the constant cannot actually move — the figcaption says "three people" in
+prose, so naming a duo constant would only make it look configurable); the four scope-creep notes
+(the `share-copy.ts` extraction, the duo note, the `CONTEXT.md` entry, and the `exact: true`
+locator, each defended in the handoff and accepted by the review).
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

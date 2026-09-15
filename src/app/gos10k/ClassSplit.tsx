@@ -57,7 +57,12 @@ export function ClassSplit({
                             </div>
                             <div
                                 className="h-2 rounded-sm bg-current opacity-40"
-                                style={{ width: `${(row.characters / largest) * 100}%` }}
+                                style={{
+                                    width: `${(row.characters / largest) * 100}%`,
+                                    // Unknown is 0.2% of production, which rounds to a
+                                    // sub-pixel bar: a populated class must not read as empty.
+                                    minWidth: row.characters > 0 ? '2px' : undefined,
+                                }}
                             />
                         </li>
                     ))}

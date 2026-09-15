@@ -85,7 +85,7 @@ describe('the data hazards', () => {
     // columns they also govern. Duplicating them here would be two files asserting one
     // board.
 
-    it('reports a class for every player-run, unknown included', () => {
+    it('reports a class for every character, unknown included', () => {
         const distribution = getClassDistribution();
         const total = distribution.reduce((sum, row) => sum + row.characters, 0);
         expect(total).toBe(readArchiveSeed().tables.gos_10k_pgcr_players.length);

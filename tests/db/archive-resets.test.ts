@@ -8,7 +8,7 @@ import {
     getNonClearRuns,
     PINNED_FULL_CLEAR,
     RESET,
-    UNPINNED_CLEAR,
+    STARTED_FROM_BEGINNING_PINNED,
 } from '@/lib/db/archive/queries';
 
 /**
@@ -16,15 +16,16 @@ import {
  *
  * The panel is about every Run that did not become a Pinned Full Clear, split into the
  * populations #81 names. Every way it can be wrong returns a plausible number: reading a
- * Reset as `is_full_clear = 0` sweeps the finished Runs the pinned rule rejects in with
- * the abandoned ones; dropping `completed = 0` from "cleared without him" counts the
- * clears themselves; a bucket that overlaps another counts a Run twice and still looks
- * like a count. So the assertions are specific counts and seconds, computed
- * independently from tests/fixtures/archive-seed.json, and the populations are checked
- * to add back up to the Runs in range — which is only true if none of them overlap and
- * none of the Runs fall through.
+ * Reset as `is_full_clear = 0` sweeps the finished Checkpoint Runs in with the abandoned
+ * ones; dropping `completed = 0` from "cleared without him" counts the clears themselves;
+ * reading "started from the beginning" differently from the 10,000 puts Runs other
+ * players finished among the Resets; a bucket that overlaps another counts a Run twice
+ * and still looks like a count. So the assertions are specific counts and seconds,
+ * computed independently from tests/fixtures/archive-seed.json, and the populations are
+ * checked to add back up to the Runs in range — which is only true if none of them
+ * overlap and none of the Runs fall through.
  *
- * Fixture figures (#85): 406 Runs, 346 Pinned Full Clears. The four non-clear
+ * Fixture figures (#85): 406 Runs, 346 Pinned Full Clears. The three non-clear
  * populations are pinned by tests/db/archive-fixture-shape.test.ts, which is what fails
  * first if a re-extraction moves them.
  */
@@ -42,26 +43,26 @@ function accountedFor(outcomes: ReturnType<typeof getNonClearRuns>): number {
         outcomes.pinnedFullClears +
         outcomes.resets +
         outcomes.clearedWithoutSubject +
-        outcomes.unpinnedClears +
         outcomes.checkpointRuns
     );
 }
 
 describe('the Runs that did not become clears, across the whole Archive', () => {
-    it('splits the 60 non-clears into the four populations', () => {
-        // 26 Resets (13,019 s, 21 of them over inside ten minutes), 6 cleared without
-        // him (54,479 s), 20 finished Runs the pinned rule rejects, 8 Checkpoint Runs.
-        // Production: 3,352 / 40 / 20 / 8.
+    it('splits the 60 non-clears into three populations', () => {
+        // 21 Resets (5,651 s, 19 of them over inside ten minutes), 6 cleared without him
+        // (54,479 s), 33 Checkpoint Runs — 23 he finished, 2 others finished without him.
+        // Production: 2,897 / 40 / 483 (23 and 11).
         expect(getNonClearRuns()).toEqual({
             runs: 406,
             pinnedFullClears: 346,
-            resets: 26,
-            resetSeconds: 13019,
-            quickResets: 21,
+            resets: 21,
+            resetSeconds: 5651,
+            quickResets: 19,
             clearedWithoutSubject: 6,
             clearedWithoutSubjectSeconds: 54479,
-            unpinnedClears: 20,
-            checkpointRuns: 8,
+            checkpointRuns: 33,
+            checkpointRunsFinished: 23,
+            checkpointRunsClearedWithoutSubject: 2,
         });
     });
 
@@ -73,14 +74,30 @@ describe('the Runs that did not become clears, across the whole Archive', () => 
 
     it('puts every Run in exactly one population, not merely the right total', () => {
         // The sum above passes if one population double-counts a Run that another drops.
-        // Per Run, the five predicates are 0/1 each and must add to exactly 1.
-        const populations = [PINNED_FULL_CLEAR, RESET, CLEARED_WITHOUT_SUBJECT, UNPINNED_CLEAR, CHECKPOINT_RUN];
+        // Per Run, the four predicates are 0/1 each and must add to exactly 1.
+        const populations = [PINNED_FULL_CLEAR, RESET, CLEARED_WITHOUT_SUBJECT, CHECKPOINT_RUN];
         const misplaced = getArchiveDb().prepare(`
             SELECT r.instance_id FROM gos_10k_runs r
             WHERE ${populations.map((p) => `(${p})`).join(' + ')} IS NOT 1
         `).all();
 
         expect(misplaced).toEqual([]);
+    });
+
+    it('reads "started from the beginning" exactly as the stored full-clear flag does', () => {
+        // The partition leans on is_full_clear meaning "the pinned start reading, and
+        // somebody finished". If the stored column and STARTED_FROM_BEGINNING_PINNED ever
+        // disagree, a Run someone finished can land among the Resets — the fault the
+        // disjunctive reading had in 9 production Runs. Checked on every fixture Run.
+        const disagreeing = getArchiveDb().prepare(`
+            SELECT r.instance_id FROM gos_10k_runs r
+            WHERE r.is_full_clear IS NOT (${STARTED_FROM_BEGINNING_PINNED} AND EXISTS (
+                SELECT 1 FROM gos_10k_pgcr_players p
+                WHERE p.instance_id = r.instance_id AND p.completed = 1
+            ))
+        `).all();
+
+        expect(disagreeing).toEqual([]);
     });
 });
 
@@ -99,36 +116,57 @@ describe('obeying the active range', () => {
             quickResets: 3,
             clearedWithoutSubject: 0,
             clearedWithoutSubjectSeconds: 0,
-            unpinnedClears: 0,
             checkpointRuns: 0,
+            checkpointRunsFinished: 0,
+            checkpointRunsClearedWithoutSubject: 0,
         });
     });
 
     it('keeps a long Reset out of the restart count', () => {
-        // April 2022: three Resets, one of them 4,045 seconds — a fireteam that gave up
-        // over an hour in, which is the collapse the restart count must not absorb. The
-        // same month holds 12 of the 20 finished Runs the pinned rule rejects: phase 0,
-        // Bungie's own flag unset, after the pin.
+        // January 2022: three Resets, one of them 1,215 seconds — a fireteam that gave up
+        // twenty minutes in, which the restart count must not absorb.
+        const january = resolveArchiveRangeFromParams({ from: '2022-01-01', to: '2022-01-31' });
+
+        expect(getNonClearRuns(january)).toEqual({
+            runs: 44,
+            pinnedFullClears: 41,
+            resets: 3,
+            resetSeconds: 1431,
+            quickResets: 2,
+            clearedWithoutSubject: 0,
+            clearedWithoutSubjectSeconds: 0,
+            checkpointRuns: 0,
+            checkpointRunsFinished: 0,
+            checkpointRunsClearedWithoutSubject: 0,
+        });
+    });
+
+    it('counts post-pin Runs Bungie does not mark as started from the beginning as Checkpoint Runs', () => {
+        // April 2022, after the pin: every Run carries phase 0, so only Bungie's flag says
+        // where it began. 14 have it unset — 12 he finished, 2 nobody did — and all 14 are
+        // Checkpoint Runs, including a 4,045-second one the disjunctive reading called a
+        // Reset. One 97-second Reset is left.
         const april = resolveArchiveRangeFromParams({ from: '2022-04-01', to: '2022-04-30' });
 
         expect(getNonClearRuns(april)).toEqual({
             runs: 55,
             pinnedFullClears: 40,
-            resets: 3,
-            resetSeconds: 4324,
-            quickResets: 2,
+            resets: 1,
+            resetSeconds: 97,
+            quickResets: 1,
             clearedWithoutSubject: 0,
             clearedWithoutSubjectSeconds: 0,
-            unpinnedClears: 12,
-            checkpointRuns: 0,
+            checkpointRuns: 14,
+            checkpointRunsFinished: 12,
+            checkpointRunsClearedWithoutSubject: 0,
         });
         expect(accountedFor(getNonClearRuns(april))).toBe(55);
     });
 
     it('finds the Checkpoint Runs and a clear without him in their own month', () => {
-        // October 2020: 9 Runs. Five Checkpoint Runs — three unfinished, two he finished,
-        // and neither kind is a clear or a Reset — and one 3,340-second Run the fireteam
-        // cleared from the start after he had gone.
+        // October 2020: 9 Runs. Five Checkpoint Runs by phase index — two he finished, one
+        // his fireteam finished without him, two nobody did — and one 3,340-second Run the
+        // fireteam cleared from the start after he had gone.
         const october2020 = resolveArchiveRangeFromParams({ from: '2020-10-01', to: '2020-10-31' });
 
         expect(getNonClearRuns(october2020)).toEqual({
@@ -139,8 +177,9 @@ describe('obeying the active range', () => {
             quickResets: 0,
             clearedWithoutSubject: 1,
             clearedWithoutSubjectSeconds: 3340,
-            unpinnedClears: 0,
             checkpointRuns: 5,
+            checkpointRunsFinished: 2,
+            checkpointRunsClearedWithoutSubject: 1,
         });
         expect(accountedFor(getNonClearRuns(october2020))).toBe(9);
     });
@@ -159,8 +198,9 @@ describe('obeying the active range', () => {
             quickResets: 0,
             clearedWithoutSubject: 0,
             clearedWithoutSubjectSeconds: 0,
-            unpinnedClears: 0,
             checkpointRuns: 0,
+            checkpointRunsFinished: 0,
+            checkpointRunsClearedWithoutSubject: 0,
         });
     });
 });

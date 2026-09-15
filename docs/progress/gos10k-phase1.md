@@ -1099,6 +1099,42 @@ by the review).
 Verified: lint 0 errors / 29 pre-existing warnings, build OK (both tsconfigs), `npm test` 421 / 37,
 `npm run e2e` 53/53 — which also covers the checkpoint clause changed after the first run.
 
+### #93 — the 483 split (third commit)
+
+The open question above, decided by the user on 2026-09-15: **every Run the pinned start
+reading rejects is a Checkpoint Run**, and a Reset uses that same reading. Production is now
+10,000 + 2,897 Resets + 40 cleared without him + 483 Checkpoint Runs = 13,420, down from five
+populations to four. **This departs from #81's reference figures** (3,352 / 8 / 20 "pre-pin
+clears"), which used the disjunctive reading.
+
+- [x] `src/lib/db/archive/predicates.ts` — `STARTED_FROM_BEGINNING_PINNED` (phase index up to the
+      pin, Bungie's flag after it). `RESET` and `CHECKPOINT_RUN` are built on it. `UNPINNED_CLEAR`
+      stays as the name for the 20-Run gap between the two full-clear rules, but it is no longer a
+      panel population.
+- [x] `src/lib/db/archive/queries.ts` — `unpinnedClears` removed. `checkpointRunsFinished` and
+      `checkpointRunsClearedWithoutSubject` added; the second is an `EXISTS` on the players'
+      `instance_id` key, which hazard 1 cannot reach. 8 ms unfiltered. Docblocks now give the
+      2,897 / 5:56 / 2,621-under-ten-minutes figures.
+- [x] `src/app/gos10k/ResetsPanel.tsx` — the unpinned-clears sentence is gone. The Checkpoint
+      sentence now says who finished them and states the post-pin rule, so a flag-unset Run at
+      phase 0 is not a mystery. The equation has four terms. The "barely figures" clause no longer
+      shows unfiltered (3.6%).
+- [x] `scripts/extract-archive-fixture.ts` — the cohorts select **the same rows** through the
+      disjunctive reading, and say why. Re-extracted: `tables` and `targets` are byte-identical to
+      the previous seed; only `generatedAt` and the `why` text changed.
+- [x] `tests/db/archive-fixture-shape.test.ts` — `RESET` 21, `CHECKPOINT_RUN` 33, plus the 5
+      unfinished flag-unset post-pin Runs that fail if `RESET` slides back to the disjunctive
+      reading.
+- [x] `tests/db/archive-resets.test.ts` — four populations. New figures in every range; the
+      long-Reset case moves to January 2022 (1,215 s), since April's 4,045 s Run is now a
+      Checkpoint Run. New test: `is_full_clear` equals the pinned reading AND "someone finished"
+      on every fixture Run (0 mismatches here, and 0 in production).
+- [x] `CONTEXT.md` — the **Checkpoint Run** and **Reset** entries are rewritten to use 483 and
+      2,897; the note about the 9 exceptions is removed.
+
+**Not changed:** the `PINNED_FULL_CLEAR` docblock's "40-day gap" wording, which was flagged to the
+user separately (the next Run is three days after the pin).
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist

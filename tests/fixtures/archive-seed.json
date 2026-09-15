@@ -1,5 +1,5 @@
 {
-    "generatedAt": "2026-09-10T02:31:15.618Z",
+    "generatedAt": "2026-09-15T22:31:10.383Z",
     "generatedBy": "scripts/extract-archive-fixture.ts",
     "source": "gos10k/destiny_pgcrs.db",
     "pinInstanceId": "10141395454",
@@ -69,7 +69,7 @@
         },
         {
             "name": "resets",
-            "why": "Up to three Runs per spine month that he started from the first encounter and nobody finished. #93 reports how many there were and how long they lasted; a fixture with none would make both figures untestable. Not the negation of is_full_clear — that column folds in \"somebody completed\".",
+            "why": "Up to three Runs per spine month that he did not finish, that is_full_clear does not count, and that either start reading accepts. Mostly Resets; after the pin it also draws unfinished Runs Bungie's flag does not mark, which the pinned reading counts as Checkpoint Runs — the boundary #93's split turns on, so both sides of it are in the fixture. Not the negation of is_full_clear — that column folds in \"somebody completed\".",
             "runs": 24
         },
         {
@@ -84,7 +84,7 @@
         },
         {
             "name": "checkpoint-runs",
-            "why": "All 8 Checkpoint Runs in the Archive — he joined partway through. There are only 8 in 13,420, which is itself the fact #93 reports, so the whole population fits and nothing has to be sampled.",
+            "why": "All 8 Runs with a later phase index — Checkpoint Runs under either start reading, all before the pin. The other 475 Checkpoint Runs are post-pin with Bungie's flag unset; they reach the fixture through disjunctive-only-clears (the 20 he finished) and the resets cohort (unfinished ones). Taking all 483 would more than double the fixture.",
             "runs": 8
         }
     ],

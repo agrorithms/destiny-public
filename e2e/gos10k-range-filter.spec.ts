@@ -1,4 +1,5 @@
 import { expect, test } from './support/test-fixtures';
+import { expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The global range control (#87) — the part of it that is only checkable in a browser.
@@ -96,11 +97,7 @@ test.describe('the GoS 10k range filter', () => {
             await page.goto('/gos10k?clearFrom=103&clearTo=143');
 
             await expect(page.getByTestId('archive-range-filter')).toBeVisible();
-            const overflow = await page.evaluate(() => {
-                const root = document.documentElement;
-                return root.scrollWidth - root.clientWidth;
-            });
-            expect(overflow, 'the page scrolls horizontally at 360px').toBeLessThanOrEqual(0);
+            await expectNoHorizontalPageOverflow(page);
         });
     });
 });

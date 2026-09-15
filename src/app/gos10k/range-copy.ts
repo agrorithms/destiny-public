@@ -50,10 +50,22 @@ export function formatArchiveDayRange(range: ResolvedArchiveRange): string {
     return `${formatArchiveDay(range.dateFrom)} – ${formatArchiveDay(range.dateTo)}`;
 }
 
+/**
+ * `clear 9,701` — one Run's place in the 10,000.
+ *
+ * Named rather than inlined because two callers render it: the range control's own
+ * single-clear window, and each row of the fastest-clears list, which ties a record back
+ * to that control in the control's own denomination (ADR 0008). Two spellings of the
+ * same label on one page is exactly the failure duration-copy.ts exists to prevent.
+ */
+export function formatClearNumber(clearNumber: number): string {
+    return `clear ${clearNumber.toLocaleString()}`;
+}
+
 /** `clears 103–143`, or the honest answer when the window holds none. */
 export function formatClearNumberRange(range: ResolvedArchiveRange): string {
     if (range.clearFrom === null || range.clearTo === null) return 'no full clears';
-    if (range.clearFrom === range.clearTo) return `clear ${range.clearFrom.toLocaleString()}`;
+    if (range.clearFrom === range.clearTo) return formatClearNumber(range.clearFrom);
     return `clears ${range.clearFrom.toLocaleString()}–${range.clearTo.toLocaleString()}`;
 }
 

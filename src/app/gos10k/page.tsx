@@ -4,12 +4,14 @@ import {
     getArchiveOverview,
     getArchiveSpan,
     getTopHelpers,
+    getFastestClears,
     getRunsByYear,
     getClassDistribution,
     resolveArchiveRange,
 } from '@/lib/db/archive/queries';
 import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
 import { ArchiveRangeFilter } from './ArchiveRangeFilter';
+import { FastestClears } from './FastestClears';
 import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
 
 /**
@@ -36,6 +38,10 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * which are about the dataset rather than about the reader's selection, and are read
  * from getArchiveSpan() for that reason.
  *
+ * Issue #91 added the fastest-clears list — Runs rather than players, each naming its
+ * whole fireteam. It owns the shared duration formatter in ./duration-copy.ts that #92's
+ * median speed board imports, so the same number cannot render two ways on one page.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -59,6 +65,7 @@ export default async function Gos10kPage({
 
     const overview = getArchiveOverview(range);
     const helpers = getTopHelpers(25, range);
+    const fastestClears = getFastestClears(10, range);
     const years = getRunsByYear(range);
     const classes = getClassDistribution(range);
 
@@ -224,7 +231,7 @@ export default async function Gos10kPage({
                 <p className="ui-text-secondary text-sm leading-6">
                     The 25 guardians in most of his runs across {scope}.
                 </p>
-                <table className="w-full text-sm">
+                <table data-testid="archive-top-helpers" className="w-full text-sm">
                     <thead>
                         <tr className="ui-text-secondary text-left text-xs">
                             <th className="py-1 font-medium">Guardian</th>
@@ -243,6 +250,10 @@ export default async function Gos10kPage({
                     </tbody>
                 </table>
             </section>
+
+            {/* #81's render order puts the records below the Helper board: who was
+                there most, then what the best of it looked like. */}
+            <FastestClears clears={fastestClears} scope={scope} />
 
             <section className="space-y-3">
                 <h2 className="text-xl font-semibold ui-text-primary">Classes brought</h2>

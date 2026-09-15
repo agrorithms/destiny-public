@@ -261,6 +261,30 @@ function rangeClause(range: ResolvedArchiveRange): { sql: string; params: number
 }
 
 /**
+ * The four name columns a player row carries, as they come out of a GROUP BY over
+ * `gos_10k_pgcr_players p`. Three of them — `displayName`, `bungieGlobalDisplayName`,
+ * `bungieGlobalDisplayNameCode` — are what formatBungieDisplayName() reads; the fourth,
+ * `membershipType`, rides along for the callers that address a player by platform.
+ * Written once because two queries below project them identically and a third will; the
+ * same drift argument as ./predicates.ts, one level down.
+ *
+ * **Each `MAX()` is taken independently, and that is safe only because this dataset is
+ * frozen.** In principle a membership whose duplicate character rows disagreed could
+ * have its name spliced onto another row's code, rendering a `Name#Code` that never
+ * existed. Checked rather than assumed: across all 217 duplicate (instance, membership)
+ * pairs in the shipped Archive, zero disagree on `display_name`,
+ * `bungie_global_display_name` or `bungie_global_display_name_code`. The Archive cannot
+ * gain a row (ADR 0007), so the check cannot go stale — but a *live* table with this
+ * shape would need the name columns taken from one chosen row instead.
+ */
+const PLAYER_NAME_PROJECTION = `
+    MAX(p.membership_type)                 AS membershipType,
+    MAX(p.display_name)                    AS displayName,
+    MAX(p.bungie_global_display_name)      AS bungieGlobalDisplayName,
+    MAX(p.bungie_global_display_name_code) AS bungieGlobalDisplayNameCode
+`;
+
+/**
  * Distinct people who appeared in at least one of his Runs, excluding him.
  *
  * Its own function rather than a field only {@link getArchiveOverview} can produce: the
@@ -365,10 +389,7 @@ export function getTopHelpers(
     const rows = getArchiveDb().prepare(`
         SELECT
             p.membership_id                     AS membershipId,
-            MAX(p.membership_type)              AS membershipType,
-            MAX(p.display_name)                 AS displayName,
-            MAX(p.bungie_global_display_name)   AS bungieGlobalDisplayName,
-            MAX(p.bungie_global_display_name_code) AS bungieGlobalDisplayNameCode,
+            ${PLAYER_NAME_PROJECTION},
             COUNT(DISTINCT r.instance_id)       AS runs,
             COUNT(DISTINCT CASE WHEN ${PINNED_FULL_CLEAR} THEN r.instance_id END) AS fullClears
         FROM gos_10k_pgcr_players p
@@ -451,4 +472,116 @@ export function getClassDistribution(
         GROUP BY characterClass
         ORDER BY playerRuns DESC
     `).all(...scope.params) as ArchiveClassCount[];
+}
+
+/** One person who was in a Run, named once however many characters they brought. */
+export interface ArchiveParticipant {
+    membershipId: string;
+    /** `Name#Code` in full, via formatBungieDisplayName. */
+    displayName: string;
+}
+
+export interface ArchiveFastestClear {
+    instanceId: string;
+    /** Its place among the Pinned Full Clears, 1-based by period ascending (ADR 0008). */
+    clearNumber: number;
+    /** Raw seconds. Rendered by formatRunDuration() in src/app/gos10k/duration-copy.ts. */
+    durationSeconds: number;
+    period: number;
+    /** Everyone who entered, in the order they arrived. */
+    participants: ArchiveParticipant[];
+}
+
+/**
+ * The fastest Pinned Full Clears in the range — Runs, not players.
+ *
+ * A board of *players* ranked by personal best was considered and rejected (#91): the
+ * six people in the fastest Run would take the top six rows with identical times, which
+ * says nothing. The Run is the more interesting object, and naming its fireteam is the
+ * point of the panel.
+ *
+ * Two statements rather than one. A single query joining the players table would return
+ * six-plus rows per Run and make `LIMIT 10` mean ten *rows*, which is one and a half
+ * Runs; ranking first and then reading the participants of exactly those instances is
+ * what keeps the limit denominated in the thing the panel counts. The same distinction
+ * bites the Tracker's active-session cap for the same reason (ADR 0001).
+ *
+ * `COUNT(DISTINCT p.membership_id)` has no equivalent here because the list is not a
+ * count — hazard 1 is handled by grouping the participant rows on `membership_id`, so a
+ * player who brought three characters to one raid is one chip and not three.
+ */
+export function getFastestClears(
+    limit: number = 10,
+    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
+): ArchiveFastestClear[] {
+    const db = getArchiveDb();
+    const scope = rangeClause(range);
+
+    // `period, instance_id` after the duration is not decoration: the fixture alone has
+    // two clears at 691 seconds and two at 700. Left untied, their order is whatever the
+    // query plan produces, and it can differ between two databases for no reason a
+    // reader could ever see on the page.
+    const runs = db.prepare(`
+        SELECT
+            r.instance_id       AS instanceId,
+            r.clear_number      AS clearNumber,
+            r.duration_seconds  AS durationSeconds,
+            r.period            AS period
+        FROM gos_10k_runs r
+        WHERE ${PINNED_FULL_CLEAR} ${scope.sql}
+        ORDER BY r.duration_seconds ASC, r.period ASC, r.instance_id ASC
+        LIMIT ?
+    `).all(...scope.params, limit) as Array<{
+        instanceId: string;
+        clearNumber: number;
+        durationSeconds: number;
+        period: number;
+    }>;
+
+    if (runs.length === 0) return [];
+
+    // Parameterised `IN` over the instances just ranked. The list is bounded by `limit`
+    // and its values came out of this database a statement ago, so this is a small,
+    // fully-bound query rather than a second scan of the runs table.
+    const placeholders = runs.map(() => '?').join(', ');
+    const participantRows = db.prepare(`
+        SELECT
+            p.instance_id                       AS instanceId,
+            p.membership_id                     AS membershipId,
+            ${PLAYER_NAME_PROJECTION},
+            MIN(p.start_seconds)                AS enteredAt
+        FROM gos_10k_pgcr_players p
+        WHERE p.instance_id IN (${placeholders})
+        GROUP BY p.instance_id, p.membership_id
+        ORDER BY p.instance_id, enteredAt ASC, p.membership_id ASC
+    `).all(...runs.map((run) => run.instanceId)) as Array<{
+        instanceId: string;
+        membershipId: string;
+        displayName: string | null;
+        bungieGlobalDisplayName: string | null;
+        bungieGlobalDisplayNameCode: number | null;
+        enteredAt: number;
+    }>;
+
+    // Entry order, so the person who was there from the first encounter leads the row and
+    // whoever arrived at the eighth minute reads as having arrived late. The alternative
+    // — alphabetical, or the subject pinned first — throws away the one ordering the data
+    // actually carries.
+    const byInstance = new Map<string, ArchiveParticipant[]>();
+    for (const row of participantRows) {
+        let participants = byInstance.get(row.instanceId);
+        if (!participants) {
+            participants = [];
+            byInstance.set(row.instanceId, participants);
+        }
+        participants.push({
+            membershipId: row.membershipId,
+            displayName: formatBungieDisplayName(row),
+        });
+    }
+
+    return runs.map((run) => ({
+        ...run,
+        participants: byInstance.get(run.instanceId) ?? [],
+    }));
 }

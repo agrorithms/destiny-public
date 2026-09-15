@@ -1,4 +1,5 @@
 import { expect, test } from './support/test-fixtures';
+import { expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The page shell from issue #86 — the part of /gos10k that is only checkable in
@@ -48,11 +49,7 @@ test.describe('the GoS 10k page shell', () => {
         test('renders without a horizontal page scroll or a clipped headline', async ({ page }) => {
             await page.goto('/gos10k');
 
-            const overflow = await page.evaluate(() => {
-                const root = document.documentElement;
-                return root.scrollWidth - root.clientWidth;
-            });
-            expect(overflow, 'the page scrolls horizontally at 360px').toBeLessThanOrEqual(0);
+            await expectNoHorizontalPageOverflow(page);
 
             const clipped = await page.getByTestId('archive-headline-figure').evaluate(
                 (el) => el.scrollWidth - el.clientWidth

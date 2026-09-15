@@ -30,7 +30,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#95** Cache lifetime + share-card fallback
 - [x] **#85** Widen the Archive fixture
 - [x] **#87** The range filter (largest ticket; gates Wave 3)
-- [ ] **#91** Fastest-clears list (owns the shared duration formatter)
+- [x] **#91** Fastest-clears list (owns the shared duration formatter)
 - [ ] **#92** Median speed board (imports #91's formatter)
 - [ ] **#88** Timeline
 - [ ] **#90** Helper board
@@ -215,7 +215,7 @@ months (was 27), and the four/five buckets are 3/3 rather than 4/2.
 `npm run build` OK (both tsconfigs) · `npm test` **295 tests, 26 files** · `npm run e2e` 32
 specs, all green. The shape test was confirmed red against the nine-run seed first.
 
-### #87 — The global range filter (this chunk)
+### #87 — The global range filter
 
 - [x] `src/lib/db/archive/range.ts` — **new.** The half of the filter that needs no
       database: `RANGE_PARAMS`, `parseArchiveRangeRequest()`, `archiveRangeHref()`, the UTC
@@ -313,6 +313,131 @@ browser's form-submission behaviour rather than page code.
 `npm run build` OK (both tsconfigs) · `npm test` **335 tests, 28 files** · `npm run e2e`
 **38 specs**.
 
+### #91 — Fastest clears list (this chunk)
+
+- [x] `src/app/gos10k/duration-copy.ts` — **new.** `formatRunDuration(seconds)`: `7:33` under an
+      hour, `3:23:54` over it. The ticket's own AC is that this is the *only* duration
+      implementation the Archive has, because #92's median speed board renders the same column
+      and `453` on one panel beside `7:33` on the other is the failure. Page-level copy, not SQL:
+      the queries return raw seconds and `range-copy.ts` is the precedent for where formatting
+      lives. **The Tracker's `PlayerProfileClient.tsx` has a private formatter of the same
+      shape and is deliberately not imported** — it is a thousand-line `'use client'` component,
+      and reaching into it would drag the client boundary across the two databases the repo
+      keeps apart. Weighed, not missed; the file says so.
+- [x] `src/app/gos10k/duration-copy.test.ts` — **new**, colocated (pure logic, per
+      `tests/README.md`). Every expectation is a duration this Archive actually contains: 453
+      (production's fastest, #81's reference figure), 676 (the fixture's fastest), 18820 (the
+      fixture's slowest clear), plus the pad and hour-rollover boundaries.
+- [x] `src/lib/db/archive/queries.ts` — `getFastestClears(limit = 10, range)`,
+      `ArchiveFastestClear`, `ArchiveParticipant`. Follows #87's panel shape exactly: range last,
+      defaulted to `UNFILTERED_ARCHIVE_RANGE`, scoped through the private `rangeClause()`.
+      **Two statements, not one join.** A single query through `gos_10k_pgcr_players` returns
+      six-plus rows per Run, which makes `LIMIT 10` mean ten *rows* — one and a half Runs. Rank
+      first, then read the participants of exactly those instances. This is ADR 0001's
+      fireteams-not-rows distinction reappearing on the Archive side.
+      **Ordering is `duration ASC, period ASC, instance_id ASC`**: the fixture alone has two
+      clears at 691s and two at 700s, and an untied order can differ between two databases for
+      no reason a reader could see.
+- [x] `tests/db/archive-fastest-clears.test.ts` — **new**, 9 tests. Specific instances and
+      specific durations, per the ticket's test AC. Covers all three hazards: instance
+      `9780072115` (7 player rows, 6 people — hazard 1, participants grouped on `membership_id`),
+      instance `7085305400` (null display-name code — hazard 2, renders `bkuder12` through the
+      shared formatter), and the pinned rule (hazard 3 — the fixture's 97-second Run is a reset
+      and must not top a board of records). Also the tie ordering, the range scoping, and a
+      one-clear range returning one row rather than a padded ten.
+- [x] `src/app/gos10k/FastestClears.tsx` — **new.** Two lines per row: rank, duration, date and
+      Clear Number on the first; every participant as a wrapping chip on the second. Runs, not
+      players — a board of players puts the fastest fireteam's six members in the top six rows
+      with identical times. The scope line uses `clears.length`, not a written-down ten, so a
+      one-day filter does not print a heading that contradicts the list under it.
+- [x] `src/app/gos10k/page.tsx` — `getFastestClears(10, range)` and the panel, placed after the
+      Helper board per #81's render order.
+- [x] `e2e/gos10k-fastest-clears.spec.ts` — **new**, 1 spec (2 as first landed; the second was
+      dropped in review, see below). Only what no other seam can see:
+      that the chips actually **wrap onto more than one line at 360px** and neither the chip row
+      nor the page scrolls sideways. `flex-wrap` is a computed-layout fact — the server-rendered
+      DOM carries the class either way. Asserts no counts and no names.
+- [x] `e2e/gos10k-smoke.spec.ts` — the canary locator is now scoped to the Helper board. The
+      canary is joined to every Run in the seed, so it renders as a chip in all ten fastest-clear
+      rows too and the old unscoped `getByText` became strict-mode ambiguous — a real consequence
+      of this panel, caught by the suite. Narrowed rather than `.first()`: the binding being
+      asserted is that the *Helper board* read the fixture. (It landed as `getByRole('cell', …)`
+      and the cleanup pass below replaced that with a testid — see there for why.)
+- [x] `CLAUDE.md` — nine browser flows → ten.
+
+**Production reconciliation (#91's 453 AC).** The fixture is a 406-Run sample and its fastest
+clear is 676s, so no test asserts 453 against it — that would be asserting a number the database
+does not contain. Reconciled by hand instead, running this query's SQL against the shipped
+`data/gos-10k.db`: unfiltered, the fastest Pinned Full Clear is **453 seconds, Clear Number 9,701,
+6 people**, rendering as **7:33**. The next four are 455, 456, 461 and 465. The formatter's
+`453 → 7:33` is pinned in Vitest.
+
+**Review fixes (second commit).** Both axes ran against #91 with #81 as parent.
+
+- **`participant` was on CONTEXT.md's _Avoid_ list three times** (Standards, hard) — under
+  **Roster**, **Helper** and **Player-Run**, all Tracker entries. But #81 mandates the word for
+  the Archive ("the participants column… labelled as people who entered, not fireteam size"), so
+  the glossary and the parent spec genuinely disagreed. Resolved by amending rather than
+  renaming: the three _Avoid_ lines now point at a new **Participant** (Archive) entry, which
+  states the distinct-membership rule, the 430 seven-plus clears, and why a Roster is a weaker
+  claim than who demonstrably entered. **Fastest Clear** (Archive) added alongside it, carrying
+  the Runs-not-players rationale that had lived only in a TSX comment.
+- **"The 1 fastest Pinned Full Clears"** (Spec) — reachable, and this ticket's own one-clear-range
+  test proves it. The panel now says "The fastest Pinned Full Clear … everyone who was in it".
+- **The `MAX()` name projection was duplicated** across `getTopHelpers` and `getFastestClears`
+  (Standards), and taking each name column's `MAX()` independently could in principle splice one
+  row's name onto another's code (Spec). One `PLAYER_NAME_PROJECTION` now, and the splice was
+  **checked rather than argued**: across all 217 duplicate (instance, membership) pairs in the
+  shipped Archive, zero disagree on any of the three name columns. The Archive cannot gain a row
+  (ADR 0007), so that check cannot go stale — the constant's comment says both halves.
+- **One e2e spec was dropped** (Spec, scope creep). Asserting every row has a non-empty
+  participant list is Vitest's fact, not a browser-only one; #81 rules browser coverage out of
+  Phase 1 except where a behaviour has no other seam, and only the chip wrapping qualifies.
+- **The duration formatter's comment argued the wrong thing** (Standards). It rebutted importing
+  from the Tracker's `'use client'` file without considering extraction to a pure shared module —
+  which is what `predicates.ts` already did for the same shape of problem. The duplication stands
+  (extracting touches a Tracker feature; #91 is an Archive ticket) but the comment now says so
+  instead of arguing it away. **Open follow-up, not a closed question.**
+- **`docs/handoffs/260803-playwright-e2e.md` gained its entry** — CLAUDE.md points at that file as
+  the coverage list and the nine→ten bump had contradicted it. It is gitignored, so it does not
+  appear in the diff.
+- **Not changed:** the `scope` prop name on `FastestClears` (flagged as a mysterious name). `scope`
+  is what #87 named this string in `page.tsx`; repo precedent overrides the baseline smell.
+- **Kept, and since confirmed by the user:** the `clear {n}` field on each row. #91 asks for
+  "rank, duration and date", so this is a fourth field the ticket did not ask for. It stays
+  because the Clear Number ties the record to the range control above it in that control's own
+  denomination (ADR 0008) — `clear 9,701` is a value the reader can paste back into the filter.
+  Raised as scope creep by the Spec review and **put to the user on 2026-09-10, who kept it**.
+  Not an open question any more; a later ticket removing it is changing a decision, not tidying.
+
+**Verified:** `npm run lint` 0 errors / 29 pre-existing warnings (none in touched files) ·
+`npm run build` OK (both tsconfigs) · `npm test` **349 tests, 30 files** · `npm run e2e`
+**39 specs**.
+
+**Cleanup pass (third commit, `b84a1fd`).** Behaviour-neutral — same lint counts, both tsconfigs
+clean, `npm test` and `npm run e2e` unchanged. Four extractions and one correction:
+
+- **`formatClearNumber(n)` moved into `src/app/gos10k/range-copy.ts`** and both callers use it:
+  the range control's single-clear window and each fastest-clears row. These had been two
+  spellings of `clear 9,701` on one page — the duplication `duration-copy.ts` exists to prevent,
+  missed by both review axes. The `clear {n}` field itself still stands unasked (above).
+- **`expectNoHorizontalPageOverflow(page)` extracted to `e2e/support/viewport.ts`**, replacing
+  the `documentElement.scrollWidth - clientWidth` probe hand-rolled in the shell, range-filter
+  and fastest-clears specs. How page overflow is measured is one decision and three specs
+  should not drift on it. Playwright-only, so it may import `@playwright/test` directly — that
+  restriction binds `tests/helpers/`, which both runners share.
+- **The smoke spec's canary locator became `getByTestId('archive-top-helpers')` + `getByText`**,
+  and the Helper board table gained that testid. `getByRole('cell', …)` had `.first()`'s failure
+  mode one step slower: it binds to "whatever is in a `<table>`", so the first of #88–#94 to ship
+  as a table would silently capture the assertion. Name the panel you mean.
+- **`membershipType` dropped from `ArchiveParticipant`.** Nothing read it —
+  `formatBungieDisplayName()` takes the three name columns and falls back to `membershipId`.
+  `PLAYER_NAME_PROJECTION` still projects the column, because `getTopHelpers` does use it, and
+  its comment now says which callers need which columns. The frozen-dataset caveat and its
+  217-pairs/0-disagreements evidence are untouched.
+- One `isSingle` const in `FastestClears.tsx` replaces the singular-grammar ternary written
+  twice, and the participant map builds with get-or-create instead of get-copy-set. Same output.
+
 ## Notes and traps carried forward
 
 - **`is_full_clear = 1` alone is 10,040, not 10,000.** Four full-clear predicates now exist
@@ -375,3 +500,11 @@ browser's form-submission behaviour rather than page code.
   `JSON.stringify(…, null, 4)` would produce a ~70,000-line file.
 - **The stat grid no longer carries a pinned-full-clear tile.** #86 promoted it to the
   headline. A panel ticket that "restores" it would state the page's own name twice.
+- **The duration formatter is `src/app/gos10k/duration-copy.ts` and #92 imports it.** That is
+  #91's own acceptance criterion, not a preference: two panels render the same column, and the
+  failure it prevents is `453` on one beside `7:33` on the other. A second `formatDuration` in
+  a panel file fails the ticket even if every number in it is right.
+- **The e2e canary is joined to every Run in the seed**, so it renders in any panel that names
+  participants — it is a chip in all ten fastest-clear rows. A new spec matching it by text must
+  scope to the panel it means; an unscoped `getByText` is strict-mode ambiguous and will look
+  like a fixture problem rather than a locator one.

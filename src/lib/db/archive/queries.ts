@@ -286,6 +286,22 @@ const PLAYER_NAME_PROJECTION = `
 `;
 
 /**
+ * One person's interval in one Run, as it comes out of a GROUP BY over
+ * `gos_10k_pgcr_players p` per (Run, membership): earliest entry to latest exit.
+ *
+ * This is hazard 1's collapse for durations — a person who brought several characters to
+ * one raid has one interval, not several that overlap or leave gaps — and it is the one
+ * definition of "his interval" that the Helper board's Time Alongside (#90) and the
+ * presence strip (#89) both read. Written once for the same reason as
+ * {@link PLAYER_NAME_PROJECTION}: two panels on one page restating it separately is how
+ * they come to disagree about the same Run.
+ */
+const PLAYER_INTERVAL_PROJECTION = `
+    MIN(p.start_seconds)                         AS enteredAt,
+    MAX(p.start_seconds + p.time_played_seconds) AS leftAt
+`;
+
+/**
  * Distinct people who appeared in at least one of his Runs, excluding him.
  *
  * Its own function rather than a field only {@link getArchiveOverview} can produce: the
@@ -488,8 +504,7 @@ export function getHelperBoard(
                 p.instance_id                                AS instanceId,
                 p.membership_id                              AS membershipId,
                 MAX(${PINNED_FULL_CLEAR})                    AS isClear,
-                MIN(p.start_seconds)                         AS enteredAt,
-                MAX(p.start_seconds + p.time_played_seconds) AS leftAt,
+                ${PLAYER_INTERVAL_PROJECTION},
                 ${PLAYER_NAME_PROJECTION}
             FROM gos_10k_pgcr_players p
             JOIN gos_10k_runs r ON r.instance_id = p.instance_id
@@ -561,6 +576,146 @@ export function getHelperBoard(
         // No rows means no population: the window has nothing to count over.
         population: rows[0]?.population ?? 0,
     };
+}
+
+/**
+ * Under this much time in a clear, he counts as having joined it at the very end (#89).
+ *
+ * Five minutes because that is what #81's reference figure was counted against — 5 of
+ * the 10,000 — and because it is shorter than the final encounter on its own, so a Run
+ * under it is one he cannot have played any meaningful part of. Exported because the
+ * panel has to name it: "5 late joins" with no threshold is a number a sceptic cannot
+ * check.
+ */
+export const PRESENCE_LATE_JOIN_SECONDS = 300;
+
+export interface ArchiveSubjectPresence {
+    /** Pinned Full Clears in range — the population, and the late joins' denominator. */
+    clears: number;
+    /** His own time in those clears, entry to exit per Run, summed. Raw seconds. */
+    presentSeconds: number;
+    /** Those clears' `duration_seconds`, summed. Raw seconds. */
+    durationSeconds: number;
+    /** Of those clears, the ones he was in for under {@link PRESENCE_LATE_JOIN_SECONDS}. */
+    lateJoins: number;
+}
+
+/**
+ * The presence strip (#89) — how much of each clear the subject was actually there for.
+ *
+ * ## Which "91%"
+ *
+ * #81's reference is "roughly 91% of the average clear", and there are two readings of
+ * that which differ by eight points. Against the production Archive:
+ *
+ * - **total presence ÷ total duration** — 10,544,740 of 11,517,921 seconds, **91.55%**.
+ *   Equivalently his average time in a clear (17:34) over the average clear (19:12).
+ * - **the mean of each clear's own ratio** — **98.9%**. Most clears he played start to
+ *   finish, and a mean of ratios weights a seven-minute clear the same as a five-hour AFK
+ *   Run, so the few long Runs he was absent for most of barely register.
+ *
+ * The first is the one that reconciles, and it is the one that answers the sceptic: it
+ * is time, weighted as time. The query therefore returns the two totals rather than a
+ * ratio, so the panel can state the averages alongside the share and a reader can do the
+ * division themselves.
+ *
+ * ## His interval, and hazard 1 wearing its fourth face
+ *
+ * His time in a Run is one interval per Run, `MIN(entry)` to `MAX(exit)` over his rows —
+ * **the same envelope getHelperBoard's `subject` CTE collapses him to**, so the Helper
+ * board's Time Alongside and this panel read one definition of "his interval". He brought
+ * two characters to 37 of the 10,000 clears, and the alternatives both fail there:
+ *
+ * - summing `time_played_seconds` double-counts where the characters overlap — the
+ *   fixture's clear 20 sums to 4,662 seconds of a 3,029-second Run;
+ * - the envelope counts the gap between two characters that do not overlap as presence —
+ *   clear 52, 1,125 against a summed 1,059. That is the envelope's known cost, the same
+ *   "entry to exit" the Helper board's copy states, and it is accepted for consistency.
+ *
+ * Checked, not assumed: across production the two definitions give the same five late
+ * joins and differ in the fifth decimal place of the share (91.551% against 91.548%).
+ *
+ * ## The 32,767 rows — no special handling, deliberately
+ *
+ * About a dozen player rows in production sit at exactly 32,767 in `start_seconds` or
+ * `time_played_seconds`, an apparent int16 clamp in Bungie's reporting; getHelperBoard's
+ * docblock records that it is noted rather than special-cased. For this panel the
+ * question is whether one can move a figure, and it cannot today: exactly two of *his*
+ * clear rows carry it, both as `start_seconds` in multi-hour AFK clears (clears 207 and
+ * 1,654), each his only row in that Run. An envelope over one row is that row's
+ * `time_played_seconds` — 730 and 802 seconds — so the clamped entry offset cancels out,
+ * neither is under the late-join threshold, and no clear in production reports more of
+ * his presence than its own duration. The fixture carries none of these rows. Leaving
+ * them alone is a decision; clamping or excluding them would be inventing data.
+ *
+ * ## The shape of the statement is a performance decision — do not inline `subject`
+ *
+ * His intervals are aggregated **once**, in their own CTE over his membership, and the
+ * clears are joined to that. The obvious single-join version —
+ * `gos_10k_runs r LEFT JOIN gos_10k_pgcr_players p ON p.instance_id = r.instance_id AND
+ * p.membership_id = ?`, grouped by Run — returns identical figures and passes every
+ * fixture test, and against the production Archive it **never finishes**: SQLite plans
+ * the join through `idx_gos_10k_players_membership`, so each of the 10,000 clears walks
+ * all ~13,500 of his player rows looking for its own instance. Killed at 60 seconds in
+ * the sqlite3 CLI; on the page it pinned `next-server` at 100% CPU, and because
+ * better-sqlite3 is synchronous every other route on the process hung behind it. The
+ * shape below materialises his rows once through that same index and probes them per
+ * clear: **85 ms**, unfiltered. The fixture is too small for either plan to be slow, so
+ * no test here can catch a regression — this note is the guard.
+ *
+ * getHelperBoard derives its `subject` from a range-scoped `intervals` CTE over every
+ * player instead, because it needs every player's interval anyway; the two statements
+ * share {@link PLAYER_INTERVAL_PROJECTION}, not a shape.
+ *
+ * ## The join
+ *
+ * LEFT JOIN from the clears to his intervals, so the clear count is the range's Pinned
+ * Full Clears however his rows look — the same number the headline states. He is in
+ * every Run of this Archive by construction; a clear that somehow carried no row for him
+ * would contribute no presence and count as a late join, which is the honest reading of
+ * "the data does not show him there" rather than a clear silently falling out of the
+ * total.
+ */
+export function getSubjectPresence(
+    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
+): ArchiveSubjectPresence {
+    const scope = rangeClause(range);
+
+    // Positional parameters, in textual order: the subject (his intervals), the range,
+    // then the threshold in the outer SELECT.
+    const row = getArchiveDb().prepare(`
+        WITH subject AS (
+            SELECT
+                p.instance_id AS instanceId,
+                ${PLAYER_INTERVAL_PROJECTION}
+            FROM gos_10k_pgcr_players p
+            WHERE p.membership_id = ?
+            GROUP BY p.instance_id
+        ),
+        -- The clear filter sits here, on the Runs side, where getHelperBoard puts it on
+        -- the subject side (\`isClear = 1\`). Same effect: in both, only a Pinned Full
+        -- Clear in range contributes his interval.
+        clears AS (
+            SELECT
+                r.duration_seconds                  AS durationSeconds,
+                COALESCE(s.leftAt - s.enteredAt, 0) AS presentSeconds
+            FROM gos_10k_runs r
+            LEFT JOIN subject s ON s.instanceId = r.instance_id
+            WHERE ${PINNED_FULL_CLEAR} ${scope.sql}
+        )
+        SELECT
+            COUNT(*)                                                    AS clears,
+            COALESCE(SUM(presentSeconds), 0)                            AS presentSeconds,
+            COALESCE(SUM(durationSeconds), 0)                           AS durationSeconds,
+            COALESCE(SUM(CASE WHEN presentSeconds < ? THEN 1 ELSE 0 END), 0) AS lateJoins
+        FROM clears
+    `).get(
+        SUBJECT_MEMBERSHIP_ID,
+        ...scope.params,
+        PRESENCE_LATE_JOIN_SECONDS
+    ) as ArchiveSubjectPresence;
+
+    return row;
 }
 
 export interface ArchiveYear {

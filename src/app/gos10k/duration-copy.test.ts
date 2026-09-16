@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatMedianDuration, formatPresenceHours, formatRunDuration } from './duration-copy';
+import {
+    formatClearTimeShare,
+    formatMeanDuration,
+    formatMedianDuration,
+    formatPresenceHours,
+    formatRunDuration,
+} from './duration-copy';
 
 /**
  * The Archive's one duration formatter (#91).
@@ -87,5 +93,41 @@ describe('formatting a Helper\'s presence in hours', () => {
         // Unreachable through the query, which floors each Run's overlap at zero — the
         // clamp is here for the same reason formatRunDuration has one.
         expect(formatPresenceHours(-1)).toBe('0 h');
+    });
+});
+
+describe('formatting an average clear duration', () => {
+    it('is the median formatter under a second name', () => {
+        // The presence strip's averages are totals divided by a clear count, so they are
+        // fractional, and need the same round-not-floor the median tests above pin. An
+        // alias rather than a second body; this fails if one is ever written.
+        expect(formatMeanDuration).toBe(formatMedianDuration);
+    });
+});
+
+describe('formatting his share of the clears\' time', () => {
+    it('renders one decimal, so the reference figure reads as itself', () => {
+        // Production is 91.55%. Rounded to a whole number that prints 92% against #81's
+        // "roughly 91%", and a reader checking the page against the spec sees a
+        // disagreement that is only a rounding choice. The fixture is 494,153 / 539,209.
+        expect(formatClearTimeShare(0.915507234335085)).toBe('91.6%');
+        expect(formatClearTimeShare(494153 / 539209)).toBe('91.6%');
+    });
+
+    it('drops the decimal on an exact figure', () => {
+        expect(formatClearTimeShare(1)).toBe('100%');
+        expect(formatClearTimeShare(0)).toBe('0%');
+    });
+
+    it('shows an impossible share rather than clamping it away', () => {
+        // Presence over 100% of a Run is a data fault. Clamped, it would render as a
+        // clean 100% and nobody would look; unclamped, the page says something is wrong.
+        expect(formatClearTimeShare(1.04)).toBe('104%');
+    });
+
+    it('never renders NaN for a range with no clears', () => {
+        // November 2020 is 0 of 0 seconds. The panel guards on the clear count, but a
+        // formatter that can print `NaN%` is the one place that guard is not visible.
+        expect(formatClearTimeShare(Number.NaN)).toBe('—');
     });
 });

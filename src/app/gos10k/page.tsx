@@ -11,6 +11,7 @@ import {
     getMonthlyClears,
     getRunsByYear,
     getClassDistribution,
+    getSubjectPresence,
     resolveArchiveRange,
 } from '@/lib/db/archive/queries';
 import { parseArchiveRangeRequest, resolveMilestonePresets } from '@/lib/db/archive/range';
@@ -20,6 +21,7 @@ import { parseHelperBoardView } from './helper-board-view';
 import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
+import { PresenceStrip } from './PresenceStrip';
 import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
 
 /**
@@ -66,6 +68,10 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * a median with a stated 15-clear floor, so that the panel above ("who set records") and
  * this one ("who is reliably quick") answer two different questions with one formatter.
  *
+ * Issue #89 added the presence strip directly below the timeline — #81's fourth slot —
+ * answering "how many of these did he join at the very end" before the boards below it
+ * start naming the people who were there.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -93,6 +99,7 @@ export default async function Gos10kPage({
     const scope = describeArchiveRange(range);
 
     const overview = getArchiveOverview(range);
+    const presence = getSubjectPresence(range);
     const helperView = parseHelperBoardView(params);
     const helperBoard = getHelperBoard(helperView.showAll ? null : HELPER_BOARD_ROWS, range);
     const fastestClears = getFastestClears(10, range);
@@ -210,6 +217,11 @@ export default async function Gos10kPage({
                 obey it. The timeline sits directly under the control because the band it
                 shades is the control's own selection. */}
             <ArchiveTimeline months={timeline} range={range} />
+
+            {/* #81's render order: the timeline, then his own presence, then the boards.
+                The strip answers the sceptical reading of the headline before anything
+                below it asks the reader to trust the 10,000. */}
+            <PresenceStrip presence={presence} scope={scope} />
 
             {/* The pinned full-clear tile that used to lead this grid is now the headline
                 above; repeating it here would state the page's own name twice. */}

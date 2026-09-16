@@ -92,3 +92,33 @@ export function formatPresenceHours(seconds: number): string {
     if (hours < 0.1) return '<0.1 h';
     return `${hours.toFixed(1)} h`;
 }
+
+/**
+ * An average duration — the presence strip's average clear and his average time in one
+ * (#89). The same function as {@link formatMedianDuration}, because it is the same
+ * rounding decision for the same reason: a total divided by a clear count is fractional,
+ * and flooring it would print a plausible second too few. A second name rather than a
+ * second body, so the panel does not read as though it rendered a median.
+ */
+export const formatMeanDuration = formatMedianDuration;
+
+/**
+ * A share of the clears' time, as a percentage — the presence strip's headline (#89).
+ *
+ * A ratio of two durations rather than a duration, and it lives here because both of
+ * its inputs are this file's subject. One decimal, because the reference figure is
+ * 91.55%: a whole number prints 92% beside a spec that says "roughly 91%", and the
+ * disagreement is nothing but a rounding choice. A trailing `.0` is dropped — `100%`,
+ * not `100.0%` — because the round figures are exact ones.
+ *
+ * **Deliberately not clamped.** Presence cannot exceed the Run, and in production it
+ * never does; if a data fault ever made it, `104%` on the page is the fault being
+ * visible, where a clamp would render it as a clean 100%. `—` for a non-finite share,
+ * the 0-of-0 seconds a range with no clears produces: the panel guards on that case
+ * first, but a formatter that can print `NaN%` is a guard nobody can see.
+ */
+export function formatClearTimeShare(share: number): string {
+    if (!Number.isFinite(share)) return '—';
+    const percent = (share * 100).toFixed(1);
+    return `${percent.endsWith('.0') ? percent.slice(0, -2) : percent}%`;
+}

@@ -100,10 +100,29 @@ this codebase called "full clear"; all four are named apart on purpose.
 - **`gos10k/` stays outside CI.** It is how the data was collected — done, frozen. The build and
   extract scripts were never collection code and live in `scripts/`, typechecked like everything
   else there.
-- **No browser coverage.** The e2e suite mints its own Tracker database and knows nothing about the
-  Archive. `/gos10k` is verified by Vitest and by hand, and by nothing in Chromium.
-  **Superseded 2026-09-07.** #96 gave the e2e suite a second fixture database and its own canary, and
-  #86 added the first specs about the page's behaviour. `/gos10k` now has Chromium coverage: a smoke
-  test, and the two page-shell properties with no other seam. The panels themselves are still
-  uncovered. Issue #80 rewrites this consequence properly once the phase settles what earns a spec;
-  this note exists so nothing reads the paragraph above as current in the meantime.
+- **Browser coverage is a second fixture database, plus one rule about what it may assert.**
+  *Rewritten 2026-09-16, closing #80. This bullet previously read "No browser coverage", which was
+  true when the Archive had no harness and has been false since #96.*
+
+  The e2e suite mints a **second** throwaway database for the Archive alongside its Tracker one, and
+  proves through the running server that the server is bound to it before any spec runs. A read-only
+  file cannot carry a written canary row, so the canary is joined into the seed when the fixture is
+  minted rather than inserted afterwards — that constraint is the Archive's, and it is why the
+  harness could not simply reuse the Tracker's.
+
+  **What Chromium asserts is bounded by one rule, set by #87 and followed by every panel since:
+  assert only what no other seam can observe.** No counts, dates, names or durations appear in a
+  browser assertion — those belong to the Archive query module and are asserted there against the
+  fixture with specific figures. What is left for the browser is the residue that only rendering can
+  get wrong: mutual exclusion between two GET forms, URL-driven toggles that must preserve the
+  active range, geometry drawn twice from one result, empty states, and phone-width overflow. That
+  rule is also what keeps the specs alive across a fixture re-extraction, which any assertion on a
+  figure would break.
+
+  **Known limit: element-level overflow probes are eye-replacements only against data as wide as
+  production's.** #90's 31-character-name overflow measured clean at the element and was visible only
+  at the page level, and the fixture cannot reproduce it at all — its longest name contains spaces
+  and wraps on its own. Those specs are regression guards, not reproductions.
+
+  The per-flow inventory is deliberately not here: it lives in `CLAUDE.md`'s browser-suite list and,
+  per ticket, in `docs/handoffs/260803-playwright-e2e.md`.

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
-import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
+import { rangeOfClear, resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
 import {
     getArchiveOverview,
@@ -31,13 +31,6 @@ beforeAll(() => {
     closeArchiveDb();
     buildFixtureArchive();
 });
-
-function rangeOfClear(clearNumber: number) {
-    return resolveArchiveRangeFromParams({
-        clearFrom: String(clearNumber),
-        clearTo: String(clearNumber),
-    });
-}
 
 function february() {
     return resolveArchiveRangeFromParams({ from: '2022-02-01', to: '2022-02-28' });

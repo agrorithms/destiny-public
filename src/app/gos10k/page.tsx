@@ -24,6 +24,7 @@ import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { PresenceStrip } from './PresenceStrip';
+import { ShareBar } from './ShareBar';
 import { ResetsPanel } from './ResetsPanel';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { ClassSplit } from './ClassSplit';
@@ -283,10 +284,7 @@ export default async function Gos10kPage({
                                 <td className="py-1">{year.runs.toLocaleString()}</td>
                                 <td className="py-1">{year.fullClears.toLocaleString()}</td>
                                 <td className="w-1/2 py-1">
-                                    <div
-                                        className="h-2 rounded-sm bg-current opacity-40"
-                                        style={{ width: `${(year.runs / maxYearRuns) * 100}%` }}
-                                    />
+                                    <ShareBar value={year.runs} of={maxYearRuns} />
                                 </td>
                             </tr>
                         ))}

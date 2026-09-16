@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive, readArchiveSeed } from '../helpers/archive-seed';
-import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
+import { rangeOfClear, resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
 import {
     HELPER_BOARD_ROWS,
@@ -50,10 +50,6 @@ beforeAll(() => {
  * second clear, so the date form would select two Runs and the arithmetic would stop
  * being hand-checkable.
  */
-function clear102() {
-    return resolveArchiveRangeFromParams({ clearFrom: '102', clearTo: '102' });
-}
-
 describe('ranking Helpers by presence', () => {
     it('ranks by clears present and stops at the row limit', () => {
         const { helpers: board, population } = getHelperBoard();
@@ -115,7 +111,7 @@ describe('counting distinct instances rather than player rows', () => {
     it('counts a Helper once per Run however many characters they brought', () => {
         // Clear 102 is one Run. KaRNaGxFuRy#5001 is in it on two characters, so a count
         // over player rows gives them two clears out of a population of one.
-        const board = getHelperBoard(null, clear102()).helpers;
+        const board = getHelperBoard(null, rangeOfClear(102)).helpers;
         const karnag = board.find((helper) => helper.displayName === 'KaRNaGxFuRy#5001');
 
         expect(karnag).toMatchObject({ runs: 1, clears: 1 });
@@ -141,7 +137,7 @@ describe('the two time columns', () => {
         // MESRINE#4991 was there from 2 to 6,488: an hour and 48 minutes in the Run, of
         // which 1,504 seconds were alongside him. An overlap query that forgets to
         // intersect returns 6,486 here and looks entirely reasonable.
-        const board = getHelperBoard(null, clear102()).helpers;
+        const board = getHelperBoard(null, rangeOfClear(102)).helpers;
         const mesrine = board.find((helper) => helper.displayName === 'MESRINE#4991');
 
         expect(mesrine).toMatchObject({ secondsInRun: 6486, secondsWithSubject: 1504 });
@@ -153,7 +149,7 @@ describe('the two time columns', () => {
         // touch, and an overlap computed as `MIN(ends) - MAX(starts)` without the
         // zero floor returns -1,087, which sums into another Helper's total as a
         // *reduction*.
-        const board = getHelperBoard(null, clear102()).helpers;
+        const board = getHelperBoard(null, rangeOfClear(102)).helpers;
         const pharaloover = board.find((helper) => helper.displayName === 'pharaloover#4706');
 
         expect(pharaloover).toMatchObject({ secondsInRun: 3895, secondsWithSubject: 0 });
@@ -163,7 +159,7 @@ describe('the two time columns', () => {
         // KaRNaGxFuRy#5001 played [0, 662] on one character and [697, 6488] on another.
         // The Run is 6,488 seconds and their interval spans all of it. Summing the two
         // rows' time played gives 6,453 — close enough to look right, and wrong.
-        const board = getHelperBoard(null, clear102()).helpers;
+        const board = getHelperBoard(null, rangeOfClear(102)).helpers;
         const karnag = board.find((helper) => helper.displayName === 'KaRNaGxFuRy#5001');
 
         expect(karnag).toMatchObject({ secondsInRun: 6488, secondsWithSubject: 1504 });

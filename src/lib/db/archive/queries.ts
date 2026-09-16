@@ -51,16 +51,21 @@ export const SUBJECT_MEMBERSHIP_ID = '4611686018437585442';
 
 /**
  * The named full-clear rules and the Resets panel's populations live in ./predicates.ts
- * and are re-exported here, so
- * that `@/lib/db/archive/queries` stays the one import for anything reading this
- * database. They are defined next door only because the build script and the fixture
- * extractor must import the pinned rule without pulling in a connection — see that
- * file's header and ADR 0008.
+ * and are re-exported here, so that `@/lib/db/archive/queries` stays the one import for
+ * anything reading this database. They are defined next door only because the build
+ * script and the fixture extractor must import the pinned rule without pulling in a
+ * connection — see that file's header and ADR 0008.
+ *
+ * **{@link STARTED_FROM_BEGINNING} is deliberately not among them.** It is the
+ * disjunctive start reading, which is the wrong one for every panel on this page — it
+ * differs from the pinned reading by 455 Runs, and the two names differ by one suffix.
+ * Its only callers are the build script and the fixture extractor, which import
+ * ./predicates directly, so the request path does not need it offered alongside the
+ * reading it should actually use. That confusion is what #93 had to unpick.
  */
 export {
     PINNED_FULL_CLEAR,
     DISJUNCTIVE_FULL_CLEAR,
-    STARTED_FROM_BEGINNING,
     STARTED_FROM_BEGINNING_PINNED,
     RESET,
     CLEARED_WITHOUT_SUBJECT,

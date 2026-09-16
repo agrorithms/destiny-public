@@ -6,10 +6,13 @@ import {
     CLEARED_WITHOUT_SUBJECT,
     PINNED_FULL_CLEAR,
     RESET,
-    STARTED_FROM_BEGINNING,
     SUBJECT_MEMBERSHIP_ID,
     UNPINNED_CLEAR,
 } from '@/lib/db/archive/queries';
+// The disjunctive start reading, which the request path deliberately cannot reach (see
+// the re-export block in queries.ts). This file asserts the gap between the two readings,
+// so it is one of the few callers that legitimately wants it.
+import { STARTED_FROM_BEGINNING } from '@/lib/db/archive/predicates';
 
 /**
  * The fixture's *shape*, as opposed to any query's answer.

@@ -1,5 +1,3 @@
-import { formatShare } from './share-copy';
-
 /**
  * How the Archive page renders a run duration.
  *
@@ -103,14 +101,3 @@ export function formatPresenceHours(seconds: number): string {
  * second body, so the panel does not read as though it rendered a median.
  */
 export const formatMeanDuration = formatMedianDuration;
-
-/**
- * A share of the clears' time, as a percentage — the presence strip's headline (#89).
- *
- * The page's one percentage rule, under the name the presence strip reads it by. It moved
- * to ./share-copy.ts when the class split (#94) became the second panel to print a share,
- * because that panel's shares are of characters, not of time, and importing a function
- * named for clear time to render them would describe the wrong thing. The rounding, the
- * dropped `.0`, the refusal to clamp and the `—` for 0-of-0 are all documented there.
- */
-export const formatClearTimeShare = formatShare;

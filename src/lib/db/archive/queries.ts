@@ -364,58 +364,203 @@ export function getArchiveOverview(
     };
 }
 
-export interface ArchiveHelper {
+/**
+ * How many rows the Helper board renders before the reader asks for the rest (#90).
+ *
+ * The board's population is every Helper present for a Pinned Full Clear in the range —
+ * 382 in the fixture, several thousand in production — and rendering all of them by
+ * default would make the page one enormous table. Twenty-five is enough to answer "who
+ * carried this history" while leaving the panels below it reachable by scrolling.
+ *
+ * Exported because the panel has to name the number it is showing, and because the
+ * show-all link is defined as "not this". Distinct from {@link MEDIAN_SPEED_BOARD_ROWS}
+ * for the reason stated there: two limits that happen to be counts of different things
+ * must not collide on one literal.
+ */
+export const HELPER_BOARD_ROWS = 25;
+
+export interface ArchiveHelperPresence {
     membershipId: string;
     membershipType: number;
     /** `Name#Code` in full, via formatBungieDisplayName. */
     displayName: string;
-    /** Runs of his they appeared in. Distinct instances, never player rows. */
+    /** Runs of his in range they were present in. Distinct instances, never player rows. */
     runs: number;
-    /** Of those, the ones that were a Pinned Full Clear. */
-    fullClears: number;
+    /** Of those, the Pinned Full Clears. Distinct instances, and what the board ranks on. */
+    clears: number;
+    /**
+     * Seconds spent in those clears *alongside him* — the intersection of their interval
+     * with his, in each Run, summed. Raw seconds; rendered by formatPresenceHours() in
+     * src/app/gos10k/duration-copy.ts.
+     */
+    secondsWithSubject: number;
+    /** Seconds spent in those clears at all, whether or not he was there for them. */
+    secondsInRun: number;
 }
 
 /**
- * The Helpers who show up in most of his runs.
+ * The Helper board (#90) — who actually carried this history.
  *
- * `COUNT(DISTINCT r.instance_id)` rather than `COUNT(*)`: hazard 1. A player who
- * brought three characters to one raid has three rows here and is still one run.
+ * ## The population, and why the two count columns differ
+ *
+ * A row is a Helper who was present for **at least one Pinned Full Clear in the range**,
+ * which is this page's default population (#81) and what the board ranks on. The `runs`
+ * column is deliberately wider: it counts every Run of his in the range they were in,
+ * clear or not. Presence and success are different things, and a board reading both
+ * columns off the clears would render them equal on every row — a tidy-looking number
+ * that has quietly stopped saying anything.
+ *
+ * ## The two time columns
+ *
+ * Both are computed here rather than in the component, and both come back on every row,
+ * because the panel's toggle picks between them rather than re-querying: the ranking is
+ * by presence in either case, so switching the column cannot reorder the board.
+ *
+ * - `secondsWithSubject` — time genuinely overlapping his, the default. For each clear,
+ *   the intersection of the Helper's interval with the subject's own interval in that
+ *   same Run, floored at zero and summed. A Helper who left before he arrived overlaps
+ *   him by nothing, and without the floor that Run contributes a *negative* number to
+ *   their total.
+ * - `secondsInRun` — their whole time in those Runs, whether he was there or not.
+ *
+ * The measures were validated against the production data while #81 was specified:
+ * across all 79,168 player rows, entry offset plus time played never exceeds the Run's
+ * duration, and time played never exceeds it either. About a dozen rows sit at exactly
+ * 32,767 in one of those columns, which looks like a clamp in Bungie's own reporting;
+ * it is noted rather than special-cased, and the fixture carries none of them.
+ *
+ * ## Hazard 1, which bites this query twice
+ *
+ * A person can bring several characters to one raid — 217 (instance, player) pairs in
+ * production, 26 in the fixture — and each one is its own row with its own entry offset
+ * and time played. The `intervals` CTE collapses those rows to **one interval per
+ * (Run, person)**, `MIN(entry)` to `MAX(exit)`, which is what makes both the counts and
+ * the durations immune:
+ *
+ * - counting rows would give a three-character Helper three clears out of one;
+ * - summing `time_played_seconds` across rows would double-count the stretches where
+ *   two of their characters' intervals overlap, which the fixture contains;
+ * - **and the same applies to the subject.** He brought two characters to four Runs, and
+ *   in one of them the two intervals overlap. An overlap summed per (Helper row, subject
+ *   row) pair counts that stretch twice and can return more time alongside him than the
+ *   Helper spent in the Run at all — which is exactly what the first draft of this query
+ *   did to the board's top row, by 1,366 seconds, while looking entirely plausible.
+ *
+ * For a Helper with one character in a Run — every row but 26 in the fixture — the
+ * interval's length is `time_played_seconds` exactly, so the collapse changes no figure
+ * it does not have to.
+ *
+ * `limit` is `null` for the show-all view. It reaches SQLite as `-1`, which is that
+ * engine's spelling of "no limit"; the alternative is two nearly-identical statements.
+ *
+ * ## One pass, and the population with it
+ *
+ * Every column comes out of a single scan of the Range's player rows. `intervals` groups
+ * them per (Run, person) once, over *every* Run in the range, carrying whether that Run
+ * was a clear; `runs` counts those groups, while `clears` and both time columns count
+ * only the ones flagged, and `HAVING` drops a person with none. The first version read
+ * the player table three times — clears, names, and all Runs — for identical rows.
+ *
+ * `population` is `COUNT(*) OVER ()`, which SQLite evaluates before `LIMIT`, so a page
+ * of 25 rows still reports every Helper the board could show. It was a second statement
+ * restating this one's population rule, which is the drift the "25 of 382" copy and the
+ * show-all link would have silently inherited.
  */
-export function getTopHelpers(
-    limit: number = 25,
+export interface ArchiveHelperBoard {
+    /** The rows to render — the first `limit` of them, or all of them for `null`. */
+    helpers: ArchiveHelperPresence[];
+    /** Every Helper the board *could* show in this range, however many rows were asked for. */
+    population: number;
+}
+
+export function getHelperBoard(
+    limit: number | null = HELPER_BOARD_ROWS,
     range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
-): ArchiveHelper[] {
+): ArchiveHelperBoard {
     const scope = rangeClause(range);
 
+    // Positional parameters, in textual order: the range, the subject's membership twice
+    // (the subject CTE, the presence filter), then the limit. `rangeClause` returns `?`s,
+    // so named parameters cannot be mixed in without rewriting it.
     const rows = getArchiveDb().prepare(`
-        SELECT
-            p.membership_id                     AS membershipId,
-            ${PLAYER_NAME_PROJECTION},
-            COUNT(DISTINCT r.instance_id)       AS runs,
-            COUNT(DISTINCT CASE WHEN ${PINNED_FULL_CLEAR} THEN r.instance_id END) AS fullClears
-        FROM gos_10k_pgcr_players p
-        JOIN gos_10k_runs r ON r.instance_id = p.instance_id
-        WHERE p.membership_id != ? ${scope.sql}
-        GROUP BY p.membership_id
-        ORDER BY runs DESC, fullClears DESC, membershipId
+        WITH intervals AS (
+            SELECT
+                p.instance_id                                AS instanceId,
+                p.membership_id                              AS membershipId,
+                MAX(${PINNED_FULL_CLEAR})                    AS isClear,
+                MIN(p.start_seconds)                         AS enteredAt,
+                MAX(p.start_seconds + p.time_played_seconds) AS leftAt,
+                ${PLAYER_NAME_PROJECTION}
+            FROM gos_10k_pgcr_players p
+            JOIN gos_10k_runs r ON r.instance_id = p.instance_id
+            WHERE 1 = 1 ${scope.sql}
+            GROUP BY p.instance_id, p.membership_id
+        ),
+        subject AS (
+            SELECT instanceId, enteredAt, leftAt
+            FROM intervals
+            WHERE membershipId = ? AND isClear = 1
+        ),
+        presence AS (
+            SELECT
+                h.membershipId                              AS membershipId,
+                MAX(h.membershipType)                       AS membershipType,
+                MAX(h.displayName)                          AS displayName,
+                MAX(h.bungieGlobalDisplayName)              AS bungieGlobalDisplayName,
+                MAX(h.bungieGlobalDisplayNameCode)          AS bungieGlobalDisplayNameCode,
+                COUNT(*)                                    AS runs,
+                SUM(h.isClear)                              AS clears,
+                SUM(CASE WHEN h.isClear = 1 THEN h.leftAt - h.enteredAt ELSE 0 END)
+                                                            AS secondsInRun,
+                -- LEFT JOIN and COALESCE rather than an inner join: he is in every Run
+                -- of this Archive by construction, and a clear that somehow carried no
+                -- row for him should drop that Run's overlap, never the Helper's row.
+                -- The subject CTE holds clears only, so a non-clear Run joins nothing and
+                -- contributes NULL, which SUM skips.
+                COALESCE(SUM(
+                    MAX(0, MIN(h.leftAt, s.leftAt) - MAX(h.enteredAt, s.enteredAt))
+                ), 0)                                       AS secondsWithSubject
+            FROM intervals h
+            LEFT JOIN subject s ON s.instanceId = h.instanceId
+            WHERE h.membershipId != ?
+            GROUP BY h.membershipId
+            HAVING SUM(h.isClear) > 0
+        )
+        SELECT *, COUNT(*) OVER () AS population
+        FROM presence
+        ORDER BY clears DESC, runs DESC, membershipId
         LIMIT ?
-    `).all(SUBJECT_MEMBERSHIP_ID, ...scope.params, limit) as Array<{
+    `).all(
+        ...scope.params,
+        SUBJECT_MEMBERSHIP_ID,
+        SUBJECT_MEMBERSHIP_ID,
+        limit ?? -1
+    ) as Array<{
         membershipId: string;
         membershipType: number;
         displayName: string | null;
         bungieGlobalDisplayName: string | null;
         bungieGlobalDisplayNameCode: number | null;
         runs: number;
-        fullClears: number;
+        clears: number;
+        secondsInRun: number;
+        secondsWithSubject: number;
+        population: number;
     }>;
 
-    return rows.map((row) => ({
-        membershipId: row.membershipId,
-        membershipType: row.membershipType,
-        displayName: formatBungieDisplayName(row),
-        runs: row.runs,
-        fullClears: row.fullClears,
-    }));
+    return {
+        helpers: rows.map((row) => ({
+            membershipId: row.membershipId,
+            membershipType: row.membershipType,
+            displayName: formatBungieDisplayName(row),
+            runs: row.runs,
+            clears: row.clears,
+            secondsInRun: row.secondsInRun,
+            secondsWithSubject: row.secondsWithSubject,
+        })),
+        // No rows means no population: the window has nothing to count over.
+        population: rows[0]?.population ?? 0,
+    };
 }
 
 export interface ArchiveYear {

@@ -133,6 +133,22 @@ describe('the URL a range writes back', () => {
     it('links back to the bare route for the whole Archive', () => {
         expect(archiveRangeHref({ kind: 'none' })).toBe('/gos10k');
     });
+
+    it("appends a panel's own parameters after the range's", () => {
+        // #90's Helper board links write `helperTime`/`helperRows` alongside whatever
+        // range is active. They go through this function rather than concatenating onto
+        // its result, because `base.includes('?') ? '&' : '?'` in a panel file is a
+        // second opinion about URL assembly — and the panel that gets it wrong drops the
+        // reader's filter, which looks like a query bug rather than a link bug.
+        const extra = new URLSearchParams({ helperTime: 'inRun' });
+
+        expect(archiveRangeHref({ kind: 'clears', clearFrom: 9001, clearTo: 10000 }, extra)).toBe(
+            '/gos10k?clearFrom=9001&clearTo=10000&helperTime=inRun'
+        );
+        // And on the bare route it is still a well-formed query, not `/gos10k&…`.
+        expect(archiveRangeHref({ kind: 'none' }, extra)).toBe('/gos10k?helperTime=inRun');
+        expect(archiveRangeHref({ kind: 'none' }, new URLSearchParams())).toBe('/gos10k');
+    });
 });
 
 describe('milestone presets', () => {

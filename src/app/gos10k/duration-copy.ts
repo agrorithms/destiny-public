@@ -1,3 +1,5 @@
+import { formatShare } from './share-copy';
+
 /**
  * How the Archive page renders a run duration.
  *
@@ -105,20 +107,10 @@ export const formatMeanDuration = formatMedianDuration;
 /**
  * A share of the clears' time, as a percentage — the presence strip's headline (#89).
  *
- * A ratio of two durations rather than a duration, and it lives here because both of
- * its inputs are this file's subject. One decimal, because the reference figure is
- * 91.55%: a whole number prints 92% beside a spec that says "roughly 91%", and the
- * disagreement is nothing but a rounding choice. A trailing `.0` is dropped — `100%`,
- * not `100.0%` — because the round figures are exact ones.
- *
- * **Deliberately not clamped.** Presence cannot exceed the Run, and in production it
- * never does; if a data fault ever made it, `104%` on the page is the fault being
- * visible, where a clamp would render it as a clean 100%. `—` for a non-finite share,
- * the 0-of-0 seconds a range with no clears produces: the panel guards on that case
- * first, but a formatter that can print `NaN%` is a guard nobody can see.
+ * The page's one percentage rule, under the name the presence strip reads it by. It moved
+ * to ./share-copy.ts when the class split (#94) became the second panel to print a share,
+ * because that panel's shares are of characters, not of time, and importing a function
+ * named for clear time to render them would describe the wrong thing. The rounding, the
+ * dropped `.0`, the refusal to clamp and the `—` for 0-of-0 are all documented there.
  */
-export function formatClearTimeShare(share: number): string {
-    if (!Number.isFinite(share)) return '—';
-    const percent = (share * 100).toFixed(1);
-    return `${percent.endsWith('.0') ? percent.slice(0, -2) : percent}%`;
-}
+export const formatClearTimeShare = formatShare;

@@ -865,17 +865,108 @@ export function getRunsByYear(
     `).all(...scope.params) as ArchiveYear[];
 }
 
-export interface ArchiveClassCount {
-    characterClass: string;
-    playerRuns: number;
+/**
+ * The participants panel's last bucket (#94): Runs with this many people or more are
+ * counted together. Seven, because six is a full fireteam and everything above it is
+ * the same fact — somebody left and was replaced — however many times it happened.
+ */
+export const PARTICIPANT_BUCKET_CAP = 7;
+
+export interface ArchiveParticipantBucket {
+    /** Distinct people who entered the Run; with `orMore`, this many or more. */
+    people: number;
+    orMore: boolean;
+    /** Pinned Full Clears in range with that many people in them. */
+    clears: number;
 }
 
 /**
- * Class split across every player-run in the Archive.
+ * How many people entered each Pinned Full Clear in range (#94), solo through
+ * seven-or-more — so a reader can find the low-population clears.
+ *
+ * **People who entered, not fireteam size.** The count is distinct memberships across the
+ * whole Run, so a Run where someone left and was replaced has seven or more (430 of the
+ * 10,000 in production). No maximum-concurrent figure is recoverable from this data
+ * without inventing one, and #81 rejected inventing one. See **Participant** in CONTEXT.md.
+ *
+ * **Distinct memberships, never player rows** — hazard 1. Counting rows moves a trio in
+ * which one person brought a second character into the four bucket; the fixture's clear 13
+ * is that Run.
+ *
+ * **Every bucket is returned, including the empty ones**, in order. `GROUP BY` returns only
+ * the populated buckets, and solo is empty in the whole Archive: a panel drawn off the raw
+ * rows cannot tell "there are no solo clears" from "the solo row is missing". The fill is
+ * the same step getMonthlyClears() takes for months.
+ *
+ * **The duo clears are kept.** #81 treats all four as genuine — a real duo in a
+ * cheese-capable era, or Bungie's start-of-activity reporting being unreliable then —
+ * and nothing here filters on population.
+ *
+ * Production, unfiltered: 0 / 4 / 42 / 4 / 40 / 9,480 / 430, summing to 10,000, in about
+ * 21 ms, and the same ~21 ms for clears 9,001–10,000 or a single day. Unfiltered the plan
+ * walks the Runs and looks each one's players up by the players table's `(instance_id, …)`
+ * key; with a range it scans the players table once and looks each row's Run up by its
+ * key, which is why a narrow range costs no less. Neither plan touches the membership
+ * index, which is the plan that hung the page in #89 (see getSubjectPresence).
+ */
+export function getParticipantDistribution(
+    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
+): ArchiveParticipantBucket[] {
+    const scope = rangeClause(range);
+
+    // Inner join: a clear with no player rows would have no bucket. There are none in
+    // production (0 of 10,000) and the Archive cannot gain a row (ADR 0007);
+    // tests/db/archive-composition.test.ts checks the buckets add back up to the clears.
+    const rows = getArchiveDb().prepare(`
+        SELECT MIN(people, ?) AS people, COUNT(*) AS clears
+        FROM (
+            SELECT r.instance_id, COUNT(DISTINCT p.membership_id) AS people
+            FROM gos_10k_runs r
+            JOIN gos_10k_pgcr_players p ON p.instance_id = r.instance_id
+            WHERE ${PINNED_FULL_CLEAR} ${scope.sql}
+            GROUP BY r.instance_id
+        )
+        GROUP BY 1
+    `).all(PARTICIPANT_BUCKET_CAP, ...scope.params) as Array<{ people: number; clears: number }>;
+
+    const clearsByPeople = new Map(rows.map((row) => [row.people, row.clears]));
+
+    return Array.from({ length: PARTICIPANT_BUCKET_CAP }, (_, index) => {
+        const people = index + 1;
+        return {
+            people,
+            orMore: people === PARTICIPANT_BUCKET_CAP,
+            clears: clearsByPeople.get(people) ?? 0,
+        };
+    });
+}
+
+export interface ArchiveClassCount {
+    characterClass: string;
+    /** Characters of this class brought into a Run in range — player rows, not people. */
+    characters: number;
+}
+
+/**
+ * The class split (#94): every character brought into a Run in range, by class.
+ *
+ * **Characters, not Player-Runs, and deliberately.** Class belongs to a character, and a
+ * person who brought two characters to one Run brought two classes — in production 206 of
+ * the 217 such (Run, person) pairs are two *different* classes. Counting one class per
+ * person would have to pick one of them. So this counts player rows: 79,168 in production,
+ * where the distinct (Run, person) pairs are 78,948. #81's reference figures are the row
+ * counts (34,821 Warlock, 30,151 Hunter, 14,029 Titan, 167 unknown), and the panel's copy
+ * says characters rather than calling them Player-Runs. This is the one count through
+ * `gos_10k_pgcr_players` on this page where hazard 1's rows are the right unit.
+ *
+ * **Every Run in range, not only the clears** — #81's "all Player-Runs in the active
+ * range". The population toggle that would narrow it is Phase 2.
  *
  * `character_class` is stored as text, which is why this works today — every other
  * cosmetic dimension (weapon, emblem, race, gender) is a manifest hash with no
- * resolution script written yet.
+ * resolution script written yet. A NULL class is `Unknown`, and stays in the split.
+ *
+ * Tied counts order by class name, so a narrow range renders the same way every time.
  */
 export function getClassDistribution(
     range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
@@ -885,12 +976,12 @@ export function getClassDistribution(
     return getArchiveDb().prepare(`
         SELECT
             COALESCE(p.character_class, 'Unknown') AS characterClass,
-            COUNT(*) AS playerRuns
+            COUNT(*) AS characters
         FROM gos_10k_pgcr_players p
         JOIN gos_10k_runs r ON r.instance_id = p.instance_id
         WHERE 1 = 1 ${scope.sql}
         GROUP BY characterClass
-        ORDER BY playerRuns DESC
+        ORDER BY characters DESC, characterClass
     `).all(...scope.params) as ArchiveClassCount[];
 }
 

@@ -4,9 +4,10 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { deriveClearNumbers } from '../src/lib/db/archive/derive-clear-number';
 import {
-    DISJUNCTIVE_FULL_CLEAR,
+    CLEARED_WITHOUT_SUBJECT,
     PINNED_FULL_CLEAR,
     STARTED_FROM_BEGINNING,
+    UNPINNED_CLEAR,
 } from '../src/lib/db/archive/predicates';
 import { replayArchiveRows, type ArchiveRow } from '../tests/helpers/archive-replay';
 import type { ArchiveSeed, SeedCohort, SeedTarget } from '../tests/helpers/archive-seed';
@@ -196,13 +197,16 @@ const COHORTS: Cohort[] = [
     },
     {
         name: 'resets',
-        why: 'Up to three Runs per spine month that he started from the first encounter and nobody finished. #93 reports how many there were and how long they lasted; a fixture with none would make both figures untestable. Not the negation of is_full_clear — that column folds in "somebody completed".',
+        why: 'Up to three Runs per spine month that he did not finish, that is_full_clear does not count, and that either start reading accepts. Mostly Resets; after the pin it also draws unfinished Runs Bungie\'s flag does not mark, which the pinned reading counts as Checkpoint Runs — the boundary #93\'s split turns on, so both sides of it are in the fixture. Not the negation of is_full_clear — that column folds in "somebody completed".',
+        // Deliberately the disjunctive start reading, not RESET: sampling the looser
+        // population is what puts the flag-unset post-pin Runs RESET excludes into the
+        // fixture, where a regression to the looser reading would fail a test.
         sql: perSpineMonth(`${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0`, 3),
     },
     {
         name: 'cleared-without-him',
         why: 'Six of the 40 Runs his fireteam cleared from the start without him. One of them is already a target; the rest are here so an aggregate over this population is not a single row, and so dropping the completed conjunct is wrong by a visible margin rather than by one.',
-        sql: 'SELECT instance_id FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0 ORDER BY r.period, r.instance_id LIMIT 6',
+        sql: `SELECT instance_id FROM gos_10k_runs r WHERE ${CLEARED_WITHOUT_SUBJECT} ORDER BY r.period, r.instance_id LIMIT 6`,
     },
     {
         // #85 calls this population "pre-pin clears". It is not: every one of these Runs
@@ -218,18 +222,18 @@ const COHORTS: Cohort[] = [
         // implies phase 0 or flag set, so the difference is 10,020 - 10,000 = 20.)
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
-            WHERE ${DISJUNCTIVE_FULL_CLEAR} AND r.is_full_clear = 0
+            WHERE ${UNPINNED_CLEAR}
         `,
     },
     {
         name: 'checkpoint-runs',
-        why: 'All 8 Checkpoint Runs in the Archive — he joined partway through. There are only 8 in 13,420, which is itself the fact #93 reports, so the whole population fits and nothing has to be sampled.',
-        // Literally the negation of the named rule: a Checkpoint Run is a Run not started
-        // from the beginning. Neither raw column is nullable in the master, so this and a
-        // COALESCE-guarded rewrite select the same 8 rows.
+        why: 'All 8 Runs with a later phase index — Checkpoint Runs under either start reading, all before the pin. The other 475 Checkpoint Runs are post-pin with Bungie\'s flag unset; they reach the fixture through disjunctive-only-clears (the 20 he finished) and the resets cohort (unfinished ones). Taking all 483 would more than double the fixture.',
+        // The negation of the disjunctive reading, not CHECKPOINT_RUN: that would pull all
+        // 483. Neither raw column is nullable in the master, so this and a COALESCE-guarded
+        // rewrite select the same 8 rows.
         sql: `
             SELECT r.instance_id FROM gos_10k_runs r
-            WHERE NOT (${STARTED_FROM_BEGINNING})
+            WHERE NOT ${STARTED_FROM_BEGINNING}
         `,
     },
 ];

@@ -1,6 +1,12 @@
 import { getArchiveDb } from './index';
 import { formatBungieDisplayName } from '../queries';
-import { PINNED_FULL_CLEAR, DISJUNCTIVE_FULL_CLEAR } from './predicates';
+import {
+    PINNED_FULL_CLEAR,
+    DISJUNCTIVE_FULL_CLEAR,
+    RESET,
+    CLEARED_WITHOUT_SUBJECT,
+    CHECKPOINT_RUN,
+} from './predicates';
 import { monthsBetween } from './month-keys';
 import {
     endOfArchiveDay,
@@ -44,13 +50,23 @@ export const SUBJECT_MEMBERSHIP_ID = '4611686018437585442';
  */
 
 /**
- * The three named full-clear rules live in ./predicates.ts and are re-exported here, so
+ * The named full-clear rules and the Resets panel's populations live in ./predicates.ts
+ * and are re-exported here, so
  * that `@/lib/db/archive/queries` stays the one import for anything reading this
  * database. They are defined next door only because the build script and the fixture
  * extractor must import the pinned rule without pulling in a connection — see that
  * file's header and ADR 0008.
  */
-export { PINNED_FULL_CLEAR, DISJUNCTIVE_FULL_CLEAR, STARTED_FROM_BEGINNING } from './predicates';
+export {
+    PINNED_FULL_CLEAR,
+    DISJUNCTIVE_FULL_CLEAR,
+    STARTED_FROM_BEGINNING,
+    STARTED_FROM_BEGINNING_PINNED,
+    RESET,
+    CLEARED_WITHOUT_SUBJECT,
+    UNPINNED_CLEAR,
+    CHECKPOINT_RUN,
+} from './predicates';
 
 /**
  * ------------------------------------------------------------------------------------
@@ -716,6 +732,109 @@ export function getSubjectPresence(
     ) as ArchiveSubjectPresence;
 
     return row;
+}
+
+/**
+ * Under this long, a Reset is a restart rather than a collapse (#93).
+ *
+ * Ten minutes because it is well inside the first encounter plus its walk-in: a Run
+ * abandoned before then is a fireteam re-rolling a bad start, not one that fought for an
+ * hour and gave up. Exported because the panel names it — "2,621 ended inside ten
+ * minutes" is checkable, where "most were restarts" is a reassurance. Production: 2,621
+ * of the 2,897 (the median Reset is 2:56; the 5:56 mean is pulled up by a long tail).
+ */
+export const RESET_RESTART_SECONDS = 600;
+
+export interface ArchiveNonClearRuns {
+    /** Every Run in range — the population the other fields partition. */
+    runs: number;
+    /** The Runs that *did* become clears; stated so the partition can be checked. */
+    pinnedFullClears: number;
+    /** {@link RESET}s in range, and their summed `duration_seconds`. */
+    resets: number;
+    resetSeconds: number;
+    /** Of those Resets, the ones under {@link RESET_RESTART_SECONDS}. */
+    quickResets: number;
+    /** Started from the beginning and cleared by the fireteam, but not by him. */
+    clearedWithoutSubject: number;
+    clearedWithoutSubjectSeconds: number;
+    /** Runs not started from the first encounter under the pinned reading, finished or not. */
+    checkpointRuns: number;
+    /** Of those, the ones he finished. */
+    checkpointRunsFinished: number;
+    /** Of those, the ones he did not finish and someone else in the Run did. */
+    checkpointRunsClearedWithoutSubject: number;
+}
+
+/**
+ * The Resets panel (#93) — every Run in range that did not become a Pinned Full Clear,
+ * so the 10,000 is not presented as though every attempt succeeded.
+ *
+ * ## Four populations that partition the Runs
+ *
+ * Against the production Archive, unfiltered:
+ *
+ * | population                  | Runs       | mean     |
+ * |-----------------------------|------------|----------|
+ * | Pinned Full Clear           | 10,000     |          |
+ * | Reset                       | 2,897      | 5:56     |
+ * | cleared without him         | 40         | 1:01:02  |
+ * | Checkpoint Run              | 483        |          |
+ * |                             | **13,420** |          |
+ *
+ * **All four read "started from the first encounter" the way the 10,000 does**
+ * (STARTED_FROM_BEGINNING_PINNED in ./predicates.ts): phase index up to the pin, Bungie's
+ * flag after it. #81's figures — 3,352 Resets, 8 Checkpoint Runs and 20 "pre-pin clears" —
+ * used the disjunctive reading, which counts every post-pin Run as started from the
+ * beginning. That judged a flag-unset post-pin Run a non-clear when he finished it and a
+ * Reset when he did not, and put 9 Runs other players finished among the Resets. Those
+ * 475 are Checkpoint Runs here: 20 he finished, 9 others finished, 446 nobody did.
+ *
+ * The four are separate named predicates (./predicates.ts) rather than one CASE ladder on
+ * purpose. A ladder partitions by construction — a Run matching two rungs is silently
+ * given to the first — and so could never reveal an overlap. Written independently, the
+ * partition is a property the data has to have: tests/db/archive-resets.test.ts checks
+ * that every fixture Run matches exactly one of them, and that they add back up to `runs`
+ * in every range it asserts. Production also matches exactly one each, all 13,420.
+ *
+ * ## Shape
+ *
+ * One pass over `gos_10k_runs`. Every population is decided by columns on the Run row;
+ * the one read of `gos_10k_pgcr_players` is an `EXISTS` for "did anyone else finish this
+ * Checkpoint Run", looked up by the table's `instance_id` key, and `EXISTS` is immune to
+ * hazard 1 (several character rows per player). It is evaluated only for unfinished
+ * Checkpoint Runs. The range clause is the only filter, so SQLite uses
+ * `idx_gos_10k_runs_period` when there is one — 8 ms in production, unfiltered.
+ *
+ * Returns totals rather than averages, like getSubjectPresence, so a range with no Resets
+ * is zeroes a division can be guarded on rather than a null.
+ */
+export function getNonClearRuns(
+    range: ResolvedArchiveRange = UNFILTERED_ARCHIVE_RANGE
+): ArchiveNonClearRuns {
+    const scope = rangeClause(range);
+
+    // COUNT(*) is 0 over an empty window, but SUM() is NULL, hence every COALESCE.
+    return getArchiveDb().prepare(`
+        SELECT
+            COUNT(*) AS runs,
+            COALESCE(SUM(CASE WHEN ${PINNED_FULL_CLEAR} THEN 1 ELSE 0 END), 0) AS pinnedFullClears,
+            COALESCE(SUM(CASE WHEN ${RESET} THEN 1 ELSE 0 END), 0) AS resets,
+            COALESCE(SUM(CASE WHEN ${RESET} THEN r.duration_seconds ELSE 0 END), 0) AS resetSeconds,
+            COALESCE(SUM(CASE WHEN ${RESET} AND r.duration_seconds < ? THEN 1 ELSE 0 END), 0) AS quickResets,
+            COALESCE(SUM(CASE WHEN ${CLEARED_WITHOUT_SUBJECT} THEN 1 ELSE 0 END), 0) AS clearedWithoutSubject,
+            COALESCE(SUM(CASE WHEN ${CLEARED_WITHOUT_SUBJECT} THEN r.duration_seconds ELSE 0 END), 0)
+                AS clearedWithoutSubjectSeconds,
+            COALESCE(SUM(CASE WHEN ${CHECKPOINT_RUN} THEN 1 ELSE 0 END), 0) AS checkpointRuns,
+            COALESCE(SUM(CASE WHEN ${CHECKPOINT_RUN} AND r.completed = 1 THEN 1 ELSE 0 END), 0)
+                AS checkpointRunsFinished,
+            COALESCE(SUM(CASE WHEN ${CHECKPOINT_RUN} AND r.completed = 0 AND EXISTS (
+                SELECT 1 FROM gos_10k_pgcr_players p
+                WHERE p.instance_id = r.instance_id AND p.completed = 1
+            ) THEN 1 ELSE 0 END), 0) AS checkpointRunsClearedWithoutSubject
+        FROM gos_10k_runs r
+        WHERE 1 = 1 ${scope.sql}
+    `).get(RESET_RESTART_SECONDS, ...scope.params) as ArchiveNonClearRuns;
 }
 
 export interface ArchiveYear {

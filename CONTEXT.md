@@ -61,10 +61,12 @@ which one it used:
 
 - **Pinned Full Clear** — the flag after 2022-02-21, `starting_phase_index = 0` at or before it.
   Reconciles to exactly **10,000**, which is why it is the Archive's default. The pin instant is
-  instance `10141395454`, the subject's *own last clear before a 40-day gap with no GoS runs* — it
+  instance `10141395454`, the subject's *own last clear before a 40-day gap with no full clears* under
+  either rule (one unfinished Run falls inside it, on 2022-02-24) — it
   is where the evidence runs out, not a boundary Bungie chose, and the id means nothing else.
 - **Disjunctive Full Clear** — flag set **or** phase index 0, anywhere in the history. **10,020.**
-  Comparable to the Tracker, generous by 20 runs before the flag was reliable.
+  Comparable to the Tracker, generous by 20 runs — all *after* the pin, phase 0 with the flag unset,
+  the shape the pin stops trusting.
 
 Both carry the second half — that the subject himself finished — inside the named rule rather than
 leaving it to the caller. Dropping it returns 10,040 / 13,412: plausible-looking numbers that are
@@ -77,10 +79,12 @@ _Avoid_: complete run, fresh run
 A raid entered partway through, at a saved encounter. Observed and stored like any other run, but
 never counted toward a leaderboard. The majority of raids we see.
 
-**In the Archive the term barely applies**: there are **8** Checkpoint Runs in the entire GoS 10k
-history. Any framing that contrasts clears with checkpoint farming is describing something this
-dataset does not contain — the 3,352 Runs nobody finished were started from the beginning, not
-entered at a checkpoint.
+**In the Archive, "started from the beginning" is the Pinned rule's reading**: `starting_phase_index
+= 0` up to the pin, Bungie's own flag after it. So there are **483** Checkpoint Runs — 8 before the
+pin with a later phase index, and 475 after it with the flag unset, even though every post-pin Run
+carries phase 0. raid.report independently shows the seven from early April 2022 as checkpoint
+runs. He finished 23 of the 483 and others finished 11 without him. #81's figure of 8 read the
+phase index alone, anywhere in the history.
 _Avoid_: partial run, CP run
 
 **Completion**:
@@ -116,6 +120,17 @@ In the Archive, one raid instance the subject entered — **not necessarily one 
 started and abandoned). A count of Runs is a count of attempts, and any question about *clears*
 must say so with one of the Full Clear rules above.
 _Avoid_: clear, raid, activity
+
+**Reset** (Archive):
+A Run started from the first encounter that nobody completed — neither the subject nor anyone else
+in it. Overwhelmingly a restart after a bad start rather than a fireteam collapsing an hour in, and
+reported with its duration for that reason: a bare count of Resets invites the worse reading. Not
+the negation of a Full Clear — a Run his fireteam cleared without him and a Checkpoint Run are each
+their own population, and neither is a Reset. "Started from the first encounter" is the Pinned
+rule's reading, which gives **2,897**. #81's 3,352 used the disjunctive reading and so also counted
+455 post-pin Runs with Bungie's flag unset — 9 of them finished by other players, which a Reset by
+definition cannot be. They are Checkpoint Runs.
+_Avoid_: wipe, failed run, abandoned clear, DNF
 
 **Clear Number**:
 The ordinal of a Pinned Full Clear within an Archive, by `period` ascending: 1 for the first,

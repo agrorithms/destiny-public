@@ -2,10 +2,13 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive, readArchiveSeed } from '../helpers/archive-seed';
 import { closeArchiveDb, getArchiveDb } from '@/lib/db/archive';
 import {
-    DISJUNCTIVE_FULL_CLEAR,
+    CHECKPOINT_RUN,
+    CLEARED_WITHOUT_SUBJECT,
     PINNED_FULL_CLEAR,
+    RESET,
     STARTED_FROM_BEGINNING,
     SUBJECT_MEMBERSHIP_ID,
+    UNPINNED_CLEAR,
 } from '@/lib/db/archive/queries';
 
 /**
@@ -77,12 +80,16 @@ describe('the populations Phase 1 panels count', () => {
         // A Reset is deliberately not the negation of is_full_clear: that column folds in
         // "at least one player completed", so the third conjunct is what makes this the
         // Runs nobody finished rather than the Runs *he* did not finish.
+        //
+        // The resets cohort and the two abandoned-run hazard targets supply 26 unfinished
+        // Runs either start reading accepts. 21 are Resets; the other 5 are post-pin with
+        // Bungie's flag unset — Checkpoint Runs under the pinned reading, asserted below.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE ${STARTED_FROM_BEGINNING} AND r.completed = 0 AND r.is_full_clear = 0
-        `)).toBe(26);   // 24 from the cohort, plus the two abandoned-run hazard targets.
+            WHERE ${RESET}
+        `)).toBe(21);
         expect(scalar(
-            'SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE r.is_full_clear = 1 AND r.completed = 0'
+            `SELECT COUNT(*) AS n FROM gos_10k_runs r WHERE ${CLEARED_WITHOUT_SUBJECT}`
         )).toBe(6);
         // The 20 Runs the disjunctive rule counts and the pinned rule does not. All 20 are
         // here, so the two rules differ in the fixture by the same rows they differ by in
@@ -91,15 +98,19 @@ describe('the populations Phase 1 panels count', () => {
         // from the raw columns, which is the drift the named predicates exist to stop.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE ${DISJUNCTIVE_FULL_CLEAR} AND r.is_full_clear = 0
+            WHERE ${UNPINNED_CLEAR}
         `)).toBe(20);
-        // Checkpoint Runs — he joined partway, which is exactly not starting from the
-        // beginning. There are 8 in the whole Archive and all 8 are here; the term barely
-        // applies to this dataset, which is itself the point.
+        // Checkpoint Runs under the pinned start reading: the 8 with a later phase index
+        // (all of the Archive's), the 20 above, and 5 unfinished post-pin Runs with the flag
+        // unset. Those 5 are what fails if RESET slides back to the disjunctive reading.
         expect(scalar(`
             SELECT COUNT(*) AS n FROM gos_10k_runs r
-            WHERE NOT (${STARTED_FROM_BEGINNING})
-        `)).toBe(8);
+            WHERE ${CHECKPOINT_RUN}
+        `)).toBe(33);
+        expect(scalar(`
+            SELECT COUNT(*) AS n FROM gos_10k_runs r
+            WHERE ${CHECKPOINT_RUN} AND ${STARTED_FROM_BEGINNING} AND r.completed = 0
+        `)).toBe(5);
     });
 
     it('spans every participant bucket from duo to seven-plus', () => {

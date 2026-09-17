@@ -35,7 +35,7 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#88** Timeline
 - [x] **#90** Helper board
 - [x] **#89** Presence strip
-- [ ] **#93** Resets panel
+- [x] **#93** Resets panel
 - [ ] **#94** Participants panel + class split
 - [ ] **#80** Close: record the two browser-coverage decisions, update ADR 0007's consequence
   - [ ] Restore the Archive's browser cache lifetime to 86400 (#95 dropped it to 60 for UI
@@ -1012,6 +1012,138 @@ caller).
 Verified at that commit: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean,
 `npm test` 414 / 36, the presence e2e specs green; after the constant was moved, tsc, the two
 affected test files and eslint on the three files were re-run clean.
+
+### #93 — Resets panel (this chunk)
+
+- [x] `src/lib/db/archive/predicates.ts` — **`RESET`** (`STARTED_FROM_BEGINNING AND completed = 0
+      AND is_full_clear = 0`), beside the full-clear rules because the fixture extractor samples
+      by it. Its docblock records the open question below.
+- [x] `src/lib/db/archive/queries.ts` — `getNonClearRuns(range)` returning `{ runs,
+      pinnedFullClears, resets, resetSeconds, quickResets, clearedWithoutSubject,
+      clearedWithoutSubjectSeconds, unpinnedClears, checkpointRuns }`, and
+      `RESET_RESTART_SECONDS = 600`. One pass over `gos_10k_runs`, no join, 7 ms in production.
+      **Five independent predicates, not a CASE ladder**, so an overlap is something the tests can
+      catch rather than something the SQL hides. `RESET` re-exported.
+- [x] `src/app/gos10k/ResetsPanel.tsx` — **new.** Population line, four sentences (each with a
+      "none" form and singular wording), a reconciliation equation using the query's own `runs`,
+      and an empty state when every Run in range is a clear.
+- [x] `src/app/gos10k/page.tsx` — the panel after the median speed board, #81's eighth slot.
+- [x] `tests/db/archive-resets.test.ts` — **new**, 6 tests: whole fixture (26 / 13,019 s / 21 quick;
+      6 / 54,479 s; 20; 8), the partition sums to `runs`, February 2022, April 2022 (a 4,045 s Reset
+      kept out of the quick count; 12 unpinned clears), October 2020 (5 Checkpoint Runs, 1 cleared
+      without him), clear 102 alone (zeroes).
+- [x] `tests/db/archive-fixture-shape.test.ts`, `scripts/extract-archive-fixture.ts` — read `RESET`
+      instead of spelling it; same SQL, seed unchanged.
+- [x] `e2e/gos10k-resets.spec.ts` — **new**, 2 specs, no figures: empty state, 360px.
+- [x] `CONTEXT.md` — **Reset** entry with `_Avoid_`. `CLAUDE.md` — fifteen browser flows.
+
+**Production reconciliation** (by hand, 360px, server against `data/gos-10k.db`): 3,352 Resets
+averaging 7:47 (2,911 inside ten minutes), 40 cleared without him averaging 1:01:02, 20 unpinned
+clears, 8 Checkpoint Runs, 10,000 + … = 13,420. No overflow unfiltered, clears 9,001–10,000,
+April 2022, clear 5,000, 2023-08-09. **Superseded by the 483 split below**: 2,897 Resets averaging
+5:56 (2,621 inside ten minutes), 40, 483 Checkpoint Runs. The unpinned-clears population is gone.
+
+**Deliberate departures from the ticket's wording:**
+
+- **"61:02" renders as `1:01:02`** — the page's one duration formatter shows hours past sixty
+  minutes (#91's criterion). Same figure.
+- **The restart-versus-collapse copy carries a count** (Resets under ten minutes) beside the mean.
+  The mean alone is pulled up by 49 hour-plus Resets (median 3:04), and in a range whose Resets are
+  long, calling them restarts would be false.
+- **#81's "pre-pin clears" are all *after* the pin** (2022-04-02 to 2024-12-15): phase 0, flag 0,
+  finished. Named `unpinnedClears`, and the copy says why the stricter count leaves them out.
+
+**Open, for the user — not changed:** `RESET` uses the *disjunctive* reading of "started from the
+beginning" because #81's 3,352 was counted that way. Under the *pinned* reading, 455 of the 3,352
+(post-pin, phase 0, flag 0) would not count as started from the beginning — the same kind of Run the
+pinned rule rejects when it is *finished* (the 20) — and 9 of those 455 were in fact finished by
+other players. A pinned-consistent split would be 2,897 Resets and 483 not-started Runs.
+**Resolved 2026-09-15: the user chose the pinned-consistent split. See "the 483 split" below.**
+
+Verified: lint 0 errors / 29 pre-existing warnings, both tsconfigs clean, `npm test` 420 / 37,
+`npm run e2e` 53/53.
+
+### #93 — review fixes (second commit)
+
+Both axes ran against `d3b9679` in a peer session with #81 as parent. Every factual claim was
+re-checked against `data/gos-10k.db` before acting.
+
+- [x] `src/lib/db/archive/predicates.ts` — **`CLEARED_WITHOUT_SUBJECT`, `UNPINNED_CLEAR`,
+      `CHECKPOINT_RUN`** join `RESET` (Standards 1 + 2). "Cleared without him" and the
+      checkpoint negation were each spelled in the query, the extractor and the shape test —
+      the duplication `RESET` had just been moved to end. The handoff's intention 7 kept them
+      local on the grounds of one caller; there were three. `UNPINNED_CLEAR` is now
+      `DISJUNCTIVE_FULL_CLEAR AND NOT (PINNED_FULL_CLEAR)`, the two named rules, instead of
+      hand-restating both. Same rows (0 NULLs in either start column), so the seed is unchanged.
+- [x] `src/lib/db/archive/queries.ts`, `scripts/extract-archive-fixture.ts`,
+      `tests/db/archive-fixture-shape.test.ts` — read the constants; re-exported.
+- [x] `tests/db/archive-resets.test.ts` — **every fixture Run matches exactly one population**
+      (Spec a). The sum-to-`runs` test passes if one bucket double-counts a Run another drops.
+      Checked red: against production, loosening `RESET` to drop `is_full_clear = 0` gives 40
+      misplaced Runs; the real predicates give 0 of 13,420.
+- [x] **The 9 Resets other players finished** (Spec c1) — confirmed, and **documented, not
+      fixed**. All 9 are post-pin, phase 0, flag 0, 4–6 finishers each. `is_full_clear` folds in
+      "someone completed" only where the pinned start rule holds, so these read 0 whoever
+      finished. The `RESET` docblock claimed the conjunct meant "neither did anyone else"; it and
+      the **Reset** glossary entry now name the 9. Fixing them means choosing a start reading,
+      and both choices move #81's 3,352 — the open question below, still the user's. (Fixed by
+      the 483 split, next section.)
+- [x] Stale "before the flag was reliable" (Spec) corrected in the `DISJUNCTIVE_FULL_CLEAR`
+      docblock and `CONTEXT.md`.
+
+**Not changed:** the zero/one/many branching in each `*Sentence` (the handoff's trap on the
+one-Reset wording; four sentences with different copy are not one switch); the repeated
+`<p className>` (four siblings, a wrapper is indirection); `scope = rangeClause(range)` (nine query
+functions use that name); the NULL fall-through (0 NULLs in production, and ADR 0007's Archive
+cannot gain a row); no "nobody finished" test (the fixture holds none of the 9, so it would pass
+over a definition production breaks); the scope-creep items (defended in the handoff and accepted
+by the review).
+
+Verified: lint 0 errors / 29 pre-existing warnings, build OK (both tsconfigs), `npm test` 421 / 37,
+`npm run e2e` 53/53 — which also covers the checkpoint clause changed after the first run.
+
+### #93 — the 483 split (third commit)
+
+The open question above, decided by the user on 2026-09-15: **every Run the pinned start
+reading rejects is a Checkpoint Run**, and a Reset uses that same reading. Production is now
+10,000 + 2,897 Resets + 40 cleared without him + 483 Checkpoint Runs = 13,420, down from five
+populations to four. **This departs from #81's reference figures** (3,352 / 8 / 20 "pre-pin
+clears"), which used the disjunctive reading.
+
+- [x] `src/lib/db/archive/predicates.ts` — `STARTED_FROM_BEGINNING_PINNED` (phase index up to the
+      pin, Bungie's flag after it). `RESET` and `CHECKPOINT_RUN` are built on it. `UNPINNED_CLEAR`
+      stays as the name for the 20-Run gap between the two full-clear rules, but it is no longer a
+      panel population.
+- [x] `src/lib/db/archive/queries.ts` — `unpinnedClears` removed. `checkpointRunsFinished` and
+      `checkpointRunsClearedWithoutSubject` added; the second is an `EXISTS` on the players'
+      `instance_id` key, which hazard 1 cannot reach. 8 ms unfiltered. Docblocks now give the
+      2,897 / 5:56 / 2,621-under-ten-minutes figures.
+- [x] `src/app/gos10k/ResetsPanel.tsx` — the unpinned-clears sentence is gone. The Checkpoint
+      sentence now says who finished them and states the post-pin rule, so a flag-unset Run at
+      phase 0 is not a mystery. The equation has four terms. The "barely figures" clause no longer
+      shows unfiltered (3.6%).
+- [x] `scripts/extract-archive-fixture.ts` — the cohorts select **the same rows** through the
+      disjunctive reading, and say why. Re-extracted: `tables` and `targets` are byte-identical to
+      the previous seed; only `generatedAt` and the `why` text changed.
+- [x] `tests/db/archive-fixture-shape.test.ts` — `RESET` 21, `CHECKPOINT_RUN` 33, plus the 5
+      unfinished flag-unset post-pin Runs that fail if `RESET` slides back to the disjunctive
+      reading.
+- [x] `tests/db/archive-resets.test.ts` — four populations. New figures in every range; the
+      long-Reset case moves to January 2022 (1,215 s), since April's 4,045 s Run is now a
+      Checkpoint Run. New test: `is_full_clear` equals the pinned reading AND "someone finished"
+      on every fixture Run (0 mismatches here, and 0 in production).
+- [x] `CONTEXT.md` — the **Checkpoint Run** and **Reset** entries are rewritten to use 483 and
+      2,897; the note about the 9 exceptions is removed.
+
+- [x] **The pin's "40-day gap with no GoS runs"** (`predicates.ts` `PINNED_FULL_CLEAR` docblock,
+      `CONTEXT.md` Full Clear entry), corrected in a fourth commit. Forty days is the gap in *full
+      clears*: the next disjunctive one is 2022-04-02 (40.0 days) and the next pinned one is
+      2022-04-09 (46.9 days). The gap still holds one Run, 10196384447 on 2022-02-24, which nobody
+      finished. The wording now says so.
+
+Verified: lint 0 errors / 29 warnings, build OK, `npm test` 423 / 37, `npm run e2e` 53/53.
+Production through `getNonClearRuns()`: 13,420 = 10,000 + 2,897 + 40 + 483 (23 / 11); warm 6–7 ms,
+about 25 ms on the first call, which includes preparing the statement.
 
 ## Notes and traps carried forward
 

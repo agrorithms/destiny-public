@@ -141,7 +141,6 @@ export default async function Gos10kPage({
     return (
         <section className="max-w-4xl space-y-8">
             <header className="space-y-5">
-                <h1 className="text-3xl font-bold ui-text-primary">The GoS 10k</h1>
 
                 {/* The number the page is named for, before anything else. Read from the
                     Archive rather than written down: a hardcoded 10,000 would keep
@@ -164,7 +163,7 @@ export default async function Gos10kPage({
                             {overview.pinnedFullClears.toLocaleString()}
                         </div>
                         <figcaption className="text-base font-medium ui-text-primary">
-                            Pinned Full Clears
+                            Garden of Salvation Full Clears
                         </figcaption>
                     </figure>
                     {/* Every figure on this page states the population it counts; this is
@@ -172,9 +171,7 @@ export default async function Gos10kPage({
                         tiles below count three other populations, and #87's filter and the
                         panel tickets behind it are what make the default true. */}
                     <p className="ui-text-secondary text-sm leading-6">
-                        Garden of Salvation runs one Guardian entered at the first encounter and
-                        finished himself — the strictest of the two defensible counts, and the one
-                        this page is named for. Counting {scope}.
+                        Counting {scope}.
                     </p>
                 </div>
 
@@ -185,13 +182,12 @@ export default async function Gos10kPage({
                     <span className="font-medium ui-text-primary">
                         Complete through {formatArchiveTimestamp(span.lastRunAt)}.
                     </span>{' '}
-                    This is a finished historical archive, not the live tracker in the navigation
-                    above it. It was collected once and will not change; everything else on this
+                    This is a finished historical archive, not the live tracker. It was collected once and will not change; everything else on this
                     site updates in real time.
                 </p>
 
                 <p className="ui-text-secondary text-sm leading-6">
-                    Every Garden of Salvation run that Guardian ever entered, from{' '}
+                    Every Garden of Salvation run he ever entered, from{' '}
                     {formatArchiveTimestamp(span.firstRunAt)} to {formatArchiveTimestamp(span.lastRunAt)} — and the{' '}
                     {allTimeHelpers.toLocaleString()} people who showed up for them.
                 </p>
@@ -248,18 +244,18 @@ export default async function Gos10kPage({
                     Across {scope}.
                 </p>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {[
-                    { value: overview.runs, label: 'runs entered' },
-                    { value: overview.completions, label: 'runs finished' },
-                    { value: overview.helpers, label: 'guardians who helped' },
-                ].map((stat) => (
-                    <div key={stat.label} className="space-y-1">
-                        <div className="text-2xl font-bold ui-accent-text">
-                            {stat.value.toLocaleString()}
+                    {[
+                        { value: overview.runs, label: 'runs entered' },
+                        { value: overview.completions, label: 'runs finished' },
+                        { value: overview.helpers, label: 'guardians who helped' },
+                    ].map((stat) => (
+                        <div key={stat.label} className="space-y-1">
+                            <div className="text-2xl font-bold ui-accent-text">
+                                {stat.value.toLocaleString()}
+                            </div>
+                            <div className="ui-text-secondary text-xs">{stat.label}</div>
                         </div>
-                        <div className="ui-text-secondary text-xs">{stat.label}</div>
-                    </div>
-                ))}
+                    ))}
                 </div>
             </section>
 

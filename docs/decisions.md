@@ -581,6 +581,11 @@ of Phase 1.
 - **Restoring 86400 is a real outstanding action**, not a nice-to-have. It is the closing action on
   **#80**, is a checkbox in `docs/progress/gos10k-phase1.md`, and the constant's own comment says
   so. Nothing else will remind anyone.
+  **Done 2026-09-16, closing #80.** The two constants are one `ARCHIVE_MAX_AGE_SECONDS = 86400`
+  again and the emitted header is back to `public, max-age=86400, s-maxage=86400, immutable` —
+  byte-identical to what the 2026-09-04 entry verified on prod, so that verification stands again
+  rather than needing a re-run. The three reminders all fired, which is the point worth keeping:
+  the expiry was written down in three places and none of them had to be remembered.
 
 At ~5 visitors/day the cache buys the site almost nothing either way; this is a developer-ergonomics
 setting, which is exactly why it needs a written expiry rather than living only in a diff.

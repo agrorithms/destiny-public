@@ -38,9 +38,13 @@ Wave 0 is `84`, `96`, `86`, `95` (nothing blocks them); `85` needs `84`; `87` ne
 - [x] **#93** Resets panel
 - [x] **#94** Participants panel + class split
 - [ ] **#80** Close: record the two browser-coverage decisions, update ADR 0007's consequence
-  - [ ] Restore the Archive's browser cache lifetime to 86400 (#95 dropped it to 60 for UI
-        iteration; collapse `ARCHIVE_BROWSER_MAX_AGE_SECONDS` back into
-        `ARCHIVE_SHARED_MAX_AGE_SECONDS` in `src/lib/http/cache.ts`)
+  - [x] Decisions 2 and 4 recorded as comments on #80 — #87 (the filter), #88 (the timeline and
+        the assertion style), #90 (the Helper board)
+  - [x] ADR 0007's browser-coverage consequence rewritten: the rule ("assert only what no other
+        seam can observe") rather than the spec inventory, plus #90's element-probe limit
+  - [x] Restored the Archive's browser cache lifetime to 86400 (#95 dropped it to 60 for UI
+        iteration; `ARCHIVE_BROWSER_MAX_AGE_SECONDS` collapsed back into a single
+        `ARCHIVE_MAX_AGE_SECONDS` in `src/lib/http/cache.ts`)
 
 ## Files
 

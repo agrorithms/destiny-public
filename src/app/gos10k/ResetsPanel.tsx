@@ -1,7 +1,18 @@
 import { RESET_RESTART_SECONDS, type ArchiveNonClearRuns } from '@/lib/db/archive/queries';
 import { formatMeanDuration } from './duration-copy';
+import { Figure } from './Figure';
+import { plural } from './plural-copy';
 
 const RESTART_MINUTES = RESET_RESTART_SECONDS / 60;
+
+/**
+ * Below this share of the Runs in range, the panel is willing to say checkpoint farming
+ * "barely figures". An editorial threshold rather than a query one, which is why it lives
+ * beside the copy it governs instead of in the query module — but named, like
+ * {@link RESET_RESTART_SECONDS}, so the sentence's condition is legible rather than a
+ * bare number inside JSX.
+ */
+const CHECKPOINT_RARE_SHARE = 0.01;
 
 /**
  * The Resets panel (#93) — the Runs that did not become clears, so the 10,000 is not
@@ -74,14 +85,6 @@ export function ResetsPanel({
             )}
         </section>
     );
-}
-
-function Figure({ children }: { children: React.ReactNode }) {
-    return <span className="font-medium ui-text-primary tabular-nums">{children}</span>;
-}
-
-function plural(n: number, one: string, many: string): string {
-    return n === 1 ? one : many;
 }
 
 /** The Reset population, with the restart-versus-collapse reading as a count. */
@@ -174,7 +177,9 @@ function CheckpointSentence({ outcomes }: { outcomes: ArchiveNonClearRuns }) {
             {/* Only where it is true: October 2020 is 5 Checkpoint Runs of 9, and saying
                 farming "barely figures" there would be the page contradicting its own
                 figure. Unfiltered it is 483 of 13,420, so the clause does not show. */}
-            {n / outcomes.runs < 0.01 && <> Checkpoint farming barely figures in this history.</>}
+            {n / outcomes.runs < CHECKPOINT_RARE_SHARE && (
+                <> Checkpoint farming barely figures in this history.</>
+            )}
         </>
     );
 }

@@ -147,8 +147,9 @@ describe('obeying the active range', () => {
         // Checkpoint Runs, including a 4,045-second one the disjunctive reading called a
         // Reset. One 97-second Reset is left.
         const april = resolveArchiveRangeFromParams({ from: '2022-04-01', to: '2022-04-30' });
+        const outcomes = getNonClearRuns(april);
 
-        expect(getNonClearRuns(april)).toEqual({
+        expect(outcomes).toEqual({
             runs: 55,
             pinnedFullClears: 40,
             resets: 1,
@@ -160,7 +161,7 @@ describe('obeying the active range', () => {
             checkpointRunsFinished: 12,
             checkpointRunsClearedWithoutSubject: 0,
         });
-        expect(accountedFor(getNonClearRuns(april))).toBe(55);
+        expect(accountedFor(outcomes)).toBe(55);
     });
 
     it('finds the Checkpoint Runs and a clear without him in their own month', () => {
@@ -168,8 +169,9 @@ describe('obeying the active range', () => {
         // his fireteam finished without him, two nobody did — and one 3,340-second Run the
         // fireteam cleared from the start after he had gone.
         const october2020 = resolveArchiveRangeFromParams({ from: '2020-10-01', to: '2020-10-31' });
+        const outcomes = getNonClearRuns(october2020);
 
-        expect(getNonClearRuns(october2020)).toEqual({
+        expect(outcomes).toEqual({
             runs: 9,
             pinnedFullClears: 3,
             resets: 0,
@@ -181,7 +183,7 @@ describe('obeying the active range', () => {
             checkpointRunsFinished: 2,
             checkpointRunsClearedWithoutSubject: 1,
         });
-        expect(accountedFor(getNonClearRuns(october2020))).toBe(9);
+        expect(accountedFor(outcomes)).toBe(9);
     });
 
     it('reports zeroes, not nulls, for a range that is one clear', () => {

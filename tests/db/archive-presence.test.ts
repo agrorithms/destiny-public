@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
-import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
+import { rangeOfClear, resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
 import { getSubjectPresence } from '@/lib/db/archive/queries';
 
@@ -27,13 +27,6 @@ beforeAll(() => {
     closeArchiveDb();
     buildFixtureArchive();
 });
-
-function rangeOfClear(clearNumber: number) {
-    return resolveArchiveRangeFromParams({
-        clearFrom: String(clearNumber),
-        clearTo: String(clearNumber),
-    });
-}
 
 describe('his presence across the whole Archive', () => {
     it('totals his time against the clears\' duration', () => {

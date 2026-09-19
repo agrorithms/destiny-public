@@ -1,4 +1,6 @@
 import type { ArchiveParticipantBucket } from '@/lib/db/archive/queries';
+import { plural } from './plural-copy';
+import { ShareBar } from './ShareBar';
 
 /** The bucket the panel leads with: the most impressive population figure the Archive has. */
 const HEADLINE_PEOPLE = 3;
@@ -68,9 +70,9 @@ export function ParticipantsPanel({
                         </div>
                         <figcaption className="text-sm leading-6 ui-text-secondary">
                             <span className="font-medium ui-text-primary">
-                                {trio === 1 ? 'trio clear' : 'trio clears'}
+                                {plural(trio, 'trio clear', 'trio clears')}
                             </span>{' '}
-                            — {trio === 1 ? 'a Pinned Full Clear' : 'Pinned Full Clears'} that three
+                            — {plural(trio, 'a Pinned Full Clear', 'Pinned Full Clears')} that three
                             people entered, and nobody else ever did.
                         </figcaption>
                     </figure>
@@ -98,13 +100,7 @@ export function ParticipantsPanel({
                                             {bucket.clears.toLocaleString()}
                                         </td>
                                         <td className="w-1/2 py-1">
-                                            <div
-                                                className="h-2 rounded-sm bg-current opacity-40"
-                                                style={{
-                                                    width: `${(bucket.clears / largest) * 100}%`,
-                                                    minWidth: bucket.clears > 0 ? '2px' : undefined,
-                                                }}
-                                            />
+                                            <ShareBar value={bucket.clears} of={largest} />
                                         </td>
                                     </tr>
                                 );

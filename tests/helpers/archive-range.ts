@@ -20,3 +20,20 @@ export function resolveArchiveRangeFromParams(
 ): ResolvedArchiveRange {
     return resolveArchiveRange(parseArchiveRangeRequest(searchParams));
 }
+
+/**
+ * The range holding exactly one Pinned Full Clear, by its Clear Number.
+ *
+ * A Clear Number range resolves to that Run's own instant, so the window holds that clear
+ * and whatever else shares the instant — which is the one-row case nearly every Archive
+ * panel has a distinct rendering for (an empty state, a singular sentence, a division that
+ * would otherwise be 0 of 0). Hand-rolled identically in archive-presence.test.ts and
+ * archive-composition.test.ts, and as a hardcoded `clear102()` in
+ * archive-helper-board.test.ts, before it moved here.
+ */
+export function rangeOfClear(clearNumber: number): ResolvedArchiveRange {
+    return resolveArchiveRangeFromParams({
+        clearFrom: String(clearNumber),
+        clearTo: String(clearNumber),
+    });
+}

@@ -1,5 +1,7 @@
 import { PRESENCE_LATE_JOIN_SECONDS, type ArchiveSubjectPresence } from '@/lib/db/archive/queries';
-import { formatClearTimeShare, formatMeanDuration } from './duration-copy';
+import { formatMeanDuration } from './duration-copy';
+import { formatShare } from './share-copy';
+import { Figure } from './Figure';
 
 const LATE_JOIN_MINUTES = PRESENCE_LATE_JOIN_SECONDS / 60;
 
@@ -83,9 +85,7 @@ function LateJoinSentence({ presence }: { presence: ArchiveSubjectPresence }) {
 
     return (
         <>
-            <span className="font-medium ui-text-primary tabular-nums">
-                {presence.lateJoins.toLocaleString()}
-            </span>{' '}
+            <Figure>{presence.lateJoins.toLocaleString()}</Figure>{' '}
             of the {presence.clears.toLocaleString()} clears had him present for under{' '}
             {LATE_JOIN_MINUTES} minutes — joined at the very end.
         </>
@@ -99,7 +99,7 @@ function PresenceFigures({ presence }: { presence: ArchiveSubjectPresence }) {
         <div data-testid="archive-presence-strip" className="ui-card space-y-3 rounded-md border px-4 py-3">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-3xl font-bold ui-accent-text tabular-nums">
-                    {formatClearTimeShare(share)}
+                    {formatShare(share)}
                 </span>
                 <span className="ui-text-secondary text-sm">of the time those clears ran</span>
             </div>
@@ -118,14 +118,9 @@ function PresenceFigures({ presence }: { presence: ArchiveSubjectPresence }) {
 
             <p className="ui-text-secondary text-sm leading-6">
                 On average he was in a clear for{' '}
-                <span className="font-medium ui-text-primary tabular-nums">
-                    {formatMeanDuration(presence.presentSeconds / presence.clears)}
-                </span>{' '}
-                of its{' '}
-                <span className="font-medium ui-text-primary tabular-nums">
-                    {formatMeanDuration(presence.durationSeconds / presence.clears)}
-                </span>
-                .
+                <Figure>{formatMeanDuration(presence.presentSeconds / presence.clears)}</Figure> of
+                its{' '}
+                <Figure>{formatMeanDuration(presence.durationSeconds / presence.clears)}</Figure>.
             </p>
 
             {/* The sceptical reading, answered with a count rather than a reassurance —

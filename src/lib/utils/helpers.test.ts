@@ -18,16 +18,16 @@ import { formatRunDuration } from './helpers';
 
 describe('formatting a run duration', () => {
     it('renders a sub-hour duration as unpadded minutes and padded seconds', () => {
+        // One anchor per rule rather than the full table: duration-copy.test.ts walks the
+        // Archive's worked examples through the re-export, and two copies of the same
+        // expectations is the duplication this extraction exists to remove.
         expect(formatRunDuration(453)).toBe('7:33');
         // Without the pad this reads '7:3', which is not a time.
         expect(formatRunDuration(423)).toBe('7:03');
-        expect(formatRunDuration(60)).toBe('1:00');
     });
 
     it('grows an hours field rather than counting past sixty minutes', () => {
-        expect(formatRunDuration(18820)).toBe('5:13:40');
         expect(formatRunDuration(3600)).toBe('1:00:00');
-        expect(formatRunDuration(3599)).toBe('59:59');
     });
 
     it('floors a fractional duration and clamps a negative one', () => {

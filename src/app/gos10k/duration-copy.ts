@@ -1,47 +1,30 @@
 /**
- * How the Archive page renders a run duration.
+ * How the Archive page renders a duration.
  *
- * One formatter, deliberately, because two panels render the same column: the
- * fastest-clears list (#91) and the median speed board (#92). The queries return raw
- * seconds — `gos_10k_runs.duration_seconds` is an integer and stays one — so the
- * decision of whether 453 reads as `453`, `7m 33s` or `7:33` is made here and nowhere
- * else. A second implementation is not a style problem; it is how the same number
- * renders two ways on one page.
+ * One formatter per rendering, deliberately, because panels share columns: the
+ * fastest-clears list (#91) and the median speed board (#92) print the same run
+ * duration, and a second implementation is how the same number reads `453` on one and
+ * `7:33` on the other. Page-level copy rather than SQL, which is why it sits beside
+ * range-copy.ts instead of in the query module — it needs no database and no range.
  *
- * Page-level copy rather than SQL, which is why it sits beside range-copy.ts under
- * src/app/gos10k/ instead of in the query module. It needs no database and no range.
- *
- * **The digits themselves are no longer assembled here.** The Tracker's player profile
- * carried a private `formatDuration` of the same shape, differing only in mapping null
- * to `'N/A'`; #109 collapsed the two into `formatRunDuration` in
- * `src/lib/utils/helpers.ts` — pure, so neither a `'use client'` boundary nor a database
- * connection has to cross the Tracker/Archive split to reach it, the same move
- * ./predicates.ts made when the build script needed a fragment out of a module it could
- * not import.
- *
- * Re-exporting that function rather than re-implementing it is what keeps #91's own
- * criterion true: this file is still the single implementation the Archive page uses,
- * and there is still no way for the fastest-clears list and the median speed board to
- * render the same number two ways. The Archive's *copy decisions* — rounding, hours,
- * the mean/median naming below — stay here, because they are page copy and not
- * arithmetic.
+ * The digits are no longer assembled here. #109 collapsed this file's `formatRunDuration`
+ * and the Tracker profile's private `formatDuration` (identical but for a null branch)
+ * into `src/lib/utils/helpers.ts` — pure, so it crosses the Tracker/Archive split without
+ * a database or a `'use client'` boundary, the move ./predicates.ts already made. This
+ * file re-exports it, which is what keeps #91's criterion true: still one implementation
+ * behind the Archive's panels. The Archive's *copy decisions* — rounding, hours, the
+ * mean/median naming — stay below, because they are copy and not arithmetic.
  */
 
 import { formatRunDuration as formatSharedRunDuration } from '@/lib/utils/helpers';
 
 /**
- * `7:33` under an hour, `3:23:54` over it.
+ * `7:33` under an hour, `3:23:54` over it — the shared formatter, narrowed to `number`.
  *
- * `m:ss` is how a raid time is spoken, so minutes are unpadded and seconds always are —
- * `7:3` is not a time. Hours appear only when there are some: every Pinned Full Clear
- * worth ranking is minutes long, and a permanently-zero `0:07:33` would be noise on
- * every row to serve the handful of AFK runs at the bottom of the table.
- *
- * The parameter is narrowed back to `number`. The shared function also accepts
- * `null | undefined` for the Tracker's sake, but every duration on this page comes from
- * `gos_10k_runs.duration_seconds`, a NOT NULL integer — a nullish value reaching an
- * Archive column would be a bug, and should fail to typecheck rather than quietly
- * render `N/A` in a ranked table.
+ * It also accepts `null | undefined` for the Tracker's sake. Every duration on this page
+ * comes from `gos_10k_runs.duration_seconds`, a NOT NULL integer, so a nullish value
+ * reaching an Archive column should fail to typecheck rather than quietly render `N/A`
+ * in a ranked table.
  */
 export const formatRunDuration: (seconds: number) => string = formatSharedRunDuration;
 

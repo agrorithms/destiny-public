@@ -11,6 +11,11 @@ import { PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS, useProfileCompletionsPageSize, u
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { fetchLinkedProfilesClient, fetchPlayerProfileClient, isClientBungieError } from '@/lib/bungie/client-api';
 import { pickPrimaryLinkedProfile } from '@/lib/bungie/linked-profiles';
+// The run-duration formatter this file used to keep privately (#109). It is shared with
+// the Archive's /gos10k panels now; `src/lib/utils/helpers.ts` is pure, so importing it
+// costs this client module nothing. Imported under its real name rather than the old
+// local one so that the two renderings of a raid time are greppable as one thing.
+import { formatRunDuration } from '@/lib/utils/helpers';
 
 // Mirrors PAGE_TOKEN_HEADER in src/lib/http/request-auth.ts (kept local so this client module
 // avoids importing the server-only crypto helper).
@@ -642,7 +647,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                                                     <tr key={row.raidKey} className="border-b border-gray-100 dark:border-gray-800">
                                                         <td className="py-2 ui-text-primary">{row.raidName}</td>
                                                         <td className="py-2 text-right font-mono font-bold ui-text-primary">{row.completions}</td>
-                                                        <td className="py-2 text-right ui-text-secondary">{formatDuration(row.avgCompletionSeconds)}</td>
+                                                        <td className="py-2 text-right ui-text-secondary">{formatRunDuration(row.avgCompletionSeconds)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -703,7 +708,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                                                             <td className="py-2 text-right ui-text-secondary" title={formatCompletionDate(row.completedAt)}>
                                                                 {formatRelativeTime(row.completedAt)}
                                                             </td>
-                                                            <td className="py-2 text-right ui-text-secondary">{formatDuration(row.timePlayedSeconds)}</td>
+                                                            <td className="py-2 text-right ui-text-secondary">{formatRunDuration(row.timePlayedSeconds)}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -794,7 +799,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                                                                             </Link>
                                                                         </td>
                                                                         <td className="py-2 text-right font-mono font-bold ui-text-primary">{row.completions}</td>
-                                                                        <td className="py-2 text-right ui-text-secondary">{formatDuration(row.avgCompletionSeconds)}</td>
+                                                                        <td className="py-2 text-right ui-text-secondary">{formatRunDuration(row.avgCompletionSeconds)}</td>
                                                                     </tr>
                                                                 ))}
                                                             </tbody>
@@ -1005,21 +1010,6 @@ function getMembershipPrefix(membershipType: number): string {
         case 6: return 'epic';
         default: return 'pc';
     }
-}
-
-function formatDuration(totalSeconds: number | null | undefined): string {
-    if (totalSeconds === null || totalSeconds === undefined) {
-        return 'N/A';
-    }
-    const rounded = Math.max(0, Math.floor(totalSeconds));
-    const hours = Math.floor(rounded / 3600);
-    const minutes = Math.floor((rounded % 3600) / 60);
-    const seconds = rounded % 60;
-
-    if (hours > 0) {
-        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }
-    return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function formatCompletionDate(dateIso: string): string {

@@ -11,20 +11,23 @@
  * Page-level copy rather than SQL, which is why it sits beside range-copy.ts under
  * src/app/gos10k/ instead of in the query module. It needs no database and no range.
  *
- * **There is a second formatter of this shape in the repo** — a private `formatDuration`
- * in the Tracker's PlayerProfileClient.tsx, differing only in mapping null to `'N/A'`.
- * It is not imported here, and the honest reason is scope rather than architecture: the
- * argument that importing it would drag a `'use client'` boundary across the two
- * databases is true of *that* file but does not rule out the obvious third option, which
- * is extracting a pure `formatDuration` both call — exactly what ./predicates.ts already
- * did when the build script needed a fragment out of a module it could not import.
+ * **The digits themselves are no longer assembled here.** The Tracker's player profile
+ * carried a private `formatDuration` of the same shape, differing only in mapping null
+ * to `'N/A'`; #109 collapsed the two into `formatRunDuration` in
+ * `src/lib/utils/helpers.ts` — pure, so neither a `'use client'` boundary nor a database
+ * connection has to cross the Tracker/Archive split to reach it, the same move
+ * ./predicates.ts made when the build script needed a fragment out of a module it could
+ * not import.
  *
- * That extraction touches a Tracker feature and #91 is an Archive ticket, so it is left
- * undone and written down instead of argued away. #91's own criterion — one duration
- * implementation shared by this panel and #92's median speed board — is satisfied by
- * this file. Collapsing the Tracker's into it is a follow-up, not a thing this comment
- * should pretend was already decided.
+ * Re-exporting that function rather than re-implementing it is what keeps #91's own
+ * criterion true: this file is still the single implementation the Archive page uses,
+ * and there is still no way for the fastest-clears list and the median speed board to
+ * render the same number two ways. The Archive's *copy decisions* — rounding, hours,
+ * the mean/median naming below — stay here, because they are page copy and not
+ * arithmetic.
  */
+
+import { formatRunDuration as formatSharedRunDuration } from '@/lib/utils/helpers';
 
 /**
  * `7:33` under an hour, `3:23:54` over it.
@@ -33,21 +36,14 @@
  * `7:3` is not a time. Hours appear only when there are some: every Pinned Full Clear
  * worth ranking is minutes long, and a permanently-zero `0:07:33` would be noise on
  * every row to serve the handful of AFK runs at the bottom of the table.
+ *
+ * The parameter is narrowed back to `number`. The shared function also accepts
+ * `null | undefined` for the Tracker's sake, but every duration on this page comes from
+ * `gos_10k_runs.duration_seconds`, a NOT NULL integer — a nullish value reaching an
+ * Archive column would be a bug, and should fail to typecheck rather than quietly
+ * render `N/A` in a ranked table.
  */
-export function formatRunDuration(seconds: number): string {
-    // Floor rather than round, and clamp at zero: the column is an integer count of
-    // seconds today, and a formatter that can emit `-1:-1` for a bad row is worse than
-    // one that reads `0:00`.
-    const total = Math.max(0, Math.floor(seconds));
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const remainder = total % 60;
-
-    if (hours > 0) {
-        return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
-    }
-    return `${minutes}:${String(remainder).padStart(2, '0')}`;
-}
+export const formatRunDuration: (seconds: number) => string = formatSharedRunDuration;
 
 /**
  * A median clear duration, which is the same rendering rule reached through a rounding

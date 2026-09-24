@@ -64,10 +64,10 @@ export function HelperBoard({
                 actually looking at. */}
             <p className="ui-text-secondary text-sm leading-6">
                 {helpers.length === 0
-                    ? `No guardian was present for a Pinned Full Clear across ${scope}.`
+                    ? `No guardian was present for a Full Clear across ${scope}.`
                     : showingAll
-                      ? `All ${population.toLocaleString()} guardians present for a Pinned Full Clear across ${scope}, most clears first.`
-                      : `The ${helpers.length} guardians present for most of the Pinned Full Clears across ${scope}, of ${population.toLocaleString()} who were there for at least one.`}
+                      ? `All ${population.toLocaleString()} guardians present for a Full Clear across ${scope}, most clears first.`
+                      : `The ${helpers.length} guardians present for most of the Full Clears across ${scope}, of ${population.toLocaleString()} who were there for at least one.`}
             </p>
 
             {helpers.length === 0 ? (
@@ -76,7 +76,7 @@ export function HelperBoard({
                 // rather than degraded when it does. A table of three headings and no
                 // rows would read as a broken panel.
                 <p className="ui-text-secondary text-sm leading-6">
-                    Those Runs hold no Pinned Full Clears, so there is nobody to rank here.
+                    Those Runs hold no Full Clears, so there is nobody to rank here.
                     Widen the range to see the board.
                 </p>
             ) : (

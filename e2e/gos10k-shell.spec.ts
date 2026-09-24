@@ -11,6 +11,8 @@ import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './suppo
  * from #86's acceptance criteria: the methodology is *closed* by default, which
  * is a rendered-DOM property, and the shell is readable on a phone without a
  * horizontal page scroll or a clipped headline, which needs a real layout.
+ * #111 added two more of the same kind: the column is centred at a desktop width,
+ * and no reader ever sees the word "Pinned".
  *
  * Deliberately asserts no counts and no dates — #85 widens the fixture Archive
  * immediately after this and every one of those would break for no benefit.
@@ -27,10 +29,10 @@ test.describe('the GoS 10k page shell', () => {
         // this asserts the number and its label are programmatically related rather
         // than merely adjacent — which is the property a screen reader depends on.
         // `exact`, because accessible names match by substring: #94's trio figure is
-        // captioned with "…Pinned Full Clears that three people entered…", and an inexact
-        // match binds to both figures.
+        // captioned with "…Full Clears that three people entered…", and an inexact match
+        // would bind to it too if the headline's caption were ever shortened.
         await expect(
-            page.getByRole('figure', { name: 'Pinned Full Clears', exact: true })
+            page.getByRole('figure', { name: 'Garden of Salvation Full Clears', exact: true })
         ).toBeVisible();
     });
 
@@ -46,6 +48,40 @@ test.describe('the GoS 10k page shell', () => {
         // would make an unscoped group locator strict-mode-ambiguous.
         await page.getByText('How the 10,000 is counted').click();
         await expect(methodology).toBeVisible();
+    });
+
+    // #111. The model has two full-clear rules and the code names both, but the page
+    // shows one: an unqualified Full Clear here is the Pinned rule. Everything a reader
+    // sees must say "Full Clear", including the text behind the closed methodology and
+    // the charts' accessible names, which innerText would miss.
+    test('never shows a reader the word "Pinned"', async ({ page }) => {
+        await page.goto('/gos10k');
+
+        // textContent rather than innerText, so the closed disclosure counts. Scoped to
+        // <main> because the framework's inline scripts sit outside it.
+        expect(await page.locator('main').textContent()).not.toContain('Pinned');
+        await expect(page.locator('[aria-label*="Pinned" i]')).toHaveCount(0);
+    });
+
+    // #111. The page's column is narrower than the site's main column on purpose (the
+    // panels are prose and tables); it sat against the left edge because it had no
+    // `mx-auto`, where every other page is centred. Only a real layout shows this.
+    test('centres its column in the site\'s main column at a desktop width', async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await page.goto('/gos10k');
+
+        const main = await page.locator('main').boundingBox();
+        const column = await page.locator('main > section').boundingBox();
+        if (!main || !column) throw new Error('the page has no main column to measure');
+
+        // Narrower than main, or centring is not being tested at all.
+        expect(column.width).toBeLessThan(main.width - 100);
+        // `main`'s padding is the same on both sides, so centred in its box is centred
+        // in its content.
+        expect(
+            Math.abs(column.x + column.width / 2 - (main.x + main.width / 2)),
+            'the column is off-centre'
+        ).toBeLessThanOrEqual(1);
     });
 
     test.describe('on a phone', () => {

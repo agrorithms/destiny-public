@@ -27,7 +27,11 @@ test.describe('the GoS 10k Archive page', () => {
 
         await page.goto('/gos10k');
 
-        await expect(page.getByRole('heading', { name: 'The GoS 10k', level: 1 })).toBeVisible();
+        // The headline figure rather than a heading: the page has had no <h1> since its
+        // header was trimmed to lead with the number.
+        await expect(
+            page.getByRole('figure', { name: 'Garden of Salvation Full Clears', exact: true })
+        ).toBeVisible();
 
         // The same canary the setup project checked over HTTP, re-checked through
         // a real render. The setup proves the *server* opened the fixture; this

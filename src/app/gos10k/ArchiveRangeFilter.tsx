@@ -7,7 +7,7 @@ import {
     type ArchiveSpan,
     type ResolvedMilestonePreset,
 } from '@/lib/db/archive/range';
-import { ARCHIVE_TAB_PARAM, archiveTabHref, DEFAULT_ARCHIVE_TAB, type ArchiveTab } from './archive-tab';
+import { archiveTabHref, archiveTabParams, type ArchiveTab } from './archive-tab';
 import { formatArchiveDayRange, formatClearNumberRange } from './range-copy';
 
 /**
@@ -196,8 +196,8 @@ export function ArchiveRangeFilter({
                                 {/* Links into the same parameters the forms submit — not a second
                                     filtering mechanism — and every one of them is anchored to the
                                     Archive's own first and last Run rather than to today. Built
-                                    from the preset's request rather than its `href`, which knows
-                                    nothing of tabs. */}
+                                    here from the preset's request, since only this control knows
+                                    the tab the link must keep. */}
                                 {presets.map((preset) => (
                                     <Link
                                         key={preset.id}
@@ -297,8 +297,11 @@ function RangeForm({
                 <p className="ui-text-secondary text-xs leading-5">{hint}</p>
             </fieldset>
             {/* After the bounds, so a submitted URL reads range-then-tab like every link
-                on the page. Omitted on Overview, whose URL has no `tab`. */}
-            {tab !== DEFAULT_ARCHIVE_TAB ? <input type="hidden" name={ARCHIVE_TAB_PARAM} value={tab} /> : null}
+                on the page. From the same params the tab links are built from, so the
+                rule that Overview writes nothing has one owner: none on Overview. */}
+            {[...archiveTabParams(tab)].map(([name, value]) => (
+                <input key={name} type="hidden" name={name} value={value} />
+            ))}
         </form>
     );
 }

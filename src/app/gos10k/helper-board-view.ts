@@ -1,5 +1,5 @@
 import { singleSearchParam, type ArchiveRangeRequest } from '@/lib/db/archive/range';
-import { archiveTabHref } from './archive-tab';
+import { archiveTabHref, type ArchiveTab } from './archive-tab';
 
 /**
  * The Helper board's own two pieces of view state (#90): which time column is shown,
@@ -23,9 +23,10 @@ import { archiveTabHref } from './archive-tab';
  *
  * The cost, stated plainly: switching the column is a page navigation rather than an
  * instant repaint, and on a `force-dynamic` route it re-runs the Rankings tab's SQL
- * (#112 stopped it re-running every panel's). The Helper board is the heaviest of those — about 170ms against the unfiltered production
- * Archive, a few milliseconds for a narrow range. The board's ranking is by presence in
- * either measure, so the rows do not move underneath the reader when they switch.
+ * (#112 stopped it re-running every panel's). The Helper board is the heaviest of
+ * those — about 170ms against the unfiltered production Archive, a few milliseconds
+ * for a narrow range. The board's ranking is by presence in either measure, so the
+ * rows do not move underneath the reader when they switch.
  *
  * ## Unknown values degrade, they never throw
  *
@@ -67,6 +68,12 @@ function isHelperTimeMeasure(value: string): value is HelperTimeMeasure {
 
 /** The board's `id`, and the fragment every one of its own links ends at. */
 export const HELPER_BOARD_ANCHOR = 'helpers';
+
+/**
+ * The tab the board is rendered on (#112), which every one of its links must land back
+ * on. The page's own tab switch in page.tsx is what actually puts it there.
+ */
+export const HELPER_BOARD_TAB: ArchiveTab = 'rankings';
 
 export interface HelperBoardView {
     measure: HelperTimeMeasure;
@@ -135,5 +142,5 @@ export function helperBoardHref(
         params.set(HELPER_BOARD_PARAMS.rows, 'all');
     }
 
-    return `${archiveTabHref(request, 'rankings', params)}#${HELPER_BOARD_ANCHOR}`;
+    return `${archiveTabHref(request, HELPER_BOARD_TAB, params)}#${HELPER_BOARD_ANCHOR}`;
 }

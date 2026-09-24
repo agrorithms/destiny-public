@@ -36,3 +36,17 @@ export async function expectNoElementOverflow(element: Locator, what: string): P
     const overflow = await element.evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow, `${what} scrolls sideways at this viewport`).toBeLessThanOrEqual(0);
 }
+
+/**
+ * An element's rendered box, or a failure that says it has none.
+ *
+ * `boundingBox()` returns null for an element that is not rendered, and each spec that
+ * measured layout had its own answer to that — a throw, an `expect(...).not.toBeNull()`,
+ * a non-null assertion. A layout assertion against a missing element is a failed test,
+ * whichever spec makes it, so the answer is written once.
+ */
+export async function boxOf(element: Locator): Promise<{ x: number; y: number; width: number; height: number }> {
+    const box = await element.boundingBox();
+    if (!box) throw new Error('nothing to measure: the element is not rendered');
+    return box;
+}

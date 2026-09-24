@@ -71,7 +71,9 @@ export function ArchiveRangeFilter({
             // `top` is the site nav's height, which is sticky at the top too and draws
             // over the page: stuck at 0, this sat underneath it. The nav is one row from
             // `lg` and two below, and gos10k-range-filter.spec.ts fails if either value
-            // drifts. `max-h` keeps an expanded bar, or a rail on a short screen,
+            // drifts. The rail's `xl` value is the one-row nav plus a 1.5rem gap, since
+            // a card beside the column reads as detached from the nav, not as a bar
+            // hanging off it; its `max-h` takes the same gap off the bottom. `max-h` keeps an expanded bar, or a rail on a short screen,
             // scrollable rather than cut off below the viewport's edge. The bar's top
             // corners are square because it sits flush against the nav, where rounded
             // ones let the page show through.
@@ -106,9 +108,10 @@ export function ArchiveRangeFilter({
                 // an error or an empty page — but silently swapping the view for one the
                 // URL did not ask for is its own kind of broken. Outside the disclosure,
                 // so a collapsed bar still says so.
-                <p data-testid="archive-range-degraded" className="ui-text-secondary text-xs leading-5 xl:text-sm xl:leading-6">
-                    That link did not describe a range this Archive contains, so the whole Archive
-                    is shown.
+                // Short enough for one line in the phone bar, which has to fit in 15% of
+                // the screen with this showing too.
+                <p data-testid="archive-range-degraded" className="ui-text-secondary text-sm leading-6">
+                    Invalid range — showing the whole Archive.
                 </p>
             ) : null}
 

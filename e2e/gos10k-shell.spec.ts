@@ -1,5 +1,5 @@
 import { expect, test } from './support/test-fixtures';
-import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
+import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The page shell from issue #86 — the part of /gos10k that is only checkable in
@@ -72,9 +72,8 @@ test.describe('the GoS 10k page shell', () => {
         await page.setViewportSize({ width: 1024, height: 900 });
         await page.goto('/gos10k');
 
-        const main = await page.locator('main').boundingBox();
-        const column = await page.locator('main > section').boundingBox();
-        if (!main || !column) throw new Error('the page has no main column to measure');
+        const main = await boxOf(page.locator('main'));
+        const column = await boxOf(page.locator('main > section'));
 
         // Narrower than main, or centring is not being tested at all.
         expect(column.width).toBeLessThan(main.width - 100);

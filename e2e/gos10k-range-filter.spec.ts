@@ -1,5 +1,5 @@
 import { expect, test } from './support/test-fixtures';
-import { expectNoHorizontalPageOverflow } from './support/viewport';
+import { boxOf, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The global range control (#87) — the part of it that is only checkable in a browser.
@@ -109,18 +109,8 @@ test.describe('the GoS 10k range filter', () => {
 
         test('sticks below the site nav as a bar under 15% of the viewport', async ({ page }) => {
             await page.goto('/gos10k?clearFrom=103&clearTo=143');
-            // Far enough down that the bar has left its place in the flow and stuck.
-            await page.getByRole('heading', { name: 'Fastest clears' }).scrollIntoViewIfNeeded();
-
-            const bar = await boxOf(page.getByTestId('archive-range-filter'));
-            const nav = await boxOf(page.locator('body > nav'));
-            const viewport = page.viewportSize()!;
-
-            expect(bar.height, 'the collapsed bar is too tall').toBeLessThanOrEqual(viewport.height * 0.15);
-            // The site nav is sticky at the top too, and draws over the page: a bar stuck
-            // at top 0 would sit underneath it, summary and all.
-            expect(bar.y, 'the bar is stuck under the site nav').toBeGreaterThanOrEqual(nav.y + nav.height - 1);
-            expect(bar.y, 'the bar did not stick').toBeLessThanOrEqual(nav.y + nav.height + 1);
+            await expectStuckBelowNav(page, 0);
+            await expectBarWithinBudget(page);
 
             // Collapsed: the summary and the way back are there, the forms are not.
             await expect(page.getByTestId('archive-range-summary')).toBeVisible();
@@ -160,6 +150,23 @@ test.describe('the GoS 10k range filter', () => {
 
             await expect(page.getByRole('group', { name: 'By date' })).toBeHidden();
             await expect(page.getByTestId('archive-range-degraded')).toBeVisible();
+            // The notice is the one thing that makes the collapsed bar taller, and the
+            // bound holds with it showing too.
+            await expectStuckBelowNav(page, 0);
+            await expectBarWithinBudget(page);
+        });
+    });
+
+    // #108. From `lg` the site nav is one row rather than two, so the bar sticks at a
+    // second hardcoded offset. Nothing else lands on it: 360 is below `lg`, 1280 is the rail.
+    test.describe('between the nav\'s one-row breakpoint and the rail', () => {
+        test.use({ viewport: { width: 1024, height: 768 } });
+
+        test('still sticks directly below the site nav', async ({ page }) => {
+            await page.goto('/gos10k?clearFrom=103&clearTo=143');
+
+            await expect(page.getByText('Change range')).toBeVisible();
+            await expectStuckBelowNav(page, 0);
         });
     });
 
@@ -187,19 +194,33 @@ test.describe('the GoS 10k range filter', () => {
             expect(Math.abs(pairCentre - (main.x + main.width / 2)), 'the pair is off-centre').toBeLessThanOrEqual(1);
             await expectNoHorizontalPageOverflow(page);
 
-            // Sticky: scrolled well past the header, the rail is still in view, below
-            // the nav rather than under it.
-            await page.getByRole('heading', { name: 'Fastest clears' }).scrollIntoViewIfNeeded();
-            const nav = await boxOf(page.locator('body > nav'));
-            const stuck = await boxOf(page.getByTestId('archive-range-filter'));
-            expect(stuck.y, 'the rail is under the site nav').toBeGreaterThanOrEqual(nav.y + nav.height);
-            expect(stuck.y, 'the rail scrolled away').toBeLessThan(page.viewportSize()!.height / 2);
+            // Sticky: scrolled well past the header, the rail is still in view, a 1.5rem
+            // gap below the nav rather than under it.
+            await expectStuckBelowNav(page, 24);
         });
     });
 });
 
-async function boxOf(locator: import('@playwright/test').Locator) {
-    const box = await locator.boundingBox();
-    if (!box) throw new Error('nothing to measure: the element is not rendered');
-    return box;
+/**
+ * "Once scrolled, the filter is stuck `gap` px below the site nav": not under it, and not
+ * scrolled away. The nav is sticky at the top and draws over the page, so a control stuck
+ * at top 0 sits underneath it; the filter's `top` is the nav's height, hardcoded per
+ * breakpoint, and this is what notices when the nav changes height and that drifts.
+ */
+async function expectStuckBelowNav(page: import('@playwright/test').Page, gap: number): Promise<void> {
+    // Far enough down that the filter has left its place in the flow and stuck.
+    await page.getByRole('heading', { name: 'Fastest clears' }).scrollIntoViewIfNeeded();
+
+    const nav = await boxOf(page.locator('body > nav'));
+    const filter = await boxOf(page.getByTestId('archive-range-filter'));
+    expect(
+        Math.abs(filter.y - (nav.y + nav.height + gap)),
+        'the filter is not stuck where it should be below the site nav'
+    ).toBeLessThanOrEqual(1);
+}
+
+/** #108's phone bound: the collapsed, stuck bar takes at most 15% of the viewport's height. */
+async function expectBarWithinBudget(page: import('@playwright/test').Page): Promise<void> {
+    const bar = await boxOf(page.getByTestId('archive-range-filter'));
+    expect(bar.height, 'the collapsed bar is too tall').toBeLessThanOrEqual(page.viewportSize()!.height * 0.15);
 }

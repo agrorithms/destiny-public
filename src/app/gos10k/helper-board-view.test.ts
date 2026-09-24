@@ -59,8 +59,19 @@ describe('reading the board view out of the URL', () => {
 describe('linking to a view of the board', () => {
     it('omits the defaults so a plain link stays plain', () => {
         expect(helperBoardHref({ kind: 'none' }, DEFAULT_HELPER_BOARD_VIEW)).toBe(
-            `/gos10k#${HELPER_BOARD_ANCHOR}`
+            `/gos10k?tab=rankings#${HELPER_BOARD_ANCHOR}`
         );
+    });
+
+    it('stays on the Rankings tab', () => {
+        // The board lives on Rankings (#112). A link that dropped `tab` would land the
+        // reader on Overview, where the board they just clicked is not rendered.
+        const query = new URL(
+            helperBoardHref({ kind: 'none' }, { measure: 'inRun', showAll: true }),
+            'https://example.test'
+        ).searchParams;
+
+        expect(query.get('tab')).toBe('rankings');
     });
 
     it('carries the active range forward', () => {
@@ -70,7 +81,7 @@ describe('linking to a view of the board', () => {
         const request = parseArchiveRangeRequest({ clearFrom: '9001', clearTo: '10000' });
 
         expect(helperBoardHref(request, { measure: 'inRun', showAll: true })).toBe(
-            `/gos10k?clearFrom=9001&clearTo=10000&helperTime=inRun&helperRows=all#${HELPER_BOARD_ANCHOR}`
+            `/gos10k?clearFrom=9001&clearTo=10000&tab=rankings&helperTime=inRun&helperRows=all#${HELPER_BOARD_ANCHOR}`
         );
     });
 
@@ -82,7 +93,7 @@ describe('linking to a view of the board', () => {
 
         expect(malformed.kind).toBe('malformed');
         expect(helperBoardHref(malformed, { measure: 'inRun', showAll: false })).toBe(
-            `/gos10k?helperTime=inRun#${HELPER_BOARD_ANCHOR}`
+            `/gos10k?tab=rankings&helperTime=inRun#${HELPER_BOARD_ANCHOR}`
         );
     });
 

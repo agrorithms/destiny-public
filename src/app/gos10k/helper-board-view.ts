@@ -1,8 +1,5 @@
-import {
-    archiveRangeHref,
-    singleSearchParam,
-    type ArchiveRangeRequest,
-} from '@/lib/db/archive/range';
+import { singleSearchParam, type ArchiveRangeRequest } from '@/lib/db/archive/range';
+import { archiveTabHref } from './archive-tab';
 
 /**
  * The Helper board's own two pieces of view state (#90): which time column is shown,
@@ -25,8 +22,8 @@ import {
  *    test; a `useState` toggle is only observable in Chromium.
  *
  * The cost, stated plainly: switching the column is a page navigation rather than an
- * instant repaint, and on a `force-dynamic` route it re-runs every panel's SQL. The
- * Helper board is the heaviest of those — about 170ms against the unfiltered production
+ * instant repaint, and on a `force-dynamic` route it re-runs the Rankings tab's SQL
+ * (#112 stopped it re-running every panel's). The Helper board is the heaviest of those — about 170ms against the unfiltered production
  * Archive, a few milliseconds for a narrow range. The board's ranking is by presence in
  * either measure, so the rows do not move underneath the reader when they switch.
  *
@@ -107,9 +104,10 @@ export function parseHelperBoardView(
 }
 
 /**
- * The link that reaches a view of this board **without losing the active range**.
+ * The link that reaches a view of this board **without losing the active range or the
+ * Rankings tab** the board lives on (#112).
  *
- * Built on top of {@link archiveRangeHref} rather than beside it: the range's URL
+ * Built on top of {@link archiveTabHref} rather than beside it: the range's URL
  * grammar has one owner, and a second place spelling out `from`/`to`/`clearFrom`/
  * `clearTo` is how a "show all" link quietly drops the reader's filter. The range
  * request is passed through rather than the resolved range, because a request is what
@@ -118,7 +116,7 @@ export function parseHelperBoardView(
  *
  * Default values are omitted from the query string, so the plain board's own links are
  * the shortest URL that produces them and `?helperTime=withSubject` never appears in a
- * shared address.
+ * shared address. `tab=rankings` is always written: the board is not on Overview.
  *
  * Every link ends at the board's own anchor. Without it, switching a column two thirds
  * of the way down a long page returns the reader to the headline, which reads as the
@@ -137,5 +135,5 @@ export function helperBoardHref(
         params.set(HELPER_BOARD_PARAMS.rows, 'all');
     }
 
-    return `${archiveRangeHref(request, params)}#${HELPER_BOARD_ANCHOR}`;
+    return `${archiveTabHref(request, 'rankings', params)}#${HELPER_BOARD_ANCHOR}`;
 }

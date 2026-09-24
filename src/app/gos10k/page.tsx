@@ -24,7 +24,7 @@ import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { PresenceStrip } from './PresenceStrip';
-import { YearBar } from './ShareBar';
+import { YearBar } from './YearBar';
 import { ResetsPanel } from './ResetsPanel';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { ClassSplit } from './ClassSplit';

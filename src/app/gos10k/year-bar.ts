@@ -1,3 +1,5 @@
+import type { ArchiveYear } from '@/lib/db/archive/queries';
+
 /**
  * The By year bar's two segments (#111), as percentages of the bar's full width.
  *
@@ -8,7 +10,7 @@
  * is why an 8px bar carries two segments and not four.
  */
 export function yearBarSegments(
-    year: { runs: number; fullClears: number },
+    year: Pick<ArchiveYear, 'runs' | 'fullClears'>,
     of: number
 ): { fullClears: number; rest: number } {
     return {

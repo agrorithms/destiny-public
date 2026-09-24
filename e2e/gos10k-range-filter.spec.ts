@@ -157,8 +157,9 @@ test.describe('the GoS 10k range filter', () => {
         });
     });
 
-    // #108. From `lg` the site nav is one row rather than two, so the bar sticks at a
-    // second hardcoded offset. Nothing else lands on it: 360 is below `lg`, 1280 is the rail.
+    // #108. From `lg` the site nav is one row rather than two, so the bar sticks at
+    // `--site-nav-height`'s `lg` value in globals.css. Nothing else lands on that value: 360
+    // is below `lg`, 1280 is the rail.
     test.describe('between the nav\'s one-row breakpoint and the rail', () => {
         test.use({ viewport: { width: 1024, height: 768 } });
 
@@ -204,8 +205,9 @@ test.describe('the GoS 10k range filter', () => {
 /**
  * "Once scrolled, the filter is stuck `gap` px below the site nav": not under it, and not
  * scrolled away. The nav is sticky at the top and draws over the page, so a control stuck
- * at top 0 sits underneath it; the filter's `top` is the nav's height, hardcoded per
- * breakpoint, and this is what notices when the nav changes height and that drifts.
+ * at top 0 sits underneath it. The filter's `top` reads `--site-nav-height` in globals.css,
+ * which only mirrors the nav's height per breakpoint: nothing sizes the nav from it or
+ * measures the nav to set it. This is what notices when the two fall out of step.
  */
 async function expectStuckBelowNav(page: import('@playwright/test').Page, gap: number): Promise<void> {
     // Far enough down that the filter has left its place in the flow and stuck: the

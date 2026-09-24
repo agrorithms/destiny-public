@@ -92,6 +92,13 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * code keeps the word because the model has two — and led By year with the Full Clears,
  * its bar splitting each year's Runs into those and everything else.
  *
+ * Issue #108 gave the range filter two layouts. Below `xl` it is a sticky bar, collapsed
+ * on every load, in its place between the header and the timeline. At `xl` the page is
+ * a two-column grid: the filter is a sticky rail on the left, spanning both rows, and
+ * the header and the panels share the right column. The rail and the column are centred
+ * together as a pair, because the column centred alone leaves each margin too narrow
+ * for the date inputs.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -144,8 +151,13 @@ export default async function Gos10kPage({
     const maxYearRuns = Math.max(...years.map((year) => year.runs), 1);
 
     return (
-        <section className="mx-auto max-w-4xl space-y-8">
-            <header className="space-y-5">
+        <section
+            className={
+                'mx-auto flex max-w-4xl flex-col gap-8 '
+                + 'xl:grid xl:max-w-none xl:grid-cols-[17.5rem_minmax(0,56rem)] xl:items-start xl:justify-center'
+            }
+        >
+            <header className="space-y-5 xl:col-start-2">
 
                 {/* The number the page is named for, before anything else. Read from the
                     Archive rather than written down: a hardcoded 10,000 would keep
@@ -228,116 +240,120 @@ export default async function Gos10kPage({
                 </details>
             </header>
 
+            {/* Between the header and the panels in the flow, and the rail from `xl` up —
+                it places itself in this grid; see its comment. */}
             <ArchiveRangeFilter range={range} span={span} presets={presets} />
 
-            {/* #81's render order: the filter, then the timeline, then the panels that
-                obey it. The timeline sits directly under the control because the band it
-                shades is the control's own selection. */}
-            <ArchiveTimeline months={timeline} range={range} />
+            <div className="space-y-8 xl:col-start-2">
+                {/* #81's render order: the filter, then the timeline, then the panels that
+                    obey it. The timeline follows the control directly because the band it
+                    shades is the control's own selection. */}
+                <ArchiveTimeline months={timeline} range={range} />
 
-            {/* #81's render order: the timeline, then his own presence, then the boards.
-                The strip answers the sceptical reading of the headline before anything
-                below it asks the reader to trust the 10,000. */}
-            <PresenceStrip presence={presence} scope={scope} />
+                {/* #81's render order: the timeline, then his own presence, then the boards.
+                    The strip answers the sceptical reading of the headline before anything
+                    below it asks the reader to trust the 10,000. */}
+                <PresenceStrip presence={presence} scope={scope} />
 
-            {/* The pinned full-clear tile that used to lead this grid is now the headline
-                above; repeating it here would state the page's own name twice. */}
-            <section className="space-y-3">
-                {/* The one panel that would otherwise read identically for the whole
-                    Archive and for one February: three bare numbers with no window. */}
-                <p className="ui-text-secondary text-sm leading-6">
-                    Across {scope}.
-                </p>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                    {[
-                        { value: overview.runs, label: 'runs entered' },
-                        { value: overview.completions, label: 'runs finished' },
-                        { value: overview.helpers, label: 'guardians who helped' },
-                    ].map((stat) => (
-                        <div key={stat.label} className="space-y-1">
-                            <div className="text-2xl font-bold ui-accent-text">
-                                {stat.value.toLocaleString()}
+                {/* The pinned full-clear tile that used to lead this grid is now the headline
+                    above; repeating it here would state the page's own name twice. */}
+                <section className="space-y-3">
+                    {/* The one panel that would otherwise read identically for the whole
+                        Archive and for one February: three bare numbers with no window. */}
+                    <p className="ui-text-secondary text-sm leading-6">
+                        Across {scope}.
+                    </p>
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                        {[
+                            { value: overview.runs, label: 'runs entered' },
+                            { value: overview.completions, label: 'runs finished' },
+                            { value: overview.helpers, label: 'guardians who helped' },
+                        ].map((stat) => (
+                            <div key={stat.label} className="space-y-1">
+                                <div className="text-2xl font-bold ui-accent-text">
+                                    {stat.value.toLocaleString()}
+                                </div>
+                                <div className="ui-text-secondary text-xs">{stat.label}</div>
                             </div>
-                            <div className="ui-text-secondary text-xs">{stat.label}</div>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            <section className="space-y-3">
-                <h2 className="text-xl font-semibold ui-text-primary">By year</h2>
-                {/* The red segment is the one thing on this panel with no column of its
-                    own, so the description is where it gets its name. */}
-                <p className="ui-text-secondary text-sm leading-6">
-                    Full Clears and runs entered across {scope}. The faded red is every run
-                    that was not a Full Clear: Resets, Checkpoint Runs, and runs his fireteam
-                    cleared without him.
-                </p>
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="ui-text-secondary text-left text-xs">
-                            <th className="py-1 font-medium">Year</th>
-                            <th className="py-1 font-medium">Full clears</th>
-                            <th className="py-1 font-medium">Runs</th>
-                            <th className="py-1 font-medium" aria-hidden />
-                        </tr>
-                    </thead>
-                    <tbody className="ui-text-secondary">
-                        {years.map((year) => (
-                            <tr key={year.year}>
-                                <td className="py-1 ui-text-primary">{year.year}</td>
-                                <td className="py-1">{year.fullClears.toLocaleString()}</td>
-                                <td className="py-1">{year.runs.toLocaleString()}</td>
-                                <td className="w-1/2 py-1">
-                                    <YearBar year={year} of={maxYearRuns} />
-                                </td>
-                            </tr>
                         ))}
-                    </tbody>
-                </table>
-            </section>
+                    </div>
+                </section>
 
-            <HelperBoard
-                helpers={helperBoard.helpers}
-                population={helperBoard.population}
-                view={helperView}
-                request={request}
-                scope={scope}
-            />
+                <section className="space-y-3">
+                    <h2 className="text-xl font-semibold ui-text-primary">By year</h2>
+                    {/* The red segment is the one thing on this panel with no column of its
+                        own, so the description is where it gets its name. */}
+                    <p className="ui-text-secondary text-sm leading-6">
+                        Full Clears and runs entered across {scope}. The faded red is every run
+                        that was not a Full Clear: Resets, Checkpoint Runs, and runs his fireteam
+                        cleared without him.
+                    </p>
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="ui-text-secondary text-left text-xs">
+                                <th className="py-1 font-medium">Year</th>
+                                <th className="py-1 font-medium">Full clears</th>
+                                <th className="py-1 font-medium">Runs</th>
+                                <th className="py-1 font-medium" aria-hidden />
+                            </tr>
+                        </thead>
+                        <tbody className="ui-text-secondary">
+                            {years.map((year) => (
+                                <tr key={year.year}>
+                                    <td className="py-1 ui-text-primary">{year.year}</td>
+                                    <td className="py-1">{year.fullClears.toLocaleString()}</td>
+                                    <td className="py-1">{year.runs.toLocaleString()}</td>
+                                    <td className="w-1/2 py-1">
+                                        <YearBar year={year} of={maxYearRuns} />
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </section>
 
-            {/* #81's render order puts the records below the Helper board: who was
-                there most, then what the best of it looked like. */}
-            <FastestClears clears={fastestClears} scope={scope} />
+                <HelperBoard
+                    helpers={helperBoard.helpers}
+                    population={helperBoard.population}
+                    view={helperView}
+                    request={request}
+                    scope={scope}
+                />
 
-            {/* #81's render order: the records, then who was quick across all of them.
-                The two panels are deliberately adjacent — one good night and sustained
-                form are the comparison, and they only read as a comparison side by side. */}
-            <MedianSpeedBoard helpers={medianSpeed} scope={scope} />
+                {/* #81's render order puts the records below the Helper board: who was
+                    there most, then what the best of it looked like. */}
+                <FastestClears clears={fastestClears} scope={scope} />
 
-            {/* #81's render order: the boards, then the Runs that did not become clears.
-                Everything above counts the 10,000; this is where the page says what else
-                he started. */}
-            <ResetsPanel outcomes={nonClears} scope={scope} />
+                {/* #81's render order: the records, then who was quick across all of them.
+                    The two panels are deliberately adjacent — one good night and sustained
+                    form are the comparison, and they only read as a comparison side by side. */}
+                <MedianSpeedBoard helpers={medianSpeed} scope={scope} />
 
-            {/* #81's render order: the Runs that did not become clears, then how many
-                people were in the ones that did. */}
-            <ParticipantsPanel buckets={participants} scope={scope} />
+                {/* #81's render order: the boards, then the Runs that did not become clears.
+                    Everything above counts the 10,000; this is where the page says what else
+                    he started. */}
+                <ResetsPanel outcomes={nonClears} scope={scope} />
 
-            {/* #81's last slot. Characters across every Run in range, not the clears —
-                the panel says so, since everything above it but the Resets counts clears. */}
-            <ClassSplit classes={classes} scope={scope} />
+                {/* #81's render order: the Runs that did not become clears, then how many
+                    people were in the ones that did. */}
+                <ParticipantsPanel buckets={participants} scope={scope} />
 
-            <p className="ui-text-secondary text-sm leading-6">
-                Want to see who is raiding right now? Try the{' '}
-                <Link href="/active-sessions" className="ui-accent-text">
-                    active sessions
-                </Link>{' '}
-                or the{' '}
-                <Link href="/leaderboard" className="ui-accent-text">
-                    leaderboard
-                </Link>
-                .
-            </p>
+                {/* #81's last slot. Characters across every Run in range, not the clears —
+                    the panel says so, since everything above it but the Resets counts clears. */}
+                <ClassSplit classes={classes} scope={scope} />
+
+                <p className="ui-text-secondary text-sm leading-6">
+                    Want to see who is raiding right now? Try the{' '}
+                    <Link href="/active-sessions" className="ui-accent-text">
+                        active sessions
+                    </Link>{' '}
+                    or the{' '}
+                    <Link href="/leaderboard" className="ui-accent-text">
+                        leaderboard
+                    </Link>
+                    .
+                </p>
+            </div>
         </section>
     );
 }

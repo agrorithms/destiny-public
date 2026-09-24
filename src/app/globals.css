@@ -85,6 +85,26 @@ body {
   animation: row-flash 2s ease-out;
 }
 
+/*
+ * The GoS 10k range filter's disclosure (#108): a collapsed bar below `xl`, an
+ * always-open rail from `xl` up, and one set of forms for both. A closed <details>
+ * hides its content through ::details-content, so from `xl` that is overridden and the
+ * toggle hidden: there is nothing to collapse. Behind @supports because a browser
+ * without the pseudo-element would hide the toggle and still hide the forms; there the
+ * rail just keeps its toggle.
+ */
+@media (width >= 80rem) {
+  @supports selector(::details-content) {
+    .archive-range-disclosure::details-content {
+      content-visibility: visible;
+    }
+
+    .archive-range-disclosure > summary {
+      display: none;
+    }
+  }
+}
+
 @layer components {
   .ui-card {
     background: var(--ui-surface-card);

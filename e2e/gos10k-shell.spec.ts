@@ -66,8 +66,10 @@ test.describe('the GoS 10k page shell', () => {
     // #111. The page's column is narrower than the site's main column on purpose (the
     // panels are prose and tables); it sat against the left edge because it had no
     // `mx-auto`, where every other page is centred. Only a real layout shows this.
-    test('centres its column in the site\'s main column at a desktop width', async ({ page }) => {
-        await page.setViewportSize({ width: 1280, height: 900 });
+    // Measured below `xl`: from there up the range filter is a rail beside the column
+    // and the *pair* is centred instead (#108, asserted in gos10k-range-filter.spec.ts).
+    test('centres its column in the site\'s main column below the rail breakpoint', async ({ page }) => {
+        await page.setViewportSize({ width: 1024, height: 900 });
         await page.goto('/gos10k');
 
         const main = await page.locator('main').boundingBox();

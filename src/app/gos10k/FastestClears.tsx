@@ -38,8 +38,8 @@ export function FastestClears({ clears, scope }: { clears: ArchiveFastestClear[]
                 so the sentence has to survive it rather than read "The 1 fastest". */}
             <p className="ui-text-secondary text-sm leading-6">
                 {isSingle
-                    ? 'The fastest Pinned Full Clear'
-                    : `The ${clears.length} fastest Pinned Full Clears`}{' '}
+                    ? 'The fastest Full Clear'
+                    : `The ${clears.length} fastest Full Clears`}{' '}
                 across {scope}, and everyone who was in {isSingle ? 'it' : 'them'}.
             </p>
 
@@ -48,7 +48,7 @@ export function FastestClears({ clears, scope }: { clears: ArchiveFastestClear[]
                 // resolveArchiveRange deliberately keeps rather than degrading, because
                 // "Runs, no full clears" is a true answer. Saying so beats an empty box.
                 <p className="ui-text-secondary text-sm leading-6">
-                    No Pinned Full Clears in this range.
+                    No Full Clears in this range.
                 </p>
             ) : (
                 <ol data-testid="archive-fastest-clears" className="space-y-3">

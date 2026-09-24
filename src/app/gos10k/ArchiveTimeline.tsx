@@ -83,7 +83,7 @@ export function ArchiveTimeline({
                 two things where the others say one, because the chart's population and
                 the reader's selection are deliberately different here. */}
             <p className="ui-text-secondary text-sm leading-6">
-                Pinned Full Clears across the whole Archive, always — this is the one panel that
+                Full Clears across the whole Archive, always — this is the one panel that
                 does not narrow to the filter, so a range keeps its context.{' '}
                 {/* Driven off `band`, not off `range.mode`: the sentence and the rect are
                     then the same decision rather than two readings of the range that could
@@ -99,7 +99,7 @@ export function ArchiveTimeline({
                 timeline" wants both charts together. */}
             <div data-testid="archive-timeline" className="space-y-1">
                 <p className="ui-text-secondary text-xs">
-                    Cumulative: 0 to {total.toLocaleString()} Pinned Full Clears
+                    Cumulative: 0 to {total.toLocaleString()} Full Clears
                 </p>
 
                 {/* role="img" with a label rather than an unlabelled graphic: the shape is
@@ -109,7 +109,7 @@ export function ArchiveTimeline({
                     viewBox={`0 0 ${AXIS_WIDTH} ${LINE_HEIGHT}`}
                     preserveAspectRatio="none"
                     role="img"
-                    aria-label={`Cumulative Pinned Full Clears, rising to ${total.toLocaleString()}`}
+                    aria-label={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
                     className="h-24 w-full ui-accent-text sm:h-32"
                 >
                     <ShadedBand band={band} height={LINE_HEIGHT} />
@@ -131,8 +131,8 @@ export function ArchiveTimeline({
                     role="img"
                     aria-label={
                         peak.clears === 0
-                            ? 'Pinned Full Clears per month'
-                            : `Pinned Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
+                            ? 'Full Clears per month'
+                            : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
                     }
                     className="h-12 w-full ui-text-secondary"
                 >
@@ -182,7 +182,7 @@ export function ArchiveTimeline({
 
                 <p className="ui-text-secondary text-xs">
                     {peak.clears === 0
-                        ? 'No Pinned Full Clears in the Archive.'
+                        ? 'No Full Clears in the Archive.'
                         : `Per month: busiest was ${peak.clears.toLocaleString()} in ${formatArchiveMonth(peak.month)}.`}
                     {/* Through the page's one day-range formatter: it already collapses a
                         single-day selection to one date and already answers for null ends,

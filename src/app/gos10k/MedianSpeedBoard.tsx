@@ -40,7 +40,7 @@ export function MedianSpeedBoard({
                 state its floor in the same breath: the population *is* "Helpers with at
                 least fifteen clears in this window", not "Helpers". */}
             <p className="ui-text-secondary text-sm leading-6">
-                Guardians present for at least {MEDIAN_SPEED_CLEAR_FLOOR} Pinned Full Clears
+                Guardians present for at least {MEDIAN_SPEED_CLEAR_FLOOR} Full Clears
                 across {scope}, ranked by their median clear time. A median rather than an average,
                 because one AFK run of several hours would wreck an average.
             </p>
@@ -50,7 +50,7 @@ export function MedianSpeedBoard({
                 // can reach fifteen. An empty table with three headings would read as a
                 // broken panel; this says which of the two things happened.
                 <p className="ui-text-secondary text-sm leading-6">
-                    No guardian was present for {MEDIAN_SPEED_CLEAR_FLOOR} Pinned Full Clears in
+                    No guardian was present for {MEDIAN_SPEED_CLEAR_FLOOR} Full Clears in
                     this range, so there is nobody to rank. Widen the range to see the board.
                 </p>
             ) : (

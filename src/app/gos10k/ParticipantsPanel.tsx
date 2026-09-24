@@ -48,7 +48,7 @@ export function ParticipantsPanel({
             {/* Every panel states the population it counts (#81), and this one has to say
                 what "people" means before a reader takes the column for fireteam size. */}
             <p className="ui-text-secondary text-sm leading-6">
-                Pinned Full Clears across {scope}, by how many different people entered each
+                Full Clears across {scope}, by how many different people entered each
                 one. This counts everyone who entered at any point, not the size of the fireteam
                 at any one moment: when someone left and was replaced, both count, which is how a
                 clear can have seven or more.
@@ -58,7 +58,7 @@ export function ParticipantsPanel({
                 // Reachable for a range holding Runs but no clears (November 2020). Seven rows
                 // of zero would read as a broken panel rather than as an empty window.
                 <p className="ui-text-secondary text-sm leading-6">
-                    There are no Pinned Full Clears in this range, so there is nobody to count.
+                    There are no Full Clears in this range, so there is nobody to count.
                 </p>
             ) : (
                 <div data-testid="archive-participants" className="space-y-4">
@@ -72,7 +72,7 @@ export function ParticipantsPanel({
                             <span className="font-medium ui-text-primary">
                                 {plural(trio, 'trio clear', 'trio clears')}
                             </span>{' '}
-                            — {plural(trio, 'a Pinned Full Clear', 'Pinned Full Clears')} that three
+                            — {plural(trio, 'a Full Clear', 'Full Clears')} that three
                             people entered, and nobody else ever did.
                         </figcaption>
                     </figure>

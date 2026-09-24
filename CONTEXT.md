@@ -64,6 +64,8 @@ which one it used:
   instance `10141395454`, the subject's *own last clear before a 40-day gap with no full clears* under
   either rule (one unfinished Run falls inside it, on 2022-02-24) — it
   is where the evidence runs out, not a boundary Bungie chose, and the id means nothing else.
+  It is what the Archive's page means by an unqualified **Full Clear**: "Pinned" is the model's
+  word for telling the two rules apart, not the reader's.
 - **Disjunctive Full Clear** — flag set **or** phase index 0, anywhere in the history. **10,020.**
   Comparable to the Tracker, generous by 20 runs — all *after* the pin, phase 0 with the flag unset,
   the shape the pin stops trusting.
@@ -73,7 +75,18 @@ leaving it to the caller. Dropping it returns 10,040 / 13,412: plausible-looking
 wrong. The pinned rule reads a stored column that already folds in "someone finished it", so its
 gap is only 40 runs — the fireteam cleared them from the start without him. A 40-run error is
 harder to notice than a 3,400-run one, not less wrong. See `src/lib/db/archive/queries.ts`.
-_Avoid_: complete run, fresh run
+_Avoid_: complete run, fresh clear
+
+**Fresh Run**:
+A raid entered at the first encounter rather than at a checkpoint — the opposite of a Checkpoint
+Run, and a statement about how the run **began** and nothing else. A Fresh Run may be finished by
+everyone, by part of the fireteam, or by nobody; "fresh" never implies it was cleared. A Full Clear
+is a Fresh Run that reached the final boss.
+
+In the Archive, "entered at the first encounter" is the Pinned rule's reading, exactly as for
+Checkpoint Runs, so every Run is one or the other: 13,420 Runs are 483 Checkpoint Runs and
+**12,937** Fresh Runs — 10,000 Full Clears, 2,897 Resets, and 40 his fireteam cleared without him.
+_Avoid_: full run, clean run, fresh clear (it conflates how a run began with how it ended)
 
 **Checkpoint Run**:
 A raid entered partway through, at a saved encounter. Observed and stored like any other run, but
@@ -122,7 +135,7 @@ must say so with one of the Full Clear rules above.
 _Avoid_: clear, raid, activity
 
 **Reset** (Archive):
-A Run started from the first encounter that nobody completed — neither the subject nor anyone else
+A Fresh Run that nobody completed — neither the subject nor anyone else
 in it. Overwhelmingly a restart after a bad start rather than a fireteam collapsing an hour in, and
 reported with its duration for that reason: a bare count of Resets invites the worse reading. Not
 the negation of a Full Clear — a Run his fireteam cleared without him and a Checkpoint Run are each

@@ -24,7 +24,7 @@ import { ArchiveTimeline } from './ArchiveTimeline';
 import { FastestClears } from './FastestClears';
 import { MedianSpeedBoard } from './MedianSpeedBoard';
 import { PresenceStrip } from './PresenceStrip';
-import { ShareBar } from './ShareBar';
+import { YearBar } from './YearBar';
 import { ResetsPanel } from './ResetsPanel';
 import { ParticipantsPanel } from './ParticipantsPanel';
 import { ClassSplit } from './ClassSplit';
@@ -87,6 +87,11 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * *entered* each Pinned Full Clear, with the trio clears as its headline; the class split
  * counts characters across every Run in range, and both say which population they mean.
  *
+ * Issue #111 centred the column in the site's main one, dropped "Pinned" from everything
+ * a reader sees — an unqualified Full Clear on this page is the Pinned rule, and the
+ * code keeps the word because the model has two — and led By year with the Full Clears,
+ * its bar splitting each year's Runs into those and everything else.
+ *
  * All filter state is URL parameters applied by re-rendering here. There is no client
  * fetch and no route handler in this phase, so a pasted URL reproduces a view exactly
  * and a truncated one degrades to the whole Archive (see resolveArchiveRange).
@@ -139,9 +144,8 @@ export default async function Gos10kPage({
     const maxYearRuns = Math.max(...years.map((year) => year.runs), 1);
 
     return (
-        <section className="max-w-4xl space-y-8">
+        <section className="mx-auto max-w-4xl space-y-8">
             <header className="space-y-5">
-                <h1 className="text-3xl font-bold ui-text-primary">The GoS 10k</h1>
 
                 {/* The number the page is named for, before anything else. Read from the
                     Archive rather than written down: a hardcoded 10,000 would keep
@@ -164,7 +168,7 @@ export default async function Gos10kPage({
                             {overview.pinnedFullClears.toLocaleString()}
                         </div>
                         <figcaption className="text-base font-medium ui-text-primary">
-                            Pinned Full Clears
+                            Garden of Salvation Full Clears
                         </figcaption>
                     </figure>
                     {/* Every figure on this page states the population it counts; this is
@@ -172,9 +176,7 @@ export default async function Gos10kPage({
                         tiles below count three other populations, and #87's filter and the
                         panel tickets behind it are what make the default true. */}
                     <p className="ui-text-secondary text-sm leading-6">
-                        Garden of Salvation runs one Guardian entered at the first encounter and
-                        finished himself — the strictest of the two defensible counts, and the one
-                        this page is named for. Counting {scope}.
+                        Counting {scope}.
                     </p>
                 </div>
 
@@ -185,13 +187,12 @@ export default async function Gos10kPage({
                     <span className="font-medium ui-text-primary">
                         Complete through {formatArchiveTimestamp(span.lastRunAt)}.
                     </span>{' '}
-                    This is a finished historical archive, not the live tracker in the navigation
-                    above it. It was collected once and will not change; everything else on this
+                    This is a finished historical archive, not the live tracker. It was collected once and will not change; everything else on this
                     site updates in real time.
                 </p>
 
                 <p className="ui-text-secondary text-sm leading-6">
-                    Every Garden of Salvation run that Guardian ever entered, from{' '}
+                    Every Garden of Salvation run he ever entered, from{' '}
                     {formatArchiveTimestamp(span.firstRunAt)} to {formatArchiveTimestamp(span.lastRunAt)} — and the{' '}
                     {allTimeHelpers.toLocaleString()} people who showed up for them.
                 </p>
@@ -248,32 +249,36 @@ export default async function Gos10kPage({
                     Across {scope}.
                 </p>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {[
-                    { value: overview.runs, label: 'runs entered' },
-                    { value: overview.completions, label: 'runs finished' },
-                    { value: overview.helpers, label: 'guardians who helped' },
-                ].map((stat) => (
-                    <div key={stat.label} className="space-y-1">
-                        <div className="text-2xl font-bold ui-accent-text">
-                            {stat.value.toLocaleString()}
+                    {[
+                        { value: overview.runs, label: 'runs entered' },
+                        { value: overview.completions, label: 'runs finished' },
+                        { value: overview.helpers, label: 'guardians who helped' },
+                    ].map((stat) => (
+                        <div key={stat.label} className="space-y-1">
+                            <div className="text-2xl font-bold ui-accent-text">
+                                {stat.value.toLocaleString()}
+                            </div>
+                            <div className="ui-text-secondary text-xs">{stat.label}</div>
                         </div>
-                        <div className="ui-text-secondary text-xs">{stat.label}</div>
-                    </div>
-                ))}
+                    ))}
                 </div>
             </section>
 
             <section className="space-y-3">
                 <h2 className="text-xl font-semibold ui-text-primary">By year</h2>
+                {/* The red segment is the one thing on this panel with no column of its
+                    own, so the description is where it gets its name. */}
                 <p className="ui-text-secondary text-sm leading-6">
-                    Runs entered and Pinned Full Clears across {scope}.
+                    Full Clears and runs entered across {scope}. The faded red is every run
+                    that was not a Full Clear: Resets, Checkpoint Runs, and runs his fireteam
+                    cleared without him.
                 </p>
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="ui-text-secondary text-left text-xs">
                             <th className="py-1 font-medium">Year</th>
-                            <th className="py-1 font-medium">Runs</th>
                             <th className="py-1 font-medium">Full clears</th>
+                            <th className="py-1 font-medium">Runs</th>
                             <th className="py-1 font-medium" aria-hidden />
                         </tr>
                     </thead>
@@ -281,10 +286,10 @@ export default async function Gos10kPage({
                         {years.map((year) => (
                             <tr key={year.year}>
                                 <td className="py-1 ui-text-primary">{year.year}</td>
-                                <td className="py-1">{year.runs.toLocaleString()}</td>
                                 <td className="py-1">{year.fullClears.toLocaleString()}</td>
+                                <td className="py-1">{year.runs.toLocaleString()}</td>
                                 <td className="w-1/2 py-1">
-                                    <ShareBar value={year.runs} of={maxYearRuns} />
+                                    <YearBar year={year} of={maxYearRuns} />
                                 </td>
                             </tr>
                         ))}

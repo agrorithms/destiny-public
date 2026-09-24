@@ -39,7 +39,7 @@ export function PresenceStrip({
                 state what "his time" is, because two characters in one Run make that a
                 choice rather than a column. */}
             <p className="ui-text-secondary text-sm leading-6">
-                His own time in the Pinned Full Clears across {scope} — from when he entered each
+                His own time in the Full Clears across {scope} — from when he entered each
                 one to when he left — against how long those clears ran.
             </p>
 
@@ -48,7 +48,7 @@ export function PresenceStrip({
                 // resolveArchiveRange keeps rather than degrading. A share of 0 of 0
                 // seconds is not 0%, and printing one would read as "he was never there".
                 <p className="ui-text-secondary text-sm leading-6">
-                    No Pinned Full Clears in this range, so there is no presence to measure.
+                    No Full Clears in this range, so there is no presence to measure.
                 </p>
             ) : (
                 <PresenceFigures presence={presence} />

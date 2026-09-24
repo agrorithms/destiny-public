@@ -18,7 +18,7 @@ test.describe('the participants panel', () => {
     test('says there is nobody to count for a range with no clears', async ({ page }) => {
         // November 2020 holds one Run and no Pinned Full Clear, and resolves rather than
         // degrading (tests/db/archive-range.test.ts).
-        await page.goto('/gos10k?from=2020-11-01&to=2020-11-30');
+        await page.goto('/gos10k?from=2020-11-01&to=2020-11-30&tab=participants');
 
         const section = page.getByRole('region', { name: 'How many people were in each clear' });
         await expect(section).toBeVisible();
@@ -28,7 +28,7 @@ test.describe('the participants panel', () => {
     });
 
     test('labels the column as people who entered', async ({ page }) => {
-        await page.goto('/gos10k');
+        await page.goto('/gos10k?tab=participants');
 
         const panel = page.getByTestId('archive-participants');
         await expect(panel.getByRole('columnheader', { name: 'People who entered' })).toBeVisible();
@@ -39,7 +39,7 @@ test.describe('the participants panel', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 
         test('keeps both panels inside a 360px viewport', async ({ page }) => {
-            await page.goto('/gos10k');
+            await page.goto('/gos10k?tab=participants');
 
             const participants = page.getByTestId('archive-participants');
             const classes = page.getByTestId('archive-class-split');

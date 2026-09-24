@@ -54,13 +54,17 @@ test.describe('the GoS 10k page shell', () => {
     // shows one: an unqualified Full Clear here is the Pinned rule. Everything a reader
     // sees must say "Full Clear", including the text behind the closed methodology and
     // the charts' accessible names, which innerText would miss.
+    // Every tab, since #112: each renders only its own panels, so Overview alone would
+    // leave five of them unchecked.
     test('never shows a reader the word "Pinned"', async ({ page }) => {
-        await page.goto('/gos10k');
+        for (const url of ['/gos10k', '/gos10k?tab=rankings', '/gos10k?tab=participants']) {
+            await page.goto(url);
 
-        // textContent rather than innerText, so the closed disclosure counts. Scoped to
-        // <main> because the framework's inline scripts sit outside it.
-        expect(await page.locator('main').textContent()).not.toContain('Pinned');
-        await expect(page.locator('[aria-label*="Pinned" i]')).toHaveCount(0);
+            // textContent rather than innerText, so the closed disclosure counts. Scoped
+            // to <main> because the framework's inline scripts sit outside it.
+            expect(await page.locator('main').textContent(), url).not.toContain('Pinned');
+            await expect(page.locator('[aria-label*="Pinned" i]'), url).toHaveCount(0);
+        }
     });
 
     // #111. The page's column is narrower than the site's main column on purpose (the

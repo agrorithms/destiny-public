@@ -31,8 +31,8 @@ import { archiveTabHref } from './archive-tab';
  *
  * `?helperTime=nonsense` renders the default column, exactly as a malformed range
  * renders the whole Archive (#87). The canary depends on this class of behaviour too:
- * `/gos10k?canary=…` carries a parameter no parser recognises and must stay the plain
- * unfiltered page.
+ * `/gos10k?tab=rankings&canary=…` carries a parameter no parser recognises and must stay
+ * the plain unfiltered Rankings tab.
  */
 
 /** The URL's spelling of this panel's state. Never abbreviated at a call site. */

@@ -51,9 +51,9 @@ export function ResetsPanel({
             {/* Every panel states the population it counts (#81), and this one counts the
                 opposite of every other panel on the page — so it says so outright. */}
             <p className="ui-text-secondary text-sm leading-6">
-                Not the Full Clears: every other run across {scope}:{' '}
-                {nonClears.toLocaleString()} of the {outcomes.runs.toLocaleString()}{' '}
-                {plural(outcomes.runs, 'run', 'runs')} he entered.
+                Everything except the Full Clears: {nonClears.toLocaleString()} of the{' '}
+                {outcomes.runs.toLocaleString()} {plural(outcomes.runs, 'run', 'runs')} he
+                entered across {scope}.
             </p>
 
             {nonClears === 0 ? (
@@ -167,8 +167,8 @@ function CheckpointSentence({ outcomes }: { outcomes: ArchiveNonClearRuns }) {
 
     return (
         <>
-            <Figure>{n.toLocaleString()}</Figure> Checkpoint {plural(n, 'Run', 'Runs')} - started
-            at a checkpoint rather than fresh - out of {outcomes.runs.toLocaleString()}.{' '}
+            <Figure>{n.toLocaleString()}</Figure> Checkpoint {plural(n, 'Run', 'Runs')} — started
+            at a checkpoint rather than fresh — out of {outcomes.runs.toLocaleString()}.{' '}
             <CheckpointFinishers outcomes={outcomes} />
             {/* Only where it is true: October 2020 is 5 Checkpoint Runs of 9, and saying
                 farming "barely figures" there would be the page contradicting its own

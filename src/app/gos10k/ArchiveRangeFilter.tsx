@@ -80,18 +80,18 @@ export function ArchiveRangeFilter({
             aria-labelledby="archive-range-heading"
             data-testid="archive-range-filter"
             // `top` is the site nav's height, which is sticky at the top too and draws
-            // over the page: stuck at 0, this sat underneath it. The nav is one row from
-            // `lg` and two below, and gos10k-range-filter.spec.ts fails if either value
-            // drifts. The rail's `xl` value is the one-row nav plus a 1.5rem gap, since
-            // a card beside the column reads as detached from the nav, not as a bar
-            // hanging off it; its `max-h` takes the same gap off the bottom. `max-h` keeps an expanded bar, or a rail on a short screen,
-            // scrollable rather than cut off below the viewport's edge. The bar's top
-            // corners are square because it sits flush against the nav, where rounded
-            // ones let the page show through.
+            // over the page: stuck at 0, this sat underneath it. That height is
+            // `--site-nav-height` in globals.css, beside the nav's styles, and
+            // gos10k-range-filter.spec.ts fails if it drifts from the nav. The rail's
+            // `xl` value adds a 1.5rem gap, since a card beside the column reads as
+            // detached from the nav, not as a bar hanging off it; its `max-h` takes the
+            // same gap off the bottom. `max-h` keeps an expanded bar, or a rail on a
+            // short screen, scrollable rather than cut off below the viewport's edge.
+            // The bar's top corners are square because it sits flush against the nav,
+            // where rounded ones let the page show through.
             className={
-                'ui-card sticky top-[8.25rem] z-10 max-h-[calc(100dvh-8.25rem)] space-y-2 overflow-y-auto rounded-b-md border px-4 py-3 '
-                + 'lg:top-[5.75rem] lg:max-h-[calc(100dvh-5.75rem)] '
-                + 'xl:col-start-1 xl:row-span-2 xl:row-start-1 xl:top-[7.25rem] xl:rounded-md xl:max-h-[calc(100dvh-8.75rem)] xl:space-y-4 xl:py-4'
+                'ui-card sticky top-(--site-nav-height) z-10 max-h-[calc(100dvh_-_var(--site-nav-height))] space-y-2 overflow-y-auto rounded-b-md border px-4 py-3 '
+                + 'xl:col-start-1 xl:row-span-2 xl:row-start-1 xl:top-[calc(var(--site-nav-height)_+_1.5rem)] xl:rounded-md xl:max-h-[calc(100dvh_-_var(--site-nav-height)_-_3rem)] xl:space-y-4 xl:py-4'
             }
         >
             {/* Named for screen readers at every width, shown only in the rail: in the

@@ -36,6 +36,23 @@ test.describe('the GoS 10k page shell', () => {
         ).toBeVisible();
     });
 
+    // The page has no visible title — the headline figure leads — but a screen reader
+    // still needs one h1 to name and jump to the page. Not `toBeHidden()`: `sr-only`
+    // shrinks the heading to a clipped 1px box rather than `display: none`, precisely so
+    // it stays in the accessibility tree, and Playwright calls any non-empty box
+    // visible. The 1px box is what "a sighted reader cannot see it" means here.
+    test('has exactly one h1, named for the page and hidden from sighted readers', async ({ page }) => {
+        await page.goto('/gos10k');
+
+        await expect(page.locator('h1')).toHaveCount(1);
+        const h1 = page.getByRole('heading', { level: 1, name: 'The GoS 10k', exact: true });
+        await expect(h1).toHaveCount(1);
+
+        const box = await boxOf(h1);
+        expect(box.width, 'the h1 is wider than sr-only allows').toBeLessThanOrEqual(1);
+        expect(box.height, 'the h1 is taller than sr-only allows').toBeLessThanOrEqual(1);
+    });
+
     test('keeps the methodology closed until the reader asks for it', async ({ page }) => {
         await page.goto('/gos10k');
 

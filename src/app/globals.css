@@ -212,6 +212,21 @@ body {
     border-color: var(--ui-nav-border);
   }
 
+  /* The site nav's rendered height, for anything that sticks below it. The nav's own
+     content sets that height — its padding, the search field and the links, in two rows
+     below `lg` and one from it — and this only mirrors it: nothing here sizes the nav.
+     Change the nav's height and these must follow; gos10k-range-filter.spec.ts measures
+     the nav and fails when they drift. */
+  :root {
+    --site-nav-height: 8.25rem;
+  }
+
+  @media (width >= 64rem) {
+    :root {
+      --site-nav-height: 5.75rem;
+    }
+  }
+
   .ui-card-warm-hover:hover {
     border-color: var(--ui-accent-soft-border);
   }

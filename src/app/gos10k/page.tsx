@@ -165,6 +165,11 @@ export default async function Gos10kPage({
             }
         >
             <header className="space-y-5 xl:col-start-2">
+                {/* The page's name, for screen readers only: every other page has an h1
+                    to land on, and sighted readers get the headline figure instead (a
+                    visible title above it was removed in fd57638). Matches the metadata
+                    title in layout.tsx, less the site's name. */}
+                <h1 className="sr-only">The GoS 10k</h1>
 
                 {/* The number the page is named for, before anything else. Read from the
                     Archive rather than written down: a hardcoded 10,000 would keep

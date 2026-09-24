@@ -10,9 +10,9 @@ import { ShareBar } from './ShareBar';
  * getClassDistribution). Calling the total "player-runs" would be off by exactly those
  * second characters — 220 in production — so the population line names the unit it counts.
  *
- * **Every Run, not only the clears.** This is the one panel below the Resets panel that is
- * not about the 10,000, and it states that outright rather than leaving a reader to assume
- * the page default.
+ * **Every Run, not only the clears.** This is the one panel on the Participants tab that
+ * is not about the 10,000, and it states that outright rather than leaving a reader to
+ * assume the page default.
  *
  * Shares are one decimal through the page's shared percentage rule, because the unknown row
  * is 0.2% and a whole number would print it as nobody.

@@ -31,7 +31,7 @@ import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './suppo
  */
 test.describe('the Helper board', () => {
     test('opens on the first page of rows, measuring time alongside him', async ({ page }) => {
-        await page.goto('/gos10k');
+        await page.goto('/gos10k?tab=rankings');
 
         const board = page.getByTestId('archive-helper-board');
         await expect(board).toBeVisible();
@@ -51,13 +51,16 @@ test.describe('the Helper board', () => {
         // measure it writes and the filter it must carry forward. A toggle that dropped
         // the range would still swap the column, and the board underneath would silently
         // become the whole Archive's.
-        await page.goto('/gos10k?clearFrom=1&clearTo=5000');
+        await page.goto('/gos10k?clearFrom=1&clearTo=5000&tab=rankings');
 
         await page.getByTestId('archive-helper-time-toggle').getByRole('link', { name: 'Time in Run' }).click();
 
         await expect(page.getByTestId('archive-helper-time-header')).toHaveText('Time in Run');
         await expect(page).toHaveURL(/clearFrom=1&clearTo=5000/);
         await expect(page).toHaveURL(/helperTime=inRun/);
+        // And the tab: the board lives on Rankings (#112), and a link that dropped it
+        // would land on Overview, where there is no board to have toggled.
+        await expect(page).toHaveURL(/tab=rankings/);
 
         // Still the same board, still the same page of it: the toggle changes which of
         // two numbers the third column reads, never the ranking or the row count.
@@ -65,7 +68,7 @@ test.describe('the Helper board', () => {
     });
 
     test('expands to every guardian and back', async ({ page }) => {
-        await page.goto('/gos10k');
+        await page.goto('/gos10k?tab=rankings');
 
         const board = page.getByTestId('archive-helper-board');
         const expand = page.getByTestId('archive-helper-board-expand');
@@ -97,7 +100,7 @@ test.describe('the Helper board', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 
         test('keeps the board inside a 360px viewport', async ({ page }) => {
-            await page.goto('/gos10k');
+            await page.goto('/gos10k?tab=rankings');
 
             // By testid rather than by role: `getByRole('table')` binds to whatever is in
             // a `<table>`, and three panels on this page render one
@@ -133,7 +136,7 @@ test.describe('the Helper board', () => {
             // on its own; the run-scoped canary in row one is unbreakable but shorter. What
             // found the bug was measuring the real Archive by hand, and it would be
             // dishonest to imply this spec would have.
-            await page.goto('/gos10k?helperRows=all');
+            await page.goto('/gos10k?tab=rankings&helperRows=all');
 
             const board = page.getByTestId('archive-helper-board');
             await expect(board).toBeVisible();

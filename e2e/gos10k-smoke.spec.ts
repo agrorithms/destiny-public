@@ -25,7 +25,9 @@ test.describe('the GoS 10k Archive page', () => {
         // never reaches the handler above and would otherwise pass silently.
         page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
 
-        await page.goto('/gos10k');
+        // Rankings rather than the default Overview: the Helper board this binds to
+        // below renders only there since #112. The headline is on every tab.
+        await page.goto('/gos10k?tab=rankings');
 
         // The headline figure rather than a heading: the page has had no <h1> since its
         // header was trimmed to lead with the number.

@@ -218,9 +218,16 @@ export const MILESTONE_PRESETS: readonly MilestonePreset[] = [
     { id: 'final-year', label: 'The final year', anchor: { kind: 'final-years', years: 1 } },
 ];
 
+/**
+ * A preset resolved against the Archive: the request only, never a finished link.
+ *
+ * There was an `href` here until #112. The page's tabs mean a link has to carry the tab
+ * as well as the range, which this module knows nothing about, so the one caller builds
+ * its links with `archiveTabHref(preset.request, tab)` instead. A tab-less `href` left
+ * lying here was a link that would silently drop the reader onto Overview.
+ */
 export interface ResolvedMilestonePreset extends MilestonePreset {
     request: ArchiveRangeRequest;
-    href: string;
 }
 
 /** Shifts a `YYYY-MM-DD` by whole years and days, in UTC, staying a calendar date. */
@@ -250,7 +257,7 @@ export function resolveMilestonePresets(span: ArchiveSpan): ResolvedMilestonePre
 
     return MILESTONE_PRESETS.map((preset) => {
         const request = resolveAnchor(preset.anchor, span, firstDate, lastDate);
-        return { ...preset, request, href: archiveRangeHref(request) };
+        return { ...preset, request };
     });
 }
 

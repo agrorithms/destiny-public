@@ -159,8 +159,9 @@ describe('milestone presets', () => {
         for (const preset of resolved) {
             // The AC that matters: a preset is a link into the same parameters manual
             // selection writes, not a second filtering mechanism.
+            const href = archiveRangeHref(preset.request);
             expect(parseArchiveRangeRequest(
-                Object.fromEntries(new URL(preset.href, 'https://example.test').searchParams)
+                Object.fromEntries(new URL(href, 'https://example.test').searchParams)
             )).toEqual(preset.request);
         }
     });

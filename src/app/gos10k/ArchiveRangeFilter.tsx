@@ -7,6 +7,7 @@ import {
     type ArchiveSpan,
     type ResolvedMilestonePreset,
 } from '@/lib/db/archive/range';
+import { archiveTabHref, archiveTabParams, type ArchiveTab } from './archive-tab';
 import { formatArchiveDayRange, formatClearNumberRange } from './range-copy';
 
 /**
@@ -15,9 +16,16 @@ import { formatArchiveDayRange, formatClearNumberRange } from './range-copy';
  * **Two GET forms, and that is the mutual exclusion.** A browser submits the inputs of
  * the form it submitted and nothing else, so picking dates writes `from`/`to` and drops
  * `clearFrom`/`clearTo`, and vice versa. There is no state in which both are applied
- * because there is no way for this control to produce one — no JavaScript, no hidden
- * inputs, nothing to keep in sync. (A hand-edited URL carrying both is rejected in
- * parseArchiveRangeRequest; see its comment.)
+ * because there is no way for this control to produce one — no JavaScript, nothing to
+ * keep in sync. (A hand-edited URL carrying both is rejected in parseArchiveRangeRequest;
+ * see its comment.)
+ *
+ * **Every way out keeps the tab (#112).** The one hidden input on this control is each
+ * form's `tab`, because a GET form submits only its own inputs and would otherwise land
+ * every range change on Overview. It carries the tab, never the other mode's bounds, so
+ * the mutual exclusion above is untouched. The presets and the way back write the tab
+ * into their links for the same reason. A panel's own parameters are not carried: a new
+ * range resets the Helper board to its first page, as it always has.
  *
  * Everything here is server-rendered and every piece of state is a URL parameter, per
  * #87: no client fetch, no route handler, and the address bar always describes what is
@@ -44,10 +52,13 @@ export function ArchiveRangeFilter({
     range,
     span,
     presets,
+    tab,
 }: {
     range: ResolvedArchiveRange;
     span: ArchiveSpan;
     presets: ResolvedMilestonePreset[];
+    /** The tab being shown, which every range change must land back on. */
+    tab: ArchiveTab;
 }) {
     const filtered = range.mode !== 'all';
     // Prefill each mode with the active range's own expression of itself, so switching
@@ -130,6 +141,7 @@ export function ArchiveRangeFilter({
                                 navigation to a shareable URL and the back button works. */}
                             <RangeForm
                                 legend="By date"
+                                tab={tab}
                                 hint={
                                     // The inactive mode's reading of the active range, read-only:
                                     // what these dates contain.
@@ -155,6 +167,7 @@ export function ArchiveRangeFilter({
 
                             <RangeForm
                                 legend="By Clear Number"
+                                tab={tab}
                                 hint={
                                     range.mode === 'clears'
                                         ? `Those clears span ${formatArchiveDayRange(range)}.`
@@ -182,11 +195,13 @@ export function ArchiveRangeFilter({
                                 <span className="ui-text-secondary text-xs">Jump to</span>
                                 {/* Links into the same parameters the forms submit — not a second
                                     filtering mechanism — and every one of them is anchored to the
-                                    Archive's own first and last Run rather than to today. */}
+                                    Archive's own first and last Run rather than to today. Built
+                                    here from the preset's request, since only this control knows
+                                    the tab the link must keep. */}
                                 {presets.map((preset) => (
                                     <Link
                                         key={preset.id}
-                                        href={preset.href}
+                                        href={archiveTabHref(preset.request, tab)}
                                         className="ui-card rounded-full border px-3 py-1 text-xs font-medium ui-accent-text"
                                     >
                                         {preset.label}
@@ -205,7 +220,7 @@ export function ArchiveRangeFilter({
                     presets. */}
                 {filtered ? (
                     <Link
-                        href={ARCHIVE_ROUTE}
+                        href={archiveTabHref({ kind: 'none' }, tab)}
                         data-testid="archive-range-clear"
                         className="ui-accent-text absolute right-0 top-0 text-sm font-medium xl:static xl:mt-4 xl:block"
                     >
@@ -240,11 +255,13 @@ function RangeForm({
     hint,
     from,
     to,
+    tab,
 }: {
     legend: string;
     hint: string;
     from: RangeBound;
     to: RangeBound;
+    tab: ArchiveTab;
 }) {
     return (
         <form action={ARCHIVE_ROUTE} method="get" className="space-y-2">
@@ -279,6 +296,12 @@ function RangeForm({
                 </div>
                 <p className="ui-text-secondary text-xs leading-5">{hint}</p>
             </fieldset>
+            {/* After the bounds, so a submitted URL reads range-then-tab like every link
+                on the page. From the same params the tab links are built from, so the
+                rule that Overview writes nothing has one owner: none on Overview. */}
+            {[...archiveTabParams(tab)].map(([name, value]) => (
+                <input key={name} type="hidden" name={name} value={value} />
+            ))}
         </form>
     );
 }

@@ -208,8 +208,10 @@ test.describe('the GoS 10k range filter', () => {
  * breakpoint, and this is what notices when the nav changes height and that drifts.
  */
 async function expectStuckBelowNav(page: import('@playwright/test').Page, gap: number): Promise<void> {
-    // Far enough down that the filter has left its place in the flow and stuck.
-    await page.getByRole('heading', { name: 'Fastest clears' }).scrollIntoViewIfNeeded();
+    // Far enough down that the filter has left its place in the flow and stuck: the
+    // last panel on Overview, which is where every caller loads (#112 moved Fastest
+    // clears, which this used to be, onto Rankings).
+    await page.getByRole('heading', { name: 'The runs that did not become clears' }).scrollIntoViewIfNeeded();
 
     const nav = await boxOf(page.locator('body > nav'));
     const filter = await boxOf(page.getByTestId('archive-range-filter'));

@@ -27,7 +27,7 @@ test.describe('the median speed board', () => {
         // canary is joined to every Run and still cannot reach fifteen. A range rather
         // than a hand-picked date because clear numbers are what the floor is counted
         // in, and `clearFrom`/`clearTo` is the same grammar the range control writes.
-        await page.goto('/gos10k?clearFrom=103&clearTo=104');
+        await page.goto('/gos10k?clearFrom=103&clearTo=104&tab=rankings');
 
         // The panel is still on the page — an empty board that disappeared would pass a
         // "no table" assertion while being exactly the blank panel the criterion rules
@@ -43,7 +43,7 @@ test.describe('the median speed board', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 
         test('keeps the board inside a 360px viewport', async ({ page }) => {
-            await page.goto('/gos10k');
+            await page.goto('/gos10k?tab=rankings');
 
             // By testid rather than by role: `getByRole('table')` binds to whatever is in
             // a `<table>`, and the Helper board above this one would capture the

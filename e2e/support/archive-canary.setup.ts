@@ -37,7 +37,9 @@ import { fixtureRunId } from './fixture-db';
 test('the server is serving this run\'s fixture Archive', async ({ request }) => {
     const expected = archiveCanaryDisplayName();
 
-    const response = await request.get(`/gos10k?canary=${fixtureRunId()}`);
+    // `tab=rankings` because the canary is a Helper, and since #112 the panels that
+    // name Helpers render only on that tab — Overview holds no names at all.
+    const response = await request.get(`/gos10k?tab=rankings&canary=${fixtureRunId()}`);
 
     // A 500 here is the Archive's designed failure mode (ADR 0007): a missing or
     // mismatched file takes out this one route and nothing else. Report it as

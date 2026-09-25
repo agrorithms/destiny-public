@@ -30,7 +30,7 @@ test.describe('the fastest clears panel', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 
         test('wraps the participant chips instead of overflowing', async ({ page }) => {
-            await page.goto('/gos10k');
+            await page.goto('/gos10k?tab=rankings');
 
             const chipList = page
                 .getByTestId('archive-fastest-clear-row')

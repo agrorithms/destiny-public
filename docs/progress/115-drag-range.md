@@ -69,4 +69,4 @@ Briefing corrections found while reading:
    - Left: the `Draggable` null branch (user kept it); the tooltip can reappear at the press-start
      bucket after a navigation until the mouse moves (cosmetic); the test file's `86_400` literal
      (that file's existing style, and independent of the module)
-8. [ ] Handoff — `docs/handoffs/260924-issue-115-implemented.md` (gitignored, local)
+8. [x] Handoff — `docs/handoffs/260924-issue-115-implemented.md` (gitignored, local)

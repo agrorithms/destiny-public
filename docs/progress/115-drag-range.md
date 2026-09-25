@@ -44,8 +44,8 @@ Briefing corrections found while reading:
      - Touch is driven by raw CDP `Input.dispatchTouchEvent`: `synthesizeScrollGesture` scrolled
        nothing here, not even over a heading.
 5. Docs
-   - [ ] `CLAUDE.md` e2e flow list
-   - [ ] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)
-6. [ ] Verification: lint → build → test → e2e
+   - [x] `CLAUDE.md` e2e flow list (nineteen flows)
+   - [x] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)
+6. [x] Verification: lint → build → test → e2e (0 lint errors / 29 old warnings; build ok; 516 unit; 86 e2e)
 7. [ ] Code review (`/mattpocock-skills:code-review`, base 8de2428)
 8. [ ] Handoff — `docs/handoffs/260924-issue-115-implemented.md` (gitignored, local)

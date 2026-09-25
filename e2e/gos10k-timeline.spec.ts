@@ -33,6 +33,12 @@ import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from '
  * phone, and whether the chart still draws with JavaScript off. Tooltip text is matched
  * by shape, never by figure, under the same rule as below.
  *
+ * **#115 added the drag** that sets the range, and the final block asserts it. Its dates
+ * are the one place this file names figures: which dates a drag writes *is* the behaviour,
+ * so each is an outer bucket edge on the fixture's own axis, spelt out beside the spec that
+ * expects it. The arithmetic behind them is Vitest's (dragDates() in
+ * src/app/gos10k/timeline-geometry.test.ts).
+ *
  * Every ranged spec navigates straight to a ranged URL rather than through the form: the
  * form sits behind "Change range" below `xl`, and the timeline is above the tabs, so a
  * URL is the whole of what these specs need. No counts, no dates, no durations, per the

@@ -11,6 +11,8 @@ import {
     formatTimelineBucket,
 } from './range-copy';
 import { timelineBand, yearTicks, zoomedTicks, type TimelineBand, type TimelineTick } from './timeline-geometry';
+import { TimelineHover } from './TimelineHover';
+import { wholeArchiveTooltips, zoomedTooltips } from './timeline-tooltips';
 
 /**
  * The timeline (#88, #113) — a cumulative Pinned Full Clear line, with bars beneath it on
@@ -41,6 +43,13 @@ import { timelineBand, yearTicks, zoomedTicks, type TimelineBand, type TimelineT
  * No chart library: this repo has none, #81 asks for none, and the `By year` bars on
  * this page are already a div with a percentage width. Adding a dependency to draw two
  * polylines is a decision for the user, not a default.
+ *
+ * **Still a server component under #114's hover tooltips.** The main chart's line and
+ * bars are wrapped in ./TimelineHover.tsx, a client component that takes them as
+ * `children` — so they are still rendered here, and with JavaScript off the page draws
+ * them exactly as before. What each tooltip says is worked out here too
+ * (./timeline-tooltips.ts) and handed down as strings. The overview strip is not wrapped:
+ * tooltips belong to the main chart.
  */
 export function ArchiveTimeline({
     months,
@@ -74,19 +83,22 @@ export function ArchiveTimeline({
                     <p className="ui-text-secondary text-xs">
                         Cumulative: 0 to {total.toLocaleString()} Full Clears
                     </p>
-                    <Climb
-                        buckets={months}
-                        from={0}
-                        label={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
-                    />
-                    <Bars
-                        buckets={months}
-                        label={
-                            peak === null
-                                ? 'Full Clears per month'
-                                : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
-                        }
-                    />
+                    <TimelineHover tooltips={wholeArchiveTooltips(months)}>
+                        <Climb
+                            buckets={months}
+                            from={0}
+                            label={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
+                        />
+                        <Bars
+                            buckets={months}
+                            hoverable
+                            label={
+                                peak === null
+                                    ? 'Full Clears per month'
+                                    : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
+                            }
+                        />
+                    </TimelineHover>
                     <Ticks ticks={wholeArchiveTicks} />
                     <p className="ui-text-secondary text-xs">
                         {peak === null
@@ -131,15 +143,18 @@ export function ArchiveTimeline({
                             Cumulative: {formatClearNumber(first)}
                             {last === first ? '' : ` to ${last.toLocaleString()}`}
                         </p>
-                        <Climb
-                            buckets={buckets}
-                            from={clearsBefore}
-                            label={`Cumulative Full Clears, from ${formatClearNumber(first)} to ${formatClearNumber(last)}`}
-                        />
-                        <Bars
-                            buckets={buckets}
-                            label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucket(size, peak.start)}`}
-                        />
+                        <TimelineHover tooltips={zoomedTooltips(zoomed)}>
+                            <Climb
+                                buckets={buckets}
+                                from={clearsBefore}
+                                label={`Cumulative Full Clears, from ${formatClearNumber(first)} to ${formatClearNumber(last)}`}
+                            />
+                            <Bars
+                                buckets={buckets}
+                                hoverable
+                                label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucket(size, peak.start)}`}
+                            />
+                        </TimelineHover>
                         <Ticks ticks={zoomedTicks(size, buckets)} />
                         <p className="ui-text-secondary text-xs">
                             Per {size}: busiest was {peak.clears.toLocaleString()} {preposition}{' '}
@@ -212,6 +227,8 @@ function TimelineSection({ heading, children }: { heading: string; children: Rea
  *
  * role="img" with a label rather than an unlabelled graphic: the shape is the content
  * here, and the figures a screen reader needs are in the captions either side of it.
+ *
+ * Always the main chart's, so always marked as the `line` half for ./TimelineHover.tsx.
  */
 function Climb({ buckets, from, label }: { buckets: ChartBucket[]; from: number; label: string }) {
     const top = buckets.length === 0 ? from : buckets[buckets.length - 1].cumulativeClears;
@@ -231,6 +248,7 @@ function Climb({ buckets, from, label }: { buckets: ChartBucket[]; from: number;
             preserveAspectRatio="none"
             role="img"
             aria-label={label}
+            data-timeline-part="line"
             className="h-24 w-full ui-accent-text sm:h-32"
         >
             {/* `vector-effect` because preserveAspectRatio="none" scales x and y by
@@ -257,12 +275,15 @@ function Bars({
     label,
     band = null,
     compact = false,
+    hoverable = false,
 }: {
     buckets: ChartBucket[];
     label: string;
     band?: TimelineBand | null;
     /** The overview strip: the same bars, half the height, so it reads as context. */
     compact?: boolean;
+    /** The main chart's bars, which ./TimelineHover.tsx explains; never the strip's (#114). */
+    hoverable?: boolean;
 }) {
     const most = busiest(buckets)?.clears ?? 0;
     const step = buckets.length === 0 ? 0 : AXIS_WIDTH / buckets.length;
@@ -273,6 +294,7 @@ function Bars({
             preserveAspectRatio="none"
             role="img"
             aria-label={label}
+            data-timeline-part={hoverable ? 'bar' : undefined}
             className={`w-full ui-text-secondary ${compact ? 'h-6' : 'h-12'}`}
         >
             {buckets.map((bucket, index) => {

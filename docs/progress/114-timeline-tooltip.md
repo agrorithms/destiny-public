@@ -28,8 +28,8 @@ Decisions confirmed with the user:
    - [x] `src/app/gos10k/timeline-geometry.ts` — slot under a pointer, clamped tooltip left
    - [x] `src/app/gos10k/timeline-geometry.test.ts`
 3. Client wrapper + rendering
-   - [ ] `src/app/gos10k/TimelineTooltip.tsx` (new, `'use client'`)
-   - [ ] `src/app/gos10k/ArchiveTimeline.tsx` — stays a server component
+   - [x] `src/app/gos10k/TimelineHover.tsx` (new, `'use client'`)
+   - [x] `src/app/gos10k/ArchiveTimeline.tsx` — stays a server component
 4. Browser spec
    - [ ] `e2e/gos10k-timeline.spec.ts`
 5. Docs

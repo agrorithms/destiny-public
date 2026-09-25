@@ -4,6 +4,7 @@ import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
 import { getArchiveSpan, getMonthlyClears, getRangeTimeline } from '@/lib/db/archive/queries';
 import { formatArchiveDate } from '@/lib/db/archive/range';
+import { wholeArchiveTooltips, zoomedTooltips } from '@/app/gos10k/timeline-tooltips';
 
 /**
  * The timeline's monthly bucketing (#88), against the fixture Archive.
@@ -270,5 +271,44 @@ describe('the zoomed timeline under a range (#113)', () => {
         expect(formatArchiveDate(timeline.buckets[0].start)).toBe('2026-01-01');
         expect(formatArchiveDate(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2026-02-23');
         expect(timeline.buckets[timeline.buckets.length - 1].cumulativeClears).toBe(346);
+    });
+});
+
+describe('the tooltips over the real reads (#114)', () => {
+    // The tooltip module is unit-tested on hand-built buckets. This is the one check that
+    // it agrees with the reads the page actually feeds it: each bar's span must be the
+    // Clear Numbers the range filter would call that bucket, and those were worked out
+    // from the seed above, not from the tooltip.
+
+    it('spans each day of February 2022 with the clears the range filter gives it', () => {
+        const range = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
+        const tooltips = zoomedTooltips(getRangeTimeline(range));
+
+        // 13, 9 and 18 clears on the first three days: 103–115, 116–124, 125–142.
+        expect(tooltips[0].bar).toBe('1 Feb 2022 · 13 clears · #103–#115');
+        expect(tooltips[1].bar).toBe('2 Feb 2022 · 9 clears · #116–#124');
+        expect(tooltips[2].bar).toBe('3 Feb 2022 · 18 clears · #125–#142');
+        // The empty 4th holds the line at 142; the 21st holds the range's last clear.
+        expect(tooltips[3]).toEqual({ line: 'Clear 142 · 4 Feb 2022', bar: '4 Feb 2022 · no clears' });
+        expect(tooltips[20]).toEqual({ line: 'Clear 143 · 21 Feb 2022', bar: '21 Feb 2022 · 1 clear · #143' });
+    });
+
+    it("spans a partly covered first week with only the range's own clears", () => {
+        // 12 January to 3 May 2022: the week of Monday 10 January holds 26 clears, 15 of
+        // them in the range — clears 87 to 101, not the week's whole run.
+        const range = resolveArchiveRangeFromParams({ from: '2022-01-12', to: '2022-05-03' });
+        const tooltips = zoomedTooltips(getRangeTimeline(range));
+
+        expect(tooltips[0].bar).toBe('week of 10 Jan 2022 · 15 clears · #87–#101');
+    });
+
+    it('spans the whole-Archive months from clear 1', () => {
+        const months = getMonthlyClears();
+        const byMonth = new Map(wholeArchiveTooltips(months).map((tooltip, i) => [months[i].month, tooltip]));
+
+        // February 2022 is clears 103–143 — the same window the range filter tests use —
+        // and March 2022 is the empty month between two busy ones.
+        expect(byMonth.get('2022-02')?.bar).toBe('Feb 2022 · 41 clears · #103–#143');
+        expect(byMonth.get('2022-03')).toEqual({ line: 'Clear 143 · Mar 2022', bar: 'Mar 2022 · no clears' });
     });
 });

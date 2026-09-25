@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { buildFixtureArchive } from '../helpers/archive-seed';
 import { resolveArchiveRangeFromParams } from '../helpers/archive-range';
 import { closeArchiveDb } from '@/lib/db/archive';
-import { getArchiveSpan, getMonthlyClears } from '@/lib/db/archive/queries';
+import { getArchiveSpan, getMonthlyClears, getRangeTimeline } from '@/lib/db/archive/queries';
 import { formatArchiveDate } from '@/lib/db/archive/range';
 
 /**
@@ -18,10 +18,14 @@ import { formatArchiveDate } from '@/lib/db/archive/range';
  * spans 68 calendar months and only 20 of them hold a Pinned Full Clear.
  *
  * The second is the range. Every other panel since #87 filters on the active range;
- * this one must not (#81: "the timeline always draws the full history and shades the
- * selection"). A `getMonthlyClears(range)` that scoped like its neighbours would return
- * a correct-looking chart with the history silently truncated, so the no-truncation
+ * the monthly read must not, because under a range it feeds the whole-Archive overview
+ * strip (#113) — the context a zoomed chart would otherwise lose. A
+ * `getMonthlyClears(range)` that scoped like its neighbours would return a
+ * correct-looking strip with the history silently truncated, so the no-truncation
  * property is asserted directly against a filtered request.
+ *
+ * The zoomed chart's own read, getRangeTimeline(), is the last block: adaptive buckets,
+ * partly covered buckets, and a line in absolute Clear Numbers.
  *
  * Figures computed independently from tests/fixtures/archive-seed.json, not read back
  * off the query. The fixture is #85's: 406 Runs, 346 Pinned Full Clears, 2020-07-04 to
@@ -139,7 +143,8 @@ describe('bucketing Pinned Full Clears by month', () => {
 
     it('draws the full history even when a range is active', () => {
         // February 2022 — clears 103–143, the window every other Archive test filters
-        // on. Every panel since #87 would return that month alone.
+        // on. Every panel since #87 would return that month alone; the overview strip
+        // this feeds must still show all 68.
         const range = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
         expect(range.mode).toBe('clears');
 
@@ -151,5 +156,122 @@ describe('bucketing Pinned Full Clears by month', () => {
         const months = getMonthlyClears();
         expect(months).toHaveLength(68);
         expect(months[months.length - 1].cumulativeClears).toBe(346);
+    });
+});
+
+/** A bucket's start as the `YYYY-MM-DD` it begins on, so failures read as dates. */
+const dayOf = (unixSeconds: number): string => formatArchiveDate(unixSeconds);
+
+describe('the zoomed timeline under a range (#113)', () => {
+    it('draws a short range in days, one slot per day whether or not it holds a clear', () => {
+        // February 2022 — clears 103–143, the window every other Archive test filters on.
+        // 1 to 21 February is 21 days, so the chart is 21 daily bars rather than the one
+        // monthly bar a fixed bucket would draw.
+        const range = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
+        const timeline = getRangeTimeline(range);
+
+        expect(timeline.size).toBe('day');
+        expect(timeline.buckets).toHaveLength(21);
+        expect(dayOf(timeline.buckets[0].start)).toBe('2022-02-01');
+        expect(dayOf(timeline.buckets[20].start)).toBe('2022-02-21');
+
+        // 13 + 9 + 18 on the first three days, one on the 21st, nothing in between —
+        // and the empty days are still there, holding their place on the axis.
+        const clears = timeline.buckets.map((bucket) => bucket.clears);
+        expect(clears.slice(0, 4)).toEqual([13, 9, 18, 0]);
+        expect(clears[20]).toBe(1);
+        expect(clears.reduce((total, n) => total + n, 0)).toBe(41);
+    });
+
+    it('climbs in absolute Clear Numbers, from the one before the range to its last', () => {
+        // The ticket's "4,120 → 4,388", in the fixture: the line starts at clear 102 —
+        // the Archive's count when the range opens — and ends on clear 143, rather than
+        // restarting at zero. It is then visibly the same window as the Clear Number
+        // mode of the range filter above it.
+        const range = resolveArchiveRangeFromParams({ clearFrom: '103', clearTo: '143' });
+        const timeline = getRangeTimeline(range);
+        const line = timeline.buckets.map((bucket) => bucket.cumulativeClears);
+
+        expect(timeline.clearsBefore).toBe(102);
+        expect(line[0]).toBe(115);
+        // An empty day carries the total forward, so the line is flat across it.
+        expect(line[2]).toBe(142);
+        expect(line[3]).toBe(142);
+        expect(line[19]).toBe(142);
+        expect(line[20]).toBe(143);
+        expect(line[20]).toBe(range.clearTo);
+    });
+
+    it('draws a range of a few months in Monday-start weeks, counting only its own clears', () => {
+        // 12 January (a Wednesday) to 3 May 2022 (a Tuesday): 112 days, so weeks. Both
+        // end weeks reach outside the range. The first, from Monday 10 January, holds 26
+        // clears but only 15 of them fall on or after the 12th; the last, from Monday
+        // 2 May, holds 40 but only 3 fall on or before the 3rd. A bucket counting its
+        // whole week would put 11 and 37 clears into a range that does not contain them.
+        const range = resolveArchiveRangeFromParams({ from: '2022-01-12', to: '2022-05-03' });
+        const timeline = getRangeTimeline(range);
+
+        expect(timeline.size).toBe('week');
+        expect(dayOf(timeline.buckets[0].start)).toBe('2022-01-10');
+        expect(dayOf(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2022-05-02');
+        // Seventeen Mondays, 10 January to 2 May, including the empty March weeks.
+        expect(timeline.buckets).toHaveLength(17);
+
+        expect(timeline.buckets[0].clears).toBe(15);
+        expect(timeline.buckets[timeline.buckets.length - 1].clears).toBe(3);
+        expect(timeline.buckets.reduce((total, bucket) => total + bucket.clears, 0)).toBe(100);
+
+        // And the line runs from the clear before the range to the range's last — clears
+        // 87 to 186, which is what the range filter says this window is.
+        expect(timeline.clearsBefore).toBe(86);
+        expect(timeline.buckets[timeline.buckets.length - 1].cumulativeClears).toBe(186);
+        expect(range.clearFrom).toBe(87);
+        expect(range.clearTo).toBe(186);
+    });
+
+    it('draws a range over two years in months, counting only its own clears', () => {
+        // 15 July 2020 to 2 August 2022: 749 days, so months. July 2020 holds three
+        // clears and August 2022 forty, but only two and twenty-five fall inside.
+        const range = resolveArchiveRangeFromParams({ from: '2020-07-15', to: '2022-08-02' });
+        const timeline = getRangeTimeline(range);
+
+        expect(timeline.size).toBe('month');
+        // July 2020 to August 2022 inclusive, the empty months kept.
+        expect(timeline.buckets).toHaveLength(26);
+        expect(timeline.buckets[0].clears).toBe(2);
+        expect(timeline.buckets[timeline.buckets.length - 1].clears).toBe(25);
+        expect(timeline.buckets.reduce((total, bucket) => total + bucket.clears, 0)).toBe(327);
+        expect(timeline.clearsBefore).toBe(1);
+        expect(timeline.buckets[timeline.buckets.length - 1].cumulativeClears).toBe(328);
+    });
+
+    it('draws a range holding Runs but no clears as empty buckets and a flat line', () => {
+        // 2 to 5 April 2022: nine Runs, not one of them a Pinned Full Clear. The range
+        // is held as asked (resolveArchiveRange keeps a window with Runs in it), so the
+        // chart has four empty days — and the line sits flat at the clear the Archive
+        // had reached, 143, rather than dropping to zero. The page says so in words.
+        const range = resolveArchiveRangeFromParams({ from: '2022-04-02', to: '2022-04-05' });
+        expect(range.mode).toBe('dates');
+        expect(range.clearFrom).toBeNull();
+
+        const timeline = getRangeTimeline(range);
+        expect(timeline.buckets).toHaveLength(4);
+        expect(timeline.buckets.every((bucket) => bucket.clears === 0)).toBe(true);
+        expect(timeline.clearsBefore).toBe(143);
+        expect(timeline.buckets.every((bucket) => bucket.cumulativeClears === 143)).toBe(true);
+    });
+
+    it('stops the axis at the Archive\'s own ends when a date range overruns them', () => {
+        // A date range that merely overruns the Archive is held as asked, but the zoomed
+        // chart is drawn over the part of it that has data: 1 January 2026 to the last
+        // Run on 23 February is 54 days, so days — not the five years of empty months
+        // the request's own length would choose.
+        const range = resolveArchiveRangeFromParams({ from: '2026-01-01', to: '2030-12-31' });
+        const timeline = getRangeTimeline(range);
+
+        expect(timeline.size).toBe('day');
+        expect(dayOf(timeline.buckets[0].start)).toBe('2026-01-01');
+        expect(dayOf(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2026-02-23');
+        expect(timeline.buckets[timeline.buckets.length - 1].cumulativeClears).toBe(346);
     });
 });

@@ -10,8 +10,8 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
    - [x] `src/lib/db/archive/timeline-buckets.ts`
    - [x] `src/lib/db/archive/timeline-buckets.test.ts`
 2. Range-scoped Archive read
-   - [ ] `src/lib/db/archive/queries.ts` — `getRangeTimeline()` beside the unchanged `getMonthlyClears()`
-   - [ ] `tests/db/archive-timeline.test.ts`
+   - [x] `src/lib/db/archive/queries.ts` — `getRangeTimeline()` beside the unchanged `getMonthlyClears()`
+   - [x] `tests/db/archive-timeline.test.ts`
 3. Zoomed axis ticks + rendering
    - [ ] `src/app/gos10k/timeline-geometry.ts`
    - [ ] `src/app/gos10k/timeline-geometry.test.ts`
@@ -20,7 +20,7 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
 4. Browser spec
    - [ ] `e2e/gos10k-timeline.spec.ts` (rewritten, onto `boxOf()`)
 5. Old-rule wording + docs
-   - [ ] `src/lib/db/archive/queries.ts` comment on `getMonthlyClears()`
+   - [x] `src/lib/db/archive/queries.ts` comment on `getMonthlyClears()` (landed with chunk 2)
    - [ ] `docs/progress/gos10k-phase1.md` (:560, :1279)
    - [ ] `CLAUDE.md` e2e flow list, `docs/handoffs/260803-playwright-e2e.md`
    - [ ] Draft #81/#88 wording — **ask the user before `gh issue edit`**

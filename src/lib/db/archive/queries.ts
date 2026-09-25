@@ -8,6 +8,7 @@ import {
     CHECKPOINT_RUN,
 } from './predicates';
 import { monthsBetween } from './month-keys';
+import { bucketSlots, chooseBucketSize, type TimelineBucketSize } from './timeline-buckets';
 import {
     endOfArchiveDay,
     formatArchiveDate,
@@ -1265,17 +1266,18 @@ export interface ArchiveTimelineMonth {
 }
 
 /**
- * The timeline's data (#88): every calendar month of the Archive, with that month's
- * Pinned Full Clears and the running total through the end of it.
+ * The timeline's whole-Archive data (#88): every calendar month of the Archive, with that
+ * month's Pinned Full Clears and the running total through the end of it.
  *
- * **This is the one panel query that takes no range, and that is the ticket's point.**
- * #81: "The filter is global. Every panel obeys it, with one deliberate exception: the
- * timeline always draws the full history and shades the selection." Giving this function
- * a `range` parameter and splicing {@link rangeClause} into it — which is what every
- * panel since #87 does, so it is the shape a reader will reach for — returns a
- * correct-looking chart that has silently truncated six years of history to one February.
- * The shading is the *component's* job, from `periodFrom`/`periodTo` on the resolved
- * range; there is deliberately no argument here through which the data could be narrowed.
+ * **This read takes no range, and that is deliberate.** Unfiltered it is the timeline;
+ * under a range it is the overview strip beneath the zoomed chart (#113), which always
+ * shows the whole Archive with the range shaded on it. #88 originally made the timeline
+ * the one panel that never narrowed, so that a narrow range kept its context; #113
+ * reversed that and zoomed the main chart to the range, and this strip is where the
+ * context now lives. Giving this function a `range` parameter and splicing
+ * {@link rangeClause} into it — the shape every other panel has, so the one a reader will
+ * reach for — would truncate the strip to the range and quietly lose that context again.
+ * The range-scoped read is {@link getRangeTimeline}, beside this one.
  *
  * **The gap-filling is not decoration either.** `GROUP BY strftime('%Y-%m', …)` returns
  * only the months that hold a Run, so a chart drawn straight off it renders a two-year
@@ -1350,3 +1352,121 @@ export function getMonthlyClears(
     });
 }
 
+
+/** One bucket of the zoomed timeline: a day, a week or a month, whichever the range chose. */
+export interface ArchiveTimelineBucket {
+    /** Unix seconds, UTC, where the bucket begins. */
+    start: number;
+    /** Unix seconds, exclusive — the next bucket's `start`. */
+    end: number;
+    /** Pinned Full Clears inside both this bucket *and* the range. Zero for an empty one. */
+    clears: number;
+    /**
+     * The highest Clear Number reached by the end of this bucket, counting only clears
+     * inside the range — an absolute ordinal, not a count restarting at zero.
+     */
+    cumulativeClears: number;
+}
+
+/** The zoomed timeline's data: the range, bucketed to suit its length. */
+export interface ArchiveRangeTimeline {
+    size: TimelineBucketSize;
+    buckets: ArchiveTimelineBucket[];
+    /**
+     * The Archive's Clear Number when the range opens — the highest one before it, or 0.
+     * The zoomed line starts here, so the range's first clear is its first step up.
+     */
+    clearsBefore: number;
+}
+
+/**
+ * The zoomed timeline (#113): the active range's Pinned Full Clears, in buckets sized to
+ * the range's length, gap-filled, with the Clear Number reached by the end of each.
+ *
+ * **Beside {@link getMonthlyClears}, not instead of it.** That read still takes no range,
+ * because it feeds the whole-Archive overview strip drawn under this chart — and the
+ * strip is how #88's reason for never narrowing the timeline, that a narrow range keeps
+ * its context, survives the chart zooming.
+ *
+ * **The axis is the range clamped to the Archive's own ends.** A date range that only
+ * overruns the Archive is held as asked by {@link resolveArchiveRange}, and bucketing the
+ * request's own length would draw "2026 to 2030" as five years of empty months after two
+ * of data. The bucket size is chosen from the clamped axis for the same reason.
+ *
+ * **A bucket the range only partly covers counts only the clears inside the range.** The
+ * range clause is on the SQL, the buckets are laid over what it returns, so the first
+ * week of a range starting on a Wednesday is a short bar rather than one that includes
+ * the Monday and Tuesday before the reader's selection.
+ *
+ * **The line is in absolute Clear Numbers**, rising from {@link
+ * ArchiveRangeTimeline.clearsBefore} to the range's last clear rather than restarting at
+ * zero — so the line is a picture of the range's Clear Number reading, and the two modes
+ * of the filter visibly select the same window. Read off `clear_number`, never summed, for
+ * the reason {@link getMonthlyClears} gives: a second derivation of the ordinal is a
+ * second chance to disagree with the one the filter speaks in.
+ *
+ * SQL groups by UTC day, the finest bucket there is, and the days are rolled up into
+ * {@link bucketSlots} in TypeScript. That leaves one definition of where a week starts
+ * rather than a SQL `weekday` modifier and a TypeScript one that must agree; a whole
+ * Archive is under two thousand days, so the roll-up is not a cost worth trading that for.
+ */
+export function getRangeTimeline(
+    range: ResolvedArchiveRange,
+    span: ArchiveSpan = getArchiveSpan()
+): ArchiveRangeTimeline {
+    const db = getArchiveDb();
+
+    if (span.firstRunAt === null || span.lastRunAt === null) {
+        return { size: 'month', buckets: [], clearsBefore: 0 };
+    }
+
+    const axisFrom = Math.max(range.periodFrom ?? span.firstRunAt, span.firstRunAt);
+    const axisTo = Math.min(range.periodTo ?? span.lastRunAt, span.lastRunAt);
+    const size = chooseBucketSize(axisFrom, axisTo);
+    const scope = rangeClause(range);
+
+    // Grouped by UTC day through `date()`, the same zone `formatArchiveDate` and
+    // `startOfArchiveDay` read, so a Run at 23:50 lands on the day the rest of the page
+    // says it did. Ordered, because the roll-up below walks days and buckets together.
+    const days = db.prepare(`
+        SELECT
+            date(r.period, 'unixepoch') AS day,
+            COUNT(*) AS clears,
+            MAX(r.clear_number) AS lastClearNumber
+        FROM gos_10k_runs r
+        WHERE ${PINNED_FULL_CLEAR} ${scope.sql}
+        GROUP BY day
+        ORDER BY day
+    `).all(...scope.params) as Array<{ day: string; clears: number; lastClearNumber: number }>;
+
+    // Read rather than taken as `range.clearFrom - 1`: a range holding Runs but no clears
+    // has no `clearFrom`, and its line should sit flat at the count the Archive had
+    // reached rather than drop to zero.
+    const { clearsBefore } = db.prepare(`
+        SELECT COALESCE(MAX(r.clear_number), 0) AS clearsBefore
+        FROM gos_10k_runs r
+        WHERE ${PINNED_FULL_CLEAR} AND r.period < ?
+    `).get(axisFrom) as { clearsBefore: number };
+
+    const slots = bucketSlots(size, axisFrom, axisTo);
+    const clearsIn = new Array<number>(slots.length).fill(0);
+    const lastClearIn = new Array<number | null>(slots.length).fill(null);
+
+    let index = 0;
+    for (const day of days) {
+        const at = startOfArchiveDay(day.day);
+        while (index < slots.length - 1 && at >= slots[index].end) index += 1;
+        clearsIn[index] += day.clears;
+        lastClearIn[index] = day.lastClearNumber;
+    }
+
+    // An empty bucket carries the previous total forward: nothing happened, so the line
+    // is flat across it rather than absent.
+    let reached = clearsBefore;
+    const buckets = slots.map((slot, i) => {
+        reached = lastClearIn[i] ?? reached;
+        return { ...slot, clears: clearsIn[i], cumulativeClears: reached };
+    });
+
+    return { size, buckets, clearsBefore };
+}

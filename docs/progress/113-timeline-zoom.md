@@ -30,4 +30,4 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
    - [x] `CONTEXT.md` — Shaded Band and Month Bucket restated for the zoom (both reviewers)
    - [x] `month-keys.ts` — `monthKey()` exported; the axis labels stop hand-rolling the key
    - [x] `SECONDS_PER_DAY` shared; comment drift; the test's `dayOf` alias removed
-   - [ ] Handoff
+   - [x] Handoff — `docs/handoffs/260924-issue-113-implemented.md` (gitignored, local)

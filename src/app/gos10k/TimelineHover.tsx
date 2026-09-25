@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { slotAt, tooltipLeft } from './timeline-geometry';
+import { slotAt, slotCentre, tooltipLeft } from './timeline-geometry';
 import type { TimelineTooltip } from './timeline-tooltips';
 
 /**
@@ -21,11 +21,17 @@ import type { TimelineTooltip } from './timeline-tooltips';
  * pointer's fraction of the way across, by slot ({@link slotAt}). One answer for both
  * halves, so the line and the bar beneath it always name the same bucket.
  *
- * **Touch:** a tap shows the tooltip and a tap anywhere outside the chart dismisses it.
- * A tap on the chart only moves it — there is nothing on the chart to navigate to, so a
- * tap never changes the range. Touch is read on `pointerup` rather than `pointerdown`,
+ * **Touch (and pen):** a tap shows the tooltip, and a tap anywhere that is neither half
+ * of the chart dismisses it. A tap on the chart only
+ * moves it: there is nothing on the chart to navigate to, so a tap never changes the
+ * range. Anything that is not a mouse is treated as tapping, because a pen, like a
+ * finger, "leaves" as it lifts. A tap is read on `pointerup` rather than `pointerdown`,
  * because a finger that starts a scroll on the chart gets a `pointercancel` instead and
  * should not leave a tooltip behind.
+ *
+ * **A tooltip that outlives a change of chart width is closed, not moved.** A tapped one
+ * stays up until the next tap, so a phone rotated under it would otherwise keep a `left`
+ * measured on the old width — past the edge of the new one.
  */
 
 type Part = 'line' | 'bar';
@@ -38,6 +44,11 @@ interface Hovered {
 /** The gap between the tooltip's bottom edge and the top of the half it describes, in px. */
 const GAP = 4;
 
+/** A mouse hovers; everything else — a finger, a pen — taps. */
+function taps(event: React.PointerEvent): boolean {
+    return event.pointerType !== 'mouse';
+}
+
 export function TimelineHover({ tooltips, children }: { tooltips: TimelineTooltip[]; children: React.ReactNode }) {
     const [hovered, setHovered] = useState<Hovered | null>(null);
     const chartRef = useRef<HTMLDivElement>(null);
@@ -47,7 +58,15 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
     function show(event: React.PointerEvent<HTMLDivElement>) {
         const chart = chartRef.current;
         const part = (event.target as Element).closest('[data-timeline-part]')?.getAttribute('data-timeline-part');
-        if (!chart || (part !== 'line' && part !== 'bar')) return;
+        if (!chart) return;
+        if (part !== 'line' && part !== 'bar') {
+            // A tap between the two halves is a tap on neither, so it dismisses. That is a
+            // pen's case: a finger cannot land in a 4px gap, because the browser's touch
+            // adjustment retargets the tap onto the nearer SVG (measured in Chromium). A
+            // mouse crossing the gap keeps the tooltip rather than flickering it.
+            if (taps(event)) setHovered(null);
+            return;
+        }
 
         const box = chart.getBoundingClientRect();
         const index = slotAt((event.clientX - box.left) / box.width, tooltips.length);
@@ -61,7 +80,9 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
     // Positioned after render and before paint: the box's width is only known once its
     // text is in it, and centring it — then sliding it back inside the chart at either end
     // — needs that width. Written straight onto the element rather than into state, which
-    // would render twice to arrive at the same pixels.
+    // would render twice to arrive at the same pixels. Re-run on the strings as well as the
+    // bucket: a new range with as many buckets puts different text, of a different width,
+    // under the same index.
     useLayoutEffect(() => {
         const chart = chartRef.current;
         const tooltip = tooltipRef.current;
@@ -71,7 +92,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
         const partBox = chart.querySelector(`[data-timeline-part="${hovered.part}"]`)?.getBoundingClientRect();
         if (!partBox) return;
         const chartBox = chart.getBoundingClientRect();
-        const anchor = ((hovered.index + 0.5) / tooltips.length) * chartBox.width;
+        const anchor = slotCentre(hovered.index, tooltips.length, chartBox.width);
         const top = partBox.top - chartBox.top;
 
         tooltip.style.left = `${tooltipLeft(anchor, tooltip.offsetWidth, chartBox.width)}px`;
@@ -79,7 +100,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
         marker.style.left = `${anchor}px`;
         marker.style.top = `${top}px`;
         marker.style.height = `${partBox.height}px`;
-    }, [hovered, tooltips.length]);
+    }, [hovered, tooltips]);
 
     // A tap anywhere outside the chart dismisses the tooltip. Listened for only while one
     // is showing, so the page carries no document listener the rest of the time.
@@ -89,7 +110,22 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
             if (!chartRef.current?.contains(event.target as Node)) setHovered(null);
         }
         document.addEventListener('pointerdown', dismiss);
-        return () => document.removeEventListener('pointerdown', dismiss);
+
+        // Width only: on a phone the viewport's *height* changes whenever the address bar
+        // slides away mid-scroll, and that moves nothing sideways. The observer reports
+        // the current size as soon as it starts, which is the width to compare against.
+        const chart = chartRef.current;
+        let width: number | null = null;
+        const resized = new ResizeObserver(([entry]) => {
+            if (width === null) width = entry.contentRect.width;
+            else if (entry.contentRect.width !== width) setHovered(null);
+        });
+        if (chart) resized.observe(chart);
+
+        return () => {
+            document.removeEventListener('pointerdown', dismiss);
+            resized.disconnect();
+        };
     }, [hovered]);
 
     const tooltip = hovered ? tooltips[hovered.index] : undefined;
@@ -99,15 +135,15 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
             ref={chartRef}
             className="relative space-y-1"
             onPointerMove={(event) => {
-                if (event.pointerType !== 'touch') show(event);
+                if (!taps(event)) show(event);
             }}
             onPointerUp={(event) => {
-                if (event.pointerType === 'touch') show(event);
+                if (taps(event)) show(event);
             }}
             onPointerLeave={(event) => {
-                // A finger always "leaves" as it lifts, which would dismiss the tooltip
-                // its own tap just opened. Touch dismisses on a tap elsewhere instead.
-                if (event.pointerType !== 'touch') setHovered(null);
+                // A finger or a pen "leaves" as it lifts, which would dismiss the tooltip
+                // its own tap just opened. A tap elsewhere dismisses those instead.
+                if (!taps(event)) setHovered(null);
             }}
         >
             {children}

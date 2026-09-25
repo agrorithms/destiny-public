@@ -37,5 +37,16 @@ Decisions confirmed with the user:
    - [x] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)
    - [x] `CONTEXT.md` — no new term: the tooltips speak in Clear Number and Month Bucket
 6. [x] Verification: lint → build → test → e2e (0 lint errors / 29 old warnings; build ok; 499 unit; 77 e2e)
-7. [ ] Code review (`/mattpocock-skills:code-review`, base 593355c)
-8. [ ] Handoff — `docs/handoffs/260924-issue-114-implemented.md` (gitignored, local)
+7. [x] Code review (`/mattpocock-skills:code-review`, base 593355c) — Standards + Spec in parallel
+   - [x] Spec c1: a tapped tooltip outlived a change of chart width with a stale `left` — now
+         closed by a width-only ResizeObserver; layout effect also re-runs on the strings
+   - [x] Spec c2: a pen tap was treated as a mouse — everything but a mouse now taps
+   - [x] Spec c3: a tap in the 4px gap neither showed nor dismissed — now dismisses. A finger
+         can't reach it (Chromium's touch adjustment retargets onto the nearer SVG, measured),
+         so it's a pen fix; the browser spec written for it was dropped as untestable
+   - [x] Standards: header path `./queries.ts` → `@/lib/db/archive/queries`
+   - [x] Standards smell 4: `slotCentre()` beside `slotAt()`, out of the component
+   - [ ] Left as judgement calls: three Clear Number spellings, `formatTimelineBucket` vs
+         `…Label` naming, `hoverable`/`compact` always opposite, the `data-timeline-part` string
+   - [x] Re-verified: lint 0 errors / 29 old warnings, build ok, 500 unit, 78 e2e
+8. [x] Handoff — `docs/handoffs/260924-issue-114-implemented.md` (gitignored, local)

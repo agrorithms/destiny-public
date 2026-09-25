@@ -14,9 +14,10 @@ import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
  * so that bars, band and labels on one axis are placed by one calculation.
  *
  * **The hover tooltip reads this module in the browser (#114)** — which bucket a pointer
- * is over and where its box goes ({@link slotAt}, {@link tooltipLeft}) — so it is part of
+ * is over and where its box goes ({@link slotAt}, {@link slotCentre}, {@link tooltipLeft}) — so it is part of
  * the page's one client bundle. Nothing here, or in what it imports, may reach the
- * database: `import type` only from ./queries.ts, which opens better-sqlite3.
+ * database: `@/lib/db/archive/queries` opens better-sqlite3, so anything on this module's
+ * import path — ./range-copy.ts included — takes only types from it.
  *
  * **The month list is assumed contiguous** — every calendar month from the Archive's
  * first to its last, gaps included, which is exactly what {@link getMonthlyClears} builds.
@@ -233,6 +234,15 @@ function labelBoundaries(
 export function slotAt(fraction: number, count: number): number | null {
     if (count === 0) return null;
     return Math.min(count - 1, Math.max(0, Math.floor(fraction * count)));
+}
+
+/**
+ * Where the tooltip for slot `index` of `count` points, in pixels from the chart's left
+ * (#114): the middle of the slot, which is where its bar is drawn. {@link slotAt}'s
+ * inverse, here beside it so the two cannot disagree about where a slot is.
+ */
+export function slotCentre(index: number, count: number, chartWidth: number): number {
+    return ((index + 0.5) / count) * chartWidth;
 }
 
 /**

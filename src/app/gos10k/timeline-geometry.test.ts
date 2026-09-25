@@ -7,6 +7,7 @@ import {
     YEAR_LABELS_FROM_MONTHS,
     minimumBandPercent,
     slotAt,
+    slotCentre,
     timelineBand,
     tooltipLeft,
     yearTicks,
@@ -330,6 +331,13 @@ describe('the bucket under the pointer (#114)', () => {
 
     it('finds nothing on a chart with no slots', () => {
         expect(slotAt(0.5, 0)).toBeNull();
+    });
+
+    it("anchors the tooltip over the middle of the slot, in the chart's pixels", () => {
+        // The third of four slots on a 400px chart spans 200–300px; its middle is 250.
+        expect(slotCentre(2, 4, 400)).toBe(250);
+        // And it is the slot slotAt() finds there, which is the pairing that matters.
+        expect(slotAt(250 / 400, 4)).toBe(2);
     });
 });
 

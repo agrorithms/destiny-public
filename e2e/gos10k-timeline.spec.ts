@@ -261,6 +261,24 @@ test.describe('the timeline\'s tooltips (#114)', () => {
             // exactly what it was.
             expect(page.url()).toBe(url);
         });
+
+        test('closes a tapped tooltip when the chart changes width, rather than leaving it adrift', async ({
+            page,
+        }) => {
+            // A tapped tooltip stays up until the next tap, so a phone rotated under it
+            // would keep a position measured on the old width.
+            await page.goto(FEBRUARY_2022);
+            const tooltip = page.getByTestId('archive-timeline-tooltip');
+
+            const bars = chartPart(page, 'bar');
+            const barsBox = await boxOf(bars);
+            await bars.tap({ position: { x: barsBox.width * 0.99, y: barsBox.height / 2 } });
+            await expect(tooltip).toBeVisible();
+
+            await page.setViewportSize({ width: 320, height: 780 });
+            await expect(tooltip).toHaveCount(0);
+            await expectNoHorizontalPageOverflow(page);
+        });
     });
 
     test.describe('with JavaScript disabled', () => {

@@ -9,6 +9,7 @@ import {
     getMedianSpeedBoard,
     MEDIAN_SPEED_BOARD_ROWS,
     getMonthlyClears,
+    getRangeTimeline,
     getRunsByYear,
     getClassDistribution,
     getNonClearRuns,
@@ -63,10 +64,11 @@ import { describeArchiveRange, formatArchiveTimestamp } from './range-copy';
  * from getArchiveSpan() for that reason.
  *
  * Issue #88 added the timeline directly below the filter — a cumulative line with
- * monthly bars on a shared x-axis. It is the one panel that does *not* obey the range:
- * it draws the whole Archive and shades the selection, so a narrow filter keeps its
- * context. getMonthlyClears() therefore takes no range at all, and the range reaches
- * the component instead.
+ * monthly bars on a shared x-axis. #88 made it the one panel that did not obey the
+ * range, so that a narrow filter kept its context; #113 reversed that. Under a range the
+ * timeline now zooms to it (getRangeTimeline()), and the context lives in a whole-Archive
+ * overview strip under it, drawn from getMonthlyClears() — which therefore still takes no
+ * range at all.
  *
  * Issue #91 added the fastest-clears list — Runs rather than players, each naming its
  * whole fireteam. It owns the shared duration formatter in ./duration-copy.ts that #92's
@@ -144,11 +146,15 @@ export default async function Gos10kPage({
     // Read on every tab: the header's headline and methodology are made of it, and
     // Overview's tiles reuse the same read rather than making it twice.
     const overview = getArchiveOverview(range);
-    // Deliberately unscoped — see ArchiveTimeline. Passing `range` here would compile,
-    // render, and quietly truncate six years of history to one February. The `span` it
+    // Deliberately unscoped — see ArchiveTimeline. It is the whole-Archive chart, and
+    // under a range the overview strip; passing `range` here would compile, render, and
+    // quietly truncate the strip's six years of history to one February. The `span` it
     // does take is the one already read above: it fixes the axis's two ends, and cannot
     // narrow what the chart counts.
     const timeline = getMonthlyClears(span);
+    // The zoomed chart's own read, only when there is a range to zoom to: unfiltered, the
+    // whole-Archive chart above is the timeline and this would draw it a second time.
+    const zoomed = range.mode === 'all' ? null : getRangeTimeline(range, span);
 
     // The header speaks for the dataset rather than for the selection, so its Helper
     // count is the Archive's own — filtered, it would read as the whole history having
@@ -257,10 +263,10 @@ export default async function Gos10kPage({
             <ArchiveRangeFilter range={range} span={span} presets={presets} tab={tab} />
 
             <div className="space-y-8 xl:col-start-2">
-                {/* #81's render order: the filter, then the timeline, then the panels that
-                    obey it. The timeline follows the control directly because the band it
-                    shades is the control's own selection. */}
-                <ArchiveTimeline months={timeline} range={range} />
+                {/* #81's render order: the filter, then the timeline, then the panels.
+                    The timeline follows the control directly because it zooms to the
+                    control's own selection, and shades it on the overview strip. */}
+                <ArchiveTimeline months={timeline} zoomed={zoomed} range={range} />
 
                 {/* Below the timeline rather than above it: the timeline is the filter's
                     companion and shows on every tab, and the strip introduces what changes. */}

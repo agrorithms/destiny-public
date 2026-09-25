@@ -557,8 +557,12 @@ exported constant rather than the literal 15, so a change to it fails the bounda
 
 - [x] `src/lib/db/archive/queries.ts` — `getMonthlyClears()`, `ArchiveTimelineMonth`, and the
       private `monthsBetween()`. **The one panel query that takes no range**, and that is the
-      ticket rather than an oversight: #81 makes the timeline the single deliberate exception to
+      ticket rather than an oversight: #81 made the timeline the single deliberate exception to
       the global filter, so there is no argument through which the *counts* could be narrowed.
+      *(Superseded by #113: under a range the timeline now zooms to it, via a separate
+      `getRangeTimeline()`. This read still takes no range, because it now feeds the
+      whole-Archive overview strip under the zoomed chart. That strip is where #88's "a range
+      keeps its context" survives. See `docs/progress/113-timeline-zoom.md`.)*
       (It takes one optional `ArchiveSpan`, added by the cleanup commit below, which fixes the
       axis's two ends and is not a `ResolvedArchiveRange`.)
       Writing `getMonthlyClears(range)` and splicing `rangeClause()` into it — the shape every
@@ -1275,8 +1279,10 @@ locator, each defended in the handoff and accepted by the review).
   which filters on `r.period` in *both* modes — so a query joining through
   `gos_10k_pgcr_players` must join `gos_10k_runs` to be scopeable at all. Filtering a Clear
   Number range on `clear_number` instead would be a second, disagreeing definition of the
-  same window and would quietly break the equivalence AC. The timeline (#88) is the one
-  deliberate exception: it draws the full history and shades the selection.
+  same window and would quietly break the equivalence AC. The timeline (#88) was the one
+  deliberate exception: it drew the full history and shaded the selection. *(#113 reversed
+  this: the timeline now zooms to the range, and the whole history, with the selection
+  shaded, moved to an overview strip under it.)*
 - **Two more `data-testid`s on `/gos10k`** — `archive-range-summary` and
   `archive-range-degraded` (plus `archive-range-filter` and `archive-range-clear`). They
   exist because the copy they hold is a whole sentence whose *figures* move with the fixture;

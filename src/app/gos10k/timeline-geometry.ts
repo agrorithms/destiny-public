@@ -1,4 +1,5 @@
 import { monthIndex, monthIndexAt, monthKey } from '@/lib/db/archive/month-keys';
+import { formatArchiveDate, type ArchiveRangeRequest, type ArchiveRunSpan } from '@/lib/db/archive/range';
 import { SECONDS_PER_DAY, type TimelineBucketSize, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
 import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
 
@@ -14,8 +15,9 @@ import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
  * so that bars, band and labels on one axis are placed by one calculation.
  *
  * **The hover tooltip reads this module in the browser (#114)** — which bucket a pointer
- * is over and where its box goes ({@link slotAt}, {@link slotCentre}, {@link tooltipLeft}) — so it is part of
- * the page's one client bundle. Nothing here, or in what it imports, may reach the
+ * is over and where its box goes ({@link slotAt}, {@link slotCentre}, {@link tooltipLeft}) — and so
+ * does the drag that sets the range (#115: {@link dragSlots}, {@link dragDates}, {@link isDrag}),
+ * so it is part of the page's one client bundle. Nothing here, or in what it imports, may reach the
  * database: `@/lib/db/archive/queries` opens better-sqlite3, so anything on this module's
  * import path — ./range-copy.ts included — takes only types from it.
  *
@@ -228,6 +230,23 @@ function labelBoundaries(
 export type TimelinePart = 'line' | 'bar';
 
 /**
+ * Whether a pointer is a mouse (#114, #115). A mouse hovers and drags; everything else — a
+ * finger, a pen — taps, and never drags. One answer for both client components, so the
+ * tooltip and the drag cannot disagree about which kind of pointer they are looking at.
+ */
+export function isMouse(event: { pointerType: string }): boolean {
+    return event.pointerType === 'mouse';
+}
+
+/**
+ * How far across a chart a pointer at `clientX` is, as a fraction of its width — unclamped,
+ * so a captured drag past either edge reads as below 0 or above 1 ({@link slotAt} clamps).
+ */
+export function chartFraction(clientX: number, box: { left: number; width: number }): number {
+    return (clientX - box.left) / box.width;
+}
+
+/**
  * Which of `count` slots a pointer `fraction` of the way across the main chart is over,
  * or null when there are none (#114) — the bucket a tooltip describes.
  *
@@ -265,6 +284,67 @@ export function slotCentre(index: number, count: number, chartWidth: number): nu
 export function tooltipLeft(anchor: number, tooltipWidth: number, chartWidth: number): number {
     const furthest = Math.max(0, chartWidth - tooltipWidth);
     return Math.min(furthest, Math.max(0, anchor - tooltipWidth / 2));
+}
+
+/**
+ * How far a mouse has to move sideways, in pixels, before a press on the timeline is a
+ * drag (#115). Less than this, and releasing does nothing: there is no click-to-filter,
+ * because a click that both shows a tooltip and navigates is ambiguous, and dragging
+ * across one bar already selects it.
+ *
+ * Sideways only: a drag selects a stretch of the x-axis, so a vertical wobble inside
+ * one bar is still a click.
+ */
+export const DRAG_THRESHOLD_PX = 4;
+
+/** Whether a press that began at `startX` and is now at `endX` has become a drag (#115). */
+export function isDrag(startX: number, endX: number): boolean {
+    return Math.abs(endX - startX) >= DRAG_THRESHOLD_PX;
+}
+
+/** The first and last of the slots a drag touches, in axis order (#115). */
+export interface DragSlots {
+    first: number;
+    last: number;
+}
+
+/**
+ * The slots a drag from `startFraction` to `endFraction` of the way across touches, or
+ * null when there are none (#115). By {@link slotAt}, so the bucket a drag starts in is
+ * the bucket the tooltip was describing under the same pointer. Either way round: a drag
+ * from right to left selects what the same drag from left to right would.
+ */
+export function dragSlots(startFraction: number, endFraction: number, count: number): DragSlots | null {
+    const start = slotAt(startFraction, count);
+    const end = slotAt(endFraction, count);
+    if (start === null || end === null) return null;
+    return { first: Math.min(start, end), last: Math.max(start, end) };
+}
+
+/**
+ * The date range a drag writes (#115): from the first day of the first slot touched to
+ * the last day of the last, clamped to the Archive's first and last Run days.
+ *
+ * **Always dates**, even when the page is showing a Clear Number range: dragging across
+ * time produces dates, and the two modes are never combined.
+ *
+ * **`to` is the day before the last slot's `end`**, because a slot's `end` is exclusive
+ * — the next slot's start — and the URL's `to` is an inclusive day (`endOfArchiveDay()`).
+ * Written as `end` it would swallow one more day, and the next zoom would show a bucket
+ * nobody selected.
+ *
+ * **Clamped** because the slots overhang the Archive: the whole-Archive months run from
+ * the 1st of its first month to the end of its last, and a zoomed chart's first week
+ * starts on the Monday before its first day.
+ */
+export function dragDates(
+    slots: TimelineBucketSlot[],
+    { first, last }: DragSlots,
+    span: ArchiveRunSpan
+): Extract<ArchiveRangeRequest, { kind: 'dates' }> {
+    const fromDate = formatArchiveDate(Math.max(slots[first].start, span.firstRunAt));
+    const toDate = formatArchiveDate(Math.min(slots[last].end - 1, span.lastRunAt));
+    return { kind: 'dates', fromDate, toDate };
 }
 
 /** Where an instant sits on a zoomed axis, as a percentage of its width. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketSlots, chooseBucketSize } from './timeline-buckets';
+import { bucketSlots, chooseBucketSize, monthSlots } from './timeline-buckets';
 
 /**
  * The zoomed timeline's buckets (#113): how big each bar is, and where each one starts.
@@ -114,5 +114,29 @@ describe('the bucket slots', () => {
         expect(slots[0].start).toBeLessThanOrEqual(from);
         expect(slots[slots.length - 1].end).toBeGreaterThan(to);
         expect(slots).toHaveLength(3);
+    });
+});
+
+describe('the month slots (#115)', () => {
+    // The whole-Archive chart and the overview strip are keyed `YYYY-MM` and carry no
+    // instants. A drag across them needs each month's edges, one slot per key.
+
+    it('gives each month key its own slot, from its 1st to the next month\'s 1st', () => {
+        const slots = monthSlots(['2020-11', '2020-12', '2021-01']);
+
+        expect(slots.map((slot) => day(slot.start))).toEqual(['2020-11-01', '2020-12-01', '2021-01-01']);
+        // December's end is January's start, across the year boundary.
+        expect(slots.map((slot) => day(slot.end))).toEqual(['2020-12-01', '2021-01-01', '2021-02-01']);
+    });
+
+    it('lets February be its own length, leap years included', () => {
+        const [leap, common] = monthSlots(['2024-02', '2023-02']);
+
+        expect((leap.end - leap.start) / 86_400).toBe(29);
+        expect((common.end - common.start) / 86_400).toBe(28);
+    });
+
+    it('gives no slots for no months', () => {
+        expect(monthSlots([])).toEqual([]);
     });
 });

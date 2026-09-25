@@ -56,6 +56,25 @@ export interface ArchiveSpan {
     maxClearNumber: number;
 }
 
+/**
+ * The first and last Run of an Archive that has Runs: {@link ArchiveSpan} with its
+ * empty-Archive case ruled out. What the timeline's drag clamps its dates to (#115).
+ */
+export interface ArchiveRunSpan {
+    firstRunAt: number;
+    lastRunAt: number;
+}
+
+/**
+ * The span's Runs, or null for an Archive with none. getArchiveDb() will not open an
+ * empty Archive, so in practice this is never null — but a caller that assumed so would
+ * take the page down for a reason that has nothing to do with it.
+ */
+export function archiveRunSpan(span: ArchiveSpan): ArchiveRunSpan | null {
+    if (span.firstRunAt === null || span.lastRunAt === null) return null;
+    return { firstRunAt: span.firstRunAt, lastRunAt: span.lastRunAt };
+}
+
 /** Next hands searchParams through as strings, repeated strings, or nothing at all. */
 type SearchParamValue = string | string[] | undefined;
 

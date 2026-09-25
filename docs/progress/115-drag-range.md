@@ -31,12 +31,18 @@ Briefing corrections found while reading:
    - [x] `src/lib/db/archive/timeline-buckets.ts` — `monthSlots(months)`
    - [x] `src/lib/db/archive/timeline-buckets.test.ts`
 3. Client component + rendering
-   - [ ] `src/app/gos10k/TimelineDrag.tsx` (new, `'use client'`)
-   - [ ] `src/app/gos10k/TimelineHover.tsx` — tooltip hidden while a drag is in progress
-   - [ ] `src/app/gos10k/ArchiveTimeline.tsx` — both surfaces wrapped; stays a server component
-   - [ ] `src/app/gos10k/page.tsx` — the tab and the span handed to the timeline
+   - [x] `src/app/gos10k/TimelineDrag.tsx` (new, `'use client'`)
+   - [x] `src/app/gos10k/TimelineHover.tsx` — tooltip hidden while a drag is in progress
+   - [x] `src/app/gos10k/ArchiveTimeline.tsx` — both surfaces wrapped; stays a server component
+   - [x] `src/app/gos10k/page.tsx` — the tab and the span handed to the timeline
 4. Browser spec
-   - [ ] `e2e/gos10k-timeline.spec.ts`
+   - [x] `e2e/gos10k-timeline.spec.ts` — main-chart drag (selection drawn, one navigation, outer
+         edges), right-to-left, strip (wider + clamped), Clear Number → dates, tab kept + Helper
+         params dropped, sub-threshold press, Escape, touch swipe scrolls
+     - Proved able to fail: `touch-none` on the wrapper, a 0px threshold and a removed Escape
+       listener each turn their spec red.
+     - Touch is driven by raw CDP `Input.dispatchTouchEvent`: `synthesizeScrollGesture` scrolled
+       nothing here, not even over a heading.
 5. Docs
    - [ ] `CLAUDE.md` e2e flow list
    - [ ] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)

@@ -43,6 +43,21 @@ describe('getRaidStats', () => {
         expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 3 });
     });
 
+    it('counts each class separately within a mixed-class fireteam', () => {
+        seedRun({
+            instanceId: '1',
+            completedBy: [
+                { membershipId: 'p1', characterClass: 'Titan' },
+                { membershipId: 'p2', characterClass: 'Hunter' },
+                { membershipId: 'p3', characterClass: 'Hunter' },
+                'p4', // a bare ID keeps the Warlock default
+            ],
+        });
+
+        const stats = getRaidStats(24);
+        expect(stats[0].allAttempts.classDistribution).toEqual({ Titan: 1, Hunter: 2, Warlock: 1 });
+    });
+
     it('respects the hours time window', () => {
         seedRun({ instanceId: '1', completedBy: ['p1'], period: hoursAgo(2) });
         seedRun({ instanceId: '2', completedBy: ['p2'], period: hoursAgo(10) });
@@ -158,6 +173,23 @@ describe('getRaidStats', () => {
         const stats = getRaidStats(24);
         expect(stats[0].fullClear.sampleSize).toBe(4);
         expect(stats[0].fullClear.kda).toEqual({ p25: 1, p50: 2, p75: 3 });
+    });
+
+    // The per-Player-Run KDA distribution is where "six players in one instance" and
+    // "six instances of one player" could plausibly diverge, and production is dominated
+    // by the former — so the nearest-rank tests must not rest on solo runs alone.
+    it('ranks each member of a multi-player instance as its own Player-Run', () => {
+        // One six-player full clear with KDAs 1..6 (deaths = 1, assists = 0).
+        // Nearest rank: ceil(0.25*6)=2, ceil(0.50*6)=3, ceil(0.75*6)=5.
+        seedRun({
+            instanceId: '1',
+            completedBy: [1, 2, 3, 4, 5, 6].map((kills) => ({ membershipId: `p${kills}`, kills, deaths: 1, assists: 0 })),
+        });
+
+        const stats = getRaidStats(24);
+        expect(stats[0].instanceCount).toBe(1);
+        expect(stats[0].fullClear.sampleSize).toBe(6);
+        expect(stats[0].fullClear.kda).toEqual({ p25: 2, p50: 3, p75: 5 });
     });
 
     it('collapses all three quartiles onto the single observation at n=1', () => {

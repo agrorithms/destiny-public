@@ -4,7 +4,7 @@ import { getRaidKeyFromHash } from '../../src/lib/bungie/manifest';
 import { processPGCR } from '../../src/lib/crawler/pgcr';
 import { readActivityDurationSeconds, readEntryStartSeconds } from '../../src/lib/bungie/pgcr-stats';
 import type { DestinyPostGameCarnageReportData } from '../../src/lib/bungie/types';
-import { RAID_HASH } from './pgcr-builder';
+import { RAID_HASH, type EntryOptions } from './pgcr-builder';
 
 /**
  * Seeds runs through the real ingestion chokepoint.
@@ -18,14 +18,27 @@ import { RAID_HASH } from './pgcr-builder';
 
 const HOUR = 3600;
 
+/**
+ * One member of a seeded run. A bare membership ID takes the run-level stats;
+ * the object form overrides them for that member alone, so one instance can
+ * hold six different KDAs or a mixed-class fireteam.
+ */
+export type SeedMember = string | SeedMemberStats;
+
+/** `characterClass` defaults to 'Warlock'; the stats default to the run-level ones. */
+export type SeedMemberStats = { membershipId: string } & Pick<
+    EntryOptions,
+    'kills' | 'deaths' | 'assists' | 'characterClass'
+>;
+
 export interface SeedRunOptions {
     instanceId: string;
     /** Unix seconds the activity started. */
     period?: number;
     /** Members who finished. Each becomes a completed pgcr_players row. */
-    completedBy?: string[];
+    completedBy?: SeedMember[];
     /** Members present who did not finish. */
-    incompleteBy?: string[];
+    incompleteBy?: SeedMember[];
     activityHash?: number;
     raidKey?: string;
     /** False marks a checkpoint run, which every leaderboard excludes. */
@@ -40,6 +53,7 @@ export interface SeedRunOptions {
     difficultyTier?: number;
     /** Count of distinct membership IDs across entries. */
     uniquePlayerCount?: number;
+    /** Run-level stats, applied to every member that does not set its own. */
     kills?: number;
     deaths?: number;
     assists?: number;
@@ -66,14 +80,14 @@ export function seedRun(options: SeedRunOptions): void {
         startSeconds = 0,
         difficultyTier,
         uniquePlayerCount,
-        kills: memberKills = 100,
-        deaths: memberDeaths = 2,
-        assists: memberAssists = 40,
+        kills: runKills = 100,
+        deaths: runDeaths = 2,
+        assists: runAssists = 40,
     } = options;
 
     const members = [
-        ...completedBy.map((membershipId) => ({ membershipId, completed: true })),
-        ...incompleteBy.map((membershipId) => ({ membershipId, completed: false })),
+        ...completedBy.map((member) => ({ ...toMember(member), completed: true })),
+        ...incompleteBy.map((member) => ({ ...toMember(member), completed: false })),
     ];
 
     insertFullPGCR(
@@ -100,16 +114,20 @@ export function seedRun(options: SeedRunOptions): void {
             membershipType: 3,
             displayName: `Guardian-${member.membershipId}`,
             bungieGlobalDisplayName: `Guardian-${member.membershipId}`,
-            characterClass: 'Warlock',
+            characterClass: member.characterClass ?? 'Warlock',
             lightLevel: 2010,
             completed: member.completed,
-            kills: memberKills,
-            deaths: memberDeaths,
-            assists: memberAssists,
+            kills: member.kills ?? runKills,
+            deaths: member.deaths ?? runDeaths,
+            assists: member.assists ?? runAssists,
             timePlayedSeconds,
             startSeconds,
         }))
     );
+}
+
+function toMember(member: SeedMember): SeedMemberStats {
+    return typeof member === 'string' ? { membershipId: member } : member;
 }
 
 /**

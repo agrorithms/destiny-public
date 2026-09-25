@@ -33,9 +33,9 @@ Decisions confirmed with the user:
 4. Browser spec
    - [x] `e2e/gos10k-timeline.spec.ts` — line hover, bar hover (same bucket as the line), strip inert, 360px edges, touch tap + dismiss, JS disabled
 5. Docs
-   - [ ] `CLAUDE.md` e2e flow list
-   - [ ] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)
-   - [ ] `CONTEXT.md` if a new term appears
-6. [ ] Verification: lint → build → test → e2e
+   - [x] `CLAUDE.md` e2e flow list (eighteen flows)
+   - [x] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)
+   - [x] `CONTEXT.md` — no new term: the tooltips speak in Clear Number and Month Bucket
+6. [x] Verification: lint → build → test → e2e (0 lint errors / 29 old warnings; build ok; 499 unit; 77 e2e)
 7. [ ] Code review (`/mattpocock-skills:code-review`, base 593355c)
 8. [ ] Handoff — `docs/handoffs/260924-issue-114-implemented.md` (gitignored, local)

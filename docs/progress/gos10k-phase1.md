@@ -1285,7 +1285,10 @@ locator, each defended in the handoff and accepted by the review).
   remains for #80 is updating ADR 0007's "no browser coverage" consequence.
 - **The serving copy and the master are copied to the box by hand** (`docs/decisions.md`).
   After #84, a stale copy is now a wrong-analytics risk, not just a stale-counts one — but
-  the new invariant assertions make that failure loud.
+  the new invariant assertions make that failure loud. **Done: both files on the Oracle box
+  were re-copied on 2026-09-19, after all of Phase 1 including #93's 483 split.** The
+  "outstanding re-`scp`" carried from #84's handoff is closed; see the 2026-09-19 entry in
+  `docs/decisions.md`. The next master change still needs the full manual runbook.
 - **One `data-testid` now exists on `/gos10k`** — `archive-headline-figure`, because the
   headline's *value* moves the moment #85 widens the fixture, so no text locator can hold it.
   Its label needs no testid: the headline is a `figure`/`figcaption` pair, so the suite

@@ -494,9 +494,37 @@ was **not verified**, and it is an interaction between two systems neither of wh
 A future session that wants edge caching must verify it rather than assume it. Until traffic makes
 origin reads actually hurt, the cheap correct answer is no rule.
 
-**Still unverified: `/gos10k/opengraph-image`.** Separate dynamic route, a ~124 KB PNG rather than
-HTML, hit by crawlers rather than browsers. It may land in a different rule. Same `curl`, from the
-box.
+**`/gos10k/opengraph-image` verified on prod, 2026-09-19**, from the box, after Phase 1 shipped.
+It was the one route this entry left open — separate dynamic route, a ~124 KB PNG rather than HTML,
+hit by crawlers rather than browsers, so it could have landed in a different rule. It does not:
+
+```
+HTTP/2 200
+content-type: image/png
+cache-control: public, max-age=86400, s-maxage=86400, immutable
+cf-cache-status: DYNAMIC
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+```
+
+Byte-identical `cache-control` to the page above, same `DYNAMIC`, and the `vary` list is one
+shorter — no `Accept-Encoding`, a PNG being incompressible. Neither named failure occurred here
+either: nothing shortened the TTL and no Bypass rule matched the path for looking dynamic.
+
+**There is no `content-length` on a HEAD of this route, and that is not a fault.** Cloudflare serves
+it over HTTP/2 with a streamed body (`ImageResponse` streams the PNG), so there is nothing to
+declare. It does mean the cheap way to tell a real card from #95's figureless degrade path is gone —
+**both return `200 image/png`** — so size it with a GET instead:
+
+```bash
+curl -sS -o /tmp/og.png -w '%{size_download} bytes\n' \
+  https://destinyfarmfinder.qzz.io/gos10k/opengraph-image
+```
+
+**~125 KB on 2026-09-19**, which is the card *with* its figures: the Archive read succeeded on the
+box and the PNG carries 10,000 full clears and 5,455 guardians who helped. Substantially smaller —
+under ~100 KB — would mean the read threw and `brandedCard()` omitted the stat block, which would in
+turn mean the serving copy failed verify-on-open and `/gos10k` itself was 500ing. That is the check
+worth repeating after any `scp`; the headers alone cannot distinguish the two.
 
 **The dev laptop cannot reach the site.** `curl` to the domain fails with
 `error:1408F10B ... wrong version number` — Charter/Spectrum's CUJO filter, which cannot serve a
@@ -633,3 +661,34 @@ connection-open verification). The cache change is one constant, verifiable only
 server; the card's no-figures branch has no seam today and inventing one to reach a `catch` would be
 application code changed to be testable, which `CLAUDE.md` forbids without questioning first.
 `docs/handoffs/260803-playwright-e2e.md` continues to list the OG route as uncovered.
+
+---
+
+## 2026-09-19 — Phase 1's Archive copy is on the box; the outstanding `scp` is closed
+
+The 2026-09-04 copy runbook above is unchanged. This entry records only that it was **run**, so the
+"re-`scp` is outstanding" note carried through every Phase 1 handoff since #84 stops being true.
+
+**Both files on the Oracle box are current as of 2026-09-19**, after the whole of Phase 1 (#84–#96,
+#80). The rebuild mattered more than usual this time, for two reasons that are easy to conflate:
+
+- **#84 made the serving copy carry derived analytics** (`clear_number`, plus the invariant
+  assertions `getArchiveDb()` re-checks at open — ADR 0008). Before that, a stale copy meant stale
+  *counts*; since #84 it can mean wrong *analytics*.
+- **#93's 483 split changed what the numbers are**, not just the file's checksum. The Runs now
+  partition as 10,000 Pinned Full Clears + 2,897 Resets + 40 cleared without him + 483 Checkpoint
+  Runs = 13,420, under the pinned reading of "started from the first encounter". A box still serving
+  the pre-#93 build would have shown 3,352 / 8 / 20, which are the figures #81 was originally
+  written against and which have now been restated on that issue.
+
+Neither of those would have been silent — the manifest check is the loud 500 the runbook describes —
+but "loud" is only useful if someone re-copies. The re-copy has happened.
+
+**The copy was confirmed from the outside, not just from the sending end.** The share card at
+`/gos10k/opengraph-image` came back ~125 KB on the same day — the card *with* its figures, which it
+can only be if `getArchiveOverview()` succeeded against the box's copy. See the size check added to
+the 2026-09-04 entry above; it is the cheapest end-to-end proof that an `scp` landed, because
+verify-on-open runs on the file the app actually opened.
+
+**Nothing about this is automated and nothing should read it as automated.** The next master change
+still needs `npm run build-gos10k`, both `scp`s and a `pm2 restart web`, by hand, in that order.

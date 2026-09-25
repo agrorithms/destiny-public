@@ -31,7 +31,7 @@ Decisions confirmed with the user:
    - [x] `src/app/gos10k/TimelineHover.tsx` (new, `'use client'`)
    - [x] `src/app/gos10k/ArchiveTimeline.tsx` — stays a server component
 4. Browser spec
-   - [ ] `e2e/gos10k-timeline.spec.ts`
+   - [x] `e2e/gos10k-timeline.spec.ts` — line hover, bar hover (same bucket as the line), strip inert, 360px edges, touch tap + dismiss, JS disabled
 5. Docs
    - [ ] `CLAUDE.md` e2e flow list
    - [ ] `docs/handoffs/260803-playwright-e2e.md` (gitignored — local only)

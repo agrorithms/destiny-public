@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
@@ -22,6 +23,14 @@ import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from '
  * (src/app/gos10k/timeline-geometry.test.ts). What is left is what only a rendered page
  * can get wrong: which parts appear under which URL, whether the band lands inside the
  * strip it belongs to, and whether any of it fits a phone.
+ *
+ * **#114 added hover tooltips** on the main chart — the page's first client JavaScript —
+ * and the last block asserts them. What a tooltip *says* is Vitest's
+ * (src/app/gos10k/timeline-tooltips.test.ts, and tests/db/archive-timeline.test.ts over
+ * the real reads); here it is only which half of the chart answered, whether the line and
+ * the bar beneath it name the same bucket, whether a tap works, whether the box fits a
+ * phone, and whether the chart still draws with JavaScript off. Tooltip text is matched
+ * by shape, never by figure, under the same rule as below.
  *
  * Every ranged spec navigates straight to a ranged URL rather than through the form: the
  * form sits behind "Change range" below `xl`, and the timeline is above the tabs, so a
@@ -128,6 +137,148 @@ test.describe('the timeline', () => {
                 await expectNoElementOverflow(timeline, `the timeline at ${url}`);
                 await expectNoHorizontalPageOverflow(page);
             }
+        });
+    });
+});
+
+/** The main chart's line or bars: the SVG ./TimelineHover.tsx explains. */
+function chartPart(page: Page, part: 'line' | 'bar'): Locator {
+    return page.getByTestId('archive-timeline').locator(`[data-timeline-part="${part}"]`);
+}
+
+/** Points the mouse `fraction` of the way across one half of the main chart. */
+async function hoverAt(page: Page, part: 'line' | 'bar', fraction: number): Promise<void> {
+    const target = chartPart(page, part);
+    const box = await boxOf(target);
+    await target.hover({ position: { x: box.width * fraction, y: box.height / 2 } });
+}
+
+/** The line's tooltip, by shape: a Clear Number (or none yet), then the bucket's name. */
+const LINE_TOOLTIP = /^(Clear [\d,]+|No clears yet) · \S/;
+/** The bar's tooltip, by shape: the bucket's name, then its clears — and a span if any. */
+const BAR_TOOLTIP = /^\S.* · (no clears|1 clear · #[\d,]+|[\d,]+ clears · #[\d,]+–#[\d,]+)$/;
+
+test.describe('the timeline\'s tooltips (#114)', () => {
+    test('hovering the line names the bucket under the pointer, and leaving hides it', async ({ page }) => {
+        await page.goto('/gos10k');
+        const tooltip = page.getByTestId('archive-timeline-tooltip');
+
+        // Nothing until the pointer arrives: the tooltip is not part of the page.
+        await expect(tooltip).toHaveCount(0);
+
+        await hoverAt(page, 'line', 0.5);
+        await expect(tooltip).toBeVisible();
+        await expect(tooltip).toHaveText(LINE_TOOLTIP);
+
+        await page.getByRole('heading', { level: 2, name: 'Six years, month by month' }).hover();
+        await expect(tooltip).toHaveCount(0);
+    });
+
+    test('hovering a bar gives its clears, and names the same bucket as the line above it', async ({ page }) => {
+        await page.goto(FEBRUARY_2022);
+        const tooltip = page.getByTestId('archive-timeline-tooltip');
+
+        // A tenth of the way across 21 days is inside the third — and the line and the
+        // bar are asked at the same x, so they must describe the same bucket. The line's
+        // point for a bucket sits at the slot's right-hand edge; a tooltip that chose the
+        // nearest vertex would disagree with the bar here.
+        await hoverAt(page, 'line', 0.1);
+        await expect(tooltip).toHaveText(LINE_TOOLTIP);
+        const lineLabel = (await tooltip.innerText()).split(' · ')[1];
+
+        await hoverAt(page, 'bar', 0.1);
+        await expect(tooltip).toHaveText(BAR_TOOLTIP);
+        const barLabel = (await tooltip.innerText()).split(' · ')[0];
+
+        expect(barLabel).toBe(lineLabel);
+    });
+
+    test('says nothing over the overview strip', async ({ page }) => {
+        await page.goto(FEBRUARY_2022);
+
+        // Tooltips belong to the main chart; the strip is context.
+        const strip = page.getByTestId('archive-timeline-overview').getByRole('img');
+        await strip.hover();
+        await expect(page.getByTestId('archive-timeline-tooltip')).toHaveCount(0);
+    });
+
+    test.describe('on a phone', () => {
+        test.use({ viewport: { width: 360, height: 780 } });
+
+        test('keeps the tooltip inside the viewport at both ends of the chart', async ({ page }) => {
+            // A tooltip centred over the first or last bar hangs half off the chart; it
+            // must be slid back inside. Weeks draw the longest names (`week of 10 Jan
+            // 2022`), and the unfiltered chart and a monthly range are the other two
+            // shapes of axis.
+            const tooltip = page.getByTestId('archive-timeline-tooltip');
+            for (const url of ['/gos10k', WEEKS, MONTHS]) {
+                await page.goto(url);
+                const timeline = await boxOf(page.getByTestId('archive-timeline'));
+                for (const part of ['line', 'bar'] as const) {
+                    for (const fraction of [0.001, 0.999]) {
+                        await hoverAt(page, part, fraction);
+                        await expect(tooltip).toBeVisible();
+                        const box = await boxOf(tooltip);
+                        const where = `${url}, ${part}, ${fraction}`;
+                        expect(box.x, `left edge at ${where}`).toBeGreaterThanOrEqual(timeline.x - 1);
+                        expect(box.x + box.width, `right edge at ${where}`).toBeLessThanOrEqual(
+                            timeline.x + timeline.width + 1
+                        );
+                        expect(box.x + box.width, `viewport at ${where}`).toBeLessThanOrEqual(360);
+                    }
+                }
+                await expectNoHorizontalPageOverflow(page);
+            }
+        });
+    });
+
+    test.describe('on a touch screen', () => {
+        test.use({ viewport: { width: 360, height: 780 }, hasTouch: true });
+
+        test('a tap shows the tooltip, a tap elsewhere dismisses it, and neither changes the range', async ({
+            page,
+        }) => {
+            await page.goto(FEBRUARY_2022);
+            const tooltip = page.getByTestId('archive-timeline-tooltip');
+            const url = page.url();
+
+            const bars = chartPart(page, 'bar');
+            const barsBox = await boxOf(bars);
+            await bars.tap({ position: { x: barsBox.width * 0.5, y: barsBox.height / 2 } });
+            await expect(tooltip).toBeVisible();
+            await expect(tooltip).toHaveText(BAR_TOOLTIP);
+
+            // A tap on the line moves the tooltip to the line's reading, not away.
+            const line = chartPart(page, 'line');
+            const lineBox = await boxOf(line);
+            await line.tap({ position: { x: lineBox.width * 0.5, y: lineBox.height / 2 } });
+            await expect(tooltip).toHaveText(LINE_TOOLTIP);
+
+            await page.getByRole('heading', { level: 2, name: /^The range, / }).tap();
+            await expect(tooltip).toHaveCount(0);
+
+            // The chart has nothing to navigate to: the URL — where the range lives — is
+            // exactly what it was.
+            expect(page.url()).toBe(url);
+        });
+    });
+
+    test.describe('with JavaScript disabled', () => {
+        test.use({ javaScriptEnabled: false });
+
+        test('still draws the whole chart, named as before, with no tooltip', async ({ page }) => {
+            // Progressive enhancement: the SVGs are rendered on the server, and only the
+            // pointer handling needs the browser. The charts' accessible names are
+            // asserted too — #58's audit starts from them and #114 must not lose them.
+            for (const url of ['/gos10k', FEBRUARY_2022]) {
+                await page.goto(url);
+                await expect(page.getByRole('img', { name: /^Cumulative Full Clears/ })).toBeVisible();
+                await expect(page.getByRole('img', { name: /^Full Clears per (month|day)/ }).first()).toBeVisible();
+
+                await hoverAt(page, 'bar', 0.5);
+                await expect(page.getByTestId('archive-timeline-tooltip')).toHaveCount(0);
+            }
+            await expect(page.getByTestId('archive-timeline-overview')).toBeVisible();
         });
     });
 });

@@ -25,8 +25,8 @@ Decisions confirmed with the user:
    - [x] `src/app/gos10k/timeline-tooltips.test.ts`
    - [x] `tests/db/archive-timeline.test.ts` — the February 2022 zoom through it
 2. Pointer geometry
-   - [ ] `src/app/gos10k/timeline-geometry.ts` — slot under a pointer, clamped tooltip left
-   - [ ] `src/app/gos10k/timeline-geometry.test.ts`
+   - [x] `src/app/gos10k/timeline-geometry.ts` — slot under a pointer, clamped tooltip left
+   - [x] `src/app/gos10k/timeline-geometry.test.ts`
 3. Client wrapper + rendering
    - [ ] `src/app/gos10k/TimelineTooltip.tsx` (new, `'use client'`)
    - [ ] `src/app/gos10k/ArchiveTimeline.tsx` — stays a server component

@@ -6,7 +6,9 @@ import {
     LAST_ZOOMED_TICK_PERCENT,
     YEAR_LABELS_FROM_MONTHS,
     minimumBandPercent,
+    slotAt,
     timelineBand,
+    tooltipLeft,
     yearTicks,
     zoomedTicks,
 } from './timeline-geometry';
@@ -296,5 +298,61 @@ describe('the zoomed axis labels', () => {
                 expect(tick.percent).toBeLessThanOrEqual(LAST_ZOOMED_TICK_PERCENT);
             }
         }
+    });
+});
+
+describe('the bucket under the pointer (#114)', () => {
+    // The main chart's slots are uniform — every bar is one slot, however long its month
+    // — so the bucket under the pointer is its fraction of the way across, times the
+    // number of slots. The line uses the same answer as the bar beneath it, so the two
+    // tooltips always name the same bucket.
+
+    it('picks the slot the pointer is inside', () => {
+        // 21 daily slots, as in February 2022's first three weeks.
+        expect(slotAt(0, 21)).toBe(0);
+        expect(slotAt(0.1, 21)).toBe(2);
+        expect(slotAt(0.999, 21)).toBe(20);
+    });
+
+    it('gives a boundary to the slot on its right', () => {
+        // Halfway across four slots is the start of the third.
+        expect(slotAt(0.5, 4)).toBe(2);
+    });
+
+    it('keeps a pointer on or past either edge on the end slot', () => {
+        // The pointer's last pixel measures as 100% of the width, and a pointer event can
+        // land a fraction outside the box: both still mean the end bucket, not no bucket
+        // and not a slot that does not exist.
+        expect(slotAt(1, 4)).toBe(3);
+        expect(slotAt(1.02, 4)).toBe(3);
+        expect(slotAt(-0.02, 4)).toBe(0);
+    });
+
+    it('finds nothing on a chart with no slots', () => {
+        expect(slotAt(0.5, 0)).toBeNull();
+    });
+});
+
+describe("the tooltip's left edge (#114)", () => {
+    // In pixels from the chart's left. Centred over the bucket where there is room, and
+    // pushed back inside the chart where there is not: the chart is the page column, so
+    // inside it is inside the viewport — at 360px, and at the chart's first and last bars.
+
+    it('centres the tooltip over its bucket when there is room', () => {
+        expect(tooltipLeft(164, 100, 328)).toBe(114);
+    });
+
+    it("stops at the chart's left edge", () => {
+        expect(tooltipLeft(5, 100, 328)).toBe(0);
+    });
+
+    it("stops at the chart's right edge", () => {
+        expect(tooltipLeft(325, 100, 328)).toBe(228);
+    });
+
+    it('starts at the left edge when the tooltip is wider than the chart', () => {
+        // Overflow on the right beats overflow on the left, where the start of the text
+        // — the bucket's name — would be the part cut off.
+        expect(tooltipLeft(50, 400, 328)).toBe(0);
     });
 });

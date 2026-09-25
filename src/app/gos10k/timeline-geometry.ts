@@ -117,15 +117,17 @@ export interface TimelineTick {
 }
 
 /**
- * The most labels the zoomed axis draws. Six `Mar 2022`s — the widest label — fit a 328px
- * chart with room between them; more would touch on a phone, and the caption beside the
- * chart states the range's two ends in full anyway.
+ * The most labels the zoomed axis draws. Six month labels fit a 328px chart with room
+ * between them — the widest is `Sept 2022`, en-GB's four-letter September, at about 46px;
+ * more would touch on a phone, and the caption beside the chart states the range's two
+ * ends in full anyway. The tightest spacing thinning leaves on any monthly axis the
+ * Archive can draw is 1/7 of the width, about 47px, so no two labels overlap even then.
  */
 export const MAX_ZOOMED_TICKS = 6;
 
 /**
  * No label starts past this point on the zoomed axis. A label runs rightwards from its
- * boundary, and the widest one is about 44px — 13% of a 328px chart — so one starting at
+ * boundary, and the widest one is about 46px — 14% of a 328px chart — so one starting at
  * 97% ran off the panel. The whole-Archive axis solves the same problem by flipping its
  * last year label ({@link yearTicks}' caller); the zoomed one drops the label instead,
  * because a flipped label would land on the one before it once there are six of them.
@@ -133,14 +135,31 @@ export const MAX_ZOOMED_TICKS = 6;
 export const LAST_ZOOMED_TICK_PERCENT = 85;
 
 /**
- * The zoomed chart's labels (#113): years under monthly buckets, months under weekly
- * ones, days under daily ones — each at the boundary it names, thinned to at most
+ * The shortest monthly axis labelled by year rather than by month.
+ *
+ * Years only while they are guaranteed to give the axis several labels. The worst case
+ * is an axis starting in February, whose first January is eleven slots in: at 48 slots
+ * that January, the next and the one after (slots 11, 23 and 35) all fall inside
+ * {@link LAST_ZOOMED_TICK_PERCENT} — three labels. The shortest monthly axis is 25
+ * months, and year labels there could leave one: February 2021 to February 2023 put
+ * January 2022 at 44% and January 2023 at 96%, past the cut-off. Below this, every
+ * few months is labelled instead, which a 25-month axis has plenty of.
+ */
+export const YEAR_LABELS_FROM_MONTHS = 48;
+
+/**
+ * The zoomed chart's labels (#113): months under weekly buckets and under monthly ones
+ * shorter than {@link YEAR_LABELS_FROM_MONTHS}, years under longer monthly ones, days
+ * under daily ones — each at the boundary it names, thinned to at most
  * {@link MAX_ZOOMED_TICKS} and kept clear of the right-hand edge.
  *
  * **No label is pinned to the origin to stand in for a boundary that is not on the
  * axis**, unlike {@link yearTicks}' first year. On the whole Archive that label has six
  * months of room; on a zoomed axis the first real boundary can be one bucket along, and
- * two labels that close collide at 360px. The caption states where the range begins.
+ * two labels that close collide at 360px. The caption states where the range begins. A
+ * boundary that *is* the origin — the 1st of a monthly axis's first month, a daily
+ * axis's first day — is labelled like any other, because the thinning keeps the next
+ * label a stride away from it.
  *
  * Positioned by slot, like the bars: a boundary's slot index plus how far through that
  * slot it falls, over the number of slots. Weeks and days are uniform, so that is time;
@@ -149,7 +168,9 @@ export const LAST_ZOOMED_TICK_PERCENT = 85;
 export function zoomedTicks(size: TimelineBucketSize, slots: TimelineBucketSlot[]): TimelineTick[] {
     if (slots.length === 0) return [];
 
-    const onAxis = labelBoundaries(size, slots[0].start, slots[slots.length - 1].end)
+    const byYear = size === 'month' && slots.length >= YEAR_LABELS_FROM_MONTHS;
+    const unit = size === 'day' ? 'day' : byYear ? 'year' : 'month';
+    const onAxis = labelBoundaries(unit, slots[0].start, slots[slots.length - 1].end)
         .map((boundary) => ({ label: boundary.label, percent: slotPercent(slots, boundary.at) }))
         .filter((tick) => tick.percent <= LAST_ZOOMED_TICK_PERCENT);
 
@@ -161,16 +182,16 @@ export function zoomedTicks(size: TimelineBucketSize, slots: TimelineBucketSlot[
 
 /**
  * The instants that get a label on a zoomed axis `[from, to)`, with the label each gets:
- * each January for months, each 1st for weeks, each day for days.
+ * each January for years, each 1st for months, each day for days.
  */
 function labelBoundaries(
-    size: TimelineBucketSize,
+    unit: 'year' | 'month' | 'day',
     from: number,
     to: number
 ): Array<{ at: number; label: string }> {
     const boundaries: Array<{ at: number; label: string }> = [];
 
-    if (size === 'day') {
+    if (unit === 'day') {
         for (let at = from; at < to; at += SECONDS_PER_DAY) {
             boundaries.push({ at, label: formatArchiveDayOfMonth(at) });
         }
@@ -180,7 +201,7 @@ function labelBoundaries(
     // Absolute month indices, month-keys' convention: a year's boundaries are every
     // twelfth index from its January, a month's every index. Stepping indices rather
     // than timestamps means no month length and no day-of-month to overflow from.
-    const byYear = size === 'month';
+    const byYear = unit === 'year';
     const firstIndex = monthIndexAt(new Date(from * 1000));
     const step = byYear ? 12 : 1;
     for (let index = byYear ? firstIndex - (firstIndex % 12) : firstIndex; ; index += step) {

@@ -31,3 +31,20 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
    - [x] `month-keys.ts` — `monthKey()` exported; the axis labels stop hand-rolling the key
    - [x] `SECONDS_PER_DAY` shared; comment drift; the test's `dayOf` alias removed
    - [x] Handoff — `docs/handoffs/260924-issue-113-implemented.md` (gitignored, local)
+8. Spec deviations: the user's decisions (relayed 2026-09-24 by `orchestrate-ui-refinement`)
+   - [x] The axis clamps to the Archive's ends: **accepted as is**
+   - [x] The line's plotted origin is `clearsBefore` (first − 1): **accepted as is**
+   - [x] A ~25-month monthly axis could end up with one year label: **fixed**
+     - `src/app/gos10k/timeline-geometry.ts`: `YEAR_LABELS_FROM_MONTHS = 48`. A monthly axis
+       shorter than that gets `Mar 2022` month labels on its 1sts, thinned by the existing
+       stride; 48 months or more keeps year labels. Doc comments updated, and the widest label
+       corrected to en-GB's `Sept 2022` (~46px), which is wider than `Mar 2022`.
+     - `src/app/gos10k/timeline-geometry.test.ts`: the Feb 2021 → Feb 2023 regression, a
+       48-month year-labelled case, and a sweep of every monthly axis in the Archive (all start ×
+       end months, 25–68 slots). The 26-month test was updated to the six month labels.
+       Measured over the sweep: at least 5 labels on a month-labelled axis, at least 3 on a
+       year-labelled one, and neighbouring labels at least 1/7 of the axis apart.
+     - `e2e/gos10k-timeline.spec.ts`: one comment only. No assertion depends on label text. The
+       360px overflow spec already visits the 26-month `MONTHS` URL, which now draws month labels.
+     - Checked by hand with a throwaway 360px spec, since deleted. No overlap on the 25-, 26-,
+       28-, 35- and 47-month axes (smallest gap 2.9px, on 35 months), and screenshots are readable.

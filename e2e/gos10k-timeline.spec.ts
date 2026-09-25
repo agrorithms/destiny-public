@@ -118,8 +118,9 @@ test.describe('the timeline', () => {
         });
 
         test('keeps every bucket size\'s axis labels inside a 360px viewport', async ({ page }) => {
-            // Days, weeks and months each label their axis differently, and `Mar 2022`
-            // under the weekly chart is the widest label any of them draws.
+            // Days, weeks and months each label their axis differently. The weekly axis
+            // and the short monthly one both draw month labels (`Mar 2022`,
+            // `Sept 2022`), the widest any of them draws.
             for (const url of [FEBRUARY_2022, WEEKS, MONTHS]) {
                 await page.goto(url);
                 const timeline = page.getByTestId('archive-timeline');

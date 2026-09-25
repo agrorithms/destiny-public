@@ -4,6 +4,7 @@ import { bucketSlots, chooseBucketSize } from '@/lib/db/archive/timeline-buckets
 import {
     MAX_ZOOMED_TICKS,
     LAST_ZOOMED_TICK_PERCENT,
+    YEAR_LABELS_FROM_MONTHS,
     minimumBandPercent,
     timelineBand,
     yearTicks,
@@ -152,18 +153,88 @@ describe('the zoomed axis labels', () => {
         return { size, slots: bucketSlots(size, fromSeconds, toSeconds) };
     };
 
-    it('labels a monthly axis with the years, at each January', () => {
-        // July 2020 to August 2022: 26 months, so month buckets.
+    it('labels a short monthly axis with months, every few months from its first', () => {
+        // July 2020 to August 2022: 26 months, so month buckets — and too few for years.
+        // Labelled by year, this axis had only 2021 and 2022.
         const { size, slots } = axis('2020-07-15', '2022-08-02');
         expect(size).toBe('month');
 
         const ticks = zoomedTicks(size, slots);
 
+        // Every 1st up to 85% of the axis is slots 0–22, twenty-three of them, so every
+        // fourth. July 2020 labels the origin because it is a real boundary here: the
+        // first bar *is* July 2020, and the next label is four bars along.
+        expect(ticks.map((tick) => tick.label)).toEqual([
+            'Jul 2020',
+            'Nov 2020',
+            'Mar 2021',
+            'Jul 2021',
+            'Nov 2021',
+            'Mar 2022',
+        ]);
+        // March 2021 is slot 8 of 26.
+        expect(ticks[2].percent).toBeCloseTo((8 / 26) * 100, 5);
+    });
+
+    it('never leaves a two-year monthly axis with a single label', () => {
+        // February 2021 to February 2023: 25 months. Labelled by year, January 2022 sat
+        // at 44% and January 2023 at 96%, past the right-hand cut-off, which left one
+        // label on a two-year axis.
+        const { size, slots } = axis('2021-02-01', '2023-02-28');
+        expect(size).toBe('month');
+        expect(slots).toHaveLength(25);
+
+        expect(zoomedTicks(size, slots).map((tick) => tick.label)).toEqual([
+            'Feb 2021',
+            'Jun 2021',
+            'Oct 2021',
+            'Feb 2022',
+            'Jun 2022',
+            'Oct 2022',
+        ]);
+    });
+
+    it('labels a long monthly axis with the years, at each January', () => {
+        // July 2020 to June 2024: 48 months, the shortest axis labelled by year.
+        const { size, slots } = axis('2020-07-15', '2024-06-30');
+        expect(slots).toHaveLength(YEAR_LABELS_FROM_MONTHS);
+
+        const ticks = zoomedTicks(size, slots);
+
         // 2020 has no January on this axis, so no label is pinned to the origin to stand
         // in for it — a label that close to 2021's would collide with it on a phone.
-        expect(ticks.map((tick) => tick.label)).toEqual(['2021', '2022']);
-        // January 2021 is slot 6 of 26.
-        expect(ticks[0].percent).toBeCloseTo((6 / 26) * 100, 5);
+        // January 2024 is at 87.5%, past the cut-off.
+        expect(ticks.map((tick) => tick.label)).toEqual(['2021', '2022', '2023']);
+        // January 2021 is slot 6 of 48.
+        expect(ticks[0].percent).toBeCloseTo((6 / 48) * 100, 5);
+    });
+
+    it('gives every monthly axis in the Archive at least two labels, and no more than fit', () => {
+        // Every monthly axis the page can draw. A monthly axis's slots are whole calendar
+        // months, and its labels depend on nothing else, so every start month crossed with
+        // every end month is every monthly axis there is — whatever days the range names.
+        // The shortest is 25 months: 24 months span at most 731 days, which is weeks.
+        const lengths = new Set<number>();
+        for (const [start, first] of MONTHS.entries()) {
+            for (const last of MONTHS.slice(start)) {
+                const [year, month] = last.split('-').map(Number);
+                const lastDay = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+                const { size, slots } = axis(`${first}-01`, lastDay);
+                if (size !== 'month') continue;
+                lengths.add(slots.length);
+
+                const ticks = zoomedTicks(size, slots);
+                expect(ticks.length, `${first} to ${last}`).toBeGreaterThanOrEqual(2);
+                expect(ticks.length, `${first} to ${last}`).toBeLessThanOrEqual(MAX_ZOOMED_TICKS);
+                for (const tick of ticks) {
+                    expect(tick.percent).toBeLessThanOrEqual(LAST_ZOOMED_TICK_PERCENT);
+                }
+            }
+        }
+
+        // The sweep reached both labellings, from the shortest monthly axis to the Archive.
+        expect(Math.min(...lengths)).toBe(25);
+        expect(Math.max(...lengths)).toBe(MONTHS.length);
     });
 
     it('labels a weekly axis with the months, where each one begins', () => {

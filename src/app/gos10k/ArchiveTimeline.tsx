@@ -120,7 +120,7 @@ export function ArchiveTimeline({
                         barsLabel={
                             peak === null
                                 ? 'Full Clears per month'
-                                : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
+                                : `Full Clears per month, peaking at ${peak.clears} in ${formatArchiveMonth(peak.month)}`
                         }
                     />
                     <Ticks ticks={wholeArchiveTicks} />

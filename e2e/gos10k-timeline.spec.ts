@@ -67,6 +67,24 @@ test.describe('the timeline', () => {
         await expect(page.getByTestId('archive-timeline-band')).toHaveCount(0);
     });
 
+    test('names every chart in words, never by a raw YYYY-MM key', async ({ page }) => {
+        // The names are what a screen reader says for each chart, and #58's audit starts
+        // from them. The unfiltered bars once named their peak by its bucket key, read
+        // aloud as "in 2022-02", while the zoomed ones said "in Feb 2022".
+        for (const url of ['/gos10k', FEBRUARY_2022, WEEKS, MONTHS]) {
+            await page.goto(url);
+            await expect(chartPart(page, 'bar'), url).toHaveAccessibleName(
+                /^Full Clears per (month|week|day), peaking at [\d,]+ (in|on) \S/
+            );
+            const names = await page
+                .getByTestId('archive-timeline')
+                .getByRole('img')
+                .evaluateAll((charts) => charts.map((chart) => chart.getAttribute('aria-label') ?? ''));
+            expect(names.length, url).toBeGreaterThan(0);
+            for (const name of names) expect(name, url).not.toMatch(/\d{4}-\d{2}/);
+        }
+    });
+
     test('zooms to a range, and shades that range on the overview strip alone', async ({ page }) => {
         await page.goto(FEBRUARY_2022);
 

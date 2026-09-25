@@ -5,7 +5,8 @@ import { slotAt, slotCentre, tooltipLeft, type TimelinePart } from './timeline-g
 import type { TimelineTooltip } from './timeline-tooltips';
 
 /**
- * The timeline's hover tooltips (#114) — the page's first client JavaScript, and its only.
+ * The timeline's hover tooltips (#114) — the page's first client JavaScript. The other is
+ * ./TimelineDrag.tsx (#115), which wraps this one on the main chart.
  *
  * **A wrapper, not the chart.** The line and the bars are still drawn by the server
  * component ./ArchiveTimeline.tsx and arrive here as `children`, so with JavaScript off
@@ -28,6 +29,10 @@ import type { TimelineTooltip } from './timeline-tooltips';
  * finger, "leaves" as it lifts. A tap is read on `pointerup` rather than `pointerdown`,
  * because a finger that starts a scroll on the chart gets a `pointercancel` instead and
  * should not leave a tooltip behind.
+ *
+ * **Hidden while a drag is under way** (#115): the selection is what the reader is looking
+ * at then. The drag wrapper marks itself `data-dragging` and the box and its marker hide
+ * under that, so neither component has to know the other's state.
  *
  * **A tooltip that outlives a change of chart width is closed, not moved.** A tapped one
  * stays up until the next tap, so a phone rotated under it would otherwise keep a `left`
@@ -152,7 +157,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
                     <div
                         ref={markerRef}
                         aria-hidden
-                        className="ui-accent-text pointer-events-none absolute w-px bg-current opacity-60"
+                        className="ui-accent-text pointer-events-none absolute w-px bg-current opacity-60 group-data-[dragging]/drag:hidden"
                     />
                     {/* `w-max max-w-full`: as wide as its text, never wider than the chart.
                         Without `w-max` an absolute box shrinks to the room right of its
@@ -162,7 +167,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
                         ref={tooltipRef}
                         role="tooltip"
                         data-testid="archive-timeline-tooltip"
-                        className="ui-card ui-text-primary pointer-events-none absolute z-10 w-max max-w-full rounded-md border px-2 py-1 text-xs tabular-nums shadow-sm"
+                        className="ui-card ui-text-primary pointer-events-none absolute z-10 w-max max-w-full rounded-md border px-2 py-1 text-xs tabular-nums shadow-sm group-data-[dragging]/drag:hidden"
                     >
                         {hovered.part === 'line' ? tooltip.line : tooltip.bar}
                     </div>

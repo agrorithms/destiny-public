@@ -266,7 +266,7 @@ export default async function Gos10kPage({
                 {/* #81's render order: the filter, then the timeline, then the panels.
                     The timeline follows the control directly because it zooms to the
                     control's own selection, and shades it on the overview strip. */}
-                <ArchiveTimeline months={timeline} zoomed={zoomed} range={range} />
+                <ArchiveTimeline months={timeline} zoomed={zoomed} range={range} span={span} tab={tab} />
 
                 {/* Below the timeline rather than above it: the timeline is the filter's
                     companion and shows on every tab, and the strip introduces what changes. */}

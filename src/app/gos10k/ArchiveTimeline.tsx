@@ -3,6 +3,9 @@ import type {
     ArchiveTimelineMonth,
     ResolvedArchiveRange,
 } from '@/lib/db/archive/queries';
+import type { ArchiveSpan } from '@/lib/db/archive/range';
+import { monthSlots, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
+import type { ArchiveTab } from './archive-tab';
 import {
     describeArchiveRange,
     formatArchiveDayRange,
@@ -18,6 +21,7 @@ import {
     type TimelinePart,
     type TimelineTick,
 } from './timeline-geometry';
+import { TimelineDrag } from './TimelineDrag';
 import { TimelineHover } from './TimelineHover';
 import { wholeArchiveTooltips, zoomedTooltips } from './timeline-tooltips';
 
@@ -57,22 +61,36 @@ import { wholeArchiveTooltips, zoomedTooltips } from './timeline-tooltips';
  * them exactly as before. What each tooltip says is worked out here too
  * (./timeline-tooltips.ts) and handed down as strings. The overview strip is not wrapped:
  * tooltips belong to the main chart.
+ *
+ * **Both the main chart and the strip take a drag (#115)**, through ./TimelineDrag.tsx,
+ * another wrapper of the same kind: a mouse dragged across either sets the page's range
+ * on release. On the main chart it wraps the tooltips, and on the strip — which is how a
+ * reader zooms back out without the form — the bars alone. The edges a drag snaps to are
+ * worked out here and handed down: the zoomed buckets carry theirs, and the monthly
+ * charts' come from their month keys ({@link monthSlots}).
  */
 export function ArchiveTimeline({
     months,
     zoomed,
     range,
+    span,
+    tab,
 }: {
     /** The whole Archive, always: the chart unfiltered, the overview strip under a range. */
     months: ArchiveTimelineMonth[];
     /** The range's own buckets, or null when no range is active. */
     zoomed: ArchiveRangeTimeline | null;
     range: ResolvedArchiveRange;
+    /** The Archive's extent, which a drag's dates are clamped to. */
+    span: ArchiveSpan;
+    /** The active tab, which a drag's navigation keeps. */
+    tab: ArchiveTab;
 }) {
     // The geometry works in month keys alone — it is the axis, not the data — so the
     // whole-Archive bars, the band and the year ticks are positioned from one list.
     const monthKeys = months.map((month) => month.month);
     const wholeArchiveTicks = yearTicks(monthKeys).map((tick) => ({ label: tick.year, percent: tick.percent }));
+    const wholeArchiveSlots = monthSlots(monthKeys);
 
     if (zoomed === null) {
         const total = months.length === 0 ? 0 : months[months.length - 1].cumulativeClears;
@@ -90,22 +108,24 @@ export function ArchiveTimeline({
                     <p className="ui-text-secondary text-xs">
                         Cumulative: 0 to {total.toLocaleString()} Full Clears
                     </p>
-                    <TimelineHover tooltips={wholeArchiveTooltips(months)}>
-                        <Climb
-                            buckets={months}
-                            from={0}
-                            label={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
-                        />
-                        <Bars
-                            buckets={months}
-                            variant="main"
-                            label={
-                                peak === null
-                                    ? 'Full Clears per month'
-                                    : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
-                            }
-                        />
-                    </TimelineHover>
+                    <Draggable slots={wholeArchiveSlots} span={span} tab={tab}>
+                        <TimelineHover tooltips={wholeArchiveTooltips(months)}>
+                            <Climb
+                                buckets={months}
+                                from={0}
+                                label={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
+                            />
+                            <Bars
+                                buckets={months}
+                                variant="main"
+                                label={
+                                    peak === null
+                                        ? 'Full Clears per month'
+                                        : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
+                                }
+                            />
+                        </TimelineHover>
+                    </Draggable>
                     <Ticks ticks={wholeArchiveTicks} />
                     <p className="ui-text-secondary text-xs">
                         {peak === null
@@ -150,18 +170,20 @@ export function ArchiveTimeline({
                             Cumulative: {formatClearNumber(first)}
                             {last === first ? '' : ` to ${last.toLocaleString()}`}
                         </p>
-                        <TimelineHover tooltips={zoomedTooltips(zoomed)}>
-                            <Climb
-                                buckets={buckets}
-                                from={clearsBefore}
-                                label={`Cumulative Full Clears, from ${formatClearNumber(first)} to ${formatClearNumber(last)}`}
-                            />
-                            <Bars
-                                buckets={buckets}
-                                variant="main"
-                                label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucketInSentence(size, peak.start)}`}
-                            />
-                        </TimelineHover>
+                        <Draggable slots={buckets} span={span} tab={tab}>
+                            <TimelineHover tooltips={zoomedTooltips(zoomed)}>
+                                <Climb
+                                    buckets={buckets}
+                                    from={clearsBefore}
+                                    label={`Cumulative Full Clears, from ${formatClearNumber(first)} to ${formatClearNumber(last)}`}
+                                />
+                                <Bars
+                                    buckets={buckets}
+                                    variant="main"
+                                    label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucketInSentence(size, peak.start)}`}
+                                />
+                            </TimelineHover>
+                        </Draggable>
                         <Ticks ticks={zoomedTicks(size, buckets)} />
                         <p className="ui-text-secondary text-xs">
                             Per {size}: busiest was {peak.clears.toLocaleString()} {preposition}{' '}
@@ -177,12 +199,14 @@ export function ArchiveTimeline({
                     <p className="ui-text-secondary text-xs">
                         The whole Archive, by month. Shaded: {formatArchiveDayRange(range)}.
                     </p>
-                    <Bars
-                        buckets={months}
-                        band={band}
-                        variant="overview"
-                        label="Full Clears per month across the whole Archive, with the range shaded"
-                    />
+                    <Draggable slots={wholeArchiveSlots} span={span} tab={tab}>
+                        <Bars
+                            buckets={months}
+                            band={band}
+                            variant="overview"
+                            label="Full Clears per month across the whole Archive, with the range shaded"
+                        />
+                    </Draggable>
                     <Ticks ticks={wholeArchiveTicks} />
                 </div>
             </div>
@@ -209,6 +233,34 @@ function busiest<T extends ChartBucket>(buckets: T[]): T | null {
     return buckets.reduce<T | null>(
         (best, bucket) => (bucket.clears > (best?.clears ?? 0) ? bucket : best),
         null
+    );
+}
+
+/**
+ * A drag across `children` (./TimelineDrag.tsx), given one slot per bar.
+ *
+ * Only the edges cross to the client: a zoomed bucket also carries its counts, which the
+ * browser has no use for. An Archive with no Runs has no span to clamp to — and no bars
+ * to drag across — so it draws the chart undecorated; getArchiveDb() will not open one
+ * anyway.
+ */
+function Draggable({
+    slots,
+    span,
+    tab,
+    children,
+}: {
+    slots: TimelineBucketSlot[];
+    span: ArchiveSpan;
+    tab: ArchiveTab;
+    children: React.ReactNode;
+}) {
+    const { firstRunAt, lastRunAt } = span;
+    if (firstRunAt === null || lastRunAt === null) return children;
+    return (
+        <TimelineDrag slots={slots.map(({ start, end }) => ({ start, end }))} span={{ firstRunAt, lastRunAt }} tab={tab}>
+            {children}
+        </TimelineDrag>
     );
 }
 

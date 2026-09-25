@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { slotAt, slotCentre, tooltipLeft, type TimelinePart } from './timeline-geometry';
+import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft, type TimelinePart } from './timeline-geometry';
 import type { TimelineTooltip } from './timeline-tooltips';
 
 /**
@@ -30,8 +30,8 @@ import type { TimelineTooltip } from './timeline-tooltips';
  * because a finger that starts a scroll on the chart gets a `pointercancel` instead and
  * should not leave a tooltip behind.
  *
- * **Hidden while a drag is under way** (#115): the selection is what the reader is looking
- * at then. The drag wrapper marks itself `data-dragging` and the box and its marker hide
+ * **Hidden while a drag is under way** (#115): the drag span is what the reader is
+ * looking at then. The drag wrapper marks itself `data-dragging` and the box and its marker hide
  * under that, so neither component has to know the other's state.
  *
  * **A tooltip that outlives a change of chart width is closed, not moved.** A tapped one
@@ -47,9 +47,9 @@ interface Hovered {
 /** The gap between the tooltip's bottom edge and the top of the half it describes, in px. */
 const GAP = 4;
 
-/** A mouse hovers; everything else — a finger, a pen — taps. */
+/** A mouse hovers; everything else — a finger, a pen — taps ({@link isMouse}). */
 function taps(event: React.PointerEvent): boolean {
-    return event.pointerType !== 'mouse';
+    return !isMouse(event);
 }
 
 export function TimelineHover({ tooltips, children }: { tooltips: TimelineTooltip[]; children: React.ReactNode }) {
@@ -71,8 +71,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
             return;
         }
 
-        const box = chart.getBoundingClientRect();
-        const index = slotAt((event.clientX - box.left) / box.width, tooltips.length);
+        const index = slotAt(chartFraction(event.clientX, chart.getBoundingClientRect()), tooltips.length);
         if (index === null) return;
 
         // Only on a change: a mouse fires pointermove for every pixel it crosses, and

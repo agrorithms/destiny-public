@@ -51,6 +51,18 @@ export function monthKey(index: number): string {
 }
 
 /**
+ * The first instant of a `YYYY-MM` month, in unix seconds, UTC — where its bucket begins.
+ *
+ * Here for the reason {@link monthIndexAt} is: a drag across the monthly charts (#115)
+ * needs each month's edges, and turning an index back into a year and a month at the
+ * caller would be one more copy of this module's two operators.
+ */
+export function monthStart(month: string): number {
+    const index = monthIndex(month);
+    return Date.UTC(Math.floor(index / 12), index % 12, 1) / 1000;
+}
+
+/**
  * Every `YYYY-MM` from `first` to `last` inclusive, in order.
  *
  * Integer arithmetic on the two keys rather than `Date` stepping: a Date-based loop has

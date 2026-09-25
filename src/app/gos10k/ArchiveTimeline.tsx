@@ -3,7 +3,7 @@ import type {
     ArchiveTimelineMonth,
     ResolvedArchiveRange,
 } from '@/lib/db/archive/queries';
-import type { ArchiveSpan } from '@/lib/db/archive/range';
+import { archiveRunSpan, type ArchiveSpan } from '@/lib/db/archive/range';
 import { monthSlots, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
 import type { ArchiveTab } from './archive-tab';
 import {
@@ -255,10 +255,10 @@ function Draggable({
     tab: ArchiveTab;
     children: React.ReactNode;
 }) {
-    const { firstRunAt, lastRunAt } = span;
-    if (firstRunAt === null || lastRunAt === null) return children;
+    const runs = archiveRunSpan(span);
+    if (runs === null) return children;
     return (
-        <TimelineDrag slots={slots.map(({ start, end }) => ({ start, end }))} span={{ firstRunAt, lastRunAt }} tab={tab}>
+        <TimelineDrag slots={slots.map(({ start, end }) => ({ start, end }))} span={runs} tab={tab}>
             {children}
         </TimelineDrag>
     );

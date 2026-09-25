@@ -1,5 +1,5 @@
 import { monthIndex, monthIndexAt, monthKey } from '@/lib/db/archive/month-keys';
-import { formatArchiveDate, type ArchiveRangeRequest } from '@/lib/db/archive/range';
+import { formatArchiveDate, type ArchiveRangeRequest, type ArchiveRunSpan } from '@/lib/db/archive/range';
 import { SECONDS_PER_DAY, type TimelineBucketSize, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
 import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
 
@@ -230,6 +230,23 @@ function labelBoundaries(
 export type TimelinePart = 'line' | 'bar';
 
 /**
+ * Whether a pointer is a mouse (#114, #115). A mouse hovers and drags; everything else — a
+ * finger, a pen — taps, and never drags. One answer for both client components, so the
+ * tooltip and the drag cannot disagree about which kind of pointer they are looking at.
+ */
+export function isMouse(event: { pointerType: string }): boolean {
+    return event.pointerType === 'mouse';
+}
+
+/**
+ * How far across a chart a pointer at `clientX` is, as a fraction of its width — unclamped,
+ * so a captured drag past either edge reads as below 0 or above 1 ({@link slotAt} clamps).
+ */
+export function chartFraction(clientX: number, box: { left: number; width: number }): number {
+    return (clientX - box.left) / box.width;
+}
+
+/**
  * Which of `count` slots a pointer `fraction` of the way across the main chart is over,
  * or null when there are none (#114) — the bucket a tooltip describes.
  *
@@ -275,7 +292,7 @@ export function tooltipLeft(anchor: number, tooltipWidth: number, chartWidth: nu
  * because a click that both shows a tooltip and navigates is ambiguous, and dragging
  * across one bar already selects it.
  *
- * Sideways only: the selection is a stretch of the x-axis, so a vertical wobble inside
+ * Sideways only: a drag selects a stretch of the x-axis, so a vertical wobble inside
  * one bar is still a click.
  */
 export const DRAG_THRESHOLD_PX = 4;
@@ -323,7 +340,7 @@ export function dragSlots(startFraction: number, endFraction: number, count: num
 export function dragDates(
     slots: TimelineBucketSlot[],
     { first, last }: DragSlots,
-    span: { firstRunAt: number; lastRunAt: number }
+    span: ArchiveRunSpan
 ): Extract<ArchiveRangeRequest, { kind: 'dates' }> {
     const fromDate = formatArchiveDate(Math.max(slots[first].start, span.firstRunAt));
     const toDate = formatArchiveDate(Math.min(slots[last].end - 1, span.lastRunAt));

@@ -3,6 +3,7 @@ import { monthsBetween } from '@/lib/db/archive/month-keys';
 import { bucketSlots, chooseBucketSize } from '@/lib/db/archive/timeline-buckets';
 import {
     DRAG_THRESHOLD_PX,
+    chartFraction,
     MAX_ZOOMED_TICKS,
     LAST_ZOOMED_TICK_PERCENT,
     YEAR_LABELS_FROM_MONTHS,
@@ -366,6 +367,17 @@ describe("the tooltip's left edge (#114)", () => {
         // Overflow on the right beats overflow on the left, where the start of the text
         // — the bucket's name — would be the part cut off.
         expect(tooltipLeft(50, 400, 328)).toBe(0);
+    });
+});
+
+describe('the fraction of the way across a chart (#115)', () => {
+    it('measures from the chart\'s left edge, and reads past either edge rather than clamping', () => {
+        // A 400px chart starting 100px into the viewport. A captured drag goes on
+        // reporting past its edges, and slotAt() is what clamps.
+        const box = { left: 100, width: 400 };
+        expect(chartFraction(300, box)).toBe(0.5);
+        expect(chartFraction(60, box)).toBe(-0.1);
+        expect(chartFraction(540, box)).toBe(1.1);
     });
 });
 

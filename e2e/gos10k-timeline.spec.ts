@@ -381,7 +381,7 @@ const ARCHIVE_MONTHS = 68;
 const WEEK_SLOTS = 17;
 
 test.describe('dragging across the timeline (#115)', () => {
-    test('draws the selection while dragging, and navigates once, on release, to the outer edges of the buckets touched', async ({
+    test('draws the drag span while dragging, and navigates once, on release, to the outer edges of the buckets touched', async ({
         page,
     }) => {
         await page.goto(WEEKS);
@@ -390,17 +390,17 @@ test.describe('dragging across the timeline (#115)', () => {
         const bars = chartPart(page, 'bar');
 
         // Weeks 1 to 3 of the axis — the weeks of 10, 17 and 24 January. The first begins
-        // two days before the range does: the selection snaps outward to whole buckets.
+        // two days before the range does: a drag snaps outward to whole buckets.
         await pressAndMove(page, bars, slotFraction(0, WEEK_SLOTS), slotFraction(2, WEEK_SLOTS));
 
         // Drawn while dragging, over the three weeks and no further; and nothing has
         // navigated yet.
-        const selection = page.getByTestId('archive-timeline-selection');
-        await expect(selection).toBeVisible();
-        const [barsBox, selectionBox] = await Promise.all([boxOf(bars), boxOf(selection)]);
-        expect(selectionBox.x).toBeCloseTo(barsBox.x, 0);
-        expect(selectionBox.width).toBeCloseTo((barsBox.width * 3) / WEEK_SLOTS, 0);
-        // No hover tooltip over a drag: the selection is what the reader is looking at.
+        const dragSpan = page.getByTestId('archive-timeline-drag-span');
+        await expect(dragSpan).toBeVisible();
+        const [barsBox, spanBox] = await Promise.all([boxOf(bars), boxOf(dragSpan)]);
+        expect(spanBox.x).toBeCloseTo(barsBox.x, 0);
+        expect(spanBox.width).toBeCloseTo((barsBox.width * 3) / WEEK_SLOTS, 0);
+        // No hover tooltip over a drag: the drag span is what the reader is looking at.
         await expect(page.getByTestId('archive-timeline-tooltip')).toBeHidden();
         expect(navigations).toEqual([]);
 
@@ -408,9 +408,10 @@ test.describe('dragging across the timeline (#115)', () => {
 
         // The week of 24 January ends on Sunday the 30th: `to` is an inclusive day.
         await expect(page).toHaveURL(/\/gos10k\?from=2022-01-10&to=2022-01-30$/);
-        expect(navigations).toEqual(['/gos10k?from=2022-01-10&to=2022-01-30']);
-        // And the page is the new range: the chart zooms to it (#113), days now.
+        // The page is the new range — the chart zooms to it (#113), days now — before the
+        // count is taken, so a second push arriving late would be in it.
         await expect(page.getByRole('heading', { level: 2, name: 'The range, day by day' })).toBeVisible();
+        expect(navigations).toEqual(['/gos10k?from=2022-01-10&to=2022-01-30']);
     });
 
     test('selects the same buckets dragged right to left', async ({ page }) => {
@@ -435,6 +436,8 @@ test.describe('dragging across the timeline (#115)', () => {
         await dragAcross(page, strip(page), slotFraction(0, ARCHIVE_MONTHS), slotFraction(34, ARCHIVE_MONTHS));
 
         await expect(page).toHaveURL(/\/gos10k\?from=2020-07-04&to=2023-05-31$/);
+        // The new range's page has rendered before the count is taken.
+        await expect(page.getByTestId('archive-timeline-overview')).toContainText('Shaded: 4 Jul 2020 – 31 May 2023.');
         expect(navigations).toEqual(['/gos10k?from=2020-07-04&to=2023-05-31']);
     });
 
@@ -472,7 +475,7 @@ test.describe('dragging across the timeline (#115)', () => {
         await page.mouse.move(x, y);
         await page.mouse.down();
         await page.mouse.move(x + 3, y);
-        await expect(page.getByTestId('archive-timeline-selection')).toHaveCount(0);
+        await expect(page.getByTestId('archive-timeline-drag-span')).toHaveCount(0);
         await page.mouse.up();
 
         // A navigation is asynchronous, so absence is proved by what comes next: the
@@ -489,9 +492,9 @@ test.describe('dragging across the timeline (#115)', () => {
         const bars = chartPart(page, 'bar');
 
         await pressAndMove(page, bars, slotFraction(2, WEEK_SLOTS), slotFraction(9, WEEK_SLOTS));
-        await expect(page.getByTestId('archive-timeline-selection')).toBeVisible();
+        await expect(page.getByTestId('archive-timeline-drag-span')).toBeVisible();
         await page.keyboard.press('Escape');
-        await expect(page.getByTestId('archive-timeline-selection')).toHaveCount(0);
+        await expect(page.getByTestId('archive-timeline-drag-span')).toHaveCount(0);
         // Releasing afterwards is the end of a cancelled drag, not the end of a drag.
         await page.mouse.up();
 
@@ -500,12 +503,57 @@ test.describe('dragging across the timeline (#115)', () => {
         expect(navigations).toEqual(['/gos10k?from=2022-01-17&to=2022-01-23']);
     });
 
+    test('abandons a drag whose pointer capture is lost before the release', async ({ page }) => {
+        // A context menu or a window switch mid-drag can take the capture, and the
+        // release then never arrives. Releasing the capture by hand is that loss.
+        await page.goto(WEEKS);
+        await waitForTimelineScript(page);
+        const navigations = recordNavigations(page);
+        const bars = chartPart(page, 'bar');
+
+        await pressAndMove(page, bars, slotFraction(2, WEEK_SLOTS), slotFraction(9, WEEK_SLOTS));
+        await expect(page.getByTestId('archive-timeline-drag-span')).toBeVisible();
+        // Chromium's mouse is pointer 1. The loss is delivered at the next pointer event,
+        // not at once — `lostpointercapture` waits for one — so the mouse moves on, still
+        // over the chart: a drag that ignored the loss would carry on here.
+        await page.locator('[data-dragging]').evaluate((element) => element.releasePointerCapture(1));
+        const box = await boxOf(bars);
+        await page.mouse.move(box.x + box.width * slotFraction(10, WEEK_SLOTS), box.y + box.height / 2);
+        await expect(page.getByTestId('archive-timeline-drag-span')).toHaveCount(0);
+        await page.mouse.up();
+
+        await dragAcross(page, bars, slotFraction(1, WEEK_SLOTS), slotFraction(1, WEEK_SLOTS) + 0.02);
+        await expect(page).toHaveURL(/\/gos10k\?from=2022-01-17&to=2022-01-23$/);
+        expect(navigations).toEqual(['/gos10k?from=2022-01-17&to=2022-01-23']);
+    });
+
+    test('does not navigate for a drag that lands on the range already showing', async ({ page }) => {
+        // 31 January to 6 February is seven daily slots; dragging across all of them
+        // writes the URL the page is on, and a same-URL push would be a server render for
+        // nothing.
+        await page.goto('/gos10k?from=2022-01-31&to=2022-02-06');
+        await waitForTimelineScript(page);
+        const navigations = recordNavigations(page);
+        const bars = chartPart(page, 'bar');
+
+        await dragAcross(page, bars, slotFraction(0, 7), slotFraction(6, 7));
+        await expect(page.getByTestId('archive-timeline-drag-span')).toHaveCount(0);
+
+        // The next navigation there is must be this one, and the only one.
+        await dragAcross(page, bars, slotFraction(1, 7), slotFraction(2, 7));
+        await expect(page).toHaveURL(/\/gos10k\?from=2022-02-01&to=2022-02-02$/);
+        expect(navigations).toEqual(['/gos10k?from=2022-02-01&to=2022-02-02']);
+    });
+
     test.describe('on a touch screen', () => {
         test.use({ viewport: { width: 360, height: 780 }, hasTouch: true });
 
         test('a finger dragged across the chart scrolls the page and selects nothing', async ({ page }) => {
             await page.goto(WEEKS);
-            const url = page.url();
+            // Hydrated before recording: Next rewrites the history entry for the page
+            // it has just loaded, which would count as a navigation of its own.
+            await waitForTimelineScript(page);
+            const navigations = recordNavigations(page);
             const bars = chartPart(page, 'bar');
             await bars.scrollIntoViewIfNeeded();
             const box = await boxOf(bars);
@@ -528,8 +576,13 @@ test.describe('dragging across the timeline (#115)', () => {
             await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 
             await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolledBefore);
-            await expect(page.getByTestId('archive-timeline-selection')).toHaveCount(0);
-            expect(page.url()).toBe(url);
+            await expect(page.getByTestId('archive-timeline-drag-span')).toHaveCount(0);
+
+            // A navigation is asynchronous, so absence is proved by what comes next: a tap
+            // on a tab navigates under the range as it was, and must be the only navigation.
+            await page.getByRole('navigation', { name: 'Archive sections' }).getByRole('link', { name: 'Rankings' }).tap();
+            await expect(page).toHaveURL(/\/gos10k\?from=2022-01-12&to=2022-05-03&tab=rankings$/);
+            expect(navigations).toEqual(['/gos10k?from=2022-01-12&to=2022-05-03&tab=rankings']);
         });
     });
 });

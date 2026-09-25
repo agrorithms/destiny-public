@@ -16,7 +16,7 @@
  * Everything is UTC, like `period` and like every date the range filter parses.
  */
 
-import { monthIndex } from './month-keys';
+import { monthStart } from './month-keys';
 
 export type TimelineBucketSize = 'month' | 'week' | 'day';
 
@@ -100,8 +100,7 @@ export function bucketSlots(
  */
 export function monthSlots(months: string[]): TimelineBucketSlot[] {
     return months.map((month) => {
-        const index = monthIndex(month);
-        const start = Date.UTC(Math.floor(index / 12), index % 12, 1) / 1000;
+        const start = monthStart(month);
         return { start, end: nextBucketStart('month', start) };
     });
 }

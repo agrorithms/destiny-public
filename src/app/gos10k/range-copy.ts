@@ -1,4 +1,6 @@
 import type { ResolvedArchiveRange } from '@/lib/db/archive/queries';
+import { formatArchiveDate } from '@/lib/db/archive/range';
+import type { TimelineBucketSize } from '@/lib/db/archive/timeline-buckets';
 
 /**
  * How the Archive page says a date and how it names the window a panel is counting.
@@ -40,6 +42,32 @@ export function formatArchiveMonth(month: string): string {
         month: 'short',
         timeZone: 'UTC',
     });
+}
+
+/**
+ * A day without its year, `14 Feb` — the zoomed timeline's day labels (#113).
+ *
+ * Yearless because it only ever labels an axis of three months or less, whose year the
+ * caption beside it already states, and every character counts under a 360px chart.
+ */
+export function formatArchiveDayOfMonth(unixSeconds: number): string {
+    return new Date(unixSeconds * 1000).toLocaleDateString('en-GB', {
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+    });
+}
+
+/**
+ * One zoomed-timeline bucket named by its start (#113): `Feb 2022`, `the week of 14 Feb
+ * 2022`, or `14 Feb 2022`. A week is named by its Monday, and says it is a week, because
+ * "14 Feb 2022" alone under a weekly chart reads as the one day.
+ */
+export function formatTimelineBucket(size: TimelineBucketSize, start: number): string {
+    const day = formatArchiveDate(start);
+    if (size === 'month') return formatArchiveMonth(day.slice(0, 7));
+    if (size === 'week') return `the week of ${formatArchiveDay(day)}`;
+    return formatArchiveDay(day);
 }
 
 /** The long form the header uses for the Archive's own span: `4 July 2020`. */

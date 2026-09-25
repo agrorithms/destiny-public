@@ -13,10 +13,11 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
    - [x] `src/lib/db/archive/queries.ts` — `getRangeTimeline()` beside the unchanged `getMonthlyClears()`
    - [x] `tests/db/archive-timeline.test.ts`
 3. Zoomed axis ticks + rendering
-   - [ ] `src/app/gos10k/timeline-geometry.ts`
-   - [ ] `src/app/gos10k/timeline-geometry.test.ts`
-   - [ ] `src/app/gos10k/ArchiveTimeline.tsx`
-   - [ ] `src/app/gos10k/page.tsx`
+   - [x] `src/app/gos10k/timeline-geometry.ts`
+   - [x] `src/app/gos10k/timeline-geometry.test.ts`
+   - [x] `src/app/gos10k/ArchiveTimeline.tsx`
+   - [x] `src/app/gos10k/page.tsx`
+   - [x] `src/app/gos10k/range-copy.ts` — day-of-month and bucket names
 4. Browser spec
    - [ ] `e2e/gos10k-timeline.spec.ts` (rewritten, onto `boxOf()`)
 5. Old-rule wording + docs

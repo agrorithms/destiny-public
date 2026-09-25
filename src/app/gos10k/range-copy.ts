@@ -37,11 +37,7 @@ export function formatArchiveDay(date: string | null): string {
 export function formatArchiveMonth(month: string): string {
     // The 15th rather than the 1st: any day inside the month names the same month, and
     // the middle of it cannot be moved across a boundary by a rounding surprise.
-    return new Date(`${month}-15T12:00:00Z`).toLocaleDateString('en-GB', {
-        year: 'numeric',
-        month: 'short',
-        timeZone: 'UTC',
-    });
+    return MONTH_FORMAT.format(new Date(`${month}-15T12:00:00Z`));
 }
 
 /**
@@ -51,11 +47,7 @@ export function formatArchiveMonth(month: string): string {
  * caption beside it already states, and every character counts under a 360px chart.
  */
 export function formatArchiveDayOfMonth(unixSeconds: number): string {
-    return new Date(unixSeconds * 1000).toLocaleDateString('en-GB', {
-        month: 'short',
-        day: 'numeric',
-        timeZone: 'UTC',
-    });
+    return DAY_OF_MONTH_FORMAT.format(new Date(unixSeconds * 1000));
 }
 
 /**
@@ -87,21 +79,24 @@ export function formatArchiveTimestamp(unixSeconds: number | null): string {
 }
 
 /**
- * The day formatters' shared `toLocaleDateString` call, so the options that make it
- * UTC-safe are stated once for both of them; they differ only in how long the month is.
- *
- * {@link formatArchiveMonth} deliberately does not come through here — it wants no `day`
- * at all, and threading an optional day through this signature would make every caller
- * read the parameter list to learn whether it prints one.
+ * The two day formatters differ only in how long the month is, so the options that make
+ * them UTC-safe are stated once here.
  */
 function formatUtcDate(ms: number, month: 'short' | 'long'): string {
-    return new Date(ms).toLocaleDateString('en-GB', {
-        year: 'numeric',
-        month,
-        day: 'numeric',
-        timeZone: 'UTC',
-    });
+    return (month === 'short' ? SHORT_DAY_FORMAT : LONG_DAY_FORMAT).format(new Date(ms));
 }
+
+/**
+ * Every formatter above, built once. `toLocaleDateString` with options constructs a new
+ * `Intl.DateTimeFormat` per call — about 50µs each — and the timeline formats one label
+ * per bucket and per axis boundary, a hundred or more per request. Each one pins
+ * `timeZone: 'UTC'`, for the reason {@link formatArchiveDay} gives.
+ */
+const DAY_FORMAT_OPTIONS = { year: 'numeric', day: 'numeric', timeZone: 'UTC' } as const;
+const SHORT_DAY_FORMAT = new Intl.DateTimeFormat('en-GB', { ...DAY_FORMAT_OPTIONS, month: 'short' });
+const LONG_DAY_FORMAT = new Intl.DateTimeFormat('en-GB', { ...DAY_FORMAT_OPTIONS, month: 'long' });
+const MONTH_FORMAT = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: 'short', timeZone: 'UTC' });
+const DAY_OF_MONTH_FORMAT = new Intl.DateTimeFormat('en-GB', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 /** `1 Feb 2022 – 21 Feb 2022`, or a single day when both ends are the same. */
 export function formatArchiveDayRange(range: ResolvedArchiveRange): string {

@@ -58,7 +58,14 @@ export function monthKey(index: number): string {
  * caller would be one more copy of this module's two operators.
  */
 export function monthStart(month: string): number {
-    const index = monthIndex(month);
+    return monthIndexStart(monthIndex(month));
+}
+
+/**
+ * The first instant of an absolute month index, in unix seconds, UTC. The zoomed buckets
+ * and the axis step through indices, and `monthIndexStart(index + 1)` is where a month ends.
+ */
+export function monthIndexStart(index: number): number {
     return Date.UTC(Math.floor(index / 12), index % 12, 1) / 1000;
 }
 

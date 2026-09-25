@@ -47,11 +47,6 @@ interface Hovered {
 /** The gap between the tooltip's bottom edge and the top of the half it describes, in px. */
 const GAP = 4;
 
-/** A mouse hovers; everything else — a finger, a pen — taps ({@link isMouse}). */
-function taps(event: React.PointerEvent): boolean {
-    return !isMouse(event);
-}
-
 export function TimelineHover({ tooltips, children }: { tooltips: TimelineTooltip[]; children: React.ReactNode }) {
     const [hovered, setHovered] = useState<Hovered | null>(null);
     const chartRef = useRef<HTMLDivElement>(null);
@@ -67,7 +62,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
             // pen's case: a finger cannot land in a 4px gap, because the browser's touch
             // adjustment retargets the tap onto the nearer SVG (measured in Chromium). A
             // mouse crossing the gap keeps the tooltip rather than flickering it.
-            if (taps(event)) setHovered(null);
+            if (!isMouse(event)) setHovered(null);
             return;
         }
 
@@ -105,9 +100,12 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
     }, [hovered, tooltips]);
 
     // A tap anywhere outside the chart dismisses the tooltip. Listened for only while one
-    // is showing, so the page carries no document listener the rest of the time.
+    // is showing, so the page carries no document listener the rest of the time — and
+    // keyed on *whether* one is showing, not which bucket, so a mouse sweeping across the
+    // chart does not tear the listener and the observer down at every bucket it crosses.
+    const open = hovered !== null;
     useEffect(() => {
-        if (!hovered) return;
+        if (!open) return;
         function dismiss(event: PointerEvent) {
             if (!chartRef.current?.contains(event.target as Node)) setHovered(null);
         }
@@ -128,7 +126,7 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
             document.removeEventListener('pointerdown', dismiss);
             resized.disconnect();
         };
-    }, [hovered]);
+    }, [open]);
 
     const tooltip = hovered ? tooltips[hovered.index] : undefined;
 
@@ -137,15 +135,15 @@ export function TimelineHover({ tooltips, children }: { tooltips: TimelineToolti
             ref={chartRef}
             className="relative space-y-1"
             onPointerMove={(event) => {
-                if (!taps(event)) show(event);
+                if (isMouse(event)) show(event);
             }}
             onPointerUp={(event) => {
-                if (taps(event)) show(event);
+                if (!isMouse(event)) show(event);
             }}
             onPointerLeave={(event) => {
                 // A finger or a pen "leaves" as it lifts, which would dismiss the tooltip
                 // its own tap just opened. A tap elsewhere dismisses those instead.
-                if (!taps(event)) setHovered(null);
+                if (isMouse(event)) setHovered(null);
             }}
         >
             {children}

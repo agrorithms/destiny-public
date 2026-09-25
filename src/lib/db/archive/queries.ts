@@ -10,6 +10,7 @@ import {
 import { monthsBetween } from './month-keys';
 import { bucketSlots, chooseBucketSize, type TimelineBucketSize } from './timeline-buckets';
 import {
+    archiveRunSpan,
     endOfArchiveDay,
     formatArchiveDate,
     startOfArchiveDay,
@@ -1415,12 +1416,11 @@ export function getRangeTimeline(
 ): ArchiveRangeTimeline {
     const db = getArchiveDb();
 
-    if (span.firstRunAt === null || span.lastRunAt === null) {
-        return { size: 'month', buckets: [], clearsBefore: 0 };
-    }
+    const runs = archiveRunSpan(span);
+    if (runs === null) return { size: 'month', buckets: [], clearsBefore: 0 };
 
-    const axisFrom = Math.max(range.periodFrom ?? span.firstRunAt, span.firstRunAt);
-    const axisTo = Math.min(range.periodTo ?? span.lastRunAt, span.lastRunAt);
+    const axisFrom = Math.max(range.periodFrom ?? runs.firstRunAt, runs.firstRunAt);
+    const axisTo = Math.min(range.periodTo ?? runs.lastRunAt, runs.lastRunAt);
     const size = chooseBucketSize(axisFrom, axisTo);
     const scope = rangeClause(range);
 

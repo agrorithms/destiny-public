@@ -3,7 +3,7 @@ import type {
     ArchiveTimelineMonth,
     ResolvedArchiveRange,
 } from '@/lib/db/archive/queries';
-import { archiveRunSpan, type ArchiveSpan } from '@/lib/db/archive/range';
+import { archiveRunSpan, type ArchiveRunSpan, type ArchiveSpan } from '@/lib/db/archive/range';
 import { monthSlots, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
 import type { ArchiveTab } from './archive-tab';
 import {
@@ -23,7 +23,7 @@ import {
 } from './timeline-geometry';
 import { TimelineDrag } from './TimelineDrag';
 import { TimelineHover } from './TimelineHover';
-import { wholeArchiveTooltips, zoomedTooltips } from './timeline-tooltips';
+import { wholeArchiveTooltips, zoomedTooltips, type TimelineTooltip } from './timeline-tooltips';
 
 /**
  * The timeline (#88, #113) — a cumulative Pinned Full Clear line, with bars beneath it on
@@ -89,8 +89,9 @@ export function ArchiveTimeline({
     // The geometry works in month keys alone — it is the axis, not the data — so the
     // whole-Archive bars, the band and the year ticks are positioned from one list.
     const monthKeys = months.map((month) => month.month);
-    const wholeArchiveTicks = yearTicks(monthKeys).map((tick) => ({ label: tick.year, percent: tick.percent }));
+    const wholeArchiveTicks = yearTicks(monthKeys);
     const wholeArchiveSlots = monthSlots(monthKeys);
+    const runs = archiveRunSpan(span);
 
     if (zoomed === null) {
         const total = months.length === 0 ? 0 : months[months.length - 1].cumulativeClears;
@@ -108,24 +109,20 @@ export function ArchiveTimeline({
                     <p className="ui-text-secondary text-xs">
                         Cumulative: 0 to {total.toLocaleString()} Full Clears
                     </p>
-                    <Draggable slots={wholeArchiveSlots} span={span} tab={tab}>
-                        <TimelineHover tooltips={wholeArchiveTooltips(months)}>
-                            <Climb
-                                buckets={months}
-                                from={0}
-                                label={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
-                            />
-                            <Bars
-                                buckets={months}
-                                variant="main"
-                                label={
-                                    peak === null
-                                        ? 'Full Clears per month'
-                                        : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
-                                }
-                            />
-                        </TimelineHover>
-                    </Draggable>
+                    <MainChart
+                        buckets={months}
+                        from={0}
+                        slots={wholeArchiveSlots}
+                        runs={runs}
+                        tab={tab}
+                        tooltips={wholeArchiveTooltips(months)}
+                        lineLabel={`Cumulative Full Clears, rising to ${total.toLocaleString()}`}
+                        barsLabel={
+                            peak === null
+                                ? 'Full Clears per month'
+                                : `Full Clears per month, peaking at ${peak.clears} in ${peak.month}`
+                        }
+                    />
                     <Ticks ticks={wholeArchiveTicks} />
                     <p className="ui-text-secondary text-xs">
                         {peak === null
@@ -170,20 +167,16 @@ export function ArchiveTimeline({
                             Cumulative: {formatClearNumber(first)}
                             {last === first ? '' : ` to ${last.toLocaleString()}`}
                         </p>
-                        <Draggable slots={buckets} span={span} tab={tab}>
-                            <TimelineHover tooltips={zoomedTooltips(zoomed)}>
-                                <Climb
-                                    buckets={buckets}
-                                    from={clearsBefore}
-                                    label={`Cumulative Full Clears, from ${formatClearNumber(first)} to ${formatClearNumber(last)}`}
-                                />
-                                <Bars
-                                    buckets={buckets}
-                                    variant="main"
-                                    label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucketInSentence(size, peak.start)}`}
-                                />
-                            </TimelineHover>
-                        </Draggable>
+                        <MainChart
+                            buckets={buckets}
+                            from={clearsBefore}
+                            slots={buckets}
+                            runs={runs}
+                            tab={tab}
+                            tooltips={zoomedTooltips(zoomed)}
+                            lineLabel={`Cumulative Full Clears, from ${formatClearNumber(first)} to ${formatClearNumber(last)}`}
+                            barsLabel={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucketInSentence(size, peak.start)}`}
+                        />
                         <Ticks ticks={zoomedTicks(size, buckets)} />
                         <p className="ui-text-secondary text-xs">
                             Per {size}: busiest was {peak.clears.toLocaleString()} {preposition}{' '}
@@ -199,7 +192,7 @@ export function ArchiveTimeline({
                     <p className="ui-text-secondary text-xs">
                         The whole Archive, by month. Shaded: {formatArchiveDayRange(range)}.
                     </p>
-                    <Draggable slots={wholeArchiveSlots} span={span} tab={tab}>
+                    <Draggable slots={wholeArchiveSlots} runs={runs} tab={tab}>
                         <Bars
                             buckets={months}
                             band={band}
@@ -237,6 +230,39 @@ function busiest<T extends ChartBucket>(buckets: T[]): T | null {
 }
 
 /**
+ * The main chart, zoomed or not: the line over the bars, with tooltips, inside a drag.
+ * One tree for both branches, so a new wrapper is added once.
+ */
+function MainChart({
+    buckets,
+    from,
+    slots,
+    runs,
+    tab,
+    tooltips,
+    lineLabel,
+    barsLabel,
+}: {
+    buckets: ChartBucket[];
+    from: number;
+    slots: TimelineBucketSlot[];
+    runs: ArchiveRunSpan | null;
+    tab: ArchiveTab;
+    tooltips: TimelineTooltip[];
+    lineLabel: string;
+    barsLabel: string;
+}) {
+    return (
+        <Draggable slots={slots} runs={runs} tab={tab}>
+            <TimelineHover tooltips={tooltips}>
+                <Climb buckets={buckets} from={from} label={lineLabel} />
+                <Bars buckets={buckets} variant="main" label={barsLabel} />
+            </TimelineHover>
+        </Draggable>
+    );
+}
+
+/**
  * A drag across `children` (./TimelineDrag.tsx), given one slot per bar.
  *
  * Only the edges cross to the client: a zoomed bucket also carries its counts, which the
@@ -246,16 +272,15 @@ function busiest<T extends ChartBucket>(buckets: T[]): T | null {
  */
 function Draggable({
     slots,
-    span,
+    runs,
     tab,
     children,
 }: {
     slots: TimelineBucketSlot[];
-    span: ArchiveSpan;
+    runs: ArchiveRunSpan | null;
     tab: ArchiveTab;
     children: React.ReactNode;
 }) {
-    const runs = archiveRunSpan(span);
     if (runs === null) return children;
     return (
         <TimelineDrag slots={slots.map(({ start, end }) => ({ start, end }))} span={runs} tab={tab}>

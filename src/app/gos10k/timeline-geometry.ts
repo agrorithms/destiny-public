@@ -1,4 +1,4 @@
-import { monthIndex, monthIndexAt, monthKey } from '@/lib/db/archive/month-keys';
+import { monthIndex, monthIndexAt, monthIndexStart, monthKey } from '@/lib/db/archive/month-keys';
 import { formatArchiveDate, type ArchiveRangeRequest, type ArchiveRunSpan } from '@/lib/db/archive/range';
 import { SECONDS_PER_DAY, type TimelineBucketSize, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
 import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
@@ -59,12 +59,6 @@ export interface TimelineBand {
     endPercent: number;
 }
 
-/** A year label under the axis, at the position that year begins. */
-export interface TimelineYearTick {
-    year: string;
-    percent: number;
-}
-
 /**
  * The band shading the active range, or null when no range is active.
  *
@@ -108,12 +102,12 @@ export function timelineBand(
  * pure, and has no way to enforce the precondition, so the arithmetic is written not to
  * need it.
  */
-export function yearTicks(months: string[]): TimelineYearTick[] {
+export function yearTicks(months: string[]): TimelineTick[] {
     if (months.length === 0) return [];
 
     const years = [...new Set(months.map((month) => month.slice(0, 4)))];
     return years.map((year) => ({
-        year,
+        label: year,
         percent: clampPercent(offsetPercent(months, monthIndex(`${year}-01`))),
     }));
 }
@@ -213,10 +207,10 @@ function labelBoundaries(
     const firstIndex = monthIndexAt(new Date(from * 1000));
     const step = byYear ? 12 : 1;
     for (let index = byYear ? firstIndex - (firstIndex % 12) : firstIndex; ; index += step) {
-        const key = monthKey(index);
-        const at = Date.parse(`${key}-01T00:00:00Z`) / 1000;
+        const at = monthIndexStart(index);
         if (at >= to) return boundaries;
         if (at < from) continue;
+        const key = monthKey(index);
         boundaries.push({ at, label: byYear ? key.slice(0, 4) : formatArchiveMonth(key) });
     }
 }
@@ -362,15 +356,13 @@ function slotPercent(slots: TimelineBucketSlot[], at: number): number {
  * outside 0–100, which is the caller's to clamp.
  */
 function axisPercent(months: string[], unixSeconds: number): number {
-    const instant = new Date(unixSeconds * 1000);
-    const monthStart = Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth(), 1);
-    const nextMonthStart = Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth() + 1, 1);
-    const throughMonth = (unixSeconds * 1000 - monthStart) / (nextMonthStart - monthStart);
-
-    // The whole index from month-keys, the fraction from here: the month arithmetic has
+    // The month's edges from month-keys, the fraction from here: the month arithmetic has
     // one owner, and how far through a month an instant sits is the only part of this
     // that is about the axis rather than the calendar.
-    return offsetPercent(months, monthIndexAt(instant) + throughMonth);
+    const index = monthIndexAt(new Date(unixSeconds * 1000));
+    const start = monthIndexStart(index);
+    const throughMonth = (unixSeconds - start) / (monthIndexStart(index + 1) - start);
+    return offsetPercent(months, index + throughMonth);
 }
 
 /**

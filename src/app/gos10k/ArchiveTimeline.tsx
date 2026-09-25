@@ -315,7 +315,7 @@ function Ticks({ ticks }: { ticks: TimelineTick[] }) {
                         // starts at ~97% of the axis, and four digits there overflowed the
                         // panel by 13px at 360px wide (the phone spec caught it). Flipped,
                         // the label ends at its boundary instead of starting at it. The
-                        // zoomed axis never reaches here — zoomedTicks() stops at 85%.
+                        // zoomed axis never reaches here — see LAST_ZOOMED_TICK_PERCENT.
                         transform: tick.percent > 90 ? 'translateX(-100%)' : undefined,
                     }}
                 >

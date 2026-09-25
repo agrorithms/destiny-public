@@ -1,5 +1,5 @@
-import { monthIndex, monthIndexAt } from '@/lib/db/archive/month-keys';
-import type { TimelineBucketSize, TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
+import { monthIndex, monthIndexAt, monthKey } from '@/lib/db/archive/month-keys';
+import { SECONDS_PER_DAY, type TimelineBucketSize, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
 import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
 
 /**
@@ -171,7 +171,7 @@ function labelBoundaries(
     const boundaries: Array<{ at: number; label: string }> = [];
 
     if (size === 'day') {
-        for (let at = from; at < to; at += 86_400) {
+        for (let at = from; at < to; at += SECONDS_PER_DAY) {
             boundaries.push({ at, label: formatArchiveDayOfMonth(at) });
         }
         return boundaries;
@@ -184,12 +184,11 @@ function labelBoundaries(
     const firstIndex = monthIndexAt(new Date(from * 1000));
     const step = byYear ? 12 : 1;
     for (let index = byYear ? firstIndex - (firstIndex % 12) : firstIndex; ; index += step) {
-        const year = Math.floor(index / 12);
-        const at = Date.UTC(year, index % 12, 1) / 1000;
+        const key = monthKey(index);
+        const at = Date.parse(`${key}-01T00:00:00Z`) / 1000;
         if (at >= to) return boundaries;
         if (at < from) continue;
-        const key = `${year}-${String((index % 12) + 1).padStart(2, '0')}`;
-        boundaries.push({ at, label: byYear ? String(year) : formatArchiveMonth(key) });
+        boundaries.push({ at, label: byYear ? key.slice(0, 4) : formatArchiveMonth(key) });
     }
 }
 

@@ -1352,7 +1352,6 @@ export function getMonthlyClears(
     });
 }
 
-
 /** One bucket of the zoomed timeline: a day, a week or a month, whichever the range chose. */
 export interface ArchiveTimelineBucket {
     /** Unix seconds, UTC, where the bucket begins. */

@@ -291,16 +291,20 @@ the last is a bucket, including the ones holding nothing** — 8 of the producti
 over the period returns only the months that hold a Run, and a chart drawn straight off it renders a
 two-year pause as the gap between two adjacent bars, on an x-axis that is no longer proportional to
 time and that looks entirely correct. Monthly rather than weekly (300+ unreadable bars) or yearly
-(7 bars, which hide everything).
+(7 bars, which hide everything). That is the whole-Archive timeline and, under a **Range**, the
+overview strip. The chart zoomed to a Range sizes its buckets to the Range's length instead —
+months over about two years, Monday-start weeks over about three months, days below that (#113) —
+and keeps the same rule: every bucket in the Range is drawn, empty or not.
 _Avoid_: month, bar, bin
 
 **Shaded Band** (Archive):
-The part of the timeline covering the active **Range**, drawn identically over both the cumulative
-line and the monthly bars so it reads across the two. It is an annotation on the whole history
-rather than a filter of it: the timeline is the one panel that does **not** narrow to the Range,
-because a narrow filter with no context is how a reader loses the six-year arc the page is about.
-Positioned within a month rather than snapped to one, and widened to a whole month when the Range
-is narrower than that — a single day is a third of a pixel on a phone, and a band nobody can see is
+The part of the timeline's whole-Archive overview strip covering the active **Range**. Under a
+Range the timeline zooms to it (#113), and the strip beneath — every Month Bucket of the Archive —
+carries the band, because a narrow filter with no context is how a reader loses the six-year arc the
+page is about. (#88 had instead kept the whole timeline unfiltered and shaded the Range across both
+of its charts; #113 reversed that, and the strip is where the context now lives.) Positioned within
+a month rather than snapped to one, and widened to a whole month when the Range is narrower than
+that — a single day is a third of a pixel on a phone, and a band nobody can see is
 indistinguishable from a filter that failed to apply.
 _Avoid_: highlight, selection, overlay
 

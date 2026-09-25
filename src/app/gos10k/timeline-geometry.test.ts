@@ -11,8 +11,8 @@ import {
 } from './timeline-geometry';
 
 /**
- * The timeline's x-arithmetic (#88) — where the shaded band sits, and where the year
- * ticks under it sit, as percentages of one shared axis.
+ * The timeline's x-arithmetic (#88, #113) — where the shaded band and the year ticks sit
+ * on the whole-Archive axis, and where the labels sit on the zoomed one, as percentages.
  *
  * Pure and colocated because it is the half of the shading that can be *wrong* rather
  * than merely invisible. Since #113 the band is drawn once, on the whole-Archive overview
@@ -140,7 +140,11 @@ describe('the year ticks', () => {
  * axis under test is the one the page draws.
  */
 describe('the zoomed axis labels', () => {
-    /** The zoomed axis for a date range, exactly as getRangeTimeline() lays it out. */
+    /**
+     * The zoomed axis for a date range inside the Archive, as getRangeTimeline() lays it
+     * out. Every range below lies within the Archive's span, so the query's clamp to the
+     * Archive's ends would change nothing and is left out.
+     */
     const axis = (from: string, to: string) => {
         const fromSeconds = Date.parse(`${from}T00:00:00Z`) / 1000;
         const toSeconds = Date.parse(`${to}T23:59:59.999Z`) / 1000;

@@ -25,5 +25,9 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
    - [x] `docs/progress/gos10k-phase1.md` (:560, :1279)
    - [x] `CLAUDE.md` e2e flow list, `docs/handoffs/260803-playwright-e2e.md` (the handoff is gitignored — local only)
    - [ ] Draft #81/#88 wording — **ask the user before `gh issue edit`**
-6. Verification: lint → build → test → e2e
-7. Code review (`/mattpocock-skills:code-review`), handoff
+6. [x] Verification: lint → build → test → e2e (all green; 476 unit, 71 e2e)
+7. Code review (`/mattpocock-skills:code-review`, base f3cf7cd)
+   - [x] `CONTEXT.md` — Shaded Band and Month Bucket restated for the zoom (both reviewers)
+   - [x] `month-keys.ts` — `monthKey()` exported; the axis labels stop hand-rolling the key
+   - [x] `SECONDS_PER_DAY` shared; comment drift; the test's `dayOf` alias removed
+   - [ ] Handoff

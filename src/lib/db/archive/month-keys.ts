@@ -40,11 +40,11 @@ export function monthIndexAt(instant: Date): number {
 /**
  * The `YYYY-MM` key of an absolute month index — the inverse of {@link monthIndex}.
  *
- * File-local: {@link monthsBetween} is the only thing that needs to turn an index back
- * into a key, and an exported inverse nothing imports reads as a contract someone
- * depends on.
+ * Exported for the zoomed timeline's axis labels (#113), which step through month
+ * indices and need each one's key to name it; before that, {@link monthsBetween} was
+ * its only caller and it was file-local.
  */
-function monthKey(index: number): string {
+export function monthKey(index: number): string {
     const year = Math.floor(index / 12);
     const monthOfYear = (index % 12) + 1;
     return `${year}-${String(monthOfYear).padStart(2, '0')}`;

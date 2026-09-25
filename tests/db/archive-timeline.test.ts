@@ -159,9 +159,6 @@ describe('bucketing Pinned Full Clears by month', () => {
     });
 });
 
-/** A bucket's start as the `YYYY-MM-DD` it begins on, so failures read as dates. */
-const dayOf = (unixSeconds: number): string => formatArchiveDate(unixSeconds);
-
 describe('the zoomed timeline under a range (#113)', () => {
     it('draws a short range in days, one slot per day whether or not it holds a clear', () => {
         // February 2022 — clears 103–143, the window every other Archive test filters on.
@@ -172,8 +169,8 @@ describe('the zoomed timeline under a range (#113)', () => {
 
         expect(timeline.size).toBe('day');
         expect(timeline.buckets).toHaveLength(21);
-        expect(dayOf(timeline.buckets[0].start)).toBe('2022-02-01');
-        expect(dayOf(timeline.buckets[20].start)).toBe('2022-02-21');
+        expect(formatArchiveDate(timeline.buckets[0].start)).toBe('2022-02-01');
+        expect(formatArchiveDate(timeline.buckets[20].start)).toBe('2022-02-21');
 
         // 13 + 9 + 18 on the first three days, one on the 21st, nothing in between —
         // and the empty days are still there, holding their place on the axis.
@@ -212,8 +209,8 @@ describe('the zoomed timeline under a range (#113)', () => {
         const timeline = getRangeTimeline(range);
 
         expect(timeline.size).toBe('week');
-        expect(dayOf(timeline.buckets[0].start)).toBe('2022-01-10');
-        expect(dayOf(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2022-05-02');
+        expect(formatArchiveDate(timeline.buckets[0].start)).toBe('2022-01-10');
+        expect(formatArchiveDate(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2022-05-02');
         // Seventeen Mondays, 10 January to 2 May, including the empty March weeks.
         expect(timeline.buckets).toHaveLength(17);
 
@@ -270,8 +267,8 @@ describe('the zoomed timeline under a range (#113)', () => {
         const timeline = getRangeTimeline(range);
 
         expect(timeline.size).toBe('day');
-        expect(dayOf(timeline.buckets[0].start)).toBe('2026-01-01');
-        expect(dayOf(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2026-02-23');
+        expect(formatArchiveDate(timeline.buckets[0].start)).toBe('2026-01-01');
+        expect(formatArchiveDate(timeline.buckets[timeline.buckets.length - 1].start)).toBe('2026-02-23');
         expect(timeline.buckets[timeline.buckets.length - 1].cumulativeClears).toBe(346);
     });
 });

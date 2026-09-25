@@ -16,7 +16,8 @@
 
 export type TimelineBucketSize = 'month' | 'week' | 'day';
 
-const SECONDS_PER_DAY = 86_400;
+/** Shared with the zoomed axis's day labels, which step through the same days. */
+export const SECONDS_PER_DAY = 86_400;
 
 /**
  * Days are used up to the longest three calendar months (July to September, 92 days).

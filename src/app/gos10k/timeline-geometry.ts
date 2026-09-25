@@ -13,6 +13,12 @@ import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
  * ({@link zoomedTicks}). The positioning arithmetic is here rather than in the component
  * so that bars, band and labels on one axis are placed by one calculation.
  *
+ * **The hover tooltip reads this module in the browser (#114)** — which bucket a pointer
+ * is over and where its box goes ({@link slotAt}, {@link slotCentre}, {@link tooltipLeft}) — so it is part of
+ * the page's one client bundle. Nothing here, or in what it imports, may reach the
+ * database: `@/lib/db/archive/queries` opens better-sqlite3, so anything on this module's
+ * import path — ./range-copy.ts included — takes only types from it.
+ *
  * **The month list is assumed contiguous** — every calendar month from the Archive's
  * first to its last, gaps included, which is exactly what {@link getMonthlyClears} builds.
  * That is what makes position on the axis mean position in time: a list with months
@@ -211,6 +217,54 @@ function labelBoundaries(
         if (at < from) continue;
         boundaries.push({ at, label: byYear ? key.slice(0, 4) : formatArchiveMonth(key) });
     }
+}
+
+/**
+ * The values of the `data-timeline-part` attribute on the main chart's two SVGs (#114):
+ * the server component sets them, the hover wrapper reads them, and the browser spec
+ * finds each half by them. Stated once so a misspelling on either side fails `tsc`
+ * rather than silently leaving one half without a tooltip.
+ */
+export type TimelinePart = 'line' | 'bar';
+
+/**
+ * Which of `count` slots a pointer `fraction` of the way across the main chart is over,
+ * or null when there are none (#114) — the bucket a tooltip describes.
+ *
+ * By slot, like the bars, so it is one calculation for both the line and the bars: the
+ * line's point for a bucket is drawn at its slot's right-hand edge, and the vertex
+ * nearest the pointer is half a slot off the bar beneath it. Picking the slot instead
+ * means hovering the line and hovering the bar under it always name the same bucket.
+ *
+ * Clamped to the end slots, because the pointer's last pixel measures as 100% of the
+ * width and a pointer event can land a fraction outside the box.
+ */
+export function slotAt(fraction: number, count: number): number | null {
+    if (count === 0) return null;
+    return Math.min(count - 1, Math.max(0, Math.floor(fraction * count)));
+}
+
+/**
+ * Where the tooltip for slot `index` of `count` points, in pixels from the chart's left
+ * (#114): the middle of the slot, which is where its bar is drawn. {@link slotAt}'s
+ * inverse, here beside it so the two cannot disagree about where a slot is.
+ */
+export function slotCentre(index: number, count: number, chartWidth: number): number {
+    return ((index + 0.5) / count) * chartWidth;
+}
+
+/**
+ * The tooltip's left edge in pixels from the chart's left (#114): centred over `anchor`
+ * where there is room, and slid back inside the chart where there is not.
+ *
+ * The chart is the page column, so inside the chart is inside the viewport — at 360px
+ * and at the chart's first and last bars, which is where a centred box would hang off.
+ * A tooltip wider than the chart starts at its left edge: the bucket's name leads the
+ * text, and overflow on the right cuts the end of it rather than the start.
+ */
+export function tooltipLeft(anchor: number, tooltipWidth: number, chartWidth: number): number {
+    const furthest = Math.max(0, chartWidth - tooltipWidth);
+    return Math.min(furthest, Math.max(0, anchor - tooltipWidth / 2));
 }
 
 /** Where an instant sits on a zoomed axis, as a percentage of its width. */

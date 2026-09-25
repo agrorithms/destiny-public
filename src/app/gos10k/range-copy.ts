@@ -59,15 +59,25 @@ export function formatArchiveDayOfMonth(unixSeconds: number): string {
 }
 
 /**
- * One zoomed-timeline bucket named by its start (#113): `Feb 2022`, `the week of 14 Feb
- * 2022`, or `14 Feb 2022`. A week is named by its Monday, and says it is a week, because
- * "14 Feb 2022" alone under a weekly chart reads as the one day.
+ * One zoomed-timeline bucket named by its start, standing alone (#113, #114): `Feb 2022`,
+ * `week of 14 Feb 2022`, or `14 Feb 2022` — the tooltip's label. A week is named by its
+ * Monday, and says it is a week, because "14 Feb 2022" alone under a weekly chart reads as
+ * the one day.
  */
-export function formatTimelineBucket(size: TimelineBucketSize, start: number): string {
+export function formatTimelineBucketLabel(size: TimelineBucketSize, start: number): string {
     const day = formatArchiveDate(start);
     if (size === 'month') return formatArchiveMonth(day.slice(0, 7));
-    if (size === 'week') return `the week of ${formatArchiveDay(day)}`;
+    if (size === 'week') return `week of ${formatArchiveDay(day)}`;
     return formatArchiveDay(day);
+}
+
+/**
+ * The same name inside a sentence: "busiest was 40 in `the week of 31 Jan 2022`". Only a
+ * week takes the article — a month or a day is already a proper name.
+ */
+export function formatTimelineBucketInSentence(size: TimelineBucketSize, start: number): string {
+    const label = formatTimelineBucketLabel(size, start);
+    return size === 'week' ? `the ${label}` : label;
 }
 
 /** The long form the header uses for the Archive's own span: `4 July 2020`. */

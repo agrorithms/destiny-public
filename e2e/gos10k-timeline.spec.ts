@@ -67,6 +67,24 @@ test.describe('the timeline', () => {
         await expect(page.getByTestId('archive-timeline-band')).toHaveCount(0);
     });
 
+    test('names every chart in words, never by a raw YYYY-MM key', async ({ page }) => {
+        // The names are what a screen reader says for each chart, and #58's audit starts
+        // from them. The unfiltered bars once named their peak by its bucket key, read
+        // aloud as "in 2022-02", while the zoomed ones said "in Feb 2022".
+        for (const url of ['/gos10k', FEBRUARY_2022, WEEKS, MONTHS]) {
+            await page.goto(url);
+            await expect(chartPart(page, 'bar'), url).toHaveAccessibleName(
+                /^Full Clears per (month|week|day), peaking at [\d,]+ (in|on) \S/
+            );
+            const names = await page
+                .getByTestId('archive-timeline')
+                .getByRole('img')
+                .evaluateAll((charts) => charts.map((chart) => chart.getAttribute('aria-label') ?? ''));
+            expect(names.length, url).toBeGreaterThan(0);
+            for (const name of names) expect(name, url).not.toMatch(/\d{4}-\d{2}/);
+        }
+    });
+
     test('zooms to a range, and shades that range on the overview strip alone', async ({ page }) => {
         await page.goto(FEBRUARY_2022);
 
@@ -160,6 +178,13 @@ async function hoverAt(page: Page, part: TimelinePart, fraction: number): Promis
     await target.hover({ position: { x: box.width * fraction, y: box.height / 2 } });
 }
 
+/** Taps `fraction` of the way across one half of the main chart — {@link hoverAt} for a finger. */
+async function tapAt(page: Page, part: TimelinePart, fraction: number): Promise<void> {
+    const target = chartPart(page, part);
+    const box = await boxOf(target);
+    await target.tap({ position: { x: box.width * fraction, y: box.height / 2 } });
+}
+
 /** The line's tooltip, by shape: a Clear Number (or none yet), then the bucket's name. */
 const LINE_TOOLTIP = /^(Clear [\d,]+|No clears yet) · \S/;
 /** The bar's tooltip, by shape: the bucket's name, then its clears — and a span if any. */
@@ -204,8 +229,7 @@ test.describe('the timeline\'s tooltips (#114)', () => {
         await page.goto(FEBRUARY_2022);
 
         // Tooltips belong to the main chart; the strip is context.
-        const strip = page.getByTestId('archive-timeline-overview').getByRole('img');
-        await strip.hover();
+        await strip(page).hover();
         await expect(page.getByTestId('archive-timeline-tooltip')).toHaveCount(0);
     });
 
@@ -249,16 +273,12 @@ test.describe('the timeline\'s tooltips (#114)', () => {
             const tooltip = page.getByTestId('archive-timeline-tooltip');
             const url = page.url();
 
-            const bars = chartPart(page, 'bar');
-            const barsBox = await boxOf(bars);
-            await bars.tap({ position: { x: barsBox.width * 0.5, y: barsBox.height / 2 } });
+            await tapAt(page, 'bar', 0.5);
             await expect(tooltip).toBeVisible();
             await expect(tooltip).toHaveText(BAR_TOOLTIP);
 
             // A tap on the line moves the tooltip to the line's reading, not away.
-            const line = chartPart(page, 'line');
-            const lineBox = await boxOf(line);
-            await line.tap({ position: { x: lineBox.width * 0.5, y: lineBox.height / 2 } });
+            await tapAt(page, 'line', 0.5);
             await expect(tooltip).toHaveText(LINE_TOOLTIP);
 
             await page.getByRole('heading', { level: 2, name: /^The range, / }).tap();
@@ -277,9 +297,7 @@ test.describe('the timeline\'s tooltips (#114)', () => {
             await page.goto(FEBRUARY_2022);
             const tooltip = page.getByTestId('archive-timeline-tooltip');
 
-            const bars = chartPart(page, 'bar');
-            const barsBox = await boxOf(bars);
-            await bars.tap({ position: { x: barsBox.width * 0.99, y: barsBox.height / 2 } });
+            await tapAt(page, 'bar', 0.99);
             await expect(tooltip).toBeVisible();
 
             await page.setViewportSize({ width: 320, height: 780 });

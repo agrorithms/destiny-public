@@ -114,11 +114,11 @@ describe('the year ticks', () => {
         // 2020 is labelled at the axis origin even though the history starts in July:
         // the first year's tick is where the chart begins, not where its January would
         // have been off the left-hand edge.
-        expect(ticks[0]).toEqual({ year: '2020', percent: 0 });
+        expect(ticks[0]).toEqual({ label: '2020', percent: 0 });
         // 2021-01 is month index 6 of 68.
-        expect(ticks[1].year).toBe('2021');
+        expect(ticks[1].label).toBe('2021');
         expect(ticks[1].percent).toBeCloseTo((6 / 68) * 100, 5);
-        expect(ticks.map((tick) => tick.year)).toEqual([
+        expect(ticks.map((tick) => tick.label)).toEqual([
             '2020', '2021', '2022', '2023', '2024', '2025', '2026',
         ]);
     });
@@ -132,7 +132,7 @@ describe('the year ticks', () => {
         const gapped = ['2021-11', '2021-12', '2022-06', '2022-07'];
         const ticks = yearTicks(gapped);
 
-        expect(ticks.map((tick) => tick.year)).toEqual(['2021', '2022']);
+        expect(ticks.map((tick) => tick.label)).toEqual(['2021', '2022']);
         // 2021's January is ten months before the axis starts, so it clamps to the
         // origin exactly as the real first year does; 2022's is two slots along of four.
         expect(ticks[0].percent).toBe(0);

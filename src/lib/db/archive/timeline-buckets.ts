@@ -16,7 +16,7 @@
  * Everything is UTC, like `period` and like every date the range filter parses.
  */
 
-import { monthStart } from './month-keys';
+import { monthIndexAt, monthIndexStart, monthStart } from './month-keys';
 
 export type TimelineBucketSize = 'month' | 'week' | 'day';
 
@@ -107,10 +107,7 @@ export function monthSlots(months: string[]): TimelineBucketSlot[] {
 
 /** The start of the bucket an instant falls in. */
 function bucketStart(size: TimelineBucketSize, unixSeconds: number): number {
-    if (size === 'month') {
-        const instant = new Date(unixSeconds * 1000);
-        return Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth(), 1) / 1000;
-    }
+    if (size === 'month') return monthIndexStart(monthIndexAt(new Date(unixSeconds * 1000)));
     const day = dayIndex(unixSeconds);
     if (size === 'day') return day * SECONDS_PER_DAY;
     // Day 0 of the epoch, 1 January 1970, was a Thursday — three days after a Monday —
@@ -120,12 +117,8 @@ function bucketStart(size: TimelineBucketSize, unixSeconds: number): number {
 
 /** The start of the bucket after the one starting at `start`. */
 function nextBucketStart(size: TimelineBucketSize, start: number): number {
-    if (size === 'month') {
-        // `Date.UTC` rolls month 12 over into January of the next year, and the day is
-        // the 1st, so there is no day-of-month for the step to overflow from.
-        const instant = new Date(start * 1000);
-        return Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth() + 1, 1) / 1000;
-    }
+    // Stepped by month index, so there is no day-of-month for the step to overflow from.
+    if (size === 'month') return monthIndexStart(monthIndexAt(new Date(start * 1000)) + 1);
     return start + (size === 'week' ? 7 : 1) * SECONDS_PER_DAY;
 }
 

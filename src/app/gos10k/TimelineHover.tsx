@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { slotAt, slotCentre, tooltipLeft } from './timeline-geometry';
+import { slotAt, slotCentre, tooltipLeft, type TimelinePart } from './timeline-geometry';
 import type { TimelineTooltip } from './timeline-tooltips';
 
 /**
@@ -34,11 +34,9 @@ import type { TimelineTooltip } from './timeline-tooltips';
  * measured on the old width — past the edge of the new one.
  */
 
-type Part = 'line' | 'bar';
-
 interface Hovered {
     index: number;
-    part: Part;
+    part: TimelinePart;
 }
 
 /** The gap between the tooltip's bottom edge and the top of the half it describes, in px. */

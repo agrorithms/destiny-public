@@ -220,6 +220,14 @@ function labelBoundaries(
 }
 
 /**
+ * The values of the `data-timeline-part` attribute on the main chart's two SVGs (#114):
+ * the server component sets them, the hover wrapper reads them, and the browser spec
+ * finds each half by them. Stated once so a misspelling on either side fails `tsc`
+ * rather than silently leaving one half without a tooltip.
+ */
+export type TimelinePart = 'line' | 'bar';
+
+/**
  * Which of `count` slots a pointer `fraction` of the way across the main chart is over,
  * or null when there are none (#114) — the bucket a tooltip describes.
  *

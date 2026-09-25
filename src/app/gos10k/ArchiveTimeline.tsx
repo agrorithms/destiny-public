@@ -8,9 +8,16 @@ import {
     formatArchiveDayRange,
     formatArchiveMonth,
     formatClearNumber,
-    formatTimelineBucket,
+    formatTimelineBucketInSentence,
 } from './range-copy';
-import { timelineBand, yearTicks, zoomedTicks, type TimelineBand, type TimelineTick } from './timeline-geometry';
+import {
+    timelineBand,
+    yearTicks,
+    zoomedTicks,
+    type TimelineBand,
+    type TimelinePart,
+    type TimelineTick,
+} from './timeline-geometry';
 import { TimelineHover } from './TimelineHover';
 import { wholeArchiveTooltips, zoomedTooltips } from './timeline-tooltips';
 
@@ -91,7 +98,7 @@ export function ArchiveTimeline({
                         />
                         <Bars
                             buckets={months}
-                            hoverable
+                            variant="main"
                             label={
                                 peak === null
                                     ? 'Full Clears per month'
@@ -151,14 +158,14 @@ export function ArchiveTimeline({
                             />
                             <Bars
                                 buckets={buckets}
-                                hoverable
-                                label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucket(size, peak.start)}`}
+                                variant="main"
+                                label={`Full Clears per ${size}, peaking at ${peak.clears} ${preposition} ${formatTimelineBucketInSentence(size, peak.start)}`}
                             />
                         </TimelineHover>
                         <Ticks ticks={zoomedTicks(size, buckets)} />
                         <p className="ui-text-secondary text-xs">
                             Per {size}: busiest was {peak.clears.toLocaleString()} {preposition}{' '}
-                            {formatTimelineBucket(size, peak.start)}.
+                            {formatTimelineBucketInSentence(size, peak.start)}.
                         </p>
                     </div>
                 )}
@@ -173,7 +180,7 @@ export function ArchiveTimeline({
                     <Bars
                         buckets={months}
                         band={band}
-                        compact
+                        variant="overview"
                         label="Full Clears per month across the whole Archive, with the range shaded"
                     />
                     <Ticks ticks={wholeArchiveTicks} />
@@ -248,7 +255,7 @@ function Climb({ buckets, from, label }: { buckets: ChartBucket[]; from: number;
             preserveAspectRatio="none"
             role="img"
             aria-label={label}
-            data-timeline-part="line"
+            data-timeline-part={'line' satisfies TimelinePart}
             className="h-24 w-full ui-accent-text sm:h-32"
         >
             {/* `vector-effect` because preserveAspectRatio="none" scales x and y by
@@ -274,16 +281,17 @@ function Bars({
     buckets,
     label,
     band = null,
-    compact = false,
-    hoverable = false,
+    variant,
 }: {
     buckets: ChartBucket[];
     label: string;
     band?: TimelineBand | null;
-    /** The overview strip: the same bars, half the height, so it reads as context. */
-    compact?: boolean;
-    /** The main chart's bars, which ./TimelineHover.tsx explains; never the strip's (#114). */
-    hoverable?: boolean;
+    /**
+     * `main`: the main chart's bars, which ./TimelineHover.tsx explains. `overview`: the
+     * strip — the same bars at half the height, so it reads as context, and never
+     * hoverable (#114).
+     */
+    variant: 'main' | 'overview';
 }) {
     const most = busiest(buckets)?.clears ?? 0;
     const step = buckets.length === 0 ? 0 : AXIS_WIDTH / buckets.length;
@@ -294,8 +302,8 @@ function Bars({
             preserveAspectRatio="none"
             role="img"
             aria-label={label}
-            data-timeline-part={hoverable ? 'bar' : undefined}
-            className={`w-full ui-text-secondary ${compact ? 'h-6' : 'h-12'}`}
+            data-timeline-part={variant === 'main' ? ('bar' satisfies TimelinePart) : undefined}
+            className={`w-full ui-text-secondary ${variant === 'main' ? 'h-12' : 'h-6'}`}
         >
             {buckets.map((bucket, index) => {
                 const height = most === 0 ? 0 : BAR_HEIGHT * (bucket.clears / most);

@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
+import type { TimelinePart } from '../src/app/gos10k/timeline-geometry';
 import { expect, test } from './support/test-fixtures';
 import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
@@ -142,12 +143,12 @@ test.describe('the timeline', () => {
 });
 
 /** The main chart's line or bars: the SVG ./TimelineHover.tsx explains. */
-function chartPart(page: Page, part: 'line' | 'bar'): Locator {
+function chartPart(page: Page, part: TimelinePart): Locator {
     return page.getByTestId('archive-timeline').locator(`[data-timeline-part="${part}"]`);
 }
 
 /** Points the mouse `fraction` of the way across one half of the main chart. */
-async function hoverAt(page: Page, part: 'line' | 'bar', fraction: number): Promise<void> {
+async function hoverAt(page: Page, part: TimelinePart, fraction: number): Promise<void> {
     const target = chartPart(page, part);
     const box = await boxOf(target);
     await target.hover({ position: { x: box.width * fraction, y: box.height / 2 } });

@@ -75,7 +75,7 @@ export function formatTimelineBucketLabel(size: TimelineBucketSize, start: numbe
  * The same name inside a sentence: "busiest was 40 in `the week of 31 Jan 2022`". Only a
  * week takes the article — a month or a day is already a proper name.
  */
-export function formatTimelineBucket(size: TimelineBucketSize, start: number): string {
+export function formatTimelineBucketInSentence(size: TimelineBucketSize, start: number): string {
     const label = formatTimelineBucketLabel(size, start);
     return size === 'week' ? `the ${label}` : label;
 }

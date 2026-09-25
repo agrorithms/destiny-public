@@ -46,7 +46,12 @@ Decisions confirmed with the user:
          so it's a pen fix; the browser spec written for it was dropped as untestable
    - [x] Standards: header path `./queries.ts` → `@/lib/db/archive/queries`
    - [x] Standards smell 4: `slotCentre()` beside `slotAt()`, out of the component
-   - [ ] Left as judgement calls: three Clear Number spellings, `formatTimelineBucket` vs
-         `…Label` naming, `hoverable`/`compact` always opposite, the `data-timeline-part` string
+   - [x] Judgement calls, by the user's decision:
+     - [x] Three Clear Number spellings: **kept**, because the issue fixed the tooltip formats
+     - [x] `formatTimelineBucket` → `formatTimelineBucketInSentence`
+     - [x] `Bars`' `hoverable`/`compact` → one `variant: 'main' | 'overview'`
+     - [x] `TimelinePart` exported from `timeline-geometry.ts`, used in both components and
+           (type-only import) the spec
    - [x] Re-verified: lint 0 errors / 29 old warnings, build ok, 500 unit, 78 e2e
+   - [x] Re-verified after the judgement-call tidy-ups: the same results, and tsc ok
 8. [x] Handoff — `docs/handoffs/260924-issue-114-implemented.md` (gitignored, local)

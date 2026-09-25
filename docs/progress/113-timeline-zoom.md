@@ -19,11 +19,11 @@ the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, th
    - [x] `src/app/gos10k/page.tsx`
    - [x] `src/app/gos10k/range-copy.ts` — day-of-month and bucket names
 4. Browser spec
-   - [ ] `e2e/gos10k-timeline.spec.ts` (rewritten, onto `boxOf()`)
+   - [x] `e2e/gos10k-timeline.spec.ts` (rewritten, onto `boxOf()`)
 5. Old-rule wording + docs
    - [x] `src/lib/db/archive/queries.ts` comment on `getMonthlyClears()` (landed with chunk 2)
-   - [ ] `docs/progress/gos10k-phase1.md` (:560, :1279)
-   - [ ] `CLAUDE.md` e2e flow list, `docs/handoffs/260803-playwright-e2e.md`
+   - [x] `docs/progress/gos10k-phase1.md` (:560, :1279)
+   - [x] `CLAUDE.md` e2e flow list, `docs/handoffs/260803-playwright-e2e.md` (the handoff is gitignored — local only)
    - [ ] Draft #81/#88 wording — **ask the user before `gh issue edit`**
 6. Verification: lint → build → test → e2e
 7. Code review (`/mattpocock-skills:code-review`), handoff

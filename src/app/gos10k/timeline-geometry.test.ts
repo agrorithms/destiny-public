@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { monthsBetween } from '@/lib/db/archive/month-keys';
 import { bucketSlots, chooseBucketSize } from '@/lib/db/archive/timeline-buckets';
 import {
+    DRAG_THRESHOLD_PX,
     MAX_ZOOMED_TICKS,
     LAST_ZOOMED_TICK_PERCENT,
     YEAR_LABELS_FROM_MONTHS,
+    dragDates,
+    dragSlots,
+    isDrag,
     minimumBandPercent,
     slotAt,
     slotCentre,
@@ -362,5 +366,123 @@ describe("the tooltip's left edge (#114)", () => {
         // Overflow on the right beats overflow on the left, where the start of the text
         // — the bucket's name — would be the part cut off.
         expect(tooltipLeft(50, 400, 328)).toBe(0);
+    });
+});
+
+describe('the buckets a drag touches (#115)', () => {
+    // Fractions of the way across the chart where the press began and where it is now,
+    // over the same uniform slots slotAt() reads. A drag selects every bucket it touches,
+    // start and end included, whichever way it went.
+
+    it('selects from the slot the press began in to the slot the pointer is in', () => {
+        // A tenth of the way across ten slots is the start of the second; 0.45 is inside the fifth.
+        expect(dragSlots(0.1, 0.45, 10)).toEqual({ first: 1, last: 4 });
+    });
+
+    it('selects the same buckets when dragged right to left', () => {
+        expect(dragSlots(0.45, 0.1, 10)).toEqual({ first: 1, last: 4 });
+    });
+
+    it('selects one bucket when the drag starts and ends inside it', () => {
+        expect(dragSlots(0.31, 0.38, 10)).toEqual({ first: 3, last: 3 });
+    });
+
+    it('reaches the end buckets when the pointer leaves the chart on either side', () => {
+        // Pointer capture keeps a drag alive past the chart's edge, and the pointer is
+        // then less than 0% or more than 100% of the way across.
+        expect(dragSlots(-0.2, 1.3, 10)).toEqual({ first: 0, last: 9 });
+    });
+
+    it('selects nothing on a chart with no slots', () => {
+        expect(dragSlots(0.1, 0.5, 0)).toBeNull();
+    });
+});
+
+describe('the dates a drag writes (#115)', () => {
+    // A drag snaps outward to bucket edges: from the start of the first bucket touched
+    // to the end of the last. `to` is an inclusive day in the URL (endOfArchiveDay reads
+    // it as 23:59:59.999) while a slot's `end` is exclusive — the next slot's start — so
+    // the last day is the day before that end.
+
+    /** The Archive's span as the tests below have it: 15 July 2020 to 10 February 2026. */
+    const SPAN = { firstRunAt: at('2020-07-15'), lastRunAt: at('2026-02-10') };
+
+    /** 12 January to 3 May 2022 in weeks: the first slot is the Monday before, 10 January. */
+    const WEEKS = bucketSlots('week', at('2022-01-12'), at('2022-05-03'));
+
+    it('runs from the first bucket\'s first day to the last bucket\'s last day', () => {
+        // Slots 1 and 2 are the weeks of 17 and 24 January; the second ends on Sunday the 30th.
+        expect(dragDates(WEEKS, { first: 1, last: 2 }, SPAN)).toEqual({
+            kind: 'dates',
+            fromDate: '2022-01-17',
+            toDate: '2022-01-30',
+        });
+    });
+
+    it('covers one whole bucket when the drag stayed inside it', () => {
+        expect(dragDates(WEEKS, { first: 3, last: 3 }, SPAN)).toEqual({
+            kind: 'dates',
+            fromDate: '2022-01-31',
+            toDate: '2022-02-06',
+        });
+    });
+
+    it('covers exactly one day when the bucket is a day', () => {
+        const days = bucketSlots('day', at('2022-02-01'), at('2022-02-21'));
+        // Slot 1 is 2 February.
+        expect(dragDates(days, { first: 1, last: 1 }, SPAN)).toEqual({
+            kind: 'dates',
+            fromDate: '2022-02-02',
+            toDate: '2022-02-02',
+        });
+    });
+
+    it('ends a month on its last day, February included', () => {
+        const months = bucketSlots('month', at('2020-07-15'), at('2026-02-10'));
+        // Slot 19 is February 2022 (July 2020 is slot 0).
+        expect(dragDates(months, { first: 19, last: 19 }, SPAN)).toEqual({
+            kind: 'dates',
+            fromDate: '2022-02-01',
+            toDate: '2022-02-28',
+        });
+    });
+
+    it("is clamped to the Archive's first and last Run days", () => {
+        // July 2020 starts on the 1st and February 2026 ends on the 28th, but the Archive
+        // runs from the 15th to the 10th: a date outside it is a range nothing is in.
+        const months = bucketSlots('month', at('2020-07-15'), at('2026-02-10'));
+        expect(dragDates(months, { first: 0, last: months.length - 1 }, SPAN)).toEqual({
+            kind: 'dates',
+            fromDate: '2020-07-15',
+            toDate: '2026-02-10',
+        });
+    });
+
+    it("clamps a zoomed chart's first week, which starts before the Archive does", () => {
+        // The zoomed axis is clamped to the Archive's ends, but its first week still
+        // starts on a Monday: 13 July 2020, two days before the first Run.
+        const weeks = bucketSlots('week', at('2020-07-15'), at('2020-12-01'));
+        expect(dragDates(weeks, { first: 0, last: 0 }, SPAN)).toEqual({
+            kind: 'dates',
+            fromDate: '2020-07-15',
+            toDate: '2020-07-19',
+        });
+    });
+});
+
+describe('the movement that counts as a drag (#115)', () => {
+    // Sideways pixels between the press and the release. A press that moved less does
+    // nothing at all: there is no click-to-filter.
+
+    it('is at least the threshold, in either direction', () => {
+        expect(DRAG_THRESHOLD_PX).toBe(4);
+        expect(isDrag(100, 104)).toBe(true);
+        expect(isDrag(100, 96)).toBe(true);
+    });
+
+    it('is not a press that moved less than the threshold', () => {
+        expect(isDrag(100, 100)).toBe(false);
+        expect(isDrag(100, 103)).toBe(false);
+        expect(isDrag(100, 97)).toBe(false);
     });
 });

@@ -28,8 +28,8 @@ Briefing corrections found while reading:
    - [x] `src/app/gos10k/timeline-geometry.ts` — `DRAG_THRESHOLD_PX`, `isDrag`, `dragSlots`, `dragDates`
    - [x] `src/app/gos10k/timeline-geometry.test.ts`
 2. Month slots
-   - [ ] `src/lib/db/archive/timeline-buckets.ts` — `monthSlots(months)`
-   - [ ] `src/lib/db/archive/timeline-buckets.test.ts`
+   - [x] `src/lib/db/archive/timeline-buckets.ts` — `monthSlots(months)`
+   - [x] `src/lib/db/archive/timeline-buckets.test.ts`
 3. Client component + rendering
    - [ ] `src/app/gos10k/TimelineDrag.tsx` (new, `'use client'`)
    - [ ] `src/app/gos10k/TimelineHover.tsx` — tooltip hidden while a drag is in progress

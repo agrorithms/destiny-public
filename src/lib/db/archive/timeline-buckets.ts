@@ -4,7 +4,9 @@
  * Unfiltered, the timeline is the whole Archive in calendar months and needs none of this
  * (`getMonthlyClears()` and ./month-keys.ts). Under a range the chart zooms to the range,
  * and a fixed monthly bucket stops working: a three-week range would draw as one bar. So
- * the bucket size follows the range's length, and this module decides it.
+ * the bucket size follows the range's length, and this module decides it. The one thing
+ * the monthly charts take from here is their months' edges ({@link monthSlots}), which a
+ * drag across them needs (#115).
  *
  * Here rather than in a UI module for the same reason ./month-keys.ts is: the query
  * decides what a bucket is, and everything downstream reads that decision. Pure and
@@ -13,6 +15,8 @@
  *
  * Everything is UTC, like `period` and like every date the range filter parses.
  */
+
+import { monthIndex } from './month-keys';
 
 export type TimelineBucketSize = 'month' | 'week' | 'day';
 
@@ -84,6 +88,22 @@ export function bucketSlots(
         start = end;
     }
     return slots;
+}
+
+/**
+ * One slot per `YYYY-MM` key, in the order given (#115): the edges of the whole-Archive
+ * chart's and the overview strip's months, which the monthly read keys but never bounds.
+ *
+ * Built from the keys rather than from the Archive's span, so the slots line up with the
+ * bars one for one by construction. A drag across those bars reads the dates it writes
+ * off these.
+ */
+export function monthSlots(months: string[]): TimelineBucketSlot[] {
+    return months.map((month) => {
+        const index = monthIndex(month);
+        const start = Date.UTC(Math.floor(index / 12), index % 12, 1) / 1000;
+        return { start, end: nextBucketStart('month', start) };
+    });
 }
 
 /** The start of the bucket an instant falls in. */

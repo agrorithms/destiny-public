@@ -71,10 +71,11 @@ describe('getRaidStats', () => {
     // Guards the builder, not the query: buildPGCR's default period used to be a
     // frozen date, so a fixture seeded without one aged out of every recency window
     // and this returned [] with nothing pointing at the date default (#71).
-    it('finds a buildPGCR run seeded with the default period', () => {
+    it('a builder PGCR with no period lands inside the 24h window', () => {
         seedFromFixture(buildPGCR());
 
         const stats = getRaidStats(24);
+        // buildPGCR's default fireteam is six players, each one Player-Run.
         expect(stats[0].allAttempts.sampleSize).toBe(6);
     });
 

@@ -4,7 +4,11 @@ import { getRaidKeyFromHash } from '../../src/lib/bungie/manifest';
 import { processPGCR } from '../../src/lib/crawler/pgcr';
 import { readActivityDurationSeconds, readEntryStartSeconds } from '../../src/lib/bungie/pgcr-stats';
 import type { DestinyPostGameCarnageReportData } from '../../src/lib/bungie/types';
-import { RAID_HASH, type EntryOptions } from './pgcr-builder';
+import { RAID_HASH, hoursAgo, type EntryOptions } from './pgcr-builder';
+
+// Lives in pgcr-builder so buildPGCR shares seedRun's default; re-exported so
+// tests keep importing it from here.
+export { hoursAgo };
 
 /**
  * Seeds runs through the real ingestion chokepoint.
@@ -15,8 +19,6 @@ import { RAID_HASH, type EntryOptions } from './pgcr-builder';
  * never exist in production — so tests would pass against data the app can't
  * create. Everything here goes through the same function the crawler calls.
  */
-
-const HOUR = 3600;
 
 /**
  * One member of a seeded run. A bare membership ID takes the run-level stats;
@@ -57,12 +59,6 @@ export interface SeedRunOptions {
     kills?: number;
     deaths?: number;
     assists?: number;
-}
-
-/** Unix seconds, `hours` in the past. Runs are seeded relative to now because
- *  every leaderboard query filters on a cutoff derived from Date.now(). */
-export function hoursAgo(hours: number): number {
-    return Math.floor(Date.now() / 1000) - Math.round(hours * HOUR);
 }
 
 export function seedRun(options: SeedRunOptions): void {

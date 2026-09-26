@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resetTestDb } from '../helpers/db';
-import { seedRun, hoursAgo } from '../helpers/seed';
+import { seedRun, seedFromFixture, hoursAgo } from '../helpers/seed';
+import { buildPGCR } from '../helpers/pgcr-builder';
 import { getRaidStats } from '../../src/lib/db/queries';
 
 beforeEach(() => { resetTestDb(); });
@@ -65,6 +66,16 @@ describe('getRaidStats', () => {
         const stats = getRaidStats(4);
         // Only one instance in window, so one player total
         expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 1 });
+    });
+
+    // Guards the builder, not the query: buildPGCR's default period used to be a
+    // frozen date, so a fixture seeded without one aged out of every recency window
+    // and this returned [] with nothing pointing at the date default (#71).
+    it('finds a buildPGCR run seeded with the default period', () => {
+        seedFromFixture(buildPGCR());
+
+        const stats = getRaidStats(24);
+        expect(stats[0].allAttempts.sampleSize).toBe(6);
     });
 
     it('difficulty=master filters to master-only instances', () => {

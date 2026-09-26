@@ -22,6 +22,14 @@ export const RAID_HASH = 2192826039;
 /** Not present in RAID_DEFINITIONS, so isRaidActivityHash rejects it. */
 export const NON_RAID_HASH = 1;
 
+const HOUR = 3600;
+
+/** Unix seconds, `hours` in the past. Runs are seeded relative to now because
+ *  every leaderboard query filters on a cutoff derived from Date.now(). */
+export function hoursAgo(hours: number): number {
+    return Math.floor(Date.now() / 1000) - Math.round(hours * HOUR);
+}
+
 function stat(value: number): DestinyHistoricalStatsValue {
     return { basic: { value, displayValue: String(value) } };
 }
@@ -104,7 +112,11 @@ export interface PGCROptions {
     activityHash?: number;
     /** Set independently of directorActivityHash to test the referenceId fallback. */
     referenceId?: number;
-    /** ISO 8601. Bungie reports UTC. */
+    /**
+     * ISO 8601. Bungie reports UTC. Defaults to two hours ago, like `seedRun`, so a
+     * built PGCR lands inside every recency window. Pass a fixed date only when the
+     * date itself is under test; frozen timestamps belong to fixtures.
+     */
     period?: string;
     activityWasStartedFromBeginning?: boolean;
     /** Raw Bungie difficulty tier. Pass `null` to omit entirely (pre-migration rows). */
@@ -117,7 +129,7 @@ export function buildPGCR(options: PGCROptions = {}): DestinyPostGameCarnageRepo
         instanceId = '17091392013',
         activityHash = RAID_HASH,
         referenceId = activityHash,
-        period = '2026-07-26T12:00:00Z',
+        period = new Date(hoursAgo(2) * 1000).toISOString(),
         activityWasStartedFromBeginning = true,
         activityDifficultyTier = null,
         entries = buildFireteam(),

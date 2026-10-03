@@ -274,11 +274,17 @@ export default function LeaderboardPage({
                 {raidFilterLabel !== 'All Raids' && ` — ${raidFilterLabel}`}
             </p>
 
-            {data?.maintenance && (
+            {shown?.maintenance && (
                 <div className="ui-card p-4 mb-6 text-sm text-red-700 dark:text-red-400">
-                    Database maintenance is in progress. Showing the last known leaderboard snapshot
-                    {'snapshotGeneratedAt' in data && data.snapshotGeneratedAt ? ` from ${new Date(data.snapshotGeneratedAt).toLocaleString()}` : ''}.
-                    Filters are temporarily frozen until maintenance completes.
+                    Database maintenance is in progress.
+                    {/* There is no Fastest Clears snapshot; that tab's body says the board is unavailable. */}
+                    {!isFastest && (
+                        <>
+                            {' '}Showing the last known leaderboard snapshot
+                            {'snapshotGeneratedAt' in shown && shown.snapshotGeneratedAt ? ` from ${new Date(shown.snapshotGeneratedAt).toLocaleString()}` : ''}.
+                        </>
+                    )}
+                    {' '}Filters are temporarily frozen until maintenance completes.
                 </div>
             )}
 

@@ -21,7 +21,7 @@
  * request to its own cache keys.
  */
 import { getDb } from '../db';
-import { COMPLETION, buildRaidFilterClause, type RaidFilters } from '../db/queries';
+import { CLEAR_TIME, COMPLETION, buildRaidFilterClause, type RaidFilters } from '../db/queries';
 import { getAllRaidDefinitions } from '../bungie/manifest';
 import { envSeconds, envMs } from '../env';
 import { getOrCompute, type CacheState } from './swr-cache';
@@ -240,7 +240,7 @@ export interface FastestClearEntry {
  * Per raid only — a fastest time across different raids means nothing, so unlike
  * {@link runLeaderboardRows} this takes one raid key rather than a set.
  *
- * Clear Time is `ended_at - period`, the profile's `CLEARED_DURATION` expression. No
+ * Clear Time is `CLEAR_TIME`, the expression the profile's fastest-clear stat uses. No
  * duration floor: suspected-cheated runs rank like any other, by decision (#130).
  */
 export function runFastestClearRows(hours: number, raidKey: string, limit: number, filters?: RaidFilters): FastestClearEntry[] {
@@ -258,10 +258,10 @@ export function runFastestClearRows(hours: number, raidKey: string, limit: numbe
               pp.display_name as runDisplayName,
               pp.instance_id as instanceId,
               p.ended_at as endedAt,
-              p.ended_at - p.period as clearTimeSeconds,
+              ${CLEAR_TIME} as clearTimeSeconds,
               ROW_NUMBER() OVER (
                 PARTITION BY pp.membership_id
-                ORDER BY p.ended_at - p.period ASC, p.ended_at ASC, pp.instance_id ASC
+                ORDER BY ${CLEAR_TIME} ASC, p.ended_at ASC, pp.instance_id ASC
               ) as fastestFirst
             FROM pgcr_players pp
             JOIN pgcrs p ON pp.instance_id = p.instance_id
@@ -344,12 +344,13 @@ function individualBody(
 /**
  * The Fastest Clears envelope: always the per-raid ("individual") shape, whatever `mode`
  * was asked for, with `board` set so a client can never mistake it for a count board.
+ * Exported for the route's maintenance answer, which is this envelope with no boards.
  */
-function fastestBody(
+export function fastestBody(
     hours: number,
     raidKeys: string[],
     leaderboards: Record<string, IndividualLeaderboard<FastestClearEntry>>,
-): unknown {
+): Record<string, unknown> {
     return { board: 'fastest', mode: 'individual', hours, raidKeys, leaderboards };
 }
 

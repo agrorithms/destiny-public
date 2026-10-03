@@ -14,6 +14,9 @@ export async function GET(request: NextRequest) {
     const hours = parseInt(searchParams.get('hours') || '4', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const mode = searchParams.get('mode') === 'individual' ? 'individual' : 'aggregate';
+    // Anything but `fastest` is the Full Clears board, so a missing or unknown value
+    // behaves exactly as before the parameter existed. `fastest` ignores `mode`.
+    const board = searchParams.get('board') === 'fastest' ? 'fastest' : 'fullClears';
     // fullClearsOnly is forced true on the cache path (the only real UI path);
     // it is folded into the cache key as a constant rather than read here.
 
@@ -58,13 +61,26 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const { body, state, band } = await getLeaderboardResponse({ mode, hours, raidKeys, limit, filters: hasFilters ? filters : undefined });
+        const { body, state, band } = await getLeaderboardResponse({ board, mode, hours, raidKeys, limit, filters: hasFilters ? filters : undefined });
 
         const response = withCache(NextResponse.json(body), band.sMaxAge, band.staleWhileRevalidate);
         response.headers.set('X-Cache', state.toUpperCase());
         return response;
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
+            // The maintenance snapshot holds a Full Clears board only (#130 keeps it that
+            // way), so Fastest Clears answers with an empty, flagged body and the page
+            // says the board is unavailable rather than showing counts as times.
+            if (board === 'fastest') {
+                return withNoStore(NextResponse.json({
+                    board,
+                    mode: 'individual',
+                    hours,
+                    raidKeys,
+                    leaderboards: {},
+                    maintenance: true,
+                }));
+            }
             const snapshot = readLeaderboardSnapshot();
             if (snapshot?.data) {
                 return withNoStore(NextResponse.json({

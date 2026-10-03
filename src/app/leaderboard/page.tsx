@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { use, useEffect, useState, useCallback, useRef } from 'react';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
-import LeaderboardTable from '@/components/LeaderboardTable';
+import LeaderboardTable, { type LeaderboardMetric } from '@/components/LeaderboardTable';
 import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
 import { useViewMode, useTimeRange, useLeaderboardSize, usePlayersFilter, type PlayersFilter } from '@/hooks/useLeaderboardPrefs';
+import { parseLeaderboardBoard, type LeaderboardBoard } from './leaderboard-board';
+import { LeaderboardTabs } from './LeaderboardTabs';
 
 interface RaidOption {
     key: string;
@@ -52,7 +54,39 @@ interface IndividualResponse {
     }>;
 }
 
-type LeaderboardResponse = AggregateResponse | IndividualResponse;
+/** One Fastest Clears row. No movement fields: rank arrows, NEW and the flash are off on this tab until #134. */
+interface FastestClearEntry {
+    membershipId: string;
+    membershipType: number;
+    displayName: string;
+    clearTimeSeconds: number;
+    instanceId: string;
+    endedAt: number;
+    rank: number;
+}
+
+/** `board=fastest` is always the per-raid shape, whatever `mode` the page might send. */
+interface FastestResponse {
+    board: 'fastest';
+    mode: 'individual';
+    hours: number;
+    raidKeys: string[];
+    /** Set, with no boards, when the database is in maintenance: there is no Fastest Clears snapshot. */
+    maintenance?: boolean;
+    leaderboards: Record<string, {
+        raidKey: string;
+        raidName: string;
+        entries: FastestClearEntry[];
+    }>;
+}
+
+type FullClearsResponse = AggregateResponse | IndividualResponse;
+type LeaderboardResponse = FullClearsResponse | FastestResponse;
+
+/** Which board a response is. The Full Clears body predates `board` and carries none. */
+function responseBoard(response: LeaderboardResponse): LeaderboardBoard {
+    return 'board' in response ? response.board : 'fullClears';
+}
 
 const AVAILABLE_RAIDS: RaidOption[] = [
     //pantheon insurrection prime and morgeth surpassing are not accurately showing fresh clears so will never return results
@@ -73,7 +107,15 @@ const AVAILABLE_RAIDS: RaidOption[] = [
 
 const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100];
 
-export default function LeaderboardPage() {
+export default function LeaderboardPage({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+    // The tab is in the URL (./leaderboard-board.ts); the filters below stay in browser
+    // storage and are shared by both tabs.
+    const board = parseLeaderboardBoard(use(searchParams));
+    const isFastest = board === 'fastest';
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
     const [hours, setHours] = useTimeRange();
     const [mode, setMode] = useViewMode();
@@ -92,7 +134,7 @@ export default function LeaderboardPage() {
     // Players who entered the board mid-session; they wear NEW until their rank first changes.
     const newEntrantsRef = useRef<Set<string>>(new Set());
 
-    const annotateMovement = useCallback((result: LeaderboardResponse, comboKey: string, fetchSeq: number) => {
+    const annotateMovement = useCallback((result: FullClearsResponse, comboKey: string, fetchSeq: number) => {
         const scopes: Array<[string, LeaderboardEntry[]]> = result.mode === 'aggregate'
             ? [['aggregate', result.entries]]
             : Object.values(result.leaderboards).map((lb) => [lb.raidKey, lb.entries] as [string, LeaderboardEntry[]]);
@@ -157,12 +199,12 @@ export default function LeaderboardPage() {
         setError(null);
 
         try {
-            const params = new URLSearchParams({
-                hours: hours.toString(),
-                fullClearsOnly: 'true',
-                mode,
-                limit: leaderboardSize.toString(),
-            });
+            // Fastest Clears neither sends nor reads the stored View mode: the server
+            // always answers it per raid, and a saved Total Clears preference must
+            // survive a visit to this tab untouched.
+            const params = new URLSearchParams(isFastest
+                ? { board, hours: hours.toString(), limit: leaderboardSize.toString() }
+                : { hours: hours.toString(), fullClearsOnly: 'true', mode, limit: leaderboardSize.toString() });
 
             if (selectedRaids.length > 0) {
                 params.set('raids', selectedRaids.join(','));
@@ -180,12 +222,17 @@ export default function LeaderboardPage() {
                 throw new Error(`API error: ${response.status}`);
             }
 
-            const result = await response.json();
+            const result: LeaderboardResponse = await response.json();
             if (requestId !== requestIdRef.current) {
                 return;
             }
-            const comboKey = `${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
-            setData(annotateMovement(result, comboKey, requestId));
+            // Movement is Full Clears only until #134. The board is in the combo key, so
+            // returning from Fastest Clears captures a fresh baseline rather than
+            // comparing against one taken before the visit.
+            const comboKey = `${board}|${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
+            setData(responseBoard(result) === 'fullClears'
+                ? annotateMovement(result as FullClearsResponse, comboKey, requestId)
+                : result);
             setLastUpdated(new Date());
         } catch (err) {
             if ((err as Error).name === 'AbortError') {
@@ -200,7 +247,7 @@ export default function LeaderboardPage() {
                 setLoading(false);
             }
         }
-    }, [selectedRaids, hours, mode, leaderboardSize, playersFilter, annotateMovement]);
+    }, [board, isFastest, selectedRaids, hours, mode, leaderboardSize, playersFilter, annotateMovement]);
 
     useEffect(() => {
         return () => activeControllerRef.current?.abort();
@@ -226,18 +273,24 @@ export default function LeaderboardPage() {
             ? AVAILABLE_RAIDS.find((r) => r.key === selectedRaids[0])?.name || ''
             : `${selectedRaids.length} Raids`;
 
+    // Data from the other tab can be on screen for a moment after a switch; it is never
+    // drawn under this tab's heading or in this tab's table.
+    const shown = data && responseBoard(data) === board ? data : null;
+    const fastestUnavailable = isFastest && shown?.maintenance;
+
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold ui-text-primary mb-2">Raid Leaderboard</h1>
+            <LeaderboardTabs board={board} />
             <p className="ui-text-secondary mb-6">
-                Top raiders by full clears in the last {formatTimeRange(hours)}
+                {isFastest ? 'Fastest clears' : 'Top raiders by full clears'} in the last {formatTimeRange(hours)}
                 {raidFilterLabel !== 'All Raids' && ` — ${raidFilterLabel}`}
             </p>
 
             {data?.maintenance && (
                 <div className="ui-card p-4 mb-6 text-sm text-red-700 dark:text-red-400">
                     Database maintenance is in progress. Showing the last known leaderboard snapshot
-                    {data.snapshotGeneratedAt ? ` from ${new Date(data.snapshotGeneratedAt).toLocaleString()}` : ''}.
+                    {'snapshotGeneratedAt' in data && data.snapshotGeneratedAt ? ` from ${new Date(data.snapshotGeneratedAt).toLocaleString()}` : ''}.
                     Filters are temporarily frozen until maintenance completes.
                 </div>
             )}
@@ -256,8 +309,9 @@ export default function LeaderboardPage() {
                         />
                     </div>
 
-                    {/* View Mode Toggle */}
-                    <div>
+                    {/* View Mode Toggle — Full Clears only: a fastest time across
+                        different raids means nothing, so Fastest Clears is always per raid. */}
+                    {!isFastest && <div>
                         <label className="block text-xs ui-text-muted mb-1">View</label>
                         <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
                             <button
@@ -279,7 +333,7 @@ export default function LeaderboardPage() {
                                 Total Clears
                             </button>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Players Filter */}
                     <div>
@@ -337,30 +391,46 @@ export default function LeaderboardPage() {
                 </div>
             )}
 
+            {/* No Fastest Clears snapshot exists, so maintenance replaces the board. */}
+            {fastestUnavailable && (
+                <div className="ui-card p-3 sm:p-4">
+                    <div className="text-center py-12 ui-text-secondary">
+                        <p className="text-lg">Fastest Clears are unavailable during maintenance</p>
+                    </div>
+                </div>
+            )}
+
             {/* Aggregate Leaderboard */}
-            {data && data.mode === 'aggregate' && (
+            {shown && shown.mode === 'aggregate' && (
                 <div className="ui-card p-3 sm:p-4">
                     <LeaderboardTable
-                        entries={(data as AggregateResponse).entries}
-                        loading={loading && !data}
+                        entries={shown.entries}
+                        loading={loading && !shown}
                         showRaidColumn={false}
                     />
                 </div>
             )}
 
-            {/* Individual Leaderboards */}
-            {data && data.mode === 'individual' && (
+            {/* Per-raid Leaderboards — Full Clears' Per Raid view, and every Fastest Clears response */}
+            {shown && shown.mode === 'individual' && !fastestUnavailable && (
                 <>
                     {(() => {
-                        const leaderboards = Object.values((data as IndividualResponse).leaderboards);
+                        const leaderboards = Object.values(shown.leaderboards);
+                        const metric: LeaderboardMetric = isFastest ? 'clearTime' : 'completions';
                         const count = leaderboards.length;
 
                         if (count === 0 && !loading) {
                             return (
                                 <div className="ui-card p-3 sm:p-4">
                                     <div className="text-center py-12 ui-text-secondary">
-                                        <p className="text-lg">No leaderboards found</p>
-                                        <p className="text-sm mt-1">Try a different time range or refresh the leaderboard</p>
+                                        {isFastest ? (
+                                            <p className="text-lg">No Completions match these filters</p>
+                                        ) : (
+                                            <>
+                                                <p className="text-lg">No leaderboards found</p>
+                                                <p className="text-sm mt-1">Try a different time range or refresh the leaderboard</p>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             );
@@ -384,9 +454,10 @@ export default function LeaderboardPage() {
                                     >
                                         <LeaderboardTable
                                             entries={lb.entries}
-                                            loading={loading && !data}
+                                            loading={loading && !shown}
                                             title={lb.raidName}
                                             showRaidColumn={false}
+                                            metric={metric}
                                         />
                                     </div>
                                 ))}

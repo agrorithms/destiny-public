@@ -22,15 +22,15 @@ highlight on Fastest Clears (#134), anything from #131.
    - [x] `tests/db/fastest-clears.test.ts` (new)
    - [x] `src/app/api/leaderboard/route.ts` — `board` parameter; maintenance body for `fastest`
 2. UI — tabs, table, copy, maintenance message, e2e
-   - [ ] `src/app/leaderboard/leaderboard-board.ts` (new) — the URL's spelling of the tab
-   - [ ] `src/app/leaderboard/LeaderboardTabs.tsx` (new) — the tab strip
-   - [ ] `src/app/leaderboard/page.tsx` — tab-aware fetch, heading, View toggle, maintenance message
-   - [ ] `src/components/LeaderboardTable.tsx` — Clears or Clear Time column, per-tab empty state
-   - [ ] `e2e/support/seed-world.ts` — runs of differing Clear Times
-   - [ ] `e2e/leaderboard-fastest.spec.ts` (new)
+   - [x] `src/app/leaderboard/leaderboard-board.ts` (new) — the URL's spelling of the tab
+   - [x] `src/app/leaderboard/LeaderboardTabs.tsx` (new) — the tab strip
+   - [x] `src/app/leaderboard/page.tsx` — tab-aware fetch, heading, View toggle, maintenance message
+   - [x] `src/components/LeaderboardTable.tsx` — Clears or Clear Time column, per-tab empty state
+   - [x] `e2e/support/seed-world.ts` — runs of differing Clear Times
+   - [x] `e2e/leaderboard-fastest.spec.ts` (new)
 3. Bookkeeping
-   - [ ] `docs/progress/132-fastest-clears.md` (this file)
-   - [ ] `docs/handoffs/260803-playwright-e2e.md` — covered-flows list
+   - [x] `docs/progress/132-fastest-clears.md` (this file)
+   - [x] `docs/handoffs/260803-playwright-e2e.md` — covered-flows list (gitignored: edited locally, not committed)
 
 ## Notes
 
@@ -42,3 +42,13 @@ highlight on Fastest Clears (#134), anything from #131.
 - The maintenance snapshot holds a Full Clears board only, so `board=fastest` during maintenance
   returns an empty `leaderboards` with `maintenance: true` (no snapshot read, so it never 500s for
   a missing snapshot).
+- `/leaderboard` is now rendered on demand (ƒ in the build output): the client page reads the
+  tab from `searchParams` via `use()`. That's the cost of reading the URL without `useSearchParams`
+  and its Suspense boundary, which would blank the server-rendered shell.
+- The e2e spec was mutation-checked too; see the 2026-10-03 section of
+  `docs/handoffs/260803-playwright-e2e.md`.
+- Against the dev Tracker (`npm run dev`), `board=fastest&mode=aggregate` returned 13 per-raid
+  boards. A Salvation's Edge fireteam shared rank 1, and 2-minute Desert Perpetual / Last Wish clears
+  topped their boards, as decided. Cold misses over 700 h: Fastest Clears all raids 1.3 s, Full Clears
+  per raid 7.1 s, Fastest Clears single raid 0.18 s. The OS page cache was warm, and the very first
+  request (15 s) included dev-mode route compilation.

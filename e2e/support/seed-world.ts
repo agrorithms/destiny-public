@@ -37,6 +37,11 @@ interface FixturePlayer {
     raidA?: number;
     /** Completions to seed on RAID_B. */
     raidB?: number;
+    /**
+     * The Clear Time of each of this player's runs, in seconds, in seeding order. One
+     * entry per run, so its length matches the player's count.
+     */
+    clearTimes: number[];
 }
 
 /**
@@ -48,16 +53,38 @@ interface FixturePlayer {
 export const LEADERBOARD_PLAYERS: FixturePlayer[] = [
     // Deliberately the top of the board so the Name#Code assertions do not
     // depend on the default page limit.
-    { membershipId: '4611686018400010001', name: 'FixtureAlpha', code: 4242, raidA: 3 },
+    { membershipId: '4611686018400010001', name: 'FixtureAlpha', code: 4242, raidA: 3, clearTimes: [2400, 2000, 2700] },
     // A low code, to pin the zero-padding in formatBungieDisplayName. A raw
     // "Name#7" here would be wrong; it must render "Name#0007".
-    { membershipId: '4611686018400010002', name: 'FixtureBravo', code: 7, raidA: 2 },
-    { membershipId: '4611686018400010003', name: 'FixtureCharlie', code: 1111, raidA: 1 },
+    { membershipId: '4611686018400010002', name: 'FixtureBravo', code: 7, raidA: 2, clearTimes: [2100, 2200] },
+    { membershipId: '4611686018400010003', name: 'FixtureCharlie', code: 1111, raidA: 1, clearTimes: [1500] },
     // Non-overlapping with the RAID_A set: filtering must swap the board wholesale.
-    { membershipId: '4611686018400010011', name: 'FixtureDelta', code: 2222, raidB: 3 },
-    { membershipId: '4611686018400010012', name: 'FixtureEcho', code: 3333, raidB: 2 },
-    { membershipId: '4611686018400010013', name: 'FixtureFoxtrot', code: 4444, raidB: 1 },
+    { membershipId: '4611686018400010011', name: 'FixtureDelta', code: 2222, raidB: 3, clearTimes: [3000, 3300, 3100] },
+    { membershipId: '4611686018400010012', name: 'FixtureEcho', code: 3333, raidB: 2, clearTimes: [1900, 1260] },
+    { membershipId: '4611686018400010013', name: 'FixtureFoxtrot', code: 4444, raidB: 1, clearTimes: [2900] },
 ];
+
+/**
+ * The Fastest Clears boards the Clear Times above produce: each player's fastest run,
+ * fastest first, as `formatRunDuration` renders it. Ordered against the Full Clears
+ * boards on purpose — the player with the fewest clears is the fastest — so a tab
+ * that showed the count board under the Fastest Clears heading could not pass.
+ *
+ * Alpha's and Echo's fastest is not their first run, so a board that took a
+ * player's first or last run rather than their fastest could not pass either.
+ */
+export const FASTEST_CLEARS = {
+    [RAID_A.key]: [
+        ['FixtureCharlie#1111', '25:00'],
+        ['FixtureAlpha#4242', '33:20'],
+        ['FixtureBravo#0007', '35:00'],
+    ],
+    [RAID_B.key]: [
+        ['FixtureEcho#3333', '21:00'],
+        ['FixtureFoxtrot#4444', '48:20'],
+        ['FixtureDelta#2222', '50:00'],
+    ],
+} as const;
 
 /**
  * Proves the *running server* opened this run's fixture database — not just
@@ -89,6 +116,7 @@ export function seedStaticWorld(): void {
     let instance = 1;
     for (const player of LEADERBOARD_PLAYERS) {
         seedPlayer(player.membershipId, player.name, player.code);
+        let run = 0;
 
         for (const [raid, count] of [
             [RAID_A, player.raidA ?? 0],
@@ -101,8 +129,10 @@ export function seedStaticWorld(): void {
                     raidKey: raid.key,
                     completedBy: [player.membershipId],
                     // Well inside the narrowest time window the UI offers, so no
-                    // spec has to care which range the slider defaults to.
+                    // spec has to care which range the slider defaults to. Every Clear
+                    // Time is under an hour, so each run has ended by now.
                     period: hoursAgo(1),
+                    activityDurationSeconds: player.clearTimes[run++],
                 });
             }
         }

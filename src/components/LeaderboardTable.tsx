@@ -1,10 +1,18 @@
 'use client';
 
+import { formatRunDuration } from '@/lib/utils/helpers';
+
+/** Which number the right-hand column shows: a Full Clears count, or a Clear Time. */
+export type LeaderboardMetric = 'completions' | 'clearTime';
+
 interface LeaderboardEntry {
     membershipId: string;
     membershipType: number;
     displayName: string;
-    completions: number;
+    /** Set on the Full Clears board. */
+    completions?: number;
+    /** Set on the Fastest Clears board, in seconds. */
+    clearTimeSeconds?: number;
     /** Competition rank from the server (ties share a rank number). */
     rank: number;
     /** Rank change vs when the viewer opened the page (positive = moved up). */
@@ -21,6 +29,7 @@ interface LeaderboardTableProps {
     title?: string;
     showRaidColumn?: boolean;
     raidName?: string;
+    metric?: LeaderboardMetric;
 }
 
 export default function LeaderboardTable({
@@ -29,7 +38,10 @@ export default function LeaderboardTable({
     title,
     showRaidColumn = false,
     raidName,
+    metric = 'completions',
 }: LeaderboardTableProps) {
+    const isClearTime = metric === 'clearTime';
+
     if (loading) {
         return (
             <div className="space-y-2">
@@ -45,8 +57,17 @@ export default function LeaderboardTable({
         return (
             <div className="text-center py-12 ui-text-muted">
                 {title && <h3 className="text-lg font-bold ui-text-primary mb-3">{title}</h3>}
-                <p className="text-lg">No completions found</p>
-                <p className="text-sm mt-1">Try adjusting the time range or raid filter</p>
+                {isClearTime ? (
+                    <>
+                        <p className="text-lg">No Completions match these filters</p>
+                        <p className="text-sm mt-1">Try a longer time range or a different Players filter</p>
+                    </>
+                ) : (
+                    <>
+                        <p className="text-lg">No completions found</p>
+                        <p className="text-sm mt-1">Try adjusting the time range or raid filter</p>
+                    </>
+                )}
             </div>
         );
     }
@@ -63,7 +84,9 @@ export default function LeaderboardTable({
                         <col className="w-6 sm:w-7" />
                         <col />
                         {showRaidColumn && <col className="w-[5.5rem] sm:w-28" />}
-                        <col className="w-[4.25rem] sm:w-20" />
+                        {/* Wider for a Clear Time: the "Clear Time" heading and an
+                            "1:23:45" both outgrow the Clears column. */}
+                        <col className={isClearTime ? 'w-[5.5rem] sm:w-24' : 'w-[4.25rem] sm:w-20'} />
                     </colgroup>
                     <thead>
                         <tr className="border-b ui-divider ui-text-muted">
@@ -73,7 +96,7 @@ export default function LeaderboardTable({
                             </th>
                             <th className="text-left py-1 pl-0.5 pr-1.5 sm:pl-1 sm:pr-2">Player</th>
                             {showRaidColumn && <th className="text-left py-1 px-1.5 sm:px-2">Raid</th>}
-                            <th className="text-right py-1 px-1.5 sm:px-2">Clears</th>
+                            <th className="text-right py-1 px-1.5 sm:px-2 whitespace-nowrap">{isClearTime ? 'Clear Time' : 'Clears'}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -128,7 +151,7 @@ export default function LeaderboardTable({
                                     </td>
                                 )}
                                 <td className="py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary">
-                                    {entry.completions}
+                                    {isClearTime ? formatRunDuration(entry.clearTimeSeconds) : entry.completions}
                                 </td>
                             </tr>
                         ))}

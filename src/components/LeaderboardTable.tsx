@@ -57,17 +57,10 @@ export default function LeaderboardTable({
         return (
             <div className="text-center py-12 ui-text-muted">
                 {title && <h3 className="text-lg font-bold ui-text-primary mb-3">{title}</h3>}
-                {isClearTime ? (
-                    <>
-                        <p className="text-lg">No Completions match these filters</p>
-                        <p className="text-sm mt-1">Try a longer time range or a different Players filter</p>
-                    </>
-                ) : (
-                    <>
-                        <p className="text-lg">No completions found</p>
-                        <p className="text-sm mt-1">Try adjusting the time range or raid filter</p>
-                    </>
-                )}
+                <p className="text-lg">{isClearTime ? 'No Completions match these filters' : 'No completions found'}</p>
+                <p className="text-sm mt-1">
+                    {isClearTime ? 'Try a longer time range or a different Players filter' : 'Try adjusting the time range or raid filter'}
+                </p>
             </div>
         );
     }

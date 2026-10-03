@@ -7,7 +7,8 @@ import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
 import { useViewMode, useTimeRange, useLeaderboardSize, usePlayersFilter, type PlayersFilter } from '@/hooks/useLeaderboardPrefs';
-import { parseLeaderboardBoard, type LeaderboardBoard } from './leaderboard-board';
+import type { FastestClearEntry, IndividualLeaderboard } from '@/lib/cache/leaderboard-cache';
+import { parseLeaderboardBoard } from './leaderboard-board';
 import { LeaderboardTabs } from './LeaderboardTabs';
 
 interface RaidOption {
@@ -54,18 +55,11 @@ interface IndividualResponse {
     }>;
 }
 
-/** One Fastest Clears row. No movement fields: rank arrows, NEW and the flash are off on this tab until #134. */
-interface FastestClearEntry {
-    membershipId: string;
-    membershipType: number;
-    displayName: string;
-    clearTimeSeconds: number;
-    instanceId: string;
-    endedAt: number;
-    rank: number;
-}
-
-/** `board=fastest` is always the per-raid shape, whatever `mode` the page might send. */
+/**
+ * `board=fastest` is always the per-raid shape, whatever `mode` the page might send. Its
+ * rows carry no movement fields: rank arrows, NEW and the flash are off on this tab until #134.
+ * Only this body carries `board`; the Full Clears body predates it, so `'board' in` tells them apart.
+ */
 interface FastestResponse {
     board: 'fastest';
     mode: 'individual';
@@ -73,20 +67,11 @@ interface FastestResponse {
     raidKeys: string[];
     /** Set, with no boards, when the database is in maintenance: there is no Fastest Clears snapshot. */
     maintenance?: boolean;
-    leaderboards: Record<string, {
-        raidKey: string;
-        raidName: string;
-        entries: FastestClearEntry[];
-    }>;
+    leaderboards: Record<string, IndividualLeaderboard<FastestClearEntry>>;
 }
 
 type FullClearsResponse = AggregateResponse | IndividualResponse;
 type LeaderboardResponse = FullClearsResponse | FastestResponse;
-
-/** Which board a response is. The Full Clears body predates `board` and carries none. */
-function responseBoard(response: LeaderboardResponse): LeaderboardBoard {
-    return 'board' in response ? response.board : 'fullClears';
-}
 
 const AVAILABLE_RAIDS: RaidOption[] = [
     //pantheon insurrection prime and morgeth surpassing are not accurately showing fresh clears so will never return results
@@ -226,13 +211,16 @@ export default function LeaderboardPage({
             if (requestId !== requestIdRef.current) {
                 return;
             }
-            // Movement is Full Clears only until #134. The board is in the combo key, so
-            // returning from Fastest Clears captures a fresh baseline rather than
+            // Movement is Full Clears only until #134. A Fastest Clears response drops the
+            // baseline, so returning to Full Clears captures a fresh one rather than
             // comparing against one taken before the visit.
-            const comboKey = `${board}|${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
-            setData(responseBoard(result) === 'fullClears'
-                ? annotateMovement(result as FullClearsResponse, comboKey, requestId)
-                : result);
+            if ('board' in result) {
+                baselineRef.current = null;
+                setData(result);
+            } else {
+                const comboKey = `${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
+                setData(annotateMovement(result, comboKey, requestId));
+            }
             setLastUpdated(new Date());
         } catch (err) {
             if ((err as Error).name === 'AbortError') {
@@ -275,8 +263,7 @@ export default function LeaderboardPage({
 
     // Data from the other tab can be on screen for a moment after a switch; it is never
     // drawn under this tab's heading or in this tab's table.
-    const shown = data && responseBoard(data) === board ? data : null;
-    const fastestUnavailable = isFastest && shown?.maintenance;
+    const shown = data && ('board' in data) === isFastest ? data : null;
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
@@ -391,28 +378,18 @@ export default function LeaderboardPage({
                 </div>
             )}
 
-            {/* No Fastest Clears snapshot exists, so maintenance replaces the board. */}
-            {fastestUnavailable && (
-                <div className="ui-card p-3 sm:p-4">
-                    <div className="text-center py-12 ui-text-secondary">
-                        <p className="text-lg">Fastest Clears are unavailable during maintenance</p>
-                    </div>
-                </div>
-            )}
-
             {/* Aggregate Leaderboard */}
             {shown && shown.mode === 'aggregate' && (
                 <div className="ui-card p-3 sm:p-4">
                     <LeaderboardTable
                         entries={shown.entries}
-                        loading={loading && !shown}
                         showRaidColumn={false}
                     />
                 </div>
             )}
 
             {/* Per-raid Leaderboards — Full Clears' Per Raid view, and every Fastest Clears response */}
-            {shown && shown.mode === 'individual' && !fastestUnavailable && (
+            {shown && shown.mode === 'individual' && (
                 <>
                     {(() => {
                         const leaderboards = Object.values(shown.leaderboards);
@@ -420,17 +397,18 @@ export default function LeaderboardPage({
                         const count = leaderboards.length;
 
                         if (count === 0 && !loading) {
+                            // A Fastest Clears maintenance body has no boards: no Fastest
+                            // Clears snapshot exists, so the message replaces the board.
+                            const [title, hint] = !isFastest
+                                ? ['No leaderboards found', 'Try a different time range or refresh the leaderboard']
+                                : shown.maintenance
+                                    ? ['Fastest Clears are unavailable during maintenance']
+                                    : ['No Completions match these filters'];
                             return (
                                 <div className="ui-card p-3 sm:p-4">
                                     <div className="text-center py-12 ui-text-secondary">
-                                        {isFastest ? (
-                                            <p className="text-lg">No Completions match these filters</p>
-                                        ) : (
-                                            <>
-                                                <p className="text-lg">No leaderboards found</p>
-                                                <p className="text-sm mt-1">Try a different time range or refresh the leaderboard</p>
-                                            </>
-                                        )}
+                                        <p className="text-lg">{title}</p>
+                                        {hint && <p className="text-sm mt-1">{hint}</p>}
                                     </div>
                                 </div>
                             );
@@ -454,7 +432,6 @@ export default function LeaderboardPage({
                                     >
                                         <LeaderboardTable
                                             entries={lb.entries}
-                                            loading={loading && !shown}
                                             title={lb.raidName}
                                             showRaidColumn={false}
                                             metric={metric}

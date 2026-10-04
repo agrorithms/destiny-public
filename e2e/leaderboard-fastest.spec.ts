@@ -4,7 +4,7 @@ import { FASTEST_CLEARS, RAID_A, RAID_B } from './support/seed-world';
 import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
- * The leaderboard's Fastest Clears tab (#132) — what only a browser can see.
+ * The leaderboard's Fastest Clears tab (#132, #133) — what only a browser can see.
  *
  * The runner's ranking rules are pinned in tests/db/fastest-clears.test.ts. What those
  * tests cannot see is the page around it: that the tab is held in the URL and switches
@@ -12,6 +12,10 @@ import { expectNoElementOverflow, expectNoHorizontalPageOverflow } from './suppo
  * preference, and that the request the page sends reaches a route that answers per raid.
  * There are no route tests (#130 left them out on purpose), so the third of those is
  * proved here, through the running server.
+ *
+ * #133 adds the Clear Time link: that it targets the run's raid.report page and says so to a
+ * screen reader, and that its tooltip shows the run's date and time in the viewer's zone, on
+ * hover and on keyboard focus.
  *
  * The boards are asserted against FASTEST_CLEARS in the seeded world, which is ordered
  * against the Full Clears boards, so the count board under the new heading cannot pass.
@@ -34,10 +38,16 @@ function raidBoard(page: Page, raidName: string): Locator {
     return page.locator('.ui-card').filter({ has: page.getByRole('heading', { name: raidName, exact: true }) });
 }
 
+/** The Clear Time link's accessible name: the time, then a hint only screen readers hear. */
+function clearTimeLinkName(clearTime: string): string {
+    return `${clearTime} on raid.report, opens in a new tab`;
+}
+
 /**
  * Each row as [player, Clear Time], so order, names and times are one assertion. Both are
- * links since #133 — the name first, the Clear Time in the last cell — and the time is read
- * from its link because the cell also holds the date tooltip's text.
+ * links since #133 — the name first, the Clear Time in the last cell. The time is read from
+ * its link's accessible name, whole: the cell also holds the date tooltip's text, and the
+ * link's own text carries the hidden raid.report hint after the time.
  */
 async function expectBoardRows(board: Locator, rows: readonly (readonly [string, string])[]): Promise<void> {
     const body = board.locator('tbody tr');
@@ -45,7 +55,7 @@ async function expectBoardRows(board: Locator, rows: readonly (readonly [string,
     for (const [i, [player, value]] of rows.entries()) {
         const row = body.nth(i);
         await expect(row.getByRole('link').first()).toHaveText(player);
-        await expect(row.locator('td').last().getByRole('link')).toHaveText(value);
+        await expect(row.locator('td').last().getByRole('link')).toHaveAccessibleName(clearTimeLinkName(value));
     }
 }
 
@@ -165,7 +175,9 @@ test.describe('the Fastest Clears tab', () => {
             // Bravo and Charlie take 1–6, Delta 7–9, Echo's 1900 s run 10). Her first run
             // is 1900 s, so a link to the player's first run could not pass.
             const row = raidBoard(page, RAID_B.name).locator('tbody tr').first();
-            const link = row.getByRole('link', { name: '21:00', exact: true });
+            const link = row.locator('td').last().getByRole('link');
+            // A screen reader hears the time and where the link goes, not a bare "21:00".
+            await expect(link).toHaveAccessibleName(clearTimeLinkName('21:00'));
             await expect(link).toHaveAttribute('href', 'https://raid.report/pgcr/900011');
             await expect(link).toHaveAttribute('target', '_blank');
             await expect(link).toHaveAttribute('rel', 'noopener noreferrer');

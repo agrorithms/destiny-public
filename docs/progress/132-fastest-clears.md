@@ -147,3 +147,32 @@ Results:
 - `npm run build`: exit 0; `/leaderboard` is ƒ, as before
 - `npm test`: 45 files, 539 tests passed
 - `npm run e2e`: 95 passed (50.7 s), including the 6 in `leaderboard-fastest.spec.ts`
+
+## #133 review fixes (2026-10-04)
+
+From the two-axis review of `c1d56f9..b95ba14`.
+
+- [x] `src/lib/utils/helpers.ts` — `formatTimestamp` restored as it was before b95ba14; no diff
+  against c1d56f9.
+- [x] `src/components/LeaderboardTable.tsx` — the shared, lazily built date formatter and its
+  client-only rule now sit beside `ClearTimeLink` as `formatRunEnd`, its only caller. The link
+  carries hidden text, " on raid.report, opens in a new tab", rather than an `aria-label`, so its
+  name keeps the time. `relative` goes on the right-hand cell only for a Clear Time, so the Full
+  Clears cell's markup matches c1d56f9.
+- [x] `e2e/leaderboard-fastest.spec.ts` — the link's accessible name is asserted whole, both the
+  time and the raid.report hint. `expectBoardRows` reads each time from that name, because the
+  link's text now ends with the hidden hint; it still checks the full time exactly. The header also
+  lists what the #133 tests cover.
+- [x] `docs/progress/132-fastest-clears.md` (this file)
+
+The assertion went in first. Against the unchanged component, 3 of the spec's 6 tests failed:
+`Expected: "25:00 on raid.report, opens in a new tab"`, `Received: "25:00"`. With the fix, all 6
+passed.
+
+Results, on the final tree:
+
+- `npx tsc --noEmit`: exit 0
+- `npm run lint`: exit 0, 0 errors and 29 warnings, all `no-explicit-any` in `gos10k/`
+- `npm run build`: exit 0; `/leaderboard` is ƒ, as before
+- `npm test`: 45 files, 539 tests passed
+- `npm run e2e`: 95 passed (45.7 s), including the 6 in `leaderboard-fastest.spec.ts`

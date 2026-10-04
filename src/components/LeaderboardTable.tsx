@@ -1,7 +1,7 @@
 'use client';
 
 import { useId } from 'react';
-import { formatRunDuration, formatTimestamp } from '@/lib/utils/helpers';
+import { formatRunDuration } from '@/lib/utils/helpers';
 
 /** Which number the right-hand column shows: a Full Clears count, or a Clear Time. */
 export type LeaderboardMetric = 'completions' | 'clearTime';
@@ -28,6 +28,21 @@ interface LeaderboardEntry {
     changeStamp?: number;
 }
 
+let runEndFormat: Intl.DateTimeFormat | undefined;
+
+/**
+ * A run's end as a date and time in the viewer's own zone and locale, e.g.
+ * `4 Oct 2026, 16:56`. Call it only on the client, or the server's zone is drawn.
+ *
+ * One shared formatter, built on first use: `toLocaleString` with options builds a new
+ * `Intl.DateTimeFormat` per call, which across a full Fastest Clears page (#133) is
+ * tens of milliseconds a render.
+ */
+function formatRunEnd(unix: number): string {
+    runEndFormat ??= new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return runEndFormat.format(unix * 1000);
+}
+
 /**
  * The Clear Time as a link to the run on raid.report, with when it ended as a tooltip,
  * so the row stays as wide as it was (#133). A bare `title` would not show on keyboard
@@ -46,6 +61,8 @@ function ClearTimeLink({ entry }: { entry: LeaderboardEntry }) {
                 className="peer hover:text-blue-600 transition-colors dark:hover:text-blue-400"
             >
                 {formatRunDuration(entry.clearTimeSeconds)}
+                {/* Hidden text, not an aria-label, so the time stays in the link's name. */}
+                <span className="sr-only"> on raid.report, opens in a new tab</span>
             </a>
             {/* Above the cell, not below: the table's wrapper clips overflow, and above
                 the first row is the header. */}
@@ -54,7 +71,7 @@ function ClearTimeLink({ entry }: { entry: LeaderboardEntry }) {
                 role="tooltip"
                 className="ui-card ui-text-primary pointer-events-none absolute bottom-full right-1.5 sm:right-2 z-10 hidden w-max rounded-md border px-2 py-0.5 font-sans text-xs font-normal shadow-sm peer-hover:block peer-focus-visible:block"
             >
-                {entry.endedAt === undefined ? '' : formatTimestamp(entry.endedAt)}
+                {entry.endedAt === undefined ? '' : formatRunEnd(entry.endedAt)}
             </span>
         </>
     );
@@ -180,7 +197,8 @@ export default function LeaderboardTable({
                                         {raidName}
                                     </td>
                                 )}
-                                <td className="relative py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary">
+                                {/* `relative` anchors the Clear Time's tooltip; the Clears cell has none. */}
+                                <td className={`${isClearTime ? 'relative ' : ''}py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary`}>
                                     {isClearTime ? <ClearTimeLink entry={entry} /> : entry.completions}
                                 </td>
                             </tr>

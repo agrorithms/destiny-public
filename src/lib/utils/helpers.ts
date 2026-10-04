@@ -19,19 +19,11 @@ export function hoursAgo(hours: number): number {
     return Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
 }
 
-let timestampFormat: Intl.DateTimeFormat | undefined;
-
 /**
- * A Unix timestamp as a date and time in the viewer's own zone and locale, e.g.
- * `4 Oct 2026, 16:56`. Call it only on the client, or the server's zone is drawn.
- *
- * One shared formatter, built on first use: `toLocaleString` with options builds a new
- * `Intl.DateTimeFormat` per call, which across a full Fastest Clears page (#133) is
- * tens of milliseconds a render.
+ * Format a Unix timestamp to a human-readable string
  */
 export function formatTimestamp(unix: number): string {
-    timestampFormat ??= new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-    return timestampFormat.format(unix * 1000);
+    return new Date(unix * 1000).toLocaleString();
 }
 
 /**

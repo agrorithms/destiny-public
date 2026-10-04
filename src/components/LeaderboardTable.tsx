@@ -1,7 +1,7 @@
 'use client';
 
 import { useId } from 'react';
-import { formatRunDuration } from '@/lib/utils/helpers';
+import { formatRunDuration, formatTimestamp } from '@/lib/utils/helpers';
 
 /** Which number the right-hand column shows: a Full Clears count, or a Clear Time. */
 export type LeaderboardMetric = 'completions' | 'clearTime';
@@ -29,12 +29,35 @@ interface LeaderboardEntry {
 }
 
 /**
- * The run's end in the viewer's own zone and locale. Rows only ever arrive from a
- * client-side fetch, so this never runs on the server and can't mismatch on hydration.
+ * The Clear Time as a link to the run on raid.report, with when it ended as a tooltip,
+ * so the row stays as wide as it was (#133). A bare `title` would not show on keyboard
+ * focus. The date is drawn in the viewer's zone: callers pass only client-fetched rows,
+ * so this never renders on the server and can't mismatch on hydration.
  */
-function formatRunEnd(endedAt: number | undefined): string {
-    if (endedAt === undefined) return '';
-    return new Date(endedAt * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+function ClearTimeLink({ entry }: { entry: LeaderboardEntry }) {
+    const tooltipId = useId();
+    return (
+        <>
+            <a
+                href={`https://raid.report/pgcr/${entry.instanceId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-describedby={tooltipId}
+                className="peer hover:text-blue-600 transition-colors dark:hover:text-blue-400"
+            >
+                {formatRunDuration(entry.clearTimeSeconds)}
+            </a>
+            {/* Above the cell, not below: the table's wrapper clips overflow, and above
+                the first row is the header. */}
+            <span
+                id={tooltipId}
+                role="tooltip"
+                className="ui-card ui-text-primary pointer-events-none absolute bottom-full right-1.5 sm:right-2 z-10 hidden w-max rounded-md border px-2 py-0.5 font-sans text-xs font-normal shadow-sm peer-hover:block peer-focus-visible:block"
+            >
+                {entry.endedAt === undefined ? '' : formatTimestamp(entry.endedAt)}
+            </span>
+        </>
+    );
 }
 
 interface LeaderboardTableProps {
@@ -55,7 +78,6 @@ export default function LeaderboardTable({
     metric = 'completions',
 }: LeaderboardTableProps) {
     const isClearTime = metric === 'clearTime';
-    const tooltipIdPrefix = useId();
 
     if (loading) {
         return (
@@ -159,31 +181,7 @@ export default function LeaderboardTable({
                                     </td>
                                 )}
                                 <td className="relative py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary">
-                                    {isClearTime ? (
-                                        <>
-                                            {/* The time is the link and the date is a tooltip, so
-                                                the row stays as wide as it was (#133). A bare
-                                                `title` would not show on keyboard focus. */}
-                                            <a
-                                                href={`https://raid.report/pgcr/${entry.instanceId}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                aria-describedby={`${tooltipIdPrefix}-${entry.membershipId}`}
-                                                className="peer hover:text-blue-600 transition-colors dark:hover:text-blue-400"
-                                            >
-                                                {formatRunDuration(entry.clearTimeSeconds)}
-                                            </a>
-                                            {/* Above the cell, not below: the table's wrapper clips
-                                                overflow, and above the first row is the header. */}
-                                            <span
-                                                id={`${tooltipIdPrefix}-${entry.membershipId}`}
-                                                role="tooltip"
-                                                className="ui-card ui-text-primary pointer-events-none absolute bottom-full right-1.5 sm:right-2 z-10 hidden w-max rounded-md border px-2 py-0.5 font-sans text-xs font-normal shadow-sm peer-hover:block peer-focus-visible:block"
-                                            >
-                                                {formatRunEnd(entry.endedAt)}
-                                            </span>
-                                        </>
-                                    ) : entry.completions}
+                                    {isClearTime ? <ClearTimeLink entry={entry} /> : entry.completions}
                                 </td>
                             </tr>
                         ))}

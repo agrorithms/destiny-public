@@ -34,14 +34,18 @@ function raidBoard(page: Page, raidName: string): Locator {
     return page.locator('.ui-card').filter({ has: page.getByRole('heading', { name: raidName, exact: true }) });
 }
 
-/** Each row as [player, right-hand column], so order, names and times are one assertion. */
+/**
+ * Each row as [player, Clear Time], so order, names and times are one assertion. Both are
+ * links since #133 — the name first, the Clear Time in the last cell — and the time is read
+ * from its link because the cell also holds the date tooltip's text.
+ */
 async function expectBoardRows(board: Locator, rows: readonly (readonly [string, string])[]): Promise<void> {
     const body = board.locator('tbody tr');
     await expect(body).toHaveCount(rows.length);
     for (const [i, [player, value]] of rows.entries()) {
         const row = body.nth(i);
-        await expect(row.getByRole('link')).toHaveText(player);
-        await expect(row.locator('td').last()).toHaveText(value);
+        await expect(row.getByRole('link').first()).toHaveText(player);
+        await expect(row.locator('td').last().getByRole('link')).toHaveText(value);
     }
 }
 
@@ -139,6 +143,58 @@ test.describe('the Fastest Clears tab', () => {
         // Names keep their profile links on this tab too.
         await expect(page.getByRole('link', { name: 'FixtureCharlie#1111' }))
             .toHaveAttribute('href', '/player/3/4611686018400010003');
+    });
+
+    test.describe('the Clear Time link and date', () => {
+        // Kathmandu is UTC+5:45 with no DST, so a date rendered in the server's zone, or
+        // in UTC, gets the minutes wrong as well as the hour, whatever the date.
+        test.use({ timezoneId: 'Asia/Kathmandu', locale: 'en-GB' });
+
+        test('links the run to raid.report and shows when it ended, on hover and on keyboard focus', async ({ page }) => {
+            // #133: a reader who doubts a time checks the run in one click, and can tell a
+            // fresh record from an old one without a date column.
+            const fastestResponse = page.waitForResponse((response) =>
+                response.url().includes('/api/leaderboard')
+                && new URL(response.url()).searchParams.get('board') === 'fastest'
+            );
+            await page.goto('/leaderboard?board=fastest');
+            const body = await (await fastestResponse).json();
+            const echo = body.leaderboards[RAID_B.key].entries[0];
+
+            // Echo's fastest is her second run, 9000 + 11 in seed-world's numbering (Alpha,
+            // Bravo and Charlie take 1–6, Delta 7–9, Echo's 1900 s run 10). Her first run
+            // is 1900 s, so a link to the player's first run could not pass.
+            const row = raidBoard(page, RAID_B.name).locator('tbody tr').first();
+            const link = row.getByRole('link', { name: '21:00', exact: true });
+            await expect(link).toHaveAttribute('href', 'https://raid.report/pgcr/900011');
+            await expect(link).toHaveAttribute('target', '_blank');
+            await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+            // The run's end, worked out by hand in the viewer's zone rather than with the
+            // formatter the page uses. Day, year and HH:MM are asserted; month spelling
+            // is left to the locale data.
+            const local = new Date(echo.endedAt * 1000 + (5 * 60 + 45) * 60 * 1000);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const when = new RegExp(
+                `\\b${local.getUTCDate()}\\b.*\\b${local.getUTCFullYear()}\\b.*\\b${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}\\b`
+            );
+            await expect(link).toHaveAccessibleDescription(when);
+
+            const tooltip = row.getByRole('tooltip');
+            await expect(tooltip).toBeHidden();
+            await link.hover();
+            await expect(tooltip).toBeVisible();
+            await expect(tooltip).toHaveText(when);
+
+            await page.mouse.move(0, 0);
+            await expect(tooltip).toBeHidden();
+
+            // Tab from the player name: the next stop is this row's Clear Time.
+            await row.getByRole('link', { name: 'FixtureEcho#3333' }).focus();
+            await page.keyboard.press('Tab');
+            await expect(link).toBeFocused();
+            await expect(tooltip).toBeVisible();
+        });
     });
 
     test.describe('on a phone', () => {

@@ -121,6 +121,19 @@ describe('who appears on the Fastest Clears board', () => {
         expect(row.instanceId).toBe('fast');
         expect(row.endedAt).toBe(period + 1500);
     });
+
+    it('links the earliest of a player\'s equal-fastest runs', () => {
+        // Two runs with the same Clear Time give one row, and #133 says it must point at
+        // the run that got there first — the same rule the board uses between players.
+        // The ids sort the other way, so the instance-id fallback can't be doing the work.
+        const early = hoursAgo(10);
+        seedRun({ instanceId: 'a-late', completedBy: ['p1'], period: hoursAgo(2), activityDurationSeconds: 1500 });
+        seedRun({ instanceId: 'z-early', completedBy: ['p1'], period: early, activityDurationSeconds: 1500 });
+
+        const rows = runFastestClearRows(HOURS_BACK, RAID, 10);
+
+        expect(rows.map((r) => [r.instanceId, r.endedAt])).toEqual([['z-early', early + 1500]]);
+    });
 });
 
 describe('ranks and ties', () => {

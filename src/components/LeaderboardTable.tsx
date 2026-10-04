@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import { formatRunDuration } from '@/lib/utils/helpers';
 
 /** Which number the right-hand column shows: a Full Clears count, or a Clear Time. */
@@ -13,6 +14,10 @@ interface LeaderboardEntry {
     completions?: number;
     /** Set on the Fastest Clears board, in seconds. */
     clearTimeSeconds?: number;
+    /** Fastest Clears: the run that set the Clear Time, for its raid.report link. */
+    instanceId?: string;
+    /** Fastest Clears: when that run ended, unix seconds, for the date tooltip. */
+    endedAt?: number;
     /** Competition rank from the server (ties share a rank number). */
     rank: number;
     /** Rank change vs when the viewer opened the page (positive = moved up). */
@@ -21,6 +26,15 @@ interface LeaderboardEntry {
     isNew?: boolean;
     /** Set when this row's rank/clears changed on a refresh; bumping it re-triggers the flash. */
     changeStamp?: number;
+}
+
+/**
+ * The run's end in the viewer's own zone and locale. Rows only ever arrive from a
+ * client-side fetch, so this never runs on the server and can't mismatch on hydration.
+ */
+function formatRunEnd(endedAt: number | undefined): string {
+    if (endedAt === undefined) return '';
+    return new Date(endedAt * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 interface LeaderboardTableProps {
@@ -41,6 +55,7 @@ export default function LeaderboardTable({
     metric = 'completions',
 }: LeaderboardTableProps) {
     const isClearTime = metric === 'clearTime';
+    const tooltipIdPrefix = useId();
 
     if (loading) {
         return (
@@ -143,8 +158,32 @@ export default function LeaderboardTable({
                                         {raidName}
                                     </td>
                                 )}
-                                <td className="py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary">
-                                    {isClearTime ? formatRunDuration(entry.clearTimeSeconds) : entry.completions}
+                                <td className="relative py-1.25 px-1.5 sm:px-2 text-right font-mono font-bold whitespace-nowrap ui-text-primary">
+                                    {isClearTime ? (
+                                        <>
+                                            {/* The time is the link and the date is a tooltip, so
+                                                the row stays as wide as it was (#133). A bare
+                                                `title` would not show on keyboard focus. */}
+                                            <a
+                                                href={`https://raid.report/pgcr/${entry.instanceId}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                aria-describedby={`${tooltipIdPrefix}-${entry.membershipId}`}
+                                                className="peer hover:text-blue-600 transition-colors dark:hover:text-blue-400"
+                                            >
+                                                {formatRunDuration(entry.clearTimeSeconds)}
+                                            </a>
+                                            {/* Above the cell, not below: the table's wrapper clips
+                                                overflow, and above the first row is the header. */}
+                                            <span
+                                                id={`${tooltipIdPrefix}-${entry.membershipId}`}
+                                                role="tooltip"
+                                                className="ui-card ui-text-primary pointer-events-none absolute bottom-full right-1.5 sm:right-2 z-10 hidden w-max rounded-md border px-2 py-0.5 font-sans text-xs font-normal shadow-sm peer-hover:block peer-focus-visible:block"
+                                            >
+                                                {formatRunEnd(entry.endedAt)}
+                                            </span>
+                                        </>
+                                    ) : entry.completions}
                                 </td>
                             </tr>
                         ))}

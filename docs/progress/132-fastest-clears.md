@@ -94,3 +94,56 @@ Results after the fixes, at the commit that adds this section:
 - `npm run build`: exit 0; `/leaderboard` is ƒ, as before
 - `npm test`: 45 files, 538 tests passed
 - `npm run e2e`: 94 passed (51.1 s), including the 5 in `leaderboard-fastest.spec.ts`
+
+## #133 — Clear Time links to the run on raid.report, with a date tooltip (2026-10-04)
+
+Spec: `gh issue view 133`, parent #130. Same branch and the same two seams:
+`tests/db/fastest-clears.test.ts` and `e2e/leaderboard-fastest.spec.ts`. No route or cache-entry
+tests. Out of this ticket: #134's rank arrows / NEW / flash, #131, #135–#138.
+
+The server side already shipped in #132: `runFastestClearRows` returns `instanceId` and `endedAt`,
+and its window orders a player's runs `CLEAR_TIME, ended_at, instance_id`. The only server addition
+is a test.
+
+- [x] `tests/db/fastest-clears.test.ts` — a player's two equal-fastest runs link the earlier one
+- [x] `src/components/LeaderboardTable.tsx` — the Clear Time is a link to
+  `https://raid.report/pgcr/<instanceId>` (`target="_blank" rel="noopener noreferrer"`, the player
+  profile's raid.report attributes), with a `role="tooltip"` showing the run's end in the
+  viewer's zone and locale. The tooltip is shown on hover (`peer-hover`) and on keyboard focus
+  (`peer-focus-visible`), and wired with `aria-describedby`. No new column.
+- [x] `e2e/leaderboard-fastest.spec.ts` — new test for the link target, `target`/`rel`, the
+  accessible description, and the tooltip on hover, gone on mouse-out, and shown on Tab focus.
+  `expectBoardRows` now reads the player from the row's first link and the time from the last
+  cell's link.
+- [x] `docs/progress/132-fastest-clears.md` (this file)
+- [x] `docs/handoffs/260803-playwright-e2e.md` — gitignored, edited locally, not committed
+
+### Notes
+
+- **raid.report's URL** was confirmed from raid.report's own route table. Its SPA answers 200 for any
+  path, so a 200 proves nothing. Its main bundle (`/static/js/main.f7ffd749.chunk.js`) registers
+  `path:"/pgcr/:activityId"`.
+- **Date in the e2e test.** The spec pins `timezoneId: 'Asia/Kathmandu'` (UTC+5:45, no DST) and
+  `locale: 'en-GB'`. It reads Echo's `endedAt` from the page's own `board=fastest` response and works
+  out the local day, year and HH:MM by hand, not with the page's formatter. Every part comes from
+  that one timestamp, so the test can't flake near midnight. It ran green while it was already the
+  next day in Kathmandu. The month spelling is left to locale data: ICU's en-GB "Sept" varies by
+  version.
+- **The link target is asserted against a literal**, `900011`: Echo's second, fastest run in
+  seed-world's numbering. Her first run is slower, so a link to the first run can't pass.
+- **The tooltip sits above the cell.** The table's wrapper is `overflow-hidden`, so a tooltip below
+  the last row would be clipped. Above the first row is the header, which is tall enough to hold it.
+  Checked in screenshots at 1280 and 360 px wide.
+- **Mutation checks.** DB: flipping the window's `p.ended_at ASC` to `DESC` fails only the new
+  test. e2e, each rebuilt: formatting the date in UTC fails the description assertion (expected
+  `5 … 2026 … 01:59`, received `4 Oct 2026, 20:14`). Dropping `peer-focus-visible:block` fails the
+  Tab-focus assertion.
+
+Results:
+
+- `npx vitest run tests/db/fastest-clears.test.ts`: 19 passed
+- `npm run lint`: exit 0, 0 errors and 29 warnings, all `no-explicit-any` in `gos10k/`
+  (none in a file changed here)
+- `npm run build`: exit 0; `/leaderboard` is ƒ, as before
+- `npm test`: 45 files, 539 tests passed
+- `npm run e2e`: 95 passed (50.7 s), including the 6 in `leaderboard-fastest.spec.ts`

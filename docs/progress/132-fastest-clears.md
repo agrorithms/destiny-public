@@ -176,3 +176,81 @@ Results, on the final tree:
 - `npm run build`: exit 0; `/leaderboard` is ƒ, as before
 - `npm test`: 45 files, 539 tests passed
 - `npm run e2e`: 95 passed (45.7 s), including the 6 in `leaderboard-fastest.spec.ts`
+
+## #134 — Fastest Clears: live rank movement measured on Clear Time (2026-10-04)
+
+Spec: `gh issue view 134` (and its carry-over comment), parent #130. Same branch. Verified by hand,
+as the user decided; there is no automated test for live movement on either tab.
+
+- [x] `src/app/leaderboard/page.tsx`
+  - `annotateMovement` takes the scopes and a `metricOf` for the active board, and runs on both
+    tabs. A row's change is measured on `completions` on Full Clears and `clearTimeSeconds` on
+    Fastest Clears, so a faster personal best flashes even when the rank holds. `prevRowsRef`
+    stores `metric` in place of `completions`.
+  - The movement fields moved into a `RowMovement` interface, and Fastest Clears rows carry them too.
+  - The baseline is dropped by an effect on `board`, which closes the carry-over race: the reset
+    happens on the switch itself, not when the other tab's response lands. Board in `comboKey`
+    alone would not have fixed it: on a quick switch back the key matches again, and the old
+    baseline is still there.
+- [x] `docs/progress/132-fastest-clears.md` (this file)
+
+### TDD
+
+No agreed seam qualified. The runners aren't touched, so nothing changes at `tests/db/`. The first
+render on either tab has no arrows, NEW or flash, so nothing static changes for
+`e2e/leaderboard-fastest.spec.ts`. No test was added.
+
+### Optional cleanups: all skipped
+
+Each would have made the diff bigger, not simpler:
+- **Shared competition-rank loop / `board()` raid-name lookup** (`leaderboard-cache.ts`). #134 doesn't
+  touch the server. A shared helper is net-neutral in lines and would put a server refactor into a
+  client-only ticket.
+- **One description per board on `LEADERBOARD_BOARDS`.** The movement metric didn't add an
+  `isFastest` branch: it's chosen where the page already branches on the response kind. A descriptor
+  holding a JSX value renderer can't sit in `leaderboard-board.ts`, because the route imports it, so
+  it would need a new client module and a rewrite of every branch in the page and the table.
+- **Optional entry fields / `ClearTimeLink`'s whole-entry prop / the `endedAt === undefined` guard.**
+  `LeaderboardTable.tsx` needs no change for #134. Tying entries to `metric` means a discriminated
+  props union, which is a table refactor in its own right.
+- **Names (`fastestFirst`, `board()`, `shown`).** None of those lines changes here.
+
+### Hand verification
+
+Against a **scratch copy** of the dev Tracker, made with
+`sqlite3 "file:data/raid-tracker.db?mode=ro" "VACUUM INTO '<scratchpad>/tracker-134.db'"`. The real
+`data/raid-tracker.db` was never written. `npm run dev` ran with `RAID_TRACKER_DB_PATH` pointing at
+the copy; the dev log confirmed the path. Chromium was driven by a scratch Playwright script with
+Last Wish and King's Fall selected, so every refresh bypasses the server's SWR cache, plus 30 days,
+12 rows and All players. The script inserted Completions with instance ids `99134…` and deleted them
+afterwards. It ran once on this change, then once on `f92d02d`'s page for comparison.
+
+| Step | This change | `f92d02d` |
+|---|---|---|
+| Fastest, LW #3 Plushie gets 2:37 (was 2:55), still #3 | #3 flashes, no arrow; no other row flashes | nothing |
+| Fastest, Kuri 3:41→2:10, Avy (not on board) 1:40 | Avy #1 NEW; Kuri ▲4; the rest ▼1/▼2; all 12 flash (every rank moved) | nothing |
+| Switch to Full Clears, then back to Fastest | no arrows, NEW or flash on either; Fastest's rows differ from its earlier baseline | — |
+| Full Clears baseline; 27 runs move SixMuffin #12→#11; quick switch to Fastest and back with the Fastest response held 6 s (it never reached the page) | **no arrows**: a fresh baseline | **▲1 SixMuffin / ▼1 Ava**: the stale baseline survived (race reproduced) |
+| Full Clears, +1 for #1, Ava passes SixMuffin | count/rank changes flash, ▼1 L (fell out of a tie at #1), Ava ▲1 / SixMuffin ▼1 against the fresh baseline | same flash rule; Ava/SixMuffin show no arrow, because they are back at their stale-baseline ranks |
+
+The Full Clears flash rule (rank or count changed) and the arrows (against the baseline) behave
+the same in both runs. The rows differ only because of the race fix and because the 30-day window
+slid forward between runs, so a few players lost a run off its tail.
+
+**Found while verifying, not fixed (pre-existing, outside #134):** each 60 s refresh shows the
+*previous* tick's data in Chromium. `/api/leaderboard` sends
+`cache-control: public, max-age=0, s-maxage=…, stale-while-revalidate=…`, and the browser's own
+HTTP cache honours `stale-while-revalidate`. The refresh is answered from the cache, and the fresh
+response is fetched in the background for the next tick. In both runs, every insert showed up one
+refresh late; the script logged the response `Date` the page received. In prod, Cloudflare rewrites
+these headers (CLAUDE.md), so whether prod lags too is unverified.
+
+Results, on the final tree. The only change after the hand check is the "Tab or filters changed"
+comment in `annotateMovement`; the suite was also green on the tree as hand-verified.
+
+- `npx tsc --noEmit`: exit 0
+- `npm run lint`: exit 0, 0 errors and 29 warnings, all `no-explicit-any` in
+  `gos10k/bungie-fetch.ts` and `gos10k/gos_10k_pgcr.smoke.ts`
+- `npm run build`: exit 0; `/leaderboard` and `/api/leaderboard` are ƒ, as before
+- `npm test`: 45 files, 539 tests passed
+- `npm run e2e`: 95 passed (48.7 s), including the 6 in `leaderboard-fastest.spec.ts`

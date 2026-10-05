@@ -16,20 +16,27 @@ interface RaidOption {
     name: string;
 }
 
-interface LeaderboardEntry {
+/** Live movement, set on a row by `annotateMovement` before it is drawn. Both tabs carry it. */
+interface RowMovement {
+    /** Rank change vs when the page was opened (positive = moved up). */
+    rankDelta?: number;
+    /** Entered the board mid-session and hasn't changed rank since. */
+    isNew?: boolean;
+    /** Fetch sequence number of the last time this row's rank or board metric changed. */
+    changeStamp?: number;
+}
+
+interface LeaderboardEntry extends RowMovement {
     membershipId: string;
     membershipType: number;
     displayName: string;
     completions: number;
     /** Competition rank from the server (ties share a rank number). */
     rank: number;
-    /** Rank change vs when the page was opened (positive = moved up). */
-    rankDelta?: number;
-    /** Entered the board mid-session and hasn't changed rank since. */
-    isNew?: boolean;
-    /** Fetch sequence number of the last time this row's rank/clears changed. */
-    changeStamp?: number;
 }
+
+/** What `annotateMovement` needs of a row, on either board. */
+type MovementRow = RowMovement & { membershipId: string; rank: number };
 
 interface AggregateResponse {
     mode: 'aggregate';
@@ -56,8 +63,8 @@ interface IndividualResponse {
 }
 
 /**
- * `board=fastest` is always the per-raid shape, whatever `mode` the page might send. Its
- * rows carry no movement fields: rank arrows, NEW and the flash are off on this tab until #134.
+ * `board=fastest` is always the per-raid shape, whatever `mode` the page might send. Its rows
+ * get the same movement fields as Full Clears' (#134), measured on Clear Time.
  * Only this body carries `board`; the Full Clears body predates it, so `'board' in` tells them apart.
  */
 interface FastestResponse {
@@ -67,11 +74,15 @@ interface FastestResponse {
     raidKeys: string[];
     /** Set, with no boards, when the database is in maintenance: there is no Fastest Clears snapshot. */
     maintenance?: boolean;
-    leaderboards: Record<string, IndividualLeaderboard<FastestClearEntry>>;
+    leaderboards: Record<string, IndividualLeaderboard<FastestClearEntry & RowMovement>>;
 }
 
-type FullClearsResponse = AggregateResponse | IndividualResponse;
-type LeaderboardResponse = FullClearsResponse | FastestResponse;
+type LeaderboardResponse = AggregateResponse | IndividualResponse | FastestResponse;
+
+/** A per-raid body's boards as movement scopes: each raid's rows are ranked on their own. */
+function perRaidScopes<E>(leaderboards: Record<string, { raidKey: string; entries: E[] }>): Array<[string, E[]]> {
+    return Object.values(leaderboards).map((lb): [string, E[]] => [lb.raidKey, lb.entries]);
+}
 
 const AVAILABLE_RAIDS: RaidOption[] = [
     //pantheon insurrection prime and morgeth surpassing are not accurately showing fresh clears so will never return results
@@ -113,19 +124,34 @@ export default function LeaderboardPage({
     const requestIdRef = useRef(0);
     const activeControllerRef = useRef<AbortController | null>(null);
     // Rank movement is measured against the first response seen for the current
-    // filter combo ("since you opened this page"), not the previous refresh.
+    // tab and filter combo ("since you opened this page"), not the previous refresh.
     const baselineRef = useRef<{ comboKey: string; ranks: Map<string, number> } | null>(null);
-    const prevRowsRef = useRef<Map<string, { rank: number; completions: number; changeStamp?: number }>>(new Map());
+    // `metric` is the active board's number: a Full Clears count, or a Clear Time in seconds.
+    const prevRowsRef = useRef<Map<string, { rank: number; metric: number; changeStamp?: number }>>(new Map());
     // Players who entered the board mid-session; they wear NEW until their rank first changes.
     const newEntrantsRef = useRef<Set<string>>(new Set());
 
-    const annotateMovement = useCallback((result: FullClearsResponse, comboKey: string, fetchSeq: number) => {
-        const scopes: Array<[string, LeaderboardEntry[]]> = result.mode === 'aggregate'
-            ? [['aggregate', result.entries]]
-            : Object.values(result.leaderboards).map((lb) => [lb.raidKey, lb.entries] as [string, LeaderboardEntry[]]);
+    // Each tab starts its own baseline, dropped on the switch itself (#134). Dropping it when
+    // the other tab's response arrived was not enough: switch back before that response lands
+    // and the `requestId` guard discards it, so the old baseline survived the visit. Putting the
+    // board in `comboKey` alone would miss the same case, since the key matches again on return.
+    useEffect(() => {
+        baselineRef.current = null;
+    }, [board]);
 
+    /**
+     * Sets `rankDelta`, `isNew` and `changeStamp` on every row in `scopes`, in place.
+     * `metricOf` is the board's own number, so a row flashes when it changes even if the
+     * rank holds: a new Full Clear, or on Fastest Clears a faster personal best.
+     */
+    const annotateMovement = useCallback(<E extends MovementRow>(
+        scopes: Array<[string, E[]]>,
+        metricOf: (entry: E) => number,
+        comboKey: string,
+        fetchSeq: number,
+    ) => {
         if (baselineRef.current?.comboKey !== comboKey) {
-            // Filters changed (or first load): reset and capture a fresh baseline.
+            // Tab or filters changed (or first load): reset and capture a fresh baseline.
             const ranks = new Map<string, number>();
             for (const [scope, entries] of scopes) {
                 entries.forEach((entry) => ranks.set(`${scope}:${entry.membershipId}`, entry.rank));
@@ -133,18 +159,18 @@ export default function LeaderboardPage({
             baselineRef.current = { comboKey, ranks };
             newEntrantsRef.current = new Set();
             prevRowsRef.current = new Map(
-                scopes.flatMap(([scope, entries]) => entries.map((entry): [string, { rank: number; completions: number }] => [
+                scopes.flatMap(([scope, entries]) => entries.map((entry): [string, { rank: number; metric: number }] => [
                     `${scope}:${entry.membershipId}`,
-                    { rank: entry.rank, completions: entry.completions },
+                    { rank: entry.rank, metric: metricOf(entry) },
                 ]))
             );
-            return result;
+            return;
         }
 
         const baseline = baselineRef.current.ranks;
         const newEntrants = newEntrantsRef.current;
         const prevRows = prevRowsRef.current;
-        const nextRows = new Map<string, { rank: number; completions: number; changeStamp?: number }>();
+        const nextRows = new Map<string, { rank: number; metric: number; changeStamp?: number }>();
 
         for (const [scope, entries] of scopes) {
             entries.forEach((entry) => {
@@ -163,15 +189,15 @@ export default function LeaderboardPage({
                     entry.isNew = true;
                 }
                 const prev = prevRows.get(key);
+                const metric = metricOf(entry);
                 // prev === undefined here means a mid-session entrant — flash their arrival.
-                const changed = prev === undefined || prev.rank !== rank || prev.completions !== entry.completions;
+                const changed = prev === undefined || prev.rank !== rank || prev.metric !== metric;
                 entry.changeStamp = changed ? fetchSeq : prev?.changeStamp;
-                nextRows.set(key, { rank, completions: entry.completions, changeStamp: entry.changeStamp });
+                nextRows.set(key, { rank, metric, changeStamp: entry.changeStamp });
             });
         }
 
         prevRowsRef.current = nextRows;
-        return result;
     }, []);
 
     const fetchLeaderboard = useCallback(async () => {
@@ -211,16 +237,16 @@ export default function LeaderboardPage({
             if (requestId !== requestIdRef.current) {
                 return;
             }
-            // Movement is Full Clears only until #134. A Fastest Clears response drops the
-            // baseline, so returning to Full Clears captures a fresh one rather than
-            // comparing against one taken before the visit.
+            const comboKey = `${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
             if ('board' in result) {
-                baselineRef.current = null;
-                setData(result);
+                annotateMovement(perRaidScopes(result.leaderboards), (entry) => entry.clearTimeSeconds, comboKey, requestId);
             } else {
-                const comboKey = `${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
-                setData(annotateMovement(result, comboKey, requestId));
+                const scopes = result.mode === 'aggregate'
+                    ? [['aggregate', result.entries] as [string, LeaderboardEntry[]]]
+                    : perRaidScopes(result.leaderboards);
+                annotateMovement(scopes, (entry) => entry.completions, comboKey, requestId);
             }
+            setData(result);
             setLastUpdated(new Date());
         } catch (err) {
             if ((err as Error).name === 'AbortError') {

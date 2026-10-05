@@ -2,12 +2,12 @@
 
 import { use, useEffect, useState, useCallback, useRef } from 'react';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
-import LeaderboardTable, { type LeaderboardMetric } from '@/components/LeaderboardTable';
+import LeaderboardTable, { type LeaderboardMetric, type RowMovement } from '@/components/LeaderboardTable';
 import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
 import { useViewMode, useTimeRange, useLeaderboardSize, usePlayersFilter, type PlayersFilter } from '@/hooks/useLeaderboardPrefs';
-import type { FastestClearEntry, IndividualLeaderboard } from '@/lib/cache/leaderboard-cache';
+import type { FastestClearEntry, IndividualLeaderboard, LeaderboardResponseEntry } from '@/lib/cache/leaderboard-cache';
 import { parseLeaderboardBoard } from './leaderboard-board';
 import { LeaderboardTabs } from './LeaderboardTabs';
 
@@ -16,27 +16,10 @@ interface RaidOption {
     name: string;
 }
 
-/** Live movement, set on a row by `annotateMovement` before it is drawn. Both tabs carry it. */
-interface RowMovement {
-    /** Rank change vs when the page was opened (positive = moved up). */
-    rankDelta?: number;
-    /** Entered the board mid-session and hasn't changed rank since. */
-    isNew?: boolean;
-    /** Fetch sequence number of the last time this row's rank or board metric changed. */
-    changeStamp?: number;
-}
+type LeaderboardEntry = LeaderboardResponseEntry & RowMovement;
 
-interface LeaderboardEntry extends RowMovement {
-    membershipId: string;
-    membershipType: number;
-    displayName: string;
-    completions: number;
-    /** Competition rank from the server (ties share a rank number). */
-    rank: number;
-}
-
-/** What `annotateMovement` needs of a row, on either board. */
-type MovementRow = RowMovement & { membershipId: string; rank: number };
+/** A row as of the last refresh. `metric` is the board's number: a Full Clears count, or a Clear Time in seconds. */
+type PrevRow = { rank: number; metric: number; changeStamp?: number };
 
 interface AggregateResponse {
     mode: 'aggregate';
@@ -55,11 +38,7 @@ interface IndividualResponse {
     raidKeys: string[];
     maintenance?: boolean;
     snapshotGeneratedAt?: number;
-    leaderboards: Record<string, {
-        raidKey: string;
-        raidName: string;
-        entries: LeaderboardEntry[];
-    }>;
+    leaderboards: Record<string, IndividualLeaderboard<LeaderboardEntry>>;
 }
 
 /**
@@ -80,7 +59,7 @@ interface FastestResponse {
 type LeaderboardResponse = AggregateResponse | IndividualResponse | FastestResponse;
 
 /** A per-raid body's boards as movement scopes: each raid's rows are ranked on their own. */
-function perRaidScopes<E>(leaderboards: Record<string, { raidKey: string; entries: E[] }>): Array<[string, E[]]> {
+function perRaidScopes<E>(leaderboards: Record<string, IndividualLeaderboard<E>>): Array<[string, E[]]> {
     return Object.values(leaderboards).map((lb): [string, E[]] => [lb.raidKey, lb.entries]);
 }
 
@@ -126,8 +105,7 @@ export default function LeaderboardPage({
     // Rank movement is measured against the first response seen for the current
     // tab and filter combo ("since you opened this page"), not the previous refresh.
     const baselineRef = useRef<{ comboKey: string; ranks: Map<string, number> } | null>(null);
-    // `metric` is the active board's number: a Full Clears count, or a Clear Time in seconds.
-    const prevRowsRef = useRef<Map<string, { rank: number; metric: number; changeStamp?: number }>>(new Map());
+    const prevRowsRef = useRef<Map<string, PrevRow>>(new Map());
     // Players who entered the board mid-session; they wear NEW until their rank first changes.
     const newEntrantsRef = useRef<Set<string>>(new Set());
 
@@ -144,7 +122,7 @@ export default function LeaderboardPage({
      * `metricOf` is the board's own number, so a row flashes when it changes even if the
      * rank holds: a new Full Clear, or on Fastest Clears a faster personal best.
      */
-    const annotateMovement = useCallback(<E extends MovementRow>(
+    const annotateMovement = useCallback(<E extends RowMovement & { membershipId: string; rank: number }>(
         scopes: Array<[string, E[]]>,
         metricOf: (entry: E) => number,
         comboKey: string,
@@ -153,24 +131,24 @@ export default function LeaderboardPage({
         if (baselineRef.current?.comboKey !== comboKey) {
             // Tab or filters changed (or first load): reset and capture a fresh baseline.
             const ranks = new Map<string, number>();
+            const rows = new Map<string, PrevRow>();
             for (const [scope, entries] of scopes) {
-                entries.forEach((entry) => ranks.set(`${scope}:${entry.membershipId}`, entry.rank));
+                for (const entry of entries) {
+                    const key = `${scope}:${entry.membershipId}`;
+                    ranks.set(key, entry.rank);
+                    rows.set(key, { rank: entry.rank, metric: metricOf(entry) });
+                }
             }
             baselineRef.current = { comboKey, ranks };
             newEntrantsRef.current = new Set();
-            prevRowsRef.current = new Map(
-                scopes.flatMap(([scope, entries]) => entries.map((entry): [string, { rank: number; metric: number }] => [
-                    `${scope}:${entry.membershipId}`,
-                    { rank: entry.rank, metric: metricOf(entry) },
-                ]))
-            );
+            prevRowsRef.current = rows;
             return;
         }
 
         const baseline = baselineRef.current.ranks;
         const newEntrants = newEntrantsRef.current;
         const prevRows = prevRowsRef.current;
-        const nextRows = new Map<string, { rank: number; metric: number; changeStamp?: number }>();
+        const nextRows = new Map<string, PrevRow>();
 
         for (const [scope, entries] of scopes) {
             entries.forEach((entry) => {
@@ -237,12 +215,13 @@ export default function LeaderboardPage({
             if (requestId !== requestIdRef.current) {
                 return;
             }
-            const comboKey = `${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
+            // The baseline's key is the request itself, so it can't drift from what was fetched.
+            const comboKey = params.toString();
             if ('board' in result) {
                 annotateMovement(perRaidScopes(result.leaderboards), (entry) => entry.clearTimeSeconds, comboKey, requestId);
             } else {
-                const scopes = result.mode === 'aggregate'
-                    ? [['aggregate', result.entries] as [string, LeaderboardEntry[]]]
+                const scopes: Array<[string, LeaderboardEntry[]]> = result.mode === 'aggregate'
+                    ? [['aggregate', result.entries]]
                     : perRaidScopes(result.leaderboards);
                 annotateMovement(scopes, (entry) => entry.completions, comboKey, requestId);
             }

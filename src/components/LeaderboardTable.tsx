@@ -6,7 +6,17 @@ import { formatRunDuration } from '@/lib/utils/helpers';
 /** Which number the right-hand column shows: a Full Clears count, or a Clear Time. */
 export type LeaderboardMetric = 'completions' | 'clearTime';
 
-interface LeaderboardEntry {
+/** Live movement, set on a row by the page before it is drawn. Both tabs carry it. */
+export interface RowMovement {
+    /** Rank change vs when the viewer opened the page (positive = moved up). */
+    rankDelta?: number;
+    /** Entered the board mid-session and hasn't changed rank since. */
+    isNew?: boolean;
+    /** Set when this row's rank or board metric changed on a refresh; bumping it re-triggers the flash. */
+    changeStamp?: number;
+}
+
+interface LeaderboardEntry extends RowMovement {
     membershipId: string;
     membershipType: number;
     displayName: string;
@@ -20,12 +30,6 @@ interface LeaderboardEntry {
     endedAt?: number;
     /** Competition rank from the server (ties share a rank number). */
     rank: number;
-    /** Rank change vs when the viewer opened the page (positive = moved up). */
-    rankDelta?: number;
-    /** Entered the board mid-session and hasn't changed rank since. */
-    isNew?: boolean;
-    /** Set when this row's rank/clears changed on a refresh; bumping it re-triggers the flash. */
-    changeStamp?: number;
 }
 
 let runEndFormat: Intl.DateTimeFormat | undefined;

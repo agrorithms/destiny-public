@@ -798,8 +798,17 @@ export function getPlayerRaidCompletionSummary(
   `).all(membershipId, cutoffTimestamp) as PlayerRaidCompletionSummary[];
 }
 
+/**
+ * CONTEXT.md's `Clear Time`: the run's duration, instance start to instance end, so every
+ * player in it is credited the same time. Raw fragment over `pgcrs` aliased `p`, like
+ * {@link FULL_CLEAR}; it says nothing about who counts, so a caller pairs it with
+ * {@link COMPLETION} itself. Shared with the Fastest Clears board (leaderboard-cache.ts)
+ * so the profile and the board can't drift on what a Clear Time is.
+ */
+export const CLEAR_TIME = 'p.ended_at - p.period';
+
 /** How long a Completion took, NULL for every other row — the shape both aggregates below need. */
-const CLEARED_DURATION = `CASE WHEN ${COMPLETION} THEN p.ended_at - p.period END`;
+const CLEARED_DURATION = `CASE WHEN ${COMPLETION} THEN ${CLEAR_TIME} END`;
 
 export function getPlayerRaidPerformanceStats(
     membershipId: string,

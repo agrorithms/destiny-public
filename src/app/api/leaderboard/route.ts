@@ -3,7 +3,8 @@ import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { readLeaderboardSnapshot } from '@/lib/maintenance/snapshots';
 import { withCache, withNoStore } from '@/lib/http/cache';
-import { getLeaderboardResponse } from '@/lib/cache/leaderboard-cache';
+import { fastestBody, getLeaderboardResponse } from '@/lib/cache/leaderboard-cache';
+import { LEADERBOARD_BOARD_PARAM, parseLeaderboardBoard } from '@/app/leaderboard/leaderboard-board';
 import type { RaidFilters } from '@/lib/db/queries';
 
 export async function GET(request: NextRequest) {
@@ -14,6 +15,11 @@ export async function GET(request: NextRequest) {
     const hours = parseInt(searchParams.get('hours') || '4', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const mode = searchParams.get('mode') === 'individual' ? 'individual' : 'aggregate';
+    // The page's own parser, so the two can't disagree: a missing or unknown value is the
+    // Full Clears board, exactly as before the parameter existed. `fastest` ignores `mode`.
+    const board = parseLeaderboardBoard({
+        [LEADERBOARD_BOARD_PARAM]: searchParams.get(LEADERBOARD_BOARD_PARAM) ?? undefined,
+    });
     // fullClearsOnly is forced true on the cache path (the only real UI path);
     // it is folded into the cache key as a constant rather than read here.
 
@@ -58,13 +64,22 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const { body, state, band } = await getLeaderboardResponse({ mode, hours, raidKeys, limit, filters: hasFilters ? filters : undefined });
+        const { body, state, band } = await getLeaderboardResponse({ board, mode, hours, raidKeys, limit, filters: hasFilters ? filters : undefined });
 
         const response = withCache(NextResponse.json(body), band.sMaxAge, band.staleWhileRevalidate);
         response.headers.set('X-Cache', state.toUpperCase());
         return response;
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
+            // The maintenance snapshot holds a Full Clears board only (#130 keeps it that
+            // way), so Fastest Clears answers with an empty, flagged body and the page
+            // says the board is unavailable rather than showing counts as times.
+            if (board === 'fastest') {
+                return withNoStore(NextResponse.json({
+                    ...fastestBody(hours, raidKeys, {}),
+                    maintenance: true,
+                }));
+            }
             const snapshot = readLeaderboardSnapshot();
             if (snapshot?.data) {
                 return withNoStore(NextResponse.json({

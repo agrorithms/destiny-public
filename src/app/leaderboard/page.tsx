@@ -1,32 +1,25 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { use, useEffect, useState, useCallback, useRef } from 'react';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
-import LeaderboardTable from '@/components/LeaderboardTable';
+import LeaderboardTable, { type LeaderboardMetric, type RowMovement } from '@/components/LeaderboardTable';
 import TimeSlider, { formatTimeRange } from '@/components/TimeSlider';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
 import { useViewMode, useTimeRange, useLeaderboardSize, usePlayersFilter, type PlayersFilter } from '@/hooks/useLeaderboardPrefs';
+import type { FastestClearEntry, IndividualLeaderboard, LeaderboardResponseEntry } from '@/lib/cache/leaderboard-cache';
+import { parseLeaderboardBoard } from './leaderboard-board';
+import { LeaderboardTabs } from './LeaderboardTabs';
 
 interface RaidOption {
     key: string;
     name: string;
 }
 
-interface LeaderboardEntry {
-    membershipId: string;
-    membershipType: number;
-    displayName: string;
-    completions: number;
-    /** Competition rank from the server (ties share a rank number). */
-    rank: number;
-    /** Rank change vs when the page was opened (positive = moved up). */
-    rankDelta?: number;
-    /** Entered the board mid-session and hasn't changed rank since. */
-    isNew?: boolean;
-    /** Fetch sequence number of the last time this row's rank/clears changed. */
-    changeStamp?: number;
-}
+type LeaderboardEntry = LeaderboardResponseEntry & RowMovement;
+
+/** A row as of the last refresh. `value` is the board's number: a Full Clears count, or a Clear Time in seconds. */
+type PrevRow = { rank: number; value: number; changeStamp?: number };
 
 interface AggregateResponse {
     mode: 'aggregate';
@@ -45,14 +38,30 @@ interface IndividualResponse {
     raidKeys: string[];
     maintenance?: boolean;
     snapshotGeneratedAt?: number;
-    leaderboards: Record<string, {
-        raidKey: string;
-        raidName: string;
-        entries: LeaderboardEntry[];
-    }>;
+    leaderboards: Record<string, IndividualLeaderboard<LeaderboardEntry>>;
 }
 
-type LeaderboardResponse = AggregateResponse | IndividualResponse;
+/**
+ * `board=fastest` is always the per-raid shape, whatever `mode` the page might send. Its rows
+ * get the same movement fields as Full Clears' (#134), measured on Clear Time.
+ * Only this body carries `board`; the Full Clears body predates it, so `'board' in` tells them apart.
+ */
+interface FastestResponse {
+    board: 'fastest';
+    mode: 'individual';
+    hours: number;
+    raidKeys: string[];
+    /** Set, with no boards, when the database is in maintenance: there is no Fastest Clears snapshot. */
+    maintenance?: boolean;
+    leaderboards: Record<string, IndividualLeaderboard<FastestClearEntry & RowMovement>>;
+}
+
+type LeaderboardResponse = AggregateResponse | IndividualResponse | FastestResponse;
+
+/** A per-raid body's boards as movement scopes: each raid's rows are ranked on their own. */
+function perRaidScopes<E>(leaderboards: Record<string, IndividualLeaderboard<E>>): Array<[string, E[]]> {
+    return Object.values(leaderboards).map((lb): [string, E[]] => [lb.raidKey, lb.entries]);
+}
 
 const AVAILABLE_RAIDS: RaidOption[] = [
     //pantheon insurrection prime and morgeth surpassing are not accurately showing fresh clears so will never return results
@@ -73,7 +82,15 @@ const AVAILABLE_RAIDS: RaidOption[] = [
 
 const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100];
 
-export default function LeaderboardPage() {
+export default function LeaderboardPage({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+    // The tab is in the URL (./leaderboard-board.ts); the filters below stay in browser
+    // storage and are shared by both tabs.
+    const board = parseLeaderboardBoard(use(searchParams));
+    const isFastest = board === 'fastest';
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
     const [hours, setHours] = useTimeRange();
     const [mode, setMode] = useViewMode();
@@ -86,38 +103,52 @@ export default function LeaderboardPage() {
     const requestIdRef = useRef(0);
     const activeControllerRef = useRef<AbortController | null>(null);
     // Rank movement is measured against the first response seen for the current
-    // filter combo ("since you opened this page"), not the previous refresh.
+    // tab and filter combo ("since you opened this page"), not the previous refresh.
     const baselineRef = useRef<{ comboKey: string; ranks: Map<string, number> } | null>(null);
-    const prevRowsRef = useRef<Map<string, { rank: number; completions: number; changeStamp?: number }>>(new Map());
+    const prevRowsRef = useRef<Map<string, PrevRow>>(new Map());
     // Players who entered the board mid-session; they wear NEW until their rank first changes.
     const newEntrantsRef = useRef<Set<string>>(new Set());
 
-    const annotateMovement = useCallback((result: LeaderboardResponse, comboKey: string, fetchSeq: number) => {
-        const scopes: Array<[string, LeaderboardEntry[]]> = result.mode === 'aggregate'
-            ? [['aggregate', result.entries]]
-            : Object.values(result.leaderboards).map((lb) => [lb.raidKey, lb.entries] as [string, LeaderboardEntry[]]);
+    // Each tab starts its own baseline, dropped on the switch itself (#134). Dropping it when
+    // the other tab's response arrived was not enough: switch back before that response lands
+    // and the `requestId` guard discards it, so the old baseline survived the visit. Putting the
+    // board in `comboKey` alone would miss the same case, since the key matches again on return.
+    useEffect(() => {
+        baselineRef.current = null;
+    }, [board]);
 
+    /**
+     * Sets `rankDelta`, `isNew` and `changeStamp` on every row in `scopes`, in place.
+     * `valueOfRow` is the board's own number, so a row flashes when it changes even if the
+     * rank holds: a new Full Clear, or on Fastest Clears a faster personal best.
+     */
+    const annotateMovement = useCallback(<E extends RowMovement & { membershipId: string; rank: number }>(
+        scopes: Array<[string, E[]]>,
+        valueOfRow: (entry: E) => number,
+        comboKey: string,
+        fetchSeq: number,
+    ) => {
         if (baselineRef.current?.comboKey !== comboKey) {
-            // Filters changed (or first load): reset and capture a fresh baseline.
+            // Tab or filters changed (or first load): reset and capture a fresh baseline.
             const ranks = new Map<string, number>();
+            const rows = new Map<string, PrevRow>();
             for (const [scope, entries] of scopes) {
-                entries.forEach((entry) => ranks.set(`${scope}:${entry.membershipId}`, entry.rank));
+                for (const entry of entries) {
+                    const key = `${scope}:${entry.membershipId}`;
+                    ranks.set(key, entry.rank);
+                    rows.set(key, { rank: entry.rank, value: valueOfRow(entry) });
+                }
             }
             baselineRef.current = { comboKey, ranks };
             newEntrantsRef.current = new Set();
-            prevRowsRef.current = new Map(
-                scopes.flatMap(([scope, entries]) => entries.map((entry): [string, { rank: number; completions: number }] => [
-                    `${scope}:${entry.membershipId}`,
-                    { rank: entry.rank, completions: entry.completions },
-                ]))
-            );
-            return result;
+            prevRowsRef.current = rows;
+            return;
         }
 
         const baseline = baselineRef.current.ranks;
         const newEntrants = newEntrantsRef.current;
         const prevRows = prevRowsRef.current;
-        const nextRows = new Map<string, { rank: number; completions: number; changeStamp?: number }>();
+        const nextRows = new Map<string, PrevRow>();
 
         for (const [scope, entries] of scopes) {
             entries.forEach((entry) => {
@@ -136,15 +167,15 @@ export default function LeaderboardPage() {
                     entry.isNew = true;
                 }
                 const prev = prevRows.get(key);
+                const value = valueOfRow(entry);
                 // prev === undefined here means a mid-session entrant — flash their arrival.
-                const changed = prev === undefined || prev.rank !== rank || prev.completions !== entry.completions;
+                const changed = prev === undefined || prev.rank !== rank || prev.value !== value;
                 entry.changeStamp = changed ? fetchSeq : prev?.changeStamp;
-                nextRows.set(key, { rank, completions: entry.completions, changeStamp: entry.changeStamp });
+                nextRows.set(key, { rank, value, changeStamp: entry.changeStamp });
             });
         }
 
         prevRowsRef.current = nextRows;
-        return result;
     }, []);
 
     const fetchLeaderboard = useCallback(async () => {
@@ -157,12 +188,12 @@ export default function LeaderboardPage() {
         setError(null);
 
         try {
-            const params = new URLSearchParams({
-                hours: hours.toString(),
-                fullClearsOnly: 'true',
-                mode,
-                limit: leaderboardSize.toString(),
-            });
+            // Fastest Clears neither sends nor reads the stored View mode: the server
+            // always answers it per raid, and a saved Total Clears preference must
+            // survive a visit to this tab untouched.
+            const params = new URLSearchParams(isFastest
+                ? { board, hours: hours.toString(), limit: leaderboardSize.toString() }
+                : { hours: hours.toString(), fullClearsOnly: 'true', mode, limit: leaderboardSize.toString() });
 
             if (selectedRaids.length > 0) {
                 params.set('raids', selectedRaids.join(','));
@@ -180,12 +211,25 @@ export default function LeaderboardPage() {
                 throw new Error(`API error: ${response.status}`);
             }
 
-            const result = await response.json();
+            const result: LeaderboardResponse = await response.json();
             if (requestId !== requestIdRef.current) {
                 return;
             }
-            const comboKey = `${hours}|${mode}|${leaderboardSize}|${selectedRaids.join(',')}|${playersFilter}`;
-            setData(annotateMovement(result, comboKey, requestId));
+            // The baseline's key is the request itself, so it can't drift from what was fetched.
+            const comboKey = params.toString();
+            if ('board' in result) {
+                // A maintenance body has no boards; annotating it would empty the previous rows,
+                // so every row would flash on recovery. Keep the pre-maintenance rows instead.
+                if (!result.maintenance) {
+                    annotateMovement(perRaidScopes(result.leaderboards), (entry) => entry.clearTimeSeconds, comboKey, requestId);
+                }
+            } else {
+                const scopes: Array<[string, LeaderboardEntry[]]> = result.mode === 'aggregate'
+                    ? [['aggregate', result.entries]]
+                    : perRaidScopes(result.leaderboards);
+                annotateMovement(scopes, (entry) => entry.completions, comboKey, requestId);
+            }
+            setData(result);
             setLastUpdated(new Date());
         } catch (err) {
             if ((err as Error).name === 'AbortError') {
@@ -200,7 +244,7 @@ export default function LeaderboardPage() {
                 setLoading(false);
             }
         }
-    }, [selectedRaids, hours, mode, leaderboardSize, playersFilter, annotateMovement]);
+    }, [board, isFastest, selectedRaids, hours, mode, leaderboardSize, playersFilter, annotateMovement]);
 
     useEffect(() => {
         return () => activeControllerRef.current?.abort();
@@ -226,19 +270,30 @@ export default function LeaderboardPage() {
             ? AVAILABLE_RAIDS.find((r) => r.key === selectedRaids[0])?.name || ''
             : `${selectedRaids.length} Raids`;
 
+    // Data from the other tab can be on screen for a moment after a switch; it is never
+    // drawn under this tab's heading or in this tab's table.
+    const shown = data && ('board' in data) === isFastest ? data : null;
+
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
             <h1 className="text-3xl font-bold ui-text-primary mb-2">Raid Leaderboard</h1>
+            <LeaderboardTabs board={board} />
             <p className="ui-text-secondary mb-6">
-                Top raiders by full clears in the last {formatTimeRange(hours)}
+                {isFastest ? 'Fastest clears' : 'Top raiders by full clears'} in the last {formatTimeRange(hours)}
                 {raidFilterLabel !== 'All Raids' && ` — ${raidFilterLabel}`}
             </p>
 
-            {data?.maintenance && (
+            {shown?.maintenance && (
                 <div className="ui-card p-4 mb-6 text-sm text-red-700 dark:text-red-400">
-                    Database maintenance is in progress. Showing the last known leaderboard snapshot
-                    {data.snapshotGeneratedAt ? ` from ${new Date(data.snapshotGeneratedAt).toLocaleString()}` : ''}.
-                    Filters are temporarily frozen until maintenance completes.
+                    Database maintenance is in progress.
+                    {/* There is no Fastest Clears snapshot; that tab's body says the board is unavailable. */}
+                    {!isFastest && (
+                        <>
+                            {' '}Showing the last known leaderboard snapshot
+                            {'snapshotGeneratedAt' in shown && shown.snapshotGeneratedAt ? ` from ${new Date(shown.snapshotGeneratedAt).toLocaleString()}` : ''}.
+                        </>
+                    )}
+                    {' '}Filters are temporarily frozen until maintenance completes.
                 </div>
             )}
 
@@ -256,8 +311,9 @@ export default function LeaderboardPage() {
                         />
                     </div>
 
-                    {/* View Mode Toggle */}
-                    <div>
+                    {/* View Mode Toggle — Full Clears only: a fastest time across
+                        different raids means nothing, so Fastest Clears is always per raid. */}
+                    {!isFastest && <div>
                         <label className="block text-xs ui-text-muted mb-1">View</label>
                         <div className="flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600">
                             <button
@@ -279,7 +335,7 @@ export default function LeaderboardPage() {
                                 Total Clears
                             </button>
                         </div>
-                    </div>
+                    </div>}
 
                     {/* Players Filter */}
                     <div>
@@ -338,29 +394,36 @@ export default function LeaderboardPage() {
             )}
 
             {/* Aggregate Leaderboard */}
-            {data && data.mode === 'aggregate' && (
+            {shown && shown.mode === 'aggregate' && (
                 <div className="ui-card p-3 sm:p-4">
                     <LeaderboardTable
-                        entries={(data as AggregateResponse).entries}
-                        loading={loading && !data}
+                        entries={shown.entries}
                         showRaidColumn={false}
                     />
                 </div>
             )}
 
-            {/* Individual Leaderboards */}
-            {data && data.mode === 'individual' && (
+            {/* Per-raid Leaderboards — Full Clears' Per Raid view, and every Fastest Clears response */}
+            {shown && shown.mode === 'individual' && (
                 <>
                     {(() => {
-                        const leaderboards = Object.values((data as IndividualResponse).leaderboards);
+                        const leaderboards = Object.values(shown.leaderboards);
+                        const metric: LeaderboardMetric = isFastest ? 'clearTime' : 'completions';
                         const count = leaderboards.length;
 
                         if (count === 0 && !loading) {
+                            // A Fastest Clears maintenance body has no boards: no Fastest
+                            // Clears snapshot exists, so the message replaces the board.
+                            const [title, hint] = !isFastest
+                                ? ['No leaderboards found', 'Try a different time range or refresh the leaderboard']
+                                : shown.maintenance
+                                    ? ['Fastest Clears are unavailable during maintenance']
+                                    : ['No Completions match these filters'];
                             return (
                                 <div className="ui-card p-3 sm:p-4">
                                     <div className="text-center py-12 ui-text-secondary">
-                                        <p className="text-lg">No leaderboards found</p>
-                                        <p className="text-sm mt-1">Try a different time range or refresh the leaderboard</p>
+                                        <p className="text-lg">{title}</p>
+                                        {hint && <p className="text-sm mt-1">{hint}</p>}
                                     </div>
                                 </div>
                             );
@@ -384,9 +447,9 @@ export default function LeaderboardPage() {
                                     >
                                         <LeaderboardTable
                                             entries={lb.entries}
-                                            loading={loading && !data}
                                             title={lb.raidName}
                                             showRaidColumn={false}
+                                            metric={metric}
                                         />
                                     </div>
                                 ))}

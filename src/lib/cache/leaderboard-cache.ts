@@ -14,9 +14,14 @@
  * `runLeaderboardRows` is the pure, uncached query (the SWR cache only wraps it
  * inside `getLeaderboardResponse`); it is exported so scripts/db-stats.ts can run
  * the raw leaderboard without the cache layer.
+ *
+ * The Fastest Clears board (#130) lives here too: `runFastestClearRows` is its
+ * per-raid runner, sharing `COMPLETION` and `buildRaidFilterClause` with the count
+ * board so the two can't drift on who counts, and `board: 'fastest'` routes a
+ * request to its own cache keys.
  */
 import { getDb } from '../db';
-import { COMPLETION, buildRaidFilterClause, type RaidFilters } from '../db/queries';
+import { CLEAR_TIME, COMPLETION, buildRaidFilterClause, type RaidFilters } from '../db/queries';
 import { getAllRaidDefinitions } from '../bungie/manifest';
 import { envSeconds, envMs } from '../env';
 import { getOrCompute, type CacheState } from './swr-cache';
@@ -42,16 +47,24 @@ export interface LeaderboardResponseEntry {
     rank: number;
 }
 
-export interface IndividualLeaderboard {
+export interface IndividualLeaderboard<E = LeaderboardResponseEntry> {
     raidKey: string;
     raidName: string;
-    entries: LeaderboardResponseEntry[];
+    entries: E[];
 }
+
+/**
+ * Which board a request is for. `fullClears` is the original board and the default for
+ * a missing or unknown `board` parameter; `fastest` ranks by Clear Time (#130).
+ */
+export type LeaderboardBoard = 'fullClears' | 'fastest';
 
 export type ResponseState = CacheState | 'bypass';
 
 
 export interface LeaderboardRequest {
+    /** Absent means `fullClears`. `fastest` ignores `mode`: it is always per raid. */
+    board?: LeaderboardBoard;
     mode: 'aggregate' | 'individual';
     hours: number;
     /** Validated raid keys as requested (may be empty = all raids). */
@@ -121,7 +134,9 @@ export function leaderboardCacheBand(hours: number): CacheBand {
 
 // ── Query runner ─────────────────────────────────────────────────────────────
 
-function formatDisplayName(entry: LeaderboardDbRow): string {
+function formatDisplayName(
+    entry: Pick<LeaderboardDbRow, 'membershipId' | 'displayName' | 'bungieGlobalDisplayName' | 'bungieGlobalDisplayNameCode'>,
+): string {
     if (entry.bungieGlobalDisplayName && entry.bungieGlobalDisplayNameCode) {
         return `${entry.bungieGlobalDisplayName}#${String(entry.bungieGlobalDisplayNameCode).padStart(4, '0')}`;
     }
@@ -193,18 +208,119 @@ export function runLeaderboardRows(hours: number, raidKeys: string[], limit: num
     });
 }
 
+interface FastestClearDbRow {
+    membershipId: string;
+    membershipType: number;
+    displayName: string | null;
+    bungieGlobalDisplayName: string | null;
+    bungieGlobalDisplayNameCode: number | null;
+    clearTimeSeconds: number;
+    instanceId: string;
+    endedAt: number;
+}
+
+export interface FastestClearEntry {
+    membershipId: string;
+    membershipType: number;
+    displayName: string;
+    /** The player's fastest Clear Time on this board, in seconds. */
+    clearTimeSeconds: number;
+    /** The run that set it, for the raid.report PGCR link (#133). */
+    instanceId: string;
+    /** When that run ended, unix seconds, for the tooltip (#133). */
+    endedAt: number;
+    /** Competition rank ("1224"): equal Clear Times share a rank. */
+    rank: number;
+}
+
+/**
+ * Runs one raid's Fastest Clears board: each player's fastest Clear Time among their
+ * Completions in the window, one row per player.
+ *
+ * Per raid only — a fastest time across different raids means nothing, so unlike
+ * {@link runLeaderboardRows} this takes one raid key rather than a set.
+ *
+ * Clear Time is `CLEAR_TIME`, the expression the profile's fastest-clear stat uses. No
+ * duration floor: suspected-cheated runs rank like any other, by decision (#130).
+ */
+export function runFastestClearRows(hours: number, raidKey: string, limit: number, filters?: RaidFilters): FastestClearEntry[] {
+    const db = getDb();
+    const cutoff = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
+    const { clause: filterClause, params: filterParams } = buildRaidFilterClause(filters);
+
+    // The window picks each player's own best run; within one player's equal times, the
+    // earliest-ended run is the one shown, matching the board's tie-break below.
+    const query = `
+        WITH cleared AS (
+            SELECT
+              pp.membership_id as membershipId,
+              pp.membership_type as membershipType,
+              pp.display_name as runDisplayName,
+              pp.instance_id as instanceId,
+              p.ended_at as endedAt,
+              ${CLEAR_TIME} as clearTimeSeconds,
+              ROW_NUMBER() OVER (
+                PARTITION BY pp.membership_id
+                ORDER BY ${CLEAR_TIME} ASC, p.ended_at ASC, pp.instance_id ASC
+              ) as fastestFirst
+            FROM pgcr_players pp
+            JOIN pgcrs p ON pp.instance_id = p.instance_id
+            WHERE p.ended_at >= ?
+              AND ${COMPLETION}
+              AND p.raid_key = ?
+              ${filterClause}
+        )
+        SELECT
+          c.membershipId,
+          c.membershipType,
+          COALESCE(pl.bungie_global_display_name, c.runDisplayName) as displayName,
+          pl.bungie_global_display_name as bungieGlobalDisplayName,
+          pl.bungie_global_display_name_code as bungieGlobalDisplayNameCode,
+          c.clearTimeSeconds,
+          c.instanceId,
+          c.endedAt
+        FROM cleared c
+        LEFT JOIN players pl ON c.membershipId = pl.membership_id
+        WHERE c.fastestFirst = 1
+        ORDER BY c.clearTimeSeconds ASC, c.endedAt ASC, c.membershipId ASC
+        LIMIT ?
+    `;
+
+    const rows = db.prepare(query).all(cutoff, raidKey, ...filterParams, limit) as FastestClearDbRow[];
+    let prevClearTime = -1;
+    let prevRank = 0;
+    return rows.map((row, index) => {
+        const rank = row.clearTimeSeconds === prevClearTime ? prevRank : index + 1;
+        prevClearTime = row.clearTimeSeconds;
+        prevRank = rank;
+        return {
+            membershipId: row.membershipId,
+            membershipType: row.membershipType,
+            displayName: formatDisplayName(row),
+            clearTimeSeconds: row.clearTimeSeconds,
+            instanceId: row.instanceId,
+            endedAt: row.endedAt,
+            rank,
+        };
+    });
+}
+
 const yieldTick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 /** Computes the 13-board individual payload, yielding between raids so the
- *  synchronous queries don't monopolize the event loop in one burst. */
-async function computeIndividualAll(hours: number, raidKeys: string[], filters?: RaidFilters): Promise<Record<string, IndividualLeaderboard>> {
+ *  synchronous queries don't monopolize the event loop in one burst. `runRaid` is the
+ *  board's per-raid runner, so both boards share this loop. */
+async function computeIndividualAll<E>(
+    raidKeys: string[],
+    runRaid: (raidKey: string) => E[],
+): Promise<Record<string, IndividualLeaderboard<E>>> {
     const allRaids = getAllRaidDefinitions();
-    const boards: Record<string, IndividualLeaderboard> = {};
+    const boards: Record<string, IndividualLeaderboard<E>> = {};
     for (const raidKey of raidKeys) {
         boards[raidKey] = {
             raidKey,
             raidName: allRaids[raidKey]?.name || raidKey,
-            entries: runLeaderboardRows(hours, [raidKey], CACHED_LIMIT, filters),
+            entries: runRaid(raidKey),
         };
         await yieldTick();
     }
@@ -225,11 +341,24 @@ function individualBody(
     return { mode: 'individual', hours, fullClearsOnly: true, raidKeys, leaderboards };
 }
 
-function sliceBoards(
-    boards: Record<string, IndividualLeaderboard>,
+/**
+ * The Fastest Clears envelope: always the per-raid ("individual") shape, whatever `mode`
+ * was asked for, with `board` set so a client can never mistake it for a count board.
+ * Exported for the route's maintenance answer, which is this envelope with no boards.
+ */
+export function fastestBody(
+    hours: number,
+    raidKeys: string[],
+    leaderboards: Record<string, IndividualLeaderboard<FastestClearEntry>>,
+): Record<string, unknown> {
+    return { board: 'fastest', mode: 'individual', hours, raidKeys, leaderboards };
+}
+
+function sliceBoards<E>(
+    boards: Record<string, IndividualLeaderboard<E>>,
     limit: number,
-): Record<string, IndividualLeaderboard> {
-    const out: Record<string, IndividualLeaderboard> = {};
+): Record<string, IndividualLeaderboard<E>> {
+    const out: Record<string, IndividualLeaderboard<E>> = {};
     for (const [raidKey, board] of Object.entries(boards)) {
         out[raidKey] = { ...board, entries: board.entries.slice(0, limit) };
     }
@@ -269,6 +398,10 @@ export async function getLeaderboardResponse(req: LeaderboardRequest): Promise<L
     const cacheLimit = Math.min(req.limit, CACHED_LIMIT);
     const fSuffix = filterKeySuffix(req.filters);
 
+    if (req.board === 'fastest') {
+        return getFastestResponse(req, { allKeys, sortedSelected, isAll, cacheLimit, fSuffix, band, swr });
+    }
+
     // Single raid — ranking is mode-agnostic; cache once, wrap per request mode.
     if (!isAll && sortedSelected.length === 1) {
         const raidKey = sortedSelected[0];
@@ -290,7 +423,7 @@ export async function getLeaderboardResponse(req: LeaderboardRequest): Promise<L
         if (req.mode === 'individual') {
             const key = `individual|${req.hours}||fc1${fSuffix}`;
             const { value, state } = await getOrCompute(key, swr, () =>
-                computeIndividualAll(req.hours, allKeys, req.filters),
+                computeIndividualAll(allKeys, (raidKey) => runLeaderboardRows(req.hours, [raidKey], CACHED_LIMIT, req.filters)),
             );
             return { body: individualBody(req.hours, allKeys, sliceBoards(value, cacheLimit)), state, band };
         }
@@ -316,4 +449,56 @@ export async function getLeaderboardResponse(req: LeaderboardRequest): Promise<L
 
     const entries = runLeaderboardRows(req.hours, req.raidKeys, req.limit, req.filters);
     return { body: aggregateBody(req.hours, req.raidKeys, entries), state: 'bypass', band };
+}
+
+/**
+ * The Fastest Clears half of {@link getLeaderboardResponse}: the same SWR cache, TTL bands
+ * and limit-collapse, under its own `fastest-` key prefix so the two boards can never be
+ * served for each other. Only the per-raid shapes exist — single raid, all raids, and an
+ * arbitrary subset that bypasses the cache — mirroring the Full Clears individual paths.
+ *
+ * The warmer does not call this (#130): measure the cold path in prod before warming it.
+ */
+async function getFastestResponse(
+    req: LeaderboardRequest,
+    shape: {
+        allKeys: string[];
+        sortedSelected: string[];
+        isAll: boolean;
+        cacheLimit: number;
+        fSuffix: string;
+        band: CacheBand;
+        swr: { freshMs: number; staleMs: number; negativeMs: number };
+    },
+): Promise<LeaderboardResult> {
+    const { allKeys, sortedSelected, isAll, cacheLimit, fSuffix, band, swr } = shape;
+    const allRaids = getAllRaidDefinitions();
+    const board = (raidKey: string, entries: FastestClearEntry[]): IndividualLeaderboard<FastestClearEntry> => ({
+        raidKey,
+        raidName: allRaids[raidKey]?.name || raidKey,
+        entries,
+    });
+
+    if (!isAll && sortedSelected.length === 1) {
+        const raidKey = sortedSelected[0];
+        const key = `fastest-single|${req.hours}|${raidKey}${fSuffix}`;
+        const { value, state } = await getOrCompute(key, swr, () =>
+            runFastestClearRows(req.hours, raidKey, CACHED_LIMIT, req.filters),
+        );
+        return { body: fastestBody(req.hours, [raidKey], { [raidKey]: board(raidKey, value.slice(0, cacheLimit)) }), state, band };
+    }
+
+    if (isAll) {
+        const key = `fastest-individual|${req.hours}|${fSuffix}`;
+        const { value, state } = await getOrCompute(key, swr, () =>
+            computeIndividualAll(allKeys, (raidKey) => runFastestClearRows(req.hours, raidKey, CACHED_LIMIT, req.filters)),
+        );
+        return { body: fastestBody(req.hours, allKeys, sliceBoards(value, cacheLimit)), state, band };
+    }
+
+    const boards: Record<string, IndividualLeaderboard<FastestClearEntry>> = {};
+    for (const raidKey of req.raidKeys) {
+        boards[raidKey] = board(raidKey, runFastestClearRows(req.hours, raidKey, req.limit, req.filters));
+    }
+    return { body: fastestBody(req.hours, req.raidKeys, boards), state: 'bypass', band };
 }

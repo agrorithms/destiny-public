@@ -102,9 +102,20 @@ _Avoid_: partial run, CP run
 
 **Completion**:
 One full clear finished by a particular player, counted once per raid instance however many
-characters they brought to it. The unit every leaderboard ranks by. A player being present for a
-cleared raid is not enough — they must have finished it themselves.
+characters they brought to it. The unit the Full Clears leaderboard counts, and the only clears
+the Fastest Clears leaderboard draws a Clear Time from. A player being present for a cleared raid
+is not enough — they must have finished it themselves.
 _Avoid_: clear, kill, run
+
+**Clear Time**:
+How long a Full Clear took, from the instance starting to the instance ending — the run's
+duration, not any one player's time in it. Every player with a Completion in that run is credited
+with the same Clear Time, including one who joined at the final encounter, so a fireteam's members
+tie. Some Full Clears carry a Clear Time no legitimate run could reach — two-minute clears of
+raids that take far longer, believed cheated — and they are ranked like any other rather than
+filtered; Last Wish is the exception that looks like one, since it has a legitimate route to a
+full completion in a few minutes.
+_Avoid_: speedrun, run time, duration
 
 **Heartbeat**:
 The crawler's periodic signal that it is still observing. Its age is the Data Freshness; once it

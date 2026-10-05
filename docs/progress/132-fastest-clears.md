@@ -192,7 +192,25 @@ as the user decided; there is no automated test for live movement on either tab.
     happens on the switch itself, not when the other tab's response lands. Board in `comboKey`
     alone would not have fixed it: on a quick switch back the key matches again, and the old
     baseline is still there.
+- [x] `src/components/LeaderboardTable.tsx` (4be8ae3): `RowMovement` is declared here once and
+  the page imports it; the table's own entry type extends it. Types only.
 - [x] `docs/progress/132-fastest-clears.md` (this file)
+
+### The simplify commit (4be8ae3)
+
+Besides moving types, it makes `comboKey` the request itself, `params.toString()`, in place of the
+hand-built `${hours}|${mode}|${leaderboardSize}|${raids}|${playersFilter}`. The hand check below
+ran on 6f9559a, before this commit, and still covers HEAD:
+- **Full Clears:** the key resets exactly when the old one did. `params` is built in a fixed order
+  (hours, `fullClearsOnly=true`, mode, limit, then `raids` only when any are selected, then
+  `maxPlayers=3` for lowman or `exactPlayers=N`). Each filter value maps to a distinct string,
+  and the key holds no timestamp or cache-buster.
+- **Fastest Clears:** the key drops `mode` (never sent) and gains `board`. It can only reset more
+  often than before, never less. In 6f9559a the tabs shared the hand-built key, so the hand check
+  exercised the tab separation through the `[board]` effect alone.
+- Everything else in the commit is types: `RowMovement`, `PrevRow`, `perRaidScopes` and
+  `IndividualLeaderboard<E>`. In-place annotation and `setData(result)` after both branches were
+  already in 6f9559a.
 
 ### TDD
 
@@ -211,8 +229,8 @@ Each would have made the diff bigger, not simpler:
   holding a JSX value renderer can't sit in `leaderboard-board.ts`, because the route imports it, so
   it would need a new client module and a rewrite of every branch in the page and the table.
 - **Optional entry fields / `ClearTimeLink`'s whole-entry prop / the `endedAt === undefined` guard.**
-  `LeaderboardTable.tsx` needs no change for #134. Tying entries to `metric` means a discriminated
-  props union, which is a table refactor in its own right.
+  #134 changes `LeaderboardTable.tsx` only to host `RowMovement` (4be8ae3, types only). Tying
+  entries to `metric` means a discriminated props union, which is a table refactor in its own right.
 - **Names (`fastestFirst`, `board()`, `shown`).** None of those lines changes here.
 
 ### Hand verification
@@ -245,8 +263,9 @@ response is fetched in the background for the next tick. In both runs, every ins
 refresh late; the script logged the response `Date` the page received. In prod, Cloudflare rewrites
 these headers (CLAUDE.md), so whether prod lags too is unverified.
 
-Results, on the final tree. The only change after the hand check is the "Tab or filters changed"
-comment in `annotateMovement`; the suite was also green on the tree as hand-verified.
+Results at 6f9559a. The suite was green on the tree as hand-verified, and again after the "Tab or
+filters changed" comment. These results predate 4be8ae3. The section below re-runs them on the
+tree after the review fixes.
 
 - `npx tsc --noEmit`: exit 0
 - `npm run lint`: exit 0, 0 errors and 29 warnings, all `no-explicit-any` in
@@ -254,3 +273,56 @@ comment in `annotateMovement`; the suite was also green on the tree as hand-veri
 - `npm run build`: exit 0; `/leaderboard` and `/api/leaderboard` are ƒ, as before
 - `npm test`: 45 files, 539 tests passed
 - `npm run e2e`: 95 passed (48.7 s), including the 6 in `leaderboard-fastest.spec.ts`
+
+## #134 review fixes (2026-10-04)
+
+Three fixes from the two-axis review of `f92d02d..4be8ae3`. Nothing else changed.
+
+- [x] `src/app/leaderboard/page.tsx`
+  - A Fastest Clears maintenance body (`leaderboards: {}`) no longer goes through
+    `annotateMovement`. Annotating it emptied `prevRowsRef` under an unchanged `comboKey`, so on
+    recovery every row flashed. If the page was opened during maintenance, every row also wore NEW.
+    The baseline and previous rows now stay as they were before maintenance, and `setData` still
+    runs, so the "unavailable during maintenance" message renders as before. Full Clears'
+    maintenance path (a snapshot with rows) is unchanged.
+  - Rename, no behaviour change: the row's number is `value` (`PrevRow.value`, `valueOfRow`), so
+    `metric` keeps one meaning, the column (`LeaderboardMetric`).
+- [x] `src/components/LeaderboardTable.tsx`: the `changeStamp` doc says "board value", for the
+  same rename.
+- [x] `docs/progress/132-fastest-clears.md` (this file): `LeaderboardTable.tsx` is in the #134
+  checklist, and the 4be8ae3 key change and the stale results line are corrected above.
+
+No test, as for #134: live movement has no automated seam, and none was added for this.
+
+### Maintenance hand check
+
+The run used `npx next dev -p 3134`, with `RAID_TRACKER_DB_PATH` and `RAID_TRACKER_DATA_DIR`
+pointing at a scratch dir. That dir held a `VACUUM INTO` copy of the dev Tracker (opened `mode=ro`)
+and its own `maintenance-state.json`. The dev log confirmed the scratch path. The real
+`data/maintenance-state.json` and `data/raid-tracker.db` were never written; their mtimes are
+unchanged.
+- A scratch Playwright script loaded `/leaderboard?board=fastest`, with Last Wish and King's Fall
+  selected (which bypasses the SWR cache), 30 days, 12 rows and All players: 24 rows.
+- It toggled `dbQuiesceActive` in the scratch state file and waited out the 60 s refreshes.
+- For comparison, the guard was disabled temporarily (`if (true || …)`), which is the old
+  behaviour, and then restored.
+
+| Case | Old (no guard) | This fix |
+|---|---|---|
+| Board loaded → maintenance → recovery | first board after recovery: 24/24 rows flash, 0 NEW, 0 arrows | 0 flash, 0 NEW, 0 arrows; the same on the following refresh |
+| Page opened during maintenance → recovery | 24/24 flash, **24/24 NEW** | 0 flash, 0 NEW, 0 arrows |
+
+The #139 lag showed as expected. The first refresh after `dbQuiesceActive` went on still got the
+cached pre-maintenance body (the same `Date`), and the maintenance message came one tick later.
+On the first try, the script's NEW count was wrong: a `\bNEW\b` text match misses a badge that sits
+next to the rank digit. It now counts the badge by its `title`, and the "old" open-during-maintenance
+run reporting 24 NEW confirms the count works. The NEW-sensitive cases were re-run with it.
+
+### Results, on the final tree
+
+- `npx tsc --noEmit`: exit 0
+- `npm run lint`: exit 0, 0 errors and 29 warnings, all `no-explicit-any` in
+  `gos10k/bungie-fetch.ts` and `gos10k/gos_10k_pgcr.smoke.ts`
+- `npm run build`: exit 0; `/leaderboard` and `/api/leaderboard` are ƒ, as before
+- `npm test`: 45 files, 539 tests passed
+- `npm run e2e`: 95 passed (1.2 m), including the 6 in `leaderboard-fastest.spec.ts`

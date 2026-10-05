@@ -18,8 +18,8 @@ interface RaidOption {
 
 type LeaderboardEntry = LeaderboardResponseEntry & RowMovement;
 
-/** A row as of the last refresh. `metric` is the board's number: a Full Clears count, or a Clear Time in seconds. */
-type PrevRow = { rank: number; metric: number; changeStamp?: number };
+/** A row as of the last refresh. `value` is the board's number: a Full Clears count, or a Clear Time in seconds. */
+type PrevRow = { rank: number; value: number; changeStamp?: number };
 
 interface AggregateResponse {
     mode: 'aggregate';
@@ -119,12 +119,12 @@ export default function LeaderboardPage({
 
     /**
      * Sets `rankDelta`, `isNew` and `changeStamp` on every row in `scopes`, in place.
-     * `metricOf` is the board's own number, so a row flashes when it changes even if the
+     * `valueOfRow` is the board's own number, so a row flashes when it changes even if the
      * rank holds: a new Full Clear, or on Fastest Clears a faster personal best.
      */
     const annotateMovement = useCallback(<E extends RowMovement & { membershipId: string; rank: number }>(
         scopes: Array<[string, E[]]>,
-        metricOf: (entry: E) => number,
+        valueOfRow: (entry: E) => number,
         comboKey: string,
         fetchSeq: number,
     ) => {
@@ -136,7 +136,7 @@ export default function LeaderboardPage({
                 for (const entry of entries) {
                     const key = `${scope}:${entry.membershipId}`;
                     ranks.set(key, entry.rank);
-                    rows.set(key, { rank: entry.rank, metric: metricOf(entry) });
+                    rows.set(key, { rank: entry.rank, value: valueOfRow(entry) });
                 }
             }
             baselineRef.current = { comboKey, ranks };
@@ -167,11 +167,11 @@ export default function LeaderboardPage({
                     entry.isNew = true;
                 }
                 const prev = prevRows.get(key);
-                const metric = metricOf(entry);
+                const value = valueOfRow(entry);
                 // prev === undefined here means a mid-session entrant — flash their arrival.
-                const changed = prev === undefined || prev.rank !== rank || prev.metric !== metric;
+                const changed = prev === undefined || prev.rank !== rank || prev.value !== value;
                 entry.changeStamp = changed ? fetchSeq : prev?.changeStamp;
-                nextRows.set(key, { rank, metric, changeStamp: entry.changeStamp });
+                nextRows.set(key, { rank, value, changeStamp: entry.changeStamp });
             });
         }
 
@@ -218,7 +218,11 @@ export default function LeaderboardPage({
             // The baseline's key is the request itself, so it can't drift from what was fetched.
             const comboKey = params.toString();
             if ('board' in result) {
-                annotateMovement(perRaidScopes(result.leaderboards), (entry) => entry.clearTimeSeconds, comboKey, requestId);
+                // A maintenance body has no boards; annotating it would empty the previous rows,
+                // so every row would flash on recovery. Keep the pre-maintenance rows instead.
+                if (!result.maintenance) {
+                    annotateMovement(perRaidScopes(result.leaderboards), (entry) => entry.clearTimeSeconds, comboKey, requestId);
+                }
             } else {
                 const scopes: Array<[string, LeaderboardEntry[]]> = result.mode === 'aggregate'
                     ? [['aggregate', result.entries]]

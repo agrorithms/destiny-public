@@ -12,7 +12,7 @@ export interface RowMovement {
     rankDelta?: number;
     /** Entered the board mid-session and hasn't changed rank since. */
     isNew?: boolean;
-    /** Set when this row's rank or board metric changed on a refresh; bumping it re-triggers the flash. */
+    /** Set when this row's rank or board value changed on a refresh; bumping it re-triggers the flash. */
     changeStamp?: number;
 }
 

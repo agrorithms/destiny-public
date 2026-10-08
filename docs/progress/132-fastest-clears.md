@@ -15,6 +15,9 @@ Settled: no minimum duration and no plausibility filter; a 2-minute run ranks li
 Out of this ticket: the raid.report link and date tooltip (#133), rank arrows / NEW / change
 highlight on Fastest Clears (#134), anything from #131.
 
+> **2026-10-08 (#137):** `docs/handoffs/260803-playwright-e2e.md` has moved to the tracked
+> `docs/e2e-coverage.md`. References to the old path below are left as written.
+
 ## Chunks
 
 1. Server — runner, cache, route, DB tests

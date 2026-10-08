@@ -4,6 +4,9 @@ Branch `10karchive/113-timeline-zoom`, based on `10karchive/ui-navheight-h1` (78
 verify-skill merge f3cf7cd). Spec: `gh issue view 113`. Seams agreed with the user before any test:
 the pure bucket module, the range-scoped Archive read, the zoomed axis ticks, the browser spec.
 
+> **2026-10-08 (#137):** `docs/handoffs/260803-playwright-e2e.md` has moved to the tracked
+> `docs/e2e-coverage.md`. References to the old path below are left as written.
+
 ## Chunks
 
 1. Pure bucket module

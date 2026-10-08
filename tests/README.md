@@ -12,7 +12,7 @@ npx vitest run -t 'checkpoint'                 # tests whose name matches
 ```
 
 Browser tests are a separate runner and a separate command — see the table below
-and `docs/handoffs/260803-playwright-e2e.md`:
+and `docs/e2e-coverage.md`:
 
 ```bash
 npm run e2e           # build, then drive Chromium

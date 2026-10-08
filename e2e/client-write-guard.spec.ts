@@ -28,7 +28,7 @@ import { SPOOFED_ORIGIN, writeHeaders } from './support/write-request';
 
 // Namespace prefix 85 (81 = active-sessions-cap, 82 = player-names,
 // 83 = client-write-verify, 84 = client-write-resolve), per the convention in
-// docs/handoffs/260803-playwright-e2e.md §2.
+// docs/e2e-coverage.md §2.
 const CONTROL_ID = '4611686018488500001';
 const CONTROL_NAME = 'GuardControl85';
 const CONTROL_CODE = 8501;

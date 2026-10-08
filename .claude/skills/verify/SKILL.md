@@ -22,7 +22,7 @@ description: Build/launch/drive recipe for verifying changes to the Destiny Farm
 
 - Tokens expire after 15 min — re-harvest if 403s reappear.
 - Chromium is installed via Playwright. `npm run e2e` builds and serves on port 3100 against a seeded throwaway Tracker and a fixture Archive, each proved by a canary through the running server before any spec runs. `npm run e2e:nobuild` skips the build and is wrong when `.next` is stale.
-- The suite covers only the flows listed in CLAUDE.md's Verification section and `docs/handoffs/260803-playwright-e2e.md`; report browser behaviour outside them as unverified.
+- The suite covers only the flows listed in CLAUDE.md's Verification section and `docs/e2e-coverage.md`; report browser behaviour outside them as unverified.
 - New `/gos10k` specs: below `xl` the range forms sit behind "Change range", so click it first; a spec that reaches a panel loads that panel's `?tab=`.
 - Test-data writes to the dev DB are fine (data is re-crawlable) but restore what you change (`next_eligible_at`, `checked_at`, `crawl_queue` rows) so scheduling state stays realistic.
 

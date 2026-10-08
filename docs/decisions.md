@@ -660,7 +660,7 @@ copy) against making it dynamic (rejected above).
 connection-open verification). The cache change is one constant, verifiable only against a running
 server; the card's no-figures branch has no seam today and inventing one to reach a `catch` would be
 application code changed to be testable, which `CLAUDE.md` forbids without questioning first.
-`docs/handoffs/260803-playwright-e2e.md` continues to list the OG route as uncovered.
+`docs/e2e-coverage.md` continues to list the OG route as uncovered.
 
 ---
 

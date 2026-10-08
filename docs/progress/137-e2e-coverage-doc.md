@@ -41,9 +41,11 @@ session on 2026-10-08:
 
    No build or e2e run: only comments and docs changed.
 4. **Follow-up issue** — drafted below, filed with `needs-triage` once the user approves
-   - [ ] filed; number added to the note in `docs/e2e-coverage.md`
+   - [x] filed as #151; number added to the note in `docs/e2e-coverage.md`
 
 ## Follow-up issue draft
+
+Filed as #151 on 2026-10-08, with the text below unchanged.
 
 **Title:** Rewrite `docs/e2e-coverage.md` into a coverage list, and point CLAUDE.md at it
 

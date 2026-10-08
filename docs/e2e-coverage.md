@@ -1,7 +1,7 @@
 > Moved from `docs/handoffs/260803-playwright-e2e.md` on 2026-10-08 (#137), which is gitignored.
 > This file is a dated journal, oldest entry first: the first section is the 2026-08-03 handoff,
 > and each later entry records what one ticket covered and what it didn't. References to
-> `.claude/plans/` point at a local-only file.
+> `.claude/plans/` point at a local-only file. Rewriting it into a coverage list is tracked in #151.
 
 # Playwright e2e — what landed, what didn't
 

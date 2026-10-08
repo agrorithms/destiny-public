@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     # playwright.config.ts gives `next start` 60s to boot, but a run that hangs
     # after boot has no ceiling of its own. See §3 item 7 of
-    # docs/handoffs/260803-playwright-e2e.md — an orphaned server on port 3100
+    # docs/e2e-coverage.md — an orphaned server on port 3100
     # is a known unguarded failure mode locally too.
     timeout-minutes: 15
 

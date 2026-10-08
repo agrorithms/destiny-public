@@ -22,6 +22,9 @@ Briefing corrections found while reading:
   on every surface, not only the strip.
 - The unfiltered main chart is monthly keys too, so it needs server-computed slots as the strip does.
 
+> **2026-10-08 (#137):** `docs/handoffs/260803-playwright-e2e.md` has moved to the tracked
+> `docs/e2e-coverage.md`. References to the old path below are left as written.
+
 ## Chunks
 
 1. Drag geometry

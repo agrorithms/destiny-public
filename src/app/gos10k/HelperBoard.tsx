@@ -85,7 +85,7 @@ export function HelperBoard({
 
                     {/* Its own testid rather than a role locator: three panels on this
                         page render a `<table>`, so getByRole would bind to whichever one
-                        rendered first (see docs/handoffs/260803-playwright-e2e.md). */}
+                        rendered first (see docs/e2e-coverage.md). */}
                     <table data-testid="archive-helper-board" className="w-full text-sm">
                         <thead>
                             <tr className="ui-text-secondary text-left text-xs">

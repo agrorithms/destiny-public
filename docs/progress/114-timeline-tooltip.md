@@ -17,6 +17,9 @@ Decisions confirmed with the user:
   first clear shows the absolute position (`Clear 102 · 1 Feb 2022`).
 - Main chart only; the overview strip stays pointer-inert.
 
+> **2026-10-08 (#137):** `docs/handoffs/260803-playwright-e2e.md` has moved to the tracked
+> `docs/e2e-coverage.md`. References to the old path below are left as written.
+
 ## Chunks
 
 1. Tooltip copy

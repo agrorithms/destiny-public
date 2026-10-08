@@ -56,7 +56,7 @@ export function MedianSpeedBoard({
             ) : (
                 // Its own testid rather than a role locator: `getByRole('table')` binds to
                 // whatever is in a `<table>`, so the Helper board above would capture an
-                // assertion meant for this one (see docs/handoffs/260803-playwright-e2e.md).
+                // assertion meant for this one (see docs/e2e-coverage.md).
                 <table data-testid="archive-median-speed" className="w-full text-sm">
                     <thead>
                         <tr className="ui-text-secondary text-left text-xs">

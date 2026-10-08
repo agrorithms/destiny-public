@@ -8,7 +8,7 @@ import { CooldownGate, FixedWindowLimiter } from './rate-limit';
  * file runs on fake timers rather than sleeping.
  *
  * The e2e suite deliberately avoids tripping these by giving each spec file its
- * own fixture player — see docs/handoffs/260803-playwright-e2e.md. That makes
+ * own fixture player — see docs/e2e-coverage.md. That makes
  * these tests the only thing pinning the behaviour.
  */
 

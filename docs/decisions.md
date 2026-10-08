@@ -660,7 +660,7 @@ copy) against making it dynamic (rejected above).
 connection-open verification). The cache change is one constant, verifiable only against a running
 server; the card's no-figures branch has no seam today and inventing one to reach a `catch` would be
 application code changed to be testable, which `CLAUDE.md` forbids without questioning first.
-`docs/handoffs/260803-playwright-e2e.md` continues to list the OG route as uncovered.
+`docs/e2e-coverage.md` continues to list the OG route as uncovered.
 
 ---
 
@@ -692,3 +692,19 @@ verify-on-open runs on the file the app actually opened.
 
 **Nothing about this is automated and nothing should read it as automated.** The next master change
 still needs `npm run build-gos10k`, both `scp`s and a `pm2 restart web`, by hand, in that order.
+
+---
+
+## 2026-10-08 — Fastest Clears: a tied Clear Time does not flash
+
+Recorded from #141's "minor behaviour note"; agreed, not a cleanup.
+
+On the Fastest Clears tab, live movement compares the board's value, the Clear Time. If a player
+sets a new run with **exactly the same Clear Time** as their current best, nothing flashes: the rank
+and value are unchanged, so there is no arrow, no NEW badge and no highlight. The row's raid.report
+link and date tooltip do change, because they follow the run that now holds the best time, and they
+change silently.
+
+This is intended. The board ranks Clear Time, and a tie says nothing new about it. Don't "fix" it by
+flashing on a changed `instanceId`; that would make the tab's movement mean something different
+from the Full Clears tab's.

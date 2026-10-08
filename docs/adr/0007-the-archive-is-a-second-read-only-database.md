@@ -125,4 +125,4 @@ this codebase called "full clear"; all four are named apart on purpose.
   and wraps on its own. Those specs are regression guards, not reproductions.
 
   The per-flow inventory is deliberately not here: it lives in `CLAUDE.md`'s browser-suite list and,
-  per ticket, in `docs/handoffs/260803-playwright-e2e.md`.
+  per ticket, in `docs/e2e-coverage.md`.

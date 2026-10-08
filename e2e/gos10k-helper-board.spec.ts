@@ -104,7 +104,7 @@ test.describe('the Helper board', () => {
 
             // By testid rather than by role: `getByRole('table')` binds to whatever is in
             // a `<table>`, and three panels on this page render one
-            // (docs/handoffs/260803-playwright-e2e.md).
+            // (docs/e2e-coverage.md).
             const board = page.getByTestId('archive-helper-board');
             await expect(board).toBeVisible();
 

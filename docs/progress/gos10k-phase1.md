@@ -13,6 +13,9 @@ checkbox file and one WIP commit per logical chunk. **The chunk boundary is the 
   analytics are computed at Archive build time). Nothing below contradicts either; #84 is
   ADR 0008's first implementation.
 
+> **2026-10-08 (#137):** `docs/handoffs/260803-playwright-e2e.md` has moved to the tracked
+> `docs/e2e-coverage.md`. References to the old path below are left as written.
+
 ## Order
 
 ```

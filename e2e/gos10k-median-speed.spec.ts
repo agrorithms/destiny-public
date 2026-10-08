@@ -47,7 +47,7 @@ test.describe('the median speed board', () => {
 
             // By testid rather than by role: `getByRole('table')` binds to whatever is in
             // a `<table>`, and the Helper board above this one would capture the
-            // assertion silently (docs/handoffs/260803-playwright-e2e.md).
+            // assertion silently (docs/e2e-coverage.md).
             const board = page.getByTestId('archive-median-speed');
             await expect(board).toBeVisible();
 

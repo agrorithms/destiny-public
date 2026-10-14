@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1643,3 +1643,40 @@ cell's link, because the cell also holds the tooltip text.
 - Touch: tapping the time opens raid.report. No tap tooltip exists, and none was asked for.
 - Whether raid.report's page itself loads. The test checks only the `href`; the format comes from
   raid.report's route table (`/pgcr/:activityId`).
+
+## 2026-10-14 — #156 the active-sessions raid sections' fixed order
+
+`e2e/active-sessions-order.spec.ts`, **new**, three specs. The suite is now **twenty-one flows, 98
+tests including the two canary setups**.
+
+Raid sections on `/active-sessions` are grouped by `raidKey` and sit in the page's `AVAILABLE_RAIDS`
+order (the raid filter's), with any key the list doesn't know last. They used to be grouped by display
+name and sorted busiest-first.
+
+**Seed world:** `seedFireteams` takes any `FixtureRaid`, not only `RAID_A`/`RAID_B`. Four new raids,
+under fixture namespace **86** with one sub-prefix each (`861`–`864`) so their rosters can't share a
+membership id:
+- `ORDER_EARLIER_RAID` (Vault of Glass, 1 fireteam) and `ORDER_LATER_RAID` (Deep Stone Crypt, 3).
+  No other spec seeds them, so the counts hold whatever other files leave live on `RAID_A`/`RAID_B`.
+- `UNLISTED_RAID` (key `e2e_unlisted_raid`, 4 fireteams) and `UNLISTED_NAMESAKE_RAID`
+  (`e2e_unlisted_namesake_raid`, 1). Their hashes (1 and 2) are in no raid definition, so the API
+  names both after activity mode 4 and both headings read **"Raid"**.
+
+1. **Sections follow the raid list, not fireteam counts.** Deep Stone Crypt has more fireteams than
+   Vault of Glass and still renders below it.
+2. **An unlisted raid key renders after every listed raid**, though it is the busiest seeded raid.
+3. **Two raid keys with one display name stay two sections**: two "Raid" headings, not one.
+
+The assertions compare positions among `h2`s, the page's only section headings, so they don't depend
+on which sections other spec files have left live.
+
+**Verified red first:** with the pre-#156 `page.tsx` all three fail. The page rendered
+`Raid, Deep Stone Crypt, Vault of Glass` (busiest first) and merged the two "Raid" sections into one.
+
+### What is still NOT covered
+
+- Order stability *across a refresh* as counts change. The specs check one render; the order no longer
+  depends on counts, so a second render can't differ, but no spec changes counts between polls.
+- A `null` `raidKey` (a raid-mode activity whose hash no raid definition knows). The page groups it
+  under `''`, which sorts with the unknown keys. Seeded keys are always strings.
+- Tile view loses its e2e coverage under #157, when list view becomes the default (tracked on #153).

@@ -22,12 +22,20 @@ Branch `feat/156-sessions-fixed-order`.
    - [x] `e2e/active-sessions-order.spec.ts` (new) — fixed order beats fireteam count; unlisted key last; namesakes stay apart
    - [x] `src/app/active-sessions/page.tsx` — group by `raidKey`, order by `AVAILABLE_RAIDS`
 2. Bookkeeping
-   - [ ] `CLAUDE.md` — e2e flow list
-   - [ ] `docs/e2e-coverage.md` — flow list, fixture prefix `86`, journal entry
-   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [x] `CLAUDE.md` — e2e flow list
+   - [x] `docs/e2e-coverage.md` — flow list, fixture prefix `86`, journal entry
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
 
 ## #157 — list view default, List | Tiles toggle, Fireteam Leader rows
 
 Not started.
 
 ## Notes
+
+- #156: sections group by `raidKey` and sort by their index in `AVAILABLE_RAIDS`
+  (`RAID_SECTION_ORDER` / `raidSectionRank` in `page.tsx`); unknown keys share one rank and fall back
+  to key order, so they don't move between polls either. The heading still comes from the API's
+  `raidName` (unchanged text), taken from the section's first session. A `null` key from the API
+  groups under `''`.
+- #156 verified: lint 0 errors (29 pre-existing warnings, all in `gos10k/`), build, tsc, `npm test`
+  539/539, `npm run e2e` 98/98.

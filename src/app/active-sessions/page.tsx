@@ -53,6 +53,14 @@ const AVAILABLE_RAIDS: RaidOption[] = [
     { key: 'last_wish', name: 'Last Wish' },
 ];
 
+// Each raid's place in the section order: the order of the list above, which is also the raid
+// filter's. A raid key the list doesn't know sorts after all of them.
+const RAID_SECTION_ORDER = new Map(AVAILABLE_RAIDS.map((raid, index) => [raid.key, index]));
+
+function raidSectionRank(raidKey: string): number {
+    return RAID_SECTION_ORDER.get(raidKey) ?? AVAILABLE_RAIDS.length;
+}
+
 export default function ActiveSessionsPage() {
     const [sessions, setSessions] = useState<ActiveSession[]>([]);
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
@@ -101,19 +109,22 @@ export default function ActiveSessionsPage() {
         ? sessions
         : sessions.filter((s) => selectedRaids.includes(s.raidKey));
 
-    // Group filtered sessions by raid name
+    // Group filtered sessions by raid key, never by display name: two raids sharing a name
+    // would merge into one section. The API sends a null key for a raid-mode activity no raid
+    // definition knows, so those group under '' rather than under a null React key.
     const sessionsByRaid = new Map<string, ActiveSession[]>();
     for (const session of filteredSessions) {
-        const raidName = session.raidName || 'Unknown Raid';
-        if (!sessionsByRaid.has(raidName)) {
-            sessionsByRaid.set(raidName, []);
+        const raidKey = session.raidKey ?? '';
+        if (!sessionsByRaid.has(raidKey)) {
+            sessionsByRaid.set(raidKey, []);
         }
-        sessionsByRaid.get(raidName)!.push(session);
+        sessionsByRaid.get(raidKey)!.push(session);
     }
 
-    // Sort raid groups by session count (most active first)
+    // Fixed order, not busiest first, so sections don't swap places as their fireteam counts
+    // change between refreshes. Unknown keys tie on rank, so they fall back to key order.
     const sortedRaidGroups = [...sessionsByRaid.entries()].sort(
-        (a, b) => b[1].length - a[1].length
+        ([a], [b]) => raidSectionRank(a) - raidSectionRank(b) || a.localeCompare(b)
     );
 
     return (
@@ -188,10 +199,12 @@ export default function ActiveSessionsPage() {
             )}
 
             {/* Session Groups */}
-            {sortedRaidGroups.map(([raidName, raidSessions]) => (
-                <div key={raidName} className="mb-8">
+            {sortedRaidGroups.map(([raidKey, raidSessions]) => (
+                <div key={raidKey} className="mb-8">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-xl font-bold ui-text-primary">{raidName}</h2>
+                        <h2 className="text-xl font-bold ui-text-primary">
+                            {raidSessions[0].raidName || 'Unknown Raid'}
+                        </h2>
                         <span className="text-sm ui-text-muted">
                             {raidSessions.length} {raidSessions.length === 1 ? 'session' : 'sessions'}
                         </span>

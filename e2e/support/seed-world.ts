@@ -29,6 +29,52 @@ export const RAID_B = {
     name: "Crota's End",
 } as const;
 
+/** A raid as `seedFireteams` needs it: the stored key, an activity hash, and the heading the page renders. */
+export interface FixtureRaid {
+    key: string;
+    hash: number;
+    name: string;
+}
+
+/**
+ * Two raids no other spec seeds, adjacent in the page's raid list, for the section-order
+ * spec. Using raids of their own means the spec's counts cannot be perturbed by the
+ * fireteams other specs leave live on RAID_A and RAID_B.
+ */
+export const ORDER_EARLIER_RAID = {
+    key: 'vault_of_glass',
+    hash: 3881495763,
+    name: 'Vault of Glass',
+} as const;
+
+export const ORDER_LATER_RAID = {
+    key: 'deep_stone_crypt',
+    hash: 910380154,
+    name: 'Deep Stone Crypt',
+} as const;
+
+/**
+ * A raid key the page's raid list does not know: what the page sees if a raid is added to
+ * `RAID_DEFINITIONS` but not to the page. The hash is in no raid definition either, so the
+ * API names it after the activity mode (4, "Raid"), which is the heading the page renders.
+ */
+export const UNLISTED_RAID: FixtureRaid = {
+    key: 'e2e_unlisted_raid',
+    hash: 1,
+    name: 'Raid',
+};
+
+/**
+ * A second unlisted raid with the same rendered name as UNLISTED_RAID, so two raid keys
+ * share one display name: the case that would merge two raids into one section if the page
+ * grouped by name.
+ */
+export const UNLISTED_NAMESAKE_RAID: FixtureRaid = {
+    key: 'e2e_unlisted_namesake_raid',
+    hash: 2,
+    name: 'Raid',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;
@@ -191,7 +237,7 @@ export interface SeedFireteamsOptions {
     size?: number;
     /** Namespace for membership ids and display names, so specs cannot collide. */
     prefix: string;
-    raid?: typeof RAID_A | typeof RAID_B;
+    raid?: FixtureRaid;
 }
 
 /** The rendered `Name#Code` of one seeded roster member. */

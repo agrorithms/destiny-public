@@ -29,7 +29,11 @@ export const RAID_B = {
     name: "Crota's End",
 } as const;
 
-/** A raid as `seedFireteams` needs it: the stored key, an activity hash, and the heading the page renders. */
+/**
+ * A raid as the session seeders need it: the stored key, an activity hash, and the heading
+ * the page renders. RAID_A and RAID_B keep `as const` rather than this type, because
+ * FASTEST_CLEARS is keyed by their literal keys; they still fit it.
+ */
 export interface FixtureRaid {
     key: string;
     hash: number;
@@ -189,7 +193,7 @@ export interface SeedPlayerSessionOptions {
     membershipId: string;
     name: string;
     code: number;
-    raid?: typeof RAID_A | typeof RAID_B;
+    raid?: FixtureRaid;
     /**
      * Extra roster members, beyond the player themselves. Deliberately takes raw
      * membership ids and nothing else: this mirrors what Bungie's transitory

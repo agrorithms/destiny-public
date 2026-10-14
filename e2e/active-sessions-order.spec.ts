@@ -55,13 +55,20 @@ test.describe('active sessions section order', () => {
     });
 
     // A raid key the page's list does not know has no place in the fixed order, so it
-    // goes after every raid that does, however many fireteams it has.
+    // goes after every raid that does, however many fireteams it has. Both unlisted raids
+    // are headed "Raid", so checking only the last heading would miss one of them sorting
+    // above a listed raid: the first "Raid" heading must come after every other heading.
     test('renders a raid missing from the raid list after every listed raid', async ({ page }) => {
         await page.goto('/active-sessions');
 
         const headings = await sectionHeadings(page);
+        const firstUnlisted = headings.indexOf(UNLISTED_RAID.name);
+        const listedHeadings = headings.filter((heading) => heading !== UNLISTED_RAID.name);
 
-        expect(headings.at(-1)).toBe(UNLISTED_RAID.name);
+        expect(firstUnlisted).toBeGreaterThanOrEqual(0);
+        for (const listed of listedHeadings) {
+            expect(headings.indexOf(listed)).toBeLessThan(firstUnlisted);
+        }
     });
 
     // Sections are grouped by raid key. Grouped by display name, these two raids would

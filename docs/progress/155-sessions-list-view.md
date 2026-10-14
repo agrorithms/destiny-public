@@ -43,3 +43,10 @@ Not started.
   the group-by loop does one `Map.get` instead of `has`/`set`/`get!`, spec docblock says four
   rosters. No behaviour change. Re-verified: lint 0 errors (29 warnings, `gos10k/`), build,
   `npm test` 539/539, `npm run e2e` 98/98.
+- #156 review pass (separate commit, review findings S2 and S3): the unlisted-raid-last spec now
+  checks that the *first* "Raid" heading comes after every other heading, since both unlisted
+  raids share that name and `at(-1)` alone missed one of them sorting high. Proved red by
+  temporarily ranking only `e2e_unlisted_namesake_raid` first: the old assertion passed, the new
+  one failed. `seedPlayerWithSession`'s `raid` option takes `FixtureRaid`; RAID_A/RAID_B keep
+  `as const` for FASTEST_CLEARS's literal keys. No app code changed. Re-verified: lint 0 errors
+  (29 warnings, `gos10k/`), build, tsc, `npm test` 539/539, `npm run e2e` 98/98.

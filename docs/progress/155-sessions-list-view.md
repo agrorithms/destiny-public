@@ -39,3 +39,7 @@ Not started.
   groups under `''`.
 - #156 verified: lint 0 errors (29 pre-existing warnings, all in `gos10k/`), build, tsc, `npm test`
   539/539, `npm run e2e` 98/98.
+- #156 simplify pass (separate commit): `ORDER_*_RAID` typed `FixtureRaid` like the unlisted ones,
+  the group-by loop does one `Map.get` instead of `has`/`set`/`get!`, spec docblock says four
+  rosters. No behaviour change. Re-verified: lint 0 errors (29 warnings, `gos10k/`), build,
+  `npm test` 539/539, `npm run e2e` 98/98.

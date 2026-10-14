@@ -115,10 +115,12 @@ export default function ActiveSessionsPage() {
     const sessionsByRaid = new Map<string, ActiveSession[]>();
     for (const session of filteredSessions) {
         const raidKey = session.raidKey ?? '';
-        if (!sessionsByRaid.has(raidKey)) {
-            sessionsByRaid.set(raidKey, []);
+        const group = sessionsByRaid.get(raidKey);
+        if (group) {
+            group.push(session);
+        } else {
+            sessionsByRaid.set(raidKey, [session]);
         }
-        sessionsByRaid.get(raidKey)!.push(session);
     }
 
     // Fixed order, not busiest first, so sections don't swap places as their fireteam counts

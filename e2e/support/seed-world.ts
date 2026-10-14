@@ -41,17 +41,17 @@ export interface FixtureRaid {
  * spec. Using raids of their own means the spec's counts cannot be perturbed by the
  * fireteams other specs leave live on RAID_A and RAID_B.
  */
-export const ORDER_EARLIER_RAID = {
+export const ORDER_EARLIER_RAID: FixtureRaid = {
     key: 'vault_of_glass',
     hash: 3881495763,
     name: 'Vault of Glass',
-} as const;
+};
 
-export const ORDER_LATER_RAID = {
+export const ORDER_LATER_RAID: FixtureRaid = {
     key: 'deep_stone_crypt',
     hash: 910380154,
     name: 'Deep Stone Crypt',
-} as const;
+};
 
 /**
  * A raid key the page's raid list does not know: what the page sees if a raid is added to

@@ -19,7 +19,7 @@ import {
  * the fixed order has more fireteams than the earlier one, and the unlisted raid has
  * more than both. A second unlisted raid shares the first one's display name.
  *
- * Fixture namespace `86`, one sub-prefix per raid so the three rosters cannot share a
+ * Fixture namespace `86`, one sub-prefix per raid so the four rosters cannot share a
  * membership id. The two listed raids are ones no other spec seeds, so the counts here
  * hold whatever other spec files have left live on the page.
  */

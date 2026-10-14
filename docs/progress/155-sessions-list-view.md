@@ -45,9 +45,9 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
    - [x] `src/components/ActiveSessionCard.tsx` — export `getElapsedTime` (tile rendering unchanged)
    - [x] `src/app/active-sessions/page.tsx` — toggle, list by default, sections as labelled regions
 4. Bookkeeping
-   - [ ] `docs/e2e-coverage.md` — flow list, prefix `87`, tile view's lost coverage (#153), journal entry
+   - [x] `docs/e2e-coverage.md` — flow list, prefix `87`, tile view's lost coverage (#153), journal entry
    - [ ] `CLAUDE.md` — e2e flow list (see notes: proposed text, not edited from a peer request)
-   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
 
 ## Notes
 
@@ -69,3 +69,17 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
   one failed. `seedPlayerWithSession`'s `raid` option takes `FixtureRaid`; RAID_A/RAID_B keep
   `as const` for FASTEST_CLEARS's literal keys. No app code changed. Re-verified: lint 0 errors
   (29 warnings, `gos10k/`), build, tsc, `npm test` 539/539, `npm run e2e` 98/98.
+- #157: `roster.ts` is the browser-safe Roster-rules module (`findFireteamLeader`, `fireteamTitle`);
+  it imports nothing. Raw-ID test mirrors the route's `isLikelyMembershipId` (16+ digits), plus an
+  empty name or one equal to the member's own ID. #158 adds the member-set helpers to it.
+- #157: the view preference is `useSessionsView` (key `destiny-farm-finder-sessions-view`), a
+  `useSyncExternalStore` with List as the server snapshot. The `useState`-initializer pattern the
+  other prefs hooks use was tried and left "Tile view" at the prerendered `aria-pressed="false"`
+  after a reload. The leaderboard's View toggle likely has the same latent highlight bug; not touched.
+- #157: raid sections are `<section aria-labelledby>` regions named by their h2 (text unchanged).
+  Row keys are still `${membershipId}-${index}`; stable identity is #158's.
+- #157: `CLAUDE.md`'s e2e flow list is **not** edited: the request came from a peer session, and
+  this session doesn't edit CLAUDE.md on a peer's request. The proposed text is in the handoff
+  message to the orchestrator, for the user to apply.
+- #157 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
+  `npm test` 547/547, `npm run e2e` 105/105.

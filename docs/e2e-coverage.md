@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1680,3 +1680,61 @@ on which sections other spec files have left live.
 - A `null` `raidKey` (a raid-mode activity whose hash no raid definition knows). The page groups it
   under `''`, which sorts with the unknown keys. Seeded keys are always strings.
 - Tile view loses its e2e coverage under #157, when list view becomes the default (tracked on #153).
+
+## 2026-10-14 — #157 list view by default, the List | Tiles toggle, Fireteam Leader rows
+
+`e2e/active-sessions-list.spec.ts`, **new**, seven specs; `active-sessions-cap.spec.ts` and
+`player-names.spec.ts` changed. The suite is now **twenty-two flows, 105 tests including the two
+canary setups**.
+
+`/active-sessions` opens in list view: one row per fireteam, "`<Fireteam Leader Name#Code>`'s
+fireteam", with `N/6` and the elapsed time. A List | Tiles toggle switches views, and the choice is
+kept in localStorage. Each raid section is now a `<section>` labelled by its `h2`, so specs find a
+section's rows with `getByRole('region', { name })`; the `h2` text is unchanged, so the #156 order
+spec's `sectionHeadings()` didn't need to change.
+
+**Seed world:** `seedFireteams` takes `leaderSeat`, which seeds that member with status 9
+(FireteamMember 1 + PartyLeader 8). Without it every member is status 1 and the fireteam has no
+leader. `LIST_RAID` (Garden of Salvation) is a raid only this spec seeds. Fixture namespace **87**:
+`871` for two six-player fireteams with the leader in seat 2, `872` for one solo player with no
+leader, who started most recently.
+
+1. **List view on a first visit**: three rows in the section, no tile headings, "List view" pressed.
+2. **The toggle's halves** carry the tooltips "List view" / "Tile view", an `aria-label` and `aria-pressed`.
+3. **Tile view survives a reload**, `aria-pressed` included, and List switches back.
+4. **A row is titled after its Fireteam Leader** (seat 2, so not the first member or the tracked
+   player by accident), links to their player page, and shows `6/6` and `1h Nm`.
+5. **No flagged leader → the tracked player** (the solo row), with `1/6` and `3Nm`.
+6. **Rows keep the API's order**: both six-player fireteams, newest first, then the solo player,
+   who started last.
+7. **At 360px**, the toggle and a row sit inside the viewport and the page doesn't scroll sideways.
+
+**Changed:**
+- `active-sessions-cap.spec.ts` proves ADR 0001 by counting **list rows**: 8 fireteams of 6 render 8
+  rows, not 48. It counts only rows inside the Salvation's Edge region whose title is one of its own
+  `81` players. The client-write specs leave sessions live on the same raid, so a section-wide count
+  would depend on file order or a retry.
+- `player-names.spec.ts` seeds its fireteam's leader in seat 3 and checks that leader's full
+  `Name#Code` in the row title (a link). Before #157 it checked seat 0's name on a tile.
+
+Which member leads, the tracked-player fallback and "Unknown player" for a raw membership ID are
+Roster rules in `src/lib/active-session/roster.ts`, covered by Vitest
+(`roster.test.ts`), not here.
+
+**Verified red first:** against the tile-only page (commit `958bfcd`), 9 of the 22 active-session
+tests failed: all seven list specs, the cap spec's row count and the player-names row title. The
+toggle's hook was also checked against the `useState`-initializer pattern the leaderboard's prefs
+use. With it, after a reload in tile view, "Tile view" kept the prerendered `aria-pressed="false"`,
+and spec 3 failed.
+
+### What is still NOT covered
+
+- **Tile view lost its per-fireteam e2e coverage.** The cap spec's "one per fireteam" count and the
+  player-names roster check now run in list view only. Spec 3 shows tiles render, three per section,
+  and nothing more. Restoring tile coverage is tracked on **#153**.
+- "Unknown player" with the ID in a tooltip, in a browser: it is covered by Vitest only. Seeded
+  names always resolve.
+- The toggle with localStorage unavailable (private modes): the view still switches for the visit,
+  but nothing checks it.
+- Rows on refresh: the 30-second poll and Refresh re-render the rows, but no spec changes data
+  between polls. Open rows across refreshes are #158.

@@ -65,6 +65,11 @@ function raidSectionRank(raidKey: string): number {
     return RAID_SECTION_ORDER.get(raidKey) ?? AVAILABLE_RAIDS.length;
 }
 
+// One key for a row and a tile alike, so the two views can't drift apart.
+function fireteamKey(session: ActiveSession, index: number): string {
+    return `${session.membershipId}-${index}`;
+}
+
 export default function ActiveSessionsPage() {
     const [sessions, setSessions] = useState<ActiveSession[]>([]);
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
@@ -228,19 +233,13 @@ export default function ActiveSessionsPage() {
                     {view === 'list' ? (
                         <ul className="ui-card divide-y ui-divider">
                             {raidSessions.map((session, index) => (
-                                <FireteamRow
-                                    key={`${session.membershipId}-${index}`}
-                                    session={session}
-                                />
+                                <FireteamRow key={fireteamKey(session, index)} session={session} />
                             ))}
                         </ul>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                             {raidSessions.map((session, index) => (
-                                <ActiveSessionCard
-                                    key={`${session.membershipId}-${index}`}
-                                    session={session}
-                                />
+                                <ActiveSessionCard key={fireteamKey(session, index)} session={session} />
                             ))}
                         </div>
                     )}

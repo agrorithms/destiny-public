@@ -1,16 +1,12 @@
 'use client';
 
 import { getElapsedTime } from '@/components/ActiveSessionCard';
-import { fireteamTitle, type RosterMember } from '@/lib/active-session/roster';
+import { fireteamTitle, type RosterSession } from '@/lib/active-session/roster';
 
 interface FireteamRowProps {
-    session: {
-        membershipId: string;
-        membershipType?: number;
-        displayName: string;
+    session: RosterSession & {
         startedAt: string;
         playerCount: number;
-        partyMembers: RosterMember[];
     };
 }
 
@@ -20,9 +16,6 @@ export default function FireteamRow({ session }: FireteamRowProps) {
     const href = typeof title.membershipType === 'number'
         ? `/player/${title.membershipType}/${title.membershipId}`
         : null;
-    // The full Name#Code as a tooltip too, for when a phone truncates it. "Unknown player"
-    // shows the membership ID instead, the only identity there is.
-    const tooltip = title.unknown ? title.membershipId : title.name;
 
     return (
         <li className="flex items-center gap-3 px-4 py-2.5 min-w-0 text-sm">
@@ -30,13 +23,13 @@ export default function FireteamRow({ session }: FireteamRowProps) {
                 {href ? (
                     <a
                         href={href}
-                        title={tooltip}
+                        title={title.tooltip}
                         className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
                         {title.name}
                     </a>
                 ) : (
-                    <span title={tooltip} className="font-semibold">{title.name}</span>
+                    <span title={title.tooltip} className="font-semibold">{title.name}</span>
                 )}
                 &apos;s fireteam
             </span>

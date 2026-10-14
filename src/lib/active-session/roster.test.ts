@@ -22,8 +22,11 @@ describe('findFireteamLeader', () => {
     });
 
     it('treats 9 and 15 as leaders and 3 and 7 as not', () => {
-        expect(findFireteamLeader([member(0, 3), member(1, 9)])?.membershipId).toBe(member(1, 9).membershipId);
-        expect(findFireteamLeader([member(0, 7), member(1, 15)])?.membershipId).toBe(member(1, 15).membershipId);
+        const nine = [member(0, 3), member(1, 9)];
+        const fifteen = [member(0, 7), member(1, 15)];
+
+        expect(findFireteamLeader(nine)).toBe(nine[1]);
+        expect(findFireteamLeader(fifteen)).toBe(fifteen[1]);
     });
 
     // Why the check is bitwise and never `status >= 8`: the two agree today only because the
@@ -55,7 +58,7 @@ describe('fireteamTitle', () => {
 
         expect(fireteamTitle(session([member(0, 3), leader]))).toEqual({
             name: 'Nesspo#9821',
-            unknown: false,
+            tooltip: 'Nesspo#9821',
             membershipId: leader.membershipId,
             membershipType: 3,
         });
@@ -68,7 +71,7 @@ describe('fireteamTitle', () => {
 
         expect(fireteamTitle(session([tracked], tracked))).toEqual({
             name: 'Tracked#5555',
-            unknown: false,
+            tooltip: 'Tracked#5555',
             membershipId: tracked.membershipId,
             membershipType: 3,
         });
@@ -82,7 +85,7 @@ describe('fireteamTitle', () => {
 
         expect(fireteamTitle(session([member(0, 3), unnamed]))).toEqual({
             name: 'Unknown player',
-            unknown: true,
+            tooltip: '4611686018400000009',
             membershipId: '4611686018400000009',
             membershipType: 3,
         });

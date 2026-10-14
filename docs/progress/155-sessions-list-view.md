@@ -83,3 +83,12 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
   message to the orchestrator, for the user to apply.
 - #157 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 547/547, `npm run e2e` 105/105.
+- #157 simplify pass (separate commit): `fireteamTitle` returns the row's `tooltip` (name, or the
+  ID for "Unknown player") in place of an `unknown` flag, so that rule lives in `roster.ts`; the
+  session shape is one exported `RosterSession` that `FireteamRow` extends; `useSessionsView`'s
+  setter is a module-level `writeView` instead of a `useCallback`; one `fireteamKey` for rows and
+  tiles. No behaviour change, `ActiveSessionCard` untouched. Deferred, both outside the diff:
+  moving `getElapsedTime` out of `ActiveSessionCard` into a lib module (#153 owns that file), and
+  making the route's and `format.ts`'s `isLikelyMembershipId` import one regex from `roster.ts`.
+  Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
+  `npm test` 547/547, `npm run e2e` 105/105.

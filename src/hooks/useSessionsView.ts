@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 
 export type SessionsView = 'list' | 'tiles';
 
@@ -24,6 +24,17 @@ function readView(): SessionsView {
     return unstoredView ?? DEFAULT_VIEW;
 }
 
+// Module-level, so its identity is stable without a useCallback.
+function writeView(next: SessionsView): void {
+    unstoredView = next;
+    try {
+        localStorage.setItem(SESSIONS_VIEW_KEY, next);
+    } catch {
+        // Ignore
+    }
+    listeners.forEach((listener) => listener());
+}
+
 function subscribe(listener: () => void): () => void {
     listeners.add(listener);
     window.addEventListener('storage', listener);
@@ -44,16 +55,5 @@ function subscribe(listener: () => void): () => void {
  */
 export function useSessionsView(): [SessionsView, (view: SessionsView) => void] {
     const view = useSyncExternalStore(subscribe, readView, () => DEFAULT_VIEW);
-
-    const setView = useCallback((next: SessionsView) => {
-        unstoredView = next;
-        try {
-            localStorage.setItem(SESSIONS_VIEW_KEY, next);
-        } catch {
-            // Ignore
-        }
-        listeners.forEach((listener) => listener());
-    }, []);
-
-    return [view, setView];
+    return [view, writeView];
 }

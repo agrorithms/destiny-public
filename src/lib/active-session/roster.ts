@@ -24,12 +24,23 @@ export function findFireteamLeader<T extends RosterMember>(roster: T[]): T | nul
     return roster.find((member) => ((member.status ?? 0) & PARTY_LEADER) !== 0) ?? null;
 }
 
+/** A session as the /api/active-sessions response carries it: the tracked player whose row survived dedupe, plus the Roster. */
+export interface RosterSession {
+    membershipId: string;
+    membershipType?: number;
+    displayName: string;
+    partyMembers: RosterMember[];
+}
+
 /** What a list-view row is called, and whose player page its name links to. */
 export interface FireteamTitle {
     /** The full display name (`Name#Code` when the server knows both parts), or "Unknown player". */
     name: string;
-    /** True when there was no name to show; `membershipId` is then the tooltip. */
-    unknown: boolean;
+    /**
+     * The full name again, for when a phone truncates it, or the membership ID when the name is
+     * "Unknown player": the only identity there is.
+     */
+    tooltip: string;
     membershipId: string;
     membershipType?: number;
 }
@@ -46,18 +57,13 @@ function isRawMembershipId(displayName: string, membershipId: string): boolean {
  * A row's title: the Fireteam Leader, or the session's tracked player when nobody in the
  * Roster is flagged (the crawler's filled-in solo row is the case seen in practice).
  */
-export function fireteamTitle(session: {
-    membershipId: string;
-    membershipType?: number;
-    displayName: string;
-    partyMembers: RosterMember[];
-}): FireteamTitle {
+export function fireteamTitle(session: RosterSession): FireteamTitle {
     const subject = findFireteamLeader(session.partyMembers) ?? session;
     const unknown = isRawMembershipId(subject.displayName, subject.membershipId);
 
     return {
         name: unknown ? 'Unknown player' : subject.displayName,
-        unknown,
+        tooltip: unknown ? subject.membershipId : subject.displayName,
         membershipId: subject.membershipId,
         membershipType: subject.membershipType,
     };

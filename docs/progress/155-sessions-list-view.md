@@ -39,11 +39,11 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
    - [x] `e2e/active-sessions-cap.spec.ts` — count list rows inside the Salvation's Edge section
    - [x] `e2e/player-names.spec.ts` — the seeded leader's `Name#Code` in the row title
 3. List view and the toggle (green)
-   - [ ] `src/hooks/useSessionsView.ts` (new) — List | Tiles preference in localStorage, List by default
-   - [ ] `src/components/SessionsViewToggle.tsx` (new) — one rounded control, two inline-SVG halves
-   - [ ] `src/components/FireteamRow.tsx` (new) — "`Name#Code`'s fireteam", player count, elapsed time
-   - [ ] `src/components/ActiveSessionCard.tsx` — export `getElapsedTime` (tile rendering unchanged)
-   - [ ] `src/app/active-sessions/page.tsx` — toggle, list by default, sections as labelled regions
+   - [x] `src/hooks/useSessionsView.ts` (new) — List | Tiles preference in localStorage, List by default
+   - [x] `src/components/SessionsViewToggle.tsx` (new) — one rounded control, two inline-SVG halves
+   - [x] `src/components/FireteamRow.tsx` (new) — "`Name#Code`'s fireteam", player count, elapsed time
+   - [x] `src/components/ActiveSessionCard.tsx` — export `getElapsedTime` (tile rendering unchanged)
+   - [x] `src/app/active-sessions/page.tsx` — toggle, list by default, sections as labelled regions
 4. Bookkeeping
    - [ ] `docs/e2e-coverage.md` — flow list, prefix `87`, tile view's lost coverage (#153), journal entry
    - [ ] `CLAUDE.md` — e2e flow list (see notes: proposed text, not edited from a peer request)

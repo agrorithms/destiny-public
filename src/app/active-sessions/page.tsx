@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
+import FireteamRow from '@/components/FireteamRow';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
+import SessionsViewToggle from '@/components/SessionsViewToggle';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
+import { useSessionsView } from '@/hooks/useSessionsView';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
 
 interface PartyMember {
@@ -15,6 +18,7 @@ interface PartyMember {
 
 interface ActiveSession {
     membershipId: string;
+    membershipType?: number;
     displayName: string;
     activityHash: number;
     raidKey: string;
@@ -64,6 +68,7 @@ function raidSectionRank(raidKey: string): number {
 export default function ActiveSessionsPage() {
     const [sessions, setSessions] = useState<ActiveSession[]>([]);
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
+    const [view, setView] = useSessionsView();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [total, setTotal] = useState(0);
@@ -168,6 +173,11 @@ export default function ActiveSessionsPage() {
                             {loading ? 'Loading...' : 'Refresh'}
                         </button>
                     </div>
+
+                    <div>
+                        <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">View</span>
+                        <SessionsViewToggle view={view} onChange={setView} />
+                    </div>
                 </div>
             </div>
 
@@ -200,11 +210,12 @@ export default function ActiveSessionsPage() {
                 </div>
             )}
 
-            {/* Session Groups */}
+            {/* Session Groups. Each is a region named by its h2, so a section's rows can be
+                found by raid name; the h2's only text stays the bare raid name. */}
             {sortedRaidGroups.map(([raidKey, raidSessions]) => (
-                <div key={raidKey} className="mb-8">
+                <section key={raidKey} aria-labelledby={`raid-section-${raidKey}`} className="mb-8">
                     <div className="flex items-center justify-between mb-3">
-                        <h2 className="text-xl font-bold ui-text-primary">
+                        <h2 id={`raid-section-${raidKey}`} className="text-xl font-bold ui-text-primary">
                             {raidSessions[0].raidName || 'Unknown Raid'}
                         </h2>
                         <span className="text-sm ui-text-muted">
@@ -212,15 +223,28 @@ export default function ActiveSessionsPage() {
                         </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {raidSessions.map((session, index) => (
-                            <ActiveSessionCard
-                                key={`${session.membershipId}-${index}`}
-                                session={session}
-                            />
-                        ))}
-                    </div>
-                </div>
+                    {/* One row or one tile per fireteam, never per player (ADR 0001). Both keep
+                        the API's order: multi-player fireteams first, then newest first. */}
+                    {view === 'list' ? (
+                        <ul className="ui-card divide-y ui-divider">
+                            {raidSessions.map((session, index) => (
+                                <FireteamRow
+                                    key={`${session.membershipId}-${index}`}
+                                    session={session}
+                                />
+                            ))}
+                        </ul>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {raidSessions.map((session, index) => (
+                                <ActiveSessionCard
+                                    key={`${session.membershipId}-${index}`}
+                                    session={session}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </section>
             ))}
         </div>
     );

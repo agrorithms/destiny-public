@@ -94,9 +94,11 @@ test.describe('active sessions list view', () => {
 
         const row = listSection(page).getByRole('listitem').filter({ hasText: leaderOf(0) });
         await expect(row).toContainText(`${leaderOf(0)}'s fireteam`);
-        await expect(row).toContainText('6/6');
+        // Read cell by cell through their tooltips: the row's text runs the cells
+        // together ("6/61h 0m"), which no word-boundary pattern can split.
+        await expect(row.getByTitle('6 of 6 players')).toHaveText('6/6');
         // Fireteam 0 started an hour before the seed ran.
-        await expect(row).toContainText(/\b1h \d+m\b/);
+        await expect(row.getByTitle('Time elapsed')).toHaveText(/^1h \d+m$/);
         await expect(row.getByRole('link', { name: leaderOf(0), exact: true }))
             .toHaveAttribute('href', /^\/player\/3\/\d+$/);
     });
@@ -108,9 +110,9 @@ test.describe('active sessions list view', () => {
 
         const row = listSection(page).getByRole('listitem').filter({ hasText: SOLO.name });
         await expect(row).toContainText(`${SOLO.name}#${SOLO.code}'s fireteam`);
-        await expect(row).toContainText('1/6');
+        await expect(row.getByTitle('1 of 6 players')).toHaveText('1/6');
         // Seeded as started half an hour ago.
-        await expect(row).toContainText(/\b3\dm\b/);
+        await expect(row.getByTitle('Time elapsed')).toHaveText(/^3\dm$/);
     });
 
     // Rows keep the API's order (compareSessionsForDisplay): multi-player fireteams first,

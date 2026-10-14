@@ -42,7 +42,7 @@ function compactPartyMembers(members: PartyMember[]): PartyMember[] {
         .map(({ member }) => member);
 }
 
-function getElapsedTime(startedAt: string): string {
+export function getElapsedTime(startedAt: string): string {
     const start = new Date(startedAt).getTime();
     const now = Date.now();
     const diffMs = now - start;

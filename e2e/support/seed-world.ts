@@ -79,6 +79,16 @@ export const UNLISTED_NAMESAKE_RAID: FixtureRaid = {
     name: 'Raid',
 };
 
+/**
+ * A raid only the list-view spec seeds, so its row count and row order cannot be perturbed
+ * by the fireteams other specs leave live for 900 seconds.
+ */
+export const LIST_RAID: FixtureRaid = {
+    key: 'garden_of_salvation',
+    hash: 2659723068,
+    name: 'Garden of Salvation',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;
@@ -242,6 +252,13 @@ export interface SeedFireteamsOptions {
     /** Namespace for membership ids and display names, so specs cannot collide. */
     prefix: string;
     raid?: FixtureRaid;
+    /**
+     * The seat, from 0, whose member is the Fireteam Leader: seeded with status 9
+     * (FireteamMember 1 + PartyLeader 8), as Bungie sends it. Leave it out and every member
+     * is status 1, so the fireteam has no leader and its row is titled after the tracked
+     * player instead.
+     */
+    leaderSeat?: number;
 }
 
 /** The rendered `Name#Code` of one seeded roster member. */
@@ -261,7 +278,7 @@ export function fireteamMemberName(prefix: string, fireteam: number, seat: numbe
  * the wrong thing.
  */
 export function seedFireteams(options: SeedFireteamsOptions): string[] {
-    const { count, size = 6, prefix, raid = RAID_A } = options;
+    const { count, size = 6, prefix, raid = RAID_A, leaderSeat } = options;
     const startedAtIso: string[] = [];
 
     for (let fireteam = 0; fireteam < count; fireteam++) {
@@ -272,7 +289,7 @@ export function seedFireteams(options: SeedFireteamsOptions): string[] {
             // so two specs seeding fireteams never produce two players with the
             // same rendered Name#Code and an ambiguous locator.
             displayName: `Roster${prefix}F${fireteam}S${seat}`,
-            status: 1,
+            status: seat === leaderSeat ? 9 : 1,
         }));
 
         // Staggered so the display sort (newest first, after multi-member rank)

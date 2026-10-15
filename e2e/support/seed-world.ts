@@ -148,6 +148,17 @@ export const COPY_RAID: FixtureRaid = {
     name: 'Pantheon: Calus Resplendent',
 };
 
+/**
+ * A second raid only the copy-join-code spec seeds (#160): its section holds exactly two rows,
+ * so the spec knows which is the list's first and which its last. Seeded by its own hash; the
+ * raid's other hash is shared with Pantheon: Morgeth Surpassing in `RAID_DEFINITIONS`.
+ */
+export const COPY_EDGE_RAID: FixtureRaid = {
+    key: 'pantheon_insurrection_prime_revolutionary',
+    hash: 747671496,
+    name: 'Pantheon: Insurrection Prime Revolutionary',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;

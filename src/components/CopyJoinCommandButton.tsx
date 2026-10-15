@@ -102,13 +102,14 @@ export default function CopyJoinCommandButton({ command, full }: CopyJoinCommand
                 {state.kind === 'copied' ? <CheckIcon /> : <ClipboardIcon />}
             </button>
             {/* Always in the page, so a screen reader announces what lands in it; drawn as a
-                tooltip only while it has something to say. It sits to the button's left, over
-                the row's own line: the list clips anything above its first row or below its
-                last, so it must stay two lines tall. Its width cap keeps it inside a 360px
-                phone's card (32px gutters). The command breaks anywhere rather than at its
-                space, and is in the body font rather than monospace, so the longest one still
-                fits in two lines there. A click in it selects the command rather than toggling
-                the row. */}
+                tooltip only while it has something to say. It sits to the button's left,
+                centred on the row's own line. The widest names make it taller than the row at
+                360px, so it reaches over the rows around it, or past the list's edge on its
+                first or last row; the list doesn't clip it (FireteamRow rounds its own corners
+                instead). Its width cap keeps it inside a 360px phone's card (32px gutters). The
+                command breaks anywhere, since a Bungie Name has no space to break at, and is in
+                the body font rather than monospace, which keeps it as few lines as it can be. A
+                click in it selects the command rather than toggling the row. */}
             <span
                 role="status"
                 onClick={(event) => event.stopPropagation()}

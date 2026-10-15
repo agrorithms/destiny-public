@@ -53,11 +53,15 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
     }
 
     return (
-        <li className="text-sm">
-            {/* The one-line row. The member list sits below it, outside the truncated title. */}
+        <li className="group/row text-sm">
+            {/* The one-line row. The member list sits below it, outside the truncated title.
+                The list's first and last rows round their hover to the card's inner corners
+                (its radius less its 1px border), the last only while closed, when it is the
+                card's bottom edge. The rows round themselves rather than the list clipping
+                them, so the Join Command button's tooltip can reach past the list's edge. */}
             <div
                 onClick={expandable ? handleRowClick : undefined}
-                className={`flex items-center gap-3 px-4 py-2.5 min-w-0 ${expandable ? 'cursor-pointer ui-list-item-hover' : ''}`}
+                className={`flex items-center gap-3 px-4 py-2.5 min-w-0 group-first/row:rounded-t-[calc(0.5rem-1px)] ${open ? '' : 'group-last/row:rounded-b-[calc(0.5rem-1px)]'} ${expandable ? 'cursor-pointer ui-list-item-hover' : ''}`}
             >
                 <span className="min-w-0 flex-1 truncate ui-text-primary">
                     {href ? (

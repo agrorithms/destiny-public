@@ -2016,8 +2016,8 @@ against it:
 
 ## 2026-10-15 — #160 the list rows' copy join code button
 
-`e2e/active-sessions-copy.spec.ts`, **new**, ten specs; `e2e/support/seed-world.ts` changed. The
-suite is now **twenty-five flows, 141 tests including the two canary setups**.
+`e2e/active-sessions-copy.spec.ts`, **new**, eleven specs; `e2e/support/seed-world.ts` changed.
+The suite is now **twenty-five flows, 142 tests including the two canary setups**.
 
 Each list row on `/active-sessions` has an icon-only `<button type="button">` named and titled
 "Copy join code", between the elapsed time and the chevron. It copies the fireteam's Join Command
@@ -2031,8 +2031,9 @@ displayed 6/6 the button is disabled with the title "Fireteam full". With no tar
 button, and an `aria-hidden` placeholder of its width keeps the columns aligned. A fireteam of one
 keeps the chevron's placeholder to the button's right, so every row's button sits in one column.
 
-**Seed world:** `COPY_RAID` (Pantheon: Calus Resplendent), a raid only this spec seeds.
-`seedFireteams` gains two options:
+**Seed world:** `COPY_RAID` (Pantheon: Calus Resplendent) and `COPY_EDGE_RAID` (Pantheon:
+Insurrection Prime Revolutionary, seeded by its own hash `747671496`; its other hash is shared with
+Morgeth), two raids only this spec seeds. `seedFireteams` gains two options:
 - `nameOnlySeats`: those seats' `players` rows have a name and no code, so the API sends the bare
   name;
 - `unseenSeats`: those seats have no `players` row and no session row of their own, and the Roster
@@ -2044,7 +2045,10 @@ Both are seeded, not stubbed (ADR 0004). Fixture namespace **90**:
   ahead of the leader;
 - `903`: a four-player fireteam whose leader (seat 0) has no code;
 - `904`: a three-player fireteam whose leader has no code and whose other two seats are unseen;
-- `905`: a tracked player alone, with a 26-character name.
+- `905`: a tracked player alone, with a 26-character name;
+- `906` (on `COPY_EDGE_RAID`): a tracked player named with 26 `M`s and one unseen teammate, so
+  the section's first row;
+- `907` (on `COPY_EDGE_RAID`): a tracked player alone, named with 26 `W`s, so its last row.
 
 **The clipboard is real.** The specs that read it back run with `clipboard-read` and
 `clipboard-write` granted on the context, and read it with `navigator.clipboard.readText()`. The
@@ -2072,13 +2076,36 @@ frozen too, so nothing re-renders mid-spec.
    lines up.
 8. **At 360px**, the solo row's button is inside the viewport and the row stays one line tall: its
    flex line's height is its padding plus one line-height, measured on the whole row rather than
-   the `truncate` title cell, which is one line however the row breaks. The "Copied" tooltip is inside the viewport and inside the list top to bottom. The list
-   clips its rows' corners, so a tooltip taller than the last row would lose a line without
-   anything overflowing.
+   the `truncate` title cell, which is one line however the row breaks. The "Copied" tooltip is
+   inside the viewport, and nothing clips it or is drawn over it: no ancestor that clips its
+   overflow ends inside the tooltip, and a point just inside each of its edges hits the tooltip.
 9. **A refused copy shows the command to copy by hand.** No check mark, still shown after 10s on
    the paused clock, one click on it selects exactly the command without toggling the row, and
    Escape or a click on the page's heading dismisses it.
 10. **At 360px the failure tooltip fits** the same way as 8. Its wording is the longer of the two.
+11. **At 360px the failure tooltip is whole on the list's first and last rows with the widest
+    names** (`906` and `907`, on a section of just those two rows). Each tooltip is asserted taller
+    than its row first, so the spec can't pass on one that never reached the list's edge. Then
+    each is inside the viewport, the page doesn't scroll sideways, and nothing clips it or is
+    drawn over it, as in 8.
+
+**Review fixes (2026-10-15).** The review found two holes.
+- Spec 8's one-line check measured the `truncate` title cell, which can't wrap. It now measures
+  the row's flex line. Against a break that wraps the row (`flex-wrap` on the line, `basis-full`
+  on the button), the new check fails with "the row is one line tall … Expected: 40, Received:
+  80". The old check passed that assertion and failed only later, at "the feedback starts inside
+  the viewport" (−159), because the moved button dragged the tooltip off-screen.
+- A 26-letter name of `M`s, `W`s or CJK took three lines (54px) in the failure tooltip at
+  360px, against a 40px row. On the list's last row it ended 6px below the list's clipped edge.
+  Spec 11 was red against the list's `overflow-hidden` ("`<ul class="ui-card divide-y ui-divider
+  overflow-hidden">` by 6.0px", on the first row). Then the clip moved off the list: #158's
+  `overflow-hidden` on the `ul` (there so a hovered first or last row kept the card's rounded
+  corners) is gone. The rows round their own hover instead: the first row's line at the top, and
+  the last row's at the bottom while it is closed, both at the card's inner radius
+  (`calc(0.5rem-1px)`). Checked once in a throwaway probe, light and dark: computed radii of 7px
+  on those corners, 0 on an open last row's line, and clean corners in 4× screenshots. The
+  tooltip's width cap, `break-all` and body font stay. The cap keeps it inside a 360px viewport;
+  a Bungie Name has no space to break at; and monospace only makes it taller.
 
 **Verified red first:** the first nine specs (all but 10, which came with the tooltip's phone
 fixes) ran against the page at `1dff438`, and eight failed on the missing button. Spec 6 passed,

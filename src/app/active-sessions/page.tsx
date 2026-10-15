@@ -363,7 +363,7 @@ export default function ActiveSessionsPage() {
                             {/* One row or one tile per fireteam, never per player (ADR 0001). Both
                                 keep the API's order: multi-player fireteams first, then newest first. */}
                             {!collapsed && (view === 'list' ? (
-                                <ul className="ui-card divide-y ui-divider overflow-hidden">
+                                <ul className="ui-card divide-y ui-divider">
                                     {raidSessions.map((session) => {
                                         const identity = sessionIdentity(session);
                                         return (

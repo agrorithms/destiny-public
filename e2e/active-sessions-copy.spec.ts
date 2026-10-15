@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
-import { COPY_RAID, fireteamMemberName, seedFireteams, seedPlayerWithSession } from './support/seed-world';
-import { fireteamRow, memberList } from './support/fireteam-rows';
+import { COPY_EDGE_RAID, COPY_RAID, fireteamMemberName, seedFireteams, seedPlayerWithSession } from './support/seed-world';
+import { fireteamRow, fireteamRows, memberList } from './support/fireteam-rows';
 import { boxOf, expectInsideViewport, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
@@ -29,14 +29,24 @@ import { boxOf, expectInsideViewport, expectNoElementOverflow, expectNoHorizonta
  *   members the Tracker has never seen: nobody with a full name, so no button;
  * - `905`: one tracked player alone, with a name as long as a Bungie Name gets (26
  *   characters), for the fireteam of one and the phone width.
+ *
+ * And on a second raid of its own, whose section holds just these two rows:
+ * - `906`: a tracked player with one unseen teammate, so the section's first row, named with
+ *   26 of the widest letter;
+ * - `907`: a tracked player alone, so its last row, named the same way.
  */
 const FULL_PREFIX = '901';
 const LEADER_PREFIX = '902';
 const NO_CODE_PREFIX = '903';
 const NOBODY_PREFIX = '904';
 const SOLO = { membershipId: '90500', name: 'Roster905SoloWithALongName', code: 1905 };
+// Names as wide as a Bungie Name gets: the most room the failure tooltip can need.
+const EDGE_FIRST = { membershipId: '90600', name: 'M'.repeat(26), code: 1906, extraMembers: ['9060001'] };
+const EDGE_LAST = { membershipId: '90700', name: 'W'.repeat(26), code: 1907 };
 
 test.beforeAll(async () => {
+    seedPlayerWithSession({ ...EDGE_FIRST, raid: COPY_EDGE_RAID });
+    seedPlayerWithSession({ ...EDGE_LAST, raid: COPY_EDGE_RAID });
     seedFireteams({ count: 1, size: 6, prefix: FULL_PREFIX, raid: COPY_RAID, leaderSeat: 2 });
     seedFireteams({ count: 1, size: 5, prefix: LEADER_PREFIX, raid: COPY_RAID, leaderSeat: 1 });
     seedFireteams({ count: 1, size: 4, prefix: NO_CODE_PREFIX, raid: COPY_RAID, leaderSeat: 0, nameOnlySeats: [0] });
@@ -79,23 +89,49 @@ function chevronOf(row: Locator): Locator {
 }
 
 /**
- * The feedback fits a phone: inside the viewport, not scrolling inside itself, and inside its
- * section's list top to bottom. The list clips its rows' corners, so feedback taller than its
- * row would lose a line on the first or last row without anything overflowing.
+ * The feedback fits a phone: inside the viewport, not scrolling inside itself, not making the
+ * page scroll sideways, and not cut off or drawn over.
  */
 async function expectFeedbackToFit(page: Page, feedback: Locator): Promise<void> {
     await expectInsideViewport(feedback, 'the feedback');
     await expectNoElementOverflow(feedback, 'the feedback');
     await expectNoHorizontalPageOverflow(page);
-    const box = await boxOf(feedback);
-    const clip = await boxOf(listOf(page));
-    expect(box.y, 'the feedback starts inside the list').toBeGreaterThanOrEqual(clip.y);
-    expect(box.y + box.height, 'the feedback ends inside the list').toBeLessThanOrEqual(clip.y + clip.height);
+    await expectFullyShown(feedback, 'the feedback');
 }
 
-/** This spec's raid section's list of rows. */
-function listOf(page: Page): Locator {
-    return sectionOf(page).getByRole('list').first();
+/**
+ * Nothing cuts the feedback off: no ancestor that clips its overflow ends inside the
+ * feedback's box, and a point just inside each of its four edges hits the feedback itself, so
+ * nothing is drawn over it either. A clipped tooltip overflows nothing and scrolls nothing, so
+ * only a check like this one sees it.
+ */
+async function expectFullyShown(feedback: Locator, what: string): Promise<void> {
+    const { clippedBy, hidden } = await feedback.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const clippedBy: string[] = [];
+        for (let a = el.parentElement; a; a = a.parentElement) {
+            const style = getComputedStyle(a);
+            if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+            const clip = a.getBoundingClientRect();
+            if (box.top < clip.top || box.bottom > clip.bottom || box.left < clip.left || box.right > clip.right) {
+                clippedBy.push(`<${a.tagName.toLowerCase()} class="${a.className}"> by ${Math.max(
+                    clip.top - box.top, box.bottom - clip.bottom, clip.left - box.left, box.right - clip.right,
+                ).toFixed(1)}px`);
+            }
+        }
+        const midX = box.left + box.width / 2;
+        const midY = box.top + box.height / 2;
+        const edges: [string, number, number][] = [
+            ['top', midX, box.top + 2], ['bottom', midX, box.bottom - 2],
+            ['left', box.left + 2, midY], ['right', box.right - 2, midY],
+        ];
+        const hidden = edges
+            .filter(([, x, y]) => !el.contains(document.elementFromPoint(x, y)))
+            .map(([edge]) => edge);
+        return { clippedBy, hidden };
+    });
+    expect(clippedBy, `${what} is clipped`).toEqual([]);
+    expect(hidden, `${what} has edges something else is drawn over`).toEqual([]);
 }
 
 /** What the page's clipboard holds right now. Needs clipboard-read. */
@@ -263,8 +299,7 @@ test.describe('active sessions copy join code', () => {
             // title, count, time and button: its height is its padding plus one line. The
             // title cell alone can't show a wrap, since `truncate` keeps it one line however
             // the row breaks. The feedback after a click has to fit too, with the whole command
-            // readable: the row is the list's last (solo fireteams sort after the rest), so a
-            // feedback taller than it is clipped.
+            // readable.
             test('fits the button, the one-line row and the feedback in a 360px viewport', async ({ page }) => {
                 await page.clock.install();
                 await page.goto('/active-sessions');
@@ -351,6 +386,38 @@ test.describe('active sessions copy join code', () => {
                 const feedback = feedbackOf(row);
                 await expect(feedback).toContainText(`/join ${SOLO_NAME}`);
                 await expectFeedbackToFit(page, feedback);
+            });
+
+            // The widest name a Bungie Name can be makes the failure tooltip taller than its
+            // row at 360px. On the list's first and last rows that is where the card's edge is,
+            // so the tooltip must not be cut off there: both are measured, the first row's
+            // reaching above the list and the last row's below it. Asserted taller than the
+            // row first, so the spec can't pass on a tooltip that never reached the edge.
+            test("shows the whole join code on the list's first and last rows with the widest names", async ({ page }) => {
+                await page.goto('/active-sessions');
+                const section = page.getByRole('region', { name: COPY_EDGE_RAID.name });
+                const rows = fireteamRows(section);
+                await expect(rows).toHaveCount(2);
+
+                for (const [row, player] of [[rows.first(), EDGE_FIRST], [rows.last(), EDGE_LAST]] as const) {
+                    const name = `${player.name}#${player.code}`;
+                    await expect(row).toContainText(`${name}'s fireteam`);
+                    await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+
+                    await copyButtonOf(row).click();
+
+                    const feedback = feedbackOf(row);
+                    await expect(feedback).toContainText(`/join ${name}`);
+                    const rowLine = await boxOf(row.locator(':scope > div'));
+                    expect((await boxOf(feedback)).height, `${name}'s tooltip is taller than its row`)
+                        .toBeGreaterThan(rowLine.height);
+                    await expectInsideViewport(feedback, `${name}'s tooltip`);
+                    await expectNoHorizontalPageOverflow(page);
+                    await expectFullyShown(feedback, `${name}'s tooltip`);
+
+                    await page.keyboard.press('Escape');
+                    await expect(feedback).toHaveText('');
+                }
             });
         });
     });

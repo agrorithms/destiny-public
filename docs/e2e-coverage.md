@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1752,3 +1752,71 @@ and spec 3 failed.
   which is the overlap a long name causes; nothing measures the count against the elapsed time.
 - Rows on refresh: the 30-second poll and Refresh re-render the rows, but no spec changes data
   between polls. Open rows across refreshes are #158.
+
+## 2026-10-15 — #158 expandable list rows that stay open across refreshes
+
+`e2e/active-sessions-expand.spec.ts`, **new**, eight specs; `player-names.spec.ts` gains one, and
+the cap, list and player-names specs read rows through a narrower locator. The suite is now
+**twenty-three flows, 115 tests including the two canary setups**.
+
+A list row on `/active-sessions` expands to show the rest of its Roster: every member except the
+one the row is titled after (the leader, else the tracked player, "Unknown player" included), each
+once, as a `Name#Code` link to their player page. A click anywhere on the row toggles it, except on
+a link or button inside it; the chevron is a real button with `aria-expanded` and `aria-controls`.
+The page keeps the open rows by **session identity** (raid + member set, one Roster containing the
+other counting as the same fireteam) and re-anchors them to each poll, so they stay open across
+Refresh and the 30-second poll.
+
+**Locators:** an open row's member list is a nested `<ul>`, and its items are `listitem`s too.
+`e2e/support/fireteam-rows.ts` (`fireteamRows(section)`) reads only the section's own `ul > li`,
+and the cap, list and player-names specs use it, so ADR 0001's "8 rows, not 48" can't pick up
+member items. No existing spec opens a row, so the old locator would still have passed today; the
+helper keeps it that way once one does.
+
+**Seed world:** `EXPAND_RAID` (Last Wish), a raid only this spec seeds, because the growth spec
+reseeds a fireteam partway through. Fixture namespace **88**: `881` for two six-player fireteams
+with the leader in seat 2, `882` for a five-player fireteam (leader in seat 0) that grows to six,
+`883` for a tracked player with no leader and five other members, all with 26-character names.
+
+1. **A click on the row opens and closes it** (on the player count, then the elapsed time), the
+   chevron's `aria-expanded` follows, and the open row lists the five non-leader members, in Roster
+   order, as links to `/player/3/<id>`.
+2. **The chevron works from the keyboard**: Enter opens the row, and `aria-controls` names the list.
+3. **Clicking the title link doesn't toggle the row.** The spec cancels the navigation itself, so
+   it can check the row afterwards.
+4. **The title link still navigates** to the leader's player page. The player page is answered with
+   a stub, because the real one calls the client-write endpoints for this spec's players on load.
+5. **Several rows open at once.**
+6. **An open row stays open after Refresh**, and a closed one stays closed.
+7. **An open row stays open when a member joins** between refreshes: `882` is reseeded as six, the
+   row shows `6/6`, is still open, and lists the newcomer.
+8. **At 360px**, the open `883` row (five 26-character names) doesn't scroll sideways, nor does the
+   page, every member ends inside the viewport **and shows its whole name**, and the row's title is
+   still one line tall. The whole-name check came from a break that got past the first version:
+   members laid out in one line overflow nothing, because each name truncates into a stub (211px of
+   name cut off). Moving the member list inside the truncated title is caught the same way (160px).
+
+`player-names.spec.ts`: a new test opens its row and checks seat 0's full `Name#Code` link in the
+member list. Seat 0 isn't the leader, so it reaches the screen only through that list.
+
+Which member is left out, session identity under growth, shrinkage and a tracked-player change,
+and re-anchoring across polls are Roster rules in `src/lib/active-session/roster.ts`, covered by
+Vitest (`roster.test.ts`), not here.
+
+**Verified red first:** against the collapsed-only rows (commit `d70253c`), 8 tests failed: seven of
+the eight expand specs and player-names' expanded member. Spec 4 passed, as it should: the link
+already navigated, so it guards against the row's click handler swallowing it. Each spec was then
+also shown failing against a targeted break of the finished code (the #158 progress notes list
+them), for example spec 7 alone with open rows matched on the exact member set, and spec 8 with
+the member list moved inside the truncated title or laid out in one line.
+
+### What is still NOT covered
+
+- The 30-second poll itself. Refresh runs the same fetch, so spec 6 stands in for it; no spec
+  waits out or fast-forwards the timer.
+- A Roster that **shrinks** between refreshes, in a browser. Vitest covers the rule, and spec 7
+  covers the same page path for growth; no spec reseeds a smaller Roster.
+- An open row whose fireteam leaves the page and comes back: it comes back closed, by design
+  (`followOpenSessions` forgets it). Not asserted anywhere.
+- A raw-ID member in the open list. It renders the ID, as tiles do; seeded names always resolve.
+- Tile view, still (#153). Only its React key changed.

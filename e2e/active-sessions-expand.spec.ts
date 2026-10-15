@@ -186,9 +186,12 @@ test.describe('active sessions expandable rows', () => {
 
             await expectNoElementOverflow(row, 'an open list row');
             await expectNoHorizontalPageOverflow(page);
+            // Each name must also show in full. A member list squeezed into one line doesn't
+            // overflow anything, because each name truncates instead, into an unreadable stub.
             for (const member of await members.all()) {
                 const box = await boxOf(member);
                 expect(box.x + box.width, 'a member ends inside the viewport').toBeLessThanOrEqual(360);
+                await expectNoElementOverflow(member, 'a member name (cut off)');
             }
 
             const titleCell = row.getByRole('link', { name: `${LONG.name}#${LONG.code}`, exact: true }).locator('..');

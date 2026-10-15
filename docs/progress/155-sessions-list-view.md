@@ -84,7 +84,7 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
    - [x] `src/components/FireteamRow.tsx` — whole-row toggle, chevron, the expanded member list
    - [x] `src/app/active-sessions/page.tsx` — open state keyed by session identity; `fireteamKey` from it
 5. Bookkeeping
-   - [ ] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
+   - [x] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)
 
 ## Notes
@@ -157,3 +157,23 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
   pressed after the failed save and List wins after the next one. Red with `unstoredView = null;`
   removed from `writeView` ("Expected: \"true\", Received: \"false\"" on List), green restored.
   No new seed data. The CLAUDE.md flow list is unchanged; its list-view wording still fits.
+- #158: session identity is `sessionIdentity` (raid + unique sorted member IDs) and `isSameSession`
+  (same raid, and equal or nested member sets: the comparison dedupe uses). The page keeps open rows
+  as identities and, on every successful fetch, replaces them with this poll's matching identities
+  (`followOpenSessions`), so a Roster that gains a member and later loses another stays open, and a
+  fireteam that leaves the page is forgotten. `fireteamKey` is the identity as a string for rows and
+  tiles: unique on the page because dedupe already merged equal or nested Rosters in one raid.
+- #158: the expanded list is `otherRosterMembers`: everyone but `fireteamTitle(...).membershipId`,
+  each once, in Roster order (the user's 2026-10-14 decision). A member's name renders as the API
+  sends it, or the ID when it sends none, like the tiles; it does not become "Unknown player".
+- #158: the row's click handler ignores clicks inside any `a` or `button`, so #160's copy button
+  needs no extra wiring. The chevron is the keyboard path (`aria-expanded`, `aria-controls` from
+  `useId`); the member list renders only while open.
+- #158: there were no dedupe unit tests to keep passing (the brief expected some). Dedupe's only
+  coverage is the cap spec, whose rosters are disjoint, so the subset rule isn't exercised there;
+  `isSameSession`'s Vitest tests now run the same three helpers.
+- #158 proof that tests bite: all 12 new Vitest tests were shown red by a targeted break each (exact
+  member order, no shrink, ignore raid, any overlap, no re-anchoring, identity = tracked player,
+  exclude leader only, exclude by shown name, no de-dupe, exclude nobody). Playwright: 8 red against
+  `d70253c`, then nine breaks of the finished code, each failing its own spec(s). One break (members
+  in one line) passed the first phone spec, which then gained the whole-name check.

@@ -100,6 +100,22 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
 8. Bookkeeping after the review
    - [x] `CLAUDE.md` — e2e flow list: the maintenance response and the fireteam of one (`545537c`, by the orchestrating session at the user's request; the review session proposed the text)
 
+## #159 — collapsible raid sections, Collapse all / Expand all
+
+Branch `feat/159-raid-collapse` (from `c88ef31`, so all of #156–#158 is in it). Seam: the page,
+through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is untouched.
+
+1. Specs, red against today's page
+   - [x] `e2e/support/seed-world.ts` — `COLLAPSE_RAID` (Root of Nightmares), `COLLAPSE_OTHER_RAID` (King's Fall), `UNSEEDED_RAID` (Vow of the Disciple, never seeded)
+   - [x] `e2e/active-sessions-collapse.spec.ts` (new, prefix `89`: `891`, `892`)
+2. Collapsible sections (green)
+   - [ ] `src/app/active-sessions/page.tsx` — collapse state by `raidKey`, the header button, the content wrapper, Collapse all / Expand all
+   - [ ] `e2e/support/fireteam-rows.ts` — rows sit one level deeper, under the content wrapper (same commit as the wrapper)
+3. Bookkeeping
+   - [ ] `docs/e2e-coverage.md` — flow list, prefix `89`, journal entry
+   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [ ] `CLAUDE.md` — e2e flow list (proposed in the report; the orchestrating session applies it)
+
 ## Notes
 
 - #156: sections group by `raidKey` and sort by their index in `AVAILABLE_RAIDS`

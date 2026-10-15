@@ -99,6 +99,33 @@ export const EXPAND_RAID: FixtureRaid = {
     name: 'Last Wish',
 };
 
+/**
+ * Two raids only the section-collapse spec seeds (#159). Its assertions cover every section the
+ * raid filter leaves visible, so it filters the page down to these two, and no other spec's
+ * fireteams can be among them.
+ */
+export const COLLAPSE_RAID: FixtureRaid = {
+    key: 'root_of_nightmares',
+    hash: 2381413764,
+    name: 'Root of Nightmares',
+};
+
+export const COLLAPSE_OTHER_RAID: FixtureRaid = {
+    key: 'kings_fall',
+    hash: 1374392663,
+    name: "King's Fall",
+};
+
+/**
+ * A raid no spec seeds, ever: the section-collapse spec filters the page down to it to get a
+ * page with no raid sections at all. Seeding it anywhere breaks that spec.
+ */
+export const UNSEEDED_RAID: FixtureRaid = {
+    key: 'vow_of_the_disciple',
+    hash: 2906950631,
+    name: 'Vow of the Disciple',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;

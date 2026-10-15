@@ -128,6 +128,27 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
 6. Styling (the user's request, a commit of its own)
    - [x] `src/app/active-sessions/page.tsx` — the whole section header strip gets the warm row hover (`ui-list-item-hover`), with rounded corners and `-mx-3 px-3 py-2`, so the name stays in line with the rows; the content gap `mt-3` → `mt-1` keeps the text-to-rows spacing at 12px; the text's accent hover kept
 
+## #160 — copy join code button on list rows
+
+Branch `feat/160-copy-jc-button` (from `6e4f1f1`, so all of #156–#159 is in it). Seams: the
+Join Command target through Vitest (`roster.ts`), the button through Playwright.
+
+1. Join Command target, red then green (Vitest)
+   - [x] `src/lib/active-session/roster.test.ts` — leader first, fallback to the first full name, no target, bare names and raw IDs never used
+   - [x] `src/lib/active-session/roster.ts` — `joinCommand`
+2. Specs, red against today's page
+   - [ ] `e2e/support/seed-world.ts` — `COPY_RAID`, and seats seeded with a name but no code, or never seen
+   - [ ] `e2e/active-sessions-copy.spec.ts` (new, prefix `90`)
+3. The button (green)
+   - [ ] `src/components/CopyJoinCodeButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
+   - [ ] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target
+4. Bookkeeping
+   - [ ] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
+   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [ ] `CLAUDE.md` — e2e flow list (proposed text only; the orchestrating session applies it at the user's request)
+5. Review fixes
+6. Styling
+
 ## Notes
 
 - #156: sections group by `raidKey` and sort by their index in `AVAILABLE_RAIDS`

@@ -1,8 +1,8 @@
 // Roster rules for the active-sessions list view: who leads a fireteam, what its row is called,
-// who its expanded row lists, and whether two polls describe the same fireteam. Pure and
-// browser-safe on purpose: the page imports this, so it must never import the database
-// (dedupe.ts and format.ts both do, and import their shared rules from here instead). See
-// CONTEXT.md for Roster and Fireteam Leader.
+// who its expanded row lists, whose name its Join Command uses, and whether two polls describe
+// the same fireteam. Pure and browser-safe on purpose: the page imports this, so it must never
+// import the database (dedupe.ts and format.ts both do, and import their shared rules from here
+// instead). See CONTEXT.md for Roster, Fireteam Leader and Join Command.
 
 /** A Roster member as the /api/active-sessions response carries it. */
 export interface RosterMember {
@@ -96,6 +96,30 @@ export function otherRosterMembers(session: RosterSession): RosterMember[] {
         listed.add(member.membershipId);
         return true;
     });
+}
+
+/**
+ * Whether a member's display name is a full Bungie Name: a name, `#`, and the four-digit code,
+ * the way the server writes it when the players row has both parts. When it lacks the code the
+ * API sends the bare name, and when it lacks the name, the raw membership ID; neither matches.
+ * A raw ID is all digits, so it can never contain the `#` (see {@link isLikelyMembershipId}).
+ */
+function hasFullBungieName(member: RosterMember): boolean {
+    return /^.+#\d{4}$/.test(member.displayName);
+}
+
+/**
+ * The Join Command for a fireteam (see CONTEXT.md): `/join Name#Code`, the text a PC player
+ * pastes into game chat. `/join` works with any Roster member's Bungie Name, so it names the
+ * Fireteam Leader when their full name is known, otherwise the first member in Roster order
+ * whose full name is, otherwise nobody: null, and the row offers no button.
+ */
+export function joinCommand(session: { partyMembers: RosterMember[] }): string | null {
+    const leader = findFireteamLeader(session.partyMembers);
+    const target = leader && hasFullBungieName(leader)
+        ? leader
+        : session.partyMembers.find(hasFullBungieName);
+    return target ? `/join ${target.displayName}` : null;
 }
 
 // Member-set rules behind isSameSession, which the server's dedupe (dedupe.ts) also calls to

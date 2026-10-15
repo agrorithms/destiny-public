@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-    findFireteamLeader, fireteamTitle, followOpenSessions, isOpenSession, isSameSession, otherRosterMembers, sessionIdentity,
-    toggleOpenSession,
+    findFireteamLeader, fireteamTitle, followOpenSessions, isOpenSession, isSameSession, joinCommand, otherRosterMembers,
+    sessionIdentity, toggleOpenSession,
 } from './roster';
 
 // The Roster rules behind each list-view row on /active-sessions (#157). They run in the
@@ -242,5 +242,54 @@ describe('otherRosterMembers', () => {
         const roster = [member(0, 9), member(1, 1), member(2, 1), member(1, 1)];
 
         expect(ids(otherRosterMembers(session(roster)))).toEqual(ids([roster[1], roster[2]]));
+    });
+});
+
+describe('joinCommand', () => {
+    // #160: the text a PC player pastes into game chat to join the fireteam. The row is titled
+    // after the leader, so when the leader's full Bungie Name is known the command names them,
+    // whichever seat they sit in: the player joins the fireteam the row describes.
+    it("names the Fireteam Leader when the leader's full Name#Code is known", () => {
+        const roster = [member(0, 3, 'First#1000'), member(1, 11, 'Nesspo#9821'), member(2, 3, 'Third#1002')];
+
+        expect(joinCommand({ partyMembers: roster })).toBe('/join Nesspo#9821');
+    });
+
+    // `/join` works with any Roster member's Bungie Name, not only the leader's (the user
+    // confirmed it). The API sends a bare name when the players row has no code, so a leader
+    // known only as "Nesspo" falls back to the first member, in Roster order, who has both
+    // parts. The design snapshot had 8 of 1,075 leaders like this.
+    it('falls back to the first member with a full Name#Code when the leader has no code', () => {
+        const roster = [member(0, 11, 'Nesspo'), member(1, 3, 'Second#1001'), member(2, 3, 'Third#1002')];
+
+        expect(joinCommand({ partyMembers: roster })).toBe('/join Second#1001');
+    });
+
+    // No button beats a command that can't work (#155 story 25). What the API sends when it
+    // lacks one part or both: a bare name (no code in the players row), the raw membership ID
+    // (no name at all), an empty name. And a "#code" with nothing in front of it is not a
+    // Bungie Name either, however it got there.
+    it('finds no target when no member has a full Name#Code', () => {
+        const unnamed = { membershipId: '4611686018400000009', membershipType: 3, displayName: '4611686018400000009', status: 3 };
+        const roster = [member(0, 11, 'Nesspo'), unnamed, member(2, 3, ''), member(3, 3, '#1003')];
+
+        expect(joinCommand({ partyMembers: roster })).toBeNull();
+    });
+
+    // The fallback is "the first member with a full name", not "the first member": members
+    // ahead of it in the Roster whose names are bare or raw IDs are passed over, as is a leader
+    // whose name is a raw ID. A command built from either would name nobody.
+    it('passes over bare names and raw IDs on the way to the first full Name#Code', () => {
+        const unnamedLeader = { membershipId: '4611686018400000008', membershipType: 3, displayName: '4611686018400000008', status: 9 };
+        const unnamed = { membershipId: '4611686018400000009', membershipType: 3, displayName: '4611686018400000009', status: 3 };
+        const roster = [member(0, 3, 'Bare'), unnamedLeader, unnamed, member(3, 3, 'Fourth#1003')];
+
+        expect(joinCommand({ partyMembers: roster })).toBe('/join Fourth#1003');
+    });
+
+    // The crawler's filled-in solo row and any Roster Bungie sends without a leader flag: the
+    // first full name is the target, so a fireteam of one still gets its button.
+    it('names the first member with a full Name#Code when nobody is flagged as leader', () => {
+        expect(joinCommand({ partyMembers: [member(0, 1, 'Solo#4242')] })).toBe('/join Solo#4242');
     });
 });

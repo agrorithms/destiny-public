@@ -85,7 +85,8 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
    - [x] `src/app/active-sessions/page.tsx` — open state keyed by session identity; `fireteamKey` from it
 5. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
-   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
+   - [ ] `CLAUDE.md` — e2e flow list: proposed text handed to the orchestrating session, not edited here
 
 ## Notes
 
@@ -177,3 +178,5 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
   exclude leader only, exclude by shown name, no de-dupe, exclude nobody). Playwright: 8 red against
   `d70253c`, then nine breaks of the finished code, each failing its own spec(s). One break (members
   in one line) passed the first phone spec, which then gained the whole-name check.
+- #158 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
+  `npm test` 559/559, `npm run e2e` 115/115.

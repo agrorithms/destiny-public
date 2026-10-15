@@ -137,6 +137,17 @@ export const UNSEEDED_RAID: FixtureRaid = {
     name: 'Vow of the Disciple',
 };
 
+/**
+ * A raid only the copy-join-code spec seeds (#160). Its rows' buttons are found by fireteam, and
+ * its no-button row is checked against the rows around it, so no other spec's fireteams may
+ * share it.
+ */
+export const COPY_RAID: FixtureRaid = {
+    key: 'pantheon_calus_resplendent',
+    hash: 1516551982,
+    name: 'Pantheon: Calus Resplendent',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;
@@ -307,6 +318,19 @@ export interface SeedFireteamsOptions {
      * player instead.
      */
     leaderSeat?: number;
+    /**
+     * Seats whose player is known by name but not by code: their `players` row has no
+     * `bungie_global_display_name_code`, so the API sends the bare name rather than
+     * `Name#Code` (see `enrichPartyMembersFromJson`). Their rendered name is
+     * {@link fireteamMemberName} without the `#code`.
+     */
+    nameOnlySeats?: number[];
+    /**
+     * Seats whose player the Tracker has never seen: no `players` row and no session row of
+     * their own, and the Roster names them by membership id, as Bungie does for a teammate it
+     * has no name for. The API then sends the raw membership id as their name.
+     */
+    unseenSeats?: number[];
 }
 
 /** The membership id of one seeded roster member. */
@@ -331,27 +355,31 @@ export function fireteamMemberName(prefix: string, fireteam: number, seat: numbe
  * the wrong thing.
  */
 export function seedFireteams(options: SeedFireteamsOptions): string[] {
-    const { count, size = 6, prefix, raid = RAID_A, leaderSeat } = options;
+    const { count, size = 6, prefix, raid = RAID_A, leaderSeat, nameOnlySeats = [], unseenSeats = [] } = options;
     const startedAtIso: string[] = [];
 
     for (let fireteam = 0; fireteam < count; fireteam++) {
-        const roster = Array.from({ length: size }, (_, seat) => ({
-            membershipId: fireteamMemberId(prefix, fireteam, seat),
-            membershipType: 3,
-            // The prefix is in the display name too, not just the membership id,
-            // so two specs seeding fireteams never produce two players with the
-            // same rendered Name#Code and an ambiguous locator.
-            displayName: `Roster${prefix}F${fireteam}S${seat}`,
-            status: seat === leaderSeat ? 9 : 1,
-        }));
+        const roster = Array.from({ length: size }, (_, seat) => {
+            const membershipId = fireteamMemberId(prefix, fireteam, seat);
+            return {
+                membershipId,
+                membershipType: 3,
+                // The prefix is in the display name too, not just the membership id,
+                // so two specs seeding fireteams never produce two players with the
+                // same rendered Name#Code and an ambiguous locator.
+                displayName: unseenSeats.includes(seat) ? membershipId : `Roster${prefix}F${fireteam}S${seat}`,
+                status: seat === leaderSeat ? 9 : 1,
+            };
+        });
 
         // Staggered so the display sort (newest first, after multi-member rank)
         // is total rather than arbitrary — the cap must drop a predictable set.
         const startedAt = new Date((hoursAgo(1) + fireteam * 60) * 1000).toISOString();
         startedAtIso.push(startedAt);
 
-        for (const member of roster) {
-            seedPlayer(member.membershipId, member.displayName, 1000 + fireteam);
+        for (const [seat, member] of roster.entries()) {
+            if (unseenSeats.includes(seat)) continue;
+            seedPlayer(member.membershipId, member.displayName, nameOnlySeats.includes(seat) ? undefined : 1000 + fireteam);
 
             upsertActiveSession({
                 membershipId: member.membershipId,

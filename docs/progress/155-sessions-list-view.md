@@ -137,8 +137,8 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `src/lib/active-session/roster.test.ts` — leader first, fallback to the first full name, no target, bare names and raw IDs never used
    - [x] `src/lib/active-session/roster.ts` — `joinCommand`
 2. Specs, red against today's page
-   - [ ] `e2e/support/seed-world.ts` — `COPY_RAID`, and seats seeded with a name but no code, or never seen
-   - [ ] `e2e/active-sessions-copy.spec.ts` (new, prefix `90`)
+   - [x] `e2e/support/seed-world.ts` — `COPY_RAID`, and seats seeded with a name but no code, or never seen
+   - [x] `e2e/active-sessions-copy.spec.ts` (new, prefix `90`)
 3. The button (green)
    - [ ] `src/components/CopyJoinCodeButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
    - [ ] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target

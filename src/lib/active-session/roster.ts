@@ -144,6 +144,10 @@ export function sessionIdentity(session: { activityHash: number; partyMembers: {
  * Whether two polls describe the same fireteam: the same raid, and the same members or one
  * member set containing the other (the Roster grew or shrank). Dedupe calls this too, to decide
  * two rows are one fireteam, so the page and the server can't disagree on it.
+ *
+ * Because dedupe uses it, changing it moves the fireteam display cap (ADR 0001) and the
+ * headline count (ADR 0002). A change made for open rows belongs in {@link followOpenSessions},
+ * never here.
  */
 export function isSameSession(a: SessionIdentity, b: SessionIdentity): boolean {
     return a.activityHash === b.activityHash && (

@@ -69,8 +69,9 @@ function raidSectionRank(raidKey: string): number {
 // One key for a row and a tile alike, so the two views can't drift apart: the fireteam's raid
 // and member set. Never the tracked player or the index, which both change between polls.
 // Unique on the page, because dedupe already merged any two sessions in one raid whose member
-// sets are equal or nested. A Roster change gives the row a new key, which is harmless: rows
-// keep no state, and open rows are tracked by the page.
+// sets are equal or nested. Open rows are tracked by the page, so they survive a new key. But
+// a Roster change still gives the row a new key and remounts it: keyboard focus inside the row
+// is dropped and its useId regenerates. A known limitation, tracked on #168.
 function fireteamKey(identity: SessionIdentity): string {
     return `${identity.activityHash}:${identity.memberIds.join(',')}`;
 }
@@ -98,8 +99,12 @@ export default function ActiveSessionsPage() {
             const nextSessions = data.sessions || [];
             setSessions(nextSessions);
             // Re-anchor each open row to this poll's Roster, so the next poll compares against
-            // it. Fireteams that left the page are forgotten.
-            setOpenSessions((open) => followOpenSessions(open, nextSessions.map(sessionIdentity)));
+            // it. Fireteams that left the page are forgotten. Not on a maintenance response:
+            // its empty list means no sessions could be read, not that they ended, so open rows
+            // are kept for when they come back, as they are on a failed fetch.
+            if (!data.maintenance) {
+                setOpenSessions((open) => followOpenSessions(open, nextSessions.map(sessionIdentity)));
+            }
             setTotal(data.total ?? 0);
             setShown(data.shown ?? 0);
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);

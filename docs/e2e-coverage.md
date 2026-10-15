@@ -1776,7 +1776,8 @@ helper keeps it that way once one does.
 **Seed world:** `EXPAND_RAID` (Last Wish), a raid only this spec seeds, because the growth spec
 reseeds a fireteam partway through. Fixture namespace **88**: `881` for two six-player fireteams
 with the leader in seat 2, `882` for a five-player fireteam (leader in seat 0) that grows to six,
-`883` for a tracked player with no leader and five other members, all with 26-character names.
+`883` for a tracked player with no leader and five other members, all with 26-character names,
+and `884` for a fireteam of one (added by the review fixes below).
 
 1. **A click on the row opens and closes it** (on the player count, then the elapsed time), the
    chevron's `aria-expanded` follows, and the open row lists the five non-leader members, in Roster
@@ -1820,3 +1821,20 @@ the member list moved inside the truncated title or laid out in one line.
   (`followOpenSessions` forgets it). Not asserted anywhere.
 - A raw-ID member in the open list. It renders the ID, as tiles do; seeded names always resolve.
 - Tile view, still (#153). Only its React key changed.
+
+### Review fixes (same day)
+
+Two more expand specs, so the file has **ten** and the suite **117 tests including the two canary
+setups**, still twenty-three flows.
+
+9. **An open row survives a maintenance response.** The next `/api/active-sessions` answer is
+   stubbed with `page.route` as a maintenance response (no sessions, `maintenance: true`), then the
+   route is lifted and Refresh brings the fireteam back still open. Red before the fix: the row came
+   back closed (`aria-expanded` "false").
+10. **A fireteam of one (`884`) offers nothing to open**: no chevron, a click on the row opens no
+   list, and its elapsed time ends at the same x as on a row with a chevron (a placeholder keeps the
+   columns aligned). Red before the fix: the chevron was there. The alignment check was also shown
+   red with the placeholder's width removed (1219 against 1195).
+
+Not covered: a row opened as two players that shrinks to one. The page still holds it open, and
+the row hides the list because it has nobody to list; no spec reseeds that.

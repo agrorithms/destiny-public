@@ -176,9 +176,10 @@ describe('session identity', () => {
         expect(third).toEqual([sessionIdentity(poll(SALVATIONS_EDGE, [1, 2]))]);
     });
 
-    // A fireteam that's gone from the page (the raid ended, or a filter or the display cap
+    // A fireteam that's gone from the API's response (the raid ended, or the display cap
     // dropped it) is forgotten, so a later fireteam that happens to share a member with it in
-    // the same raid doesn't open by itself.
+    // the same raid doesn't open by itself. The raid filter doesn't count: it hides rows in the
+    // browser after this runs, so a row hidden by the filter comes back open.
     it('forgets an open fireteam that is no longer on the page', () => {
         const opened = [sessionIdentity(poll(SALVATIONS_EDGE, [0, 1]))];
 

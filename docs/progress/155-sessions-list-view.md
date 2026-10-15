@@ -87,6 +87,13 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
    - [x] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
    - [x] `CLAUDE.md` — e2e flow list (`83c3267`, by the orchestrating session at the user's request; the implementing session proposed the text)
+6. Review fixes (the user's picks from the code review)
+   - [x] `src/components/FireteamRow.tsx` — one-player rows offer nothing to open (A); the click exclusion scoped to the row (P2)
+   - [x] `src/app/active-sessions/page.tsx` — open rows kept across a maintenance response (S3); the `fireteamKey` comment names the remount limitation, #168 (P1)
+   - [x] `src/lib/active-session/roster.ts` — `isSameSession`'s doc: dedupe uses it, so it moves ADR 0001's cap and ADR 0002's count (P3)
+   - [x] `src/lib/active-session/roster.test.ts` — the "forgets" test's comment: the raid filter doesn't drop an open row (S2)
+   - [x] `e2e/active-sessions-expand.spec.ts` — the maintenance spec and the fireteam-of-one spec (`884`)
+   - [x] `docs/e2e-coverage.md` — `884`, the two specs, 117 tests
 
 ## Notes
 
@@ -232,3 +239,29 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
 
   Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 560/560, `npm run e2e` 115/115.
+- #158 review fixes (the user's picks, 2026-10-15):
+  - A: a row whose `otherRosterMembers` is empty (about 40% of rows, a Roster of one) has no
+    chevron, no row click and no pointer cursor. An `aria-hidden` 24px placeholder takes the
+    chevron's place, so the count and elapsed time line up with the other rows. The member list
+    renders only when the row is open **and** has someone to list: a row opened as {A,B} that
+    shrinks to {A} stays open in the page's state (`{A}` is inside `{A,B}`) and would otherwise
+    open onto an empty list. New spec, red then green: with the chevron still there, "Expected: 0,
+    Received: 1"; with the placeholder's width removed, the alignment check failed (1219 against
+    1195).
+  - P2: the row ignores a click only when the `a, button` that `closest()` finds is inside the row
+    (`event.currentTarget.contains`), so an ancestor link or button can't swallow every row's
+    click. No spec: nothing renders the rows inside one today.
+  - S3: the page doesn't run `followOpenSessions` on a maintenance response. Its empty list means
+    nothing could be read, so open rows survive it the way they survive a failed fetch. New spec,
+    red then green: the row came back closed ("Expected: \"true\", Received: \"false\"").
+  - P1 (comment only): `fireteamKey`'s comment says a Roster change remounts the row, dropping
+    keyboard focus and regenerating `useId`. A stable key is #168.
+  - P3 (comment only): `isSameSession` moves ADR 0001's cap and ADR 0002's count, because dedupe
+    calls it. Open-row changes belong in `followOpenSessions`.
+  - S2 (comment only): the raid filter hides rows after `followOpenSessions` runs, so it never
+    drops an open row; only the display cap or the raid ending does.
+  - S1, known and left as is: `followOpenSessions` is many-to-one. One open identity opens every
+    current session nested inside it, so a fireteam that splits shows two open rows, and a member
+    who leaves and starts the same raid solo gets an open solo row they never opened. It is rare
+    (same raid, same `activityHash`) and harmless. If it is ever changed, change
+    `followOpenSessions`, never `isSameSession` (see P3).

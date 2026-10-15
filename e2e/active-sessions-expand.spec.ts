@@ -18,11 +18,13 @@ import { seedPlayer } from '../tests/helpers/seed';
  * - `881`: two six-player fireteams with the leader in seat 2;
  * - `882`: one five-player fireteam (leader in seat 0) that the growth spec reseeds as six;
  * - `883`: one tracked player with no leader flagged and five other members, every name as
- *   long as a Bungie Name gets (26 characters), for the phone-width check.
+ *   long as a Bungie Name gets (26 characters), for the phone-width check;
+ * - `884`: one fireteam of one, with nobody else in its Roster to list.
  */
 const FIRETEAM_PREFIX = '881';
 const LEADER_SEAT = 2;
 const GROWING_PREFIX = '882';
+const SOLO_PREFIX = '884';
 const LONG = {
     membershipId: '88300',
     name: 'Roster883TrackedWithALongN',
@@ -35,6 +37,7 @@ test.beforeAll(async () => {
     seedFireteams({ count: 1, size: 5, prefix: GROWING_PREFIX, raid: EXPAND_RAID, leaderSeat: 0 });
     seedPlayerWithSession({ ...LONG, raid: EXPAND_RAID, extraMembers: LONG.members.map((m) => m.membershipId) });
     for (const member of LONG.members) seedPlayer(member.membershipId, member.name, LONG.code);
+    seedFireteams({ count: 1, size: 1, prefix: SOLO_PREFIX, raid: EXPAND_RAID });
 });
 
 /** The row titled "<name>'s fireteam" in this spec's raid section. */
@@ -175,6 +178,52 @@ test.describe('active sessions expandable rows', () => {
         await expect(row.getByTitle('6 of 6 players')).toBeVisible();
         await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
         await expect(memberList(row).getByRole('link', { name: newcomer, exact: true })).toBeVisible();
+    });
+
+    // A maintenance response lists no sessions because none could be read, not because the
+    // fireteams ended. An open row has to survive it the way it survives a failed fetch, or
+    // every open row on the page shuts each time the database is briefly busy.
+    test('keeps an open row open across a maintenance response', async ({ page }) => {
+        await page.goto('/active-sessions');
+        const row = rowOf(page, leaderOf(0));
+        await row.getByTitle('6 of 6 players').click();
+        await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
+
+        await page.route('**/api/active-sessions*', (route) => route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({
+                raidKey: 'all', count: 0, total: 0, shown: 0, sessions: [],
+                maintenance: true, message: 'Database maintenance is in progress.',
+            }),
+        }));
+        await page.getByRole('button', { name: 'Refresh' }).click();
+        await expect(page.getByText('Database maintenance is in progress.')).toBeVisible();
+        await expect(row).toHaveCount(0);
+
+        await page.unroute('**/api/active-sessions*');
+        await page.getByRole('button', { name: 'Refresh' }).click();
+
+        await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
+        await expect(memberList(row).getByRole('listitem')).toHaveText(othersOf(0));
+    });
+
+    // About 40% of fireteams are a Roster of one, and the open row would list nobody: the
+    // one member is the one the row is titled after. So such a row offers nothing to open:
+    // no chevron, and a click on it opens nothing. Its count and elapsed time still line up
+    // with the rows that do have a chevron.
+    test('offers nothing to open on a fireteam of one', async ({ page }) => {
+        await page.goto('/active-sessions');
+        const row = rowOf(page, fireteamMemberName(SOLO_PREFIX, 0, 0));
+        await expect(row).toBeVisible();
+
+        await expect(chevronOf(row)).toHaveCount(0);
+        await row.getByTitle('1 of 6 players').click();
+        await expect(row.getByRole('list')).toHaveCount(0);
+
+        const solo = await boxOf(row.getByTitle('Time elapsed'));
+        const withChevron = await boxOf(rowOf(page, leaderOf(0)).getByTitle('Time elapsed'));
+        expect(solo.x + solo.width, 'the elapsed time ends where it does on a row with a chevron')
+            .toBe(withChevron.x + withChevron.width);
     });
 
     test.describe('on a phone', () => {

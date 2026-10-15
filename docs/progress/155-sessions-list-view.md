@@ -145,7 +145,7 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
-   - [ ] `CLAUDE.md` — e2e flow list (proposed text only; the orchestrating session applies it at the user's request)
+   - [x] `CLAUDE.md` — e2e flow list (`c32f60f`, by the orchestrating session at the user's request; proposed by the implementing session, the two-second clause narrowed by the review session)
 5. Review fixes (the user's picks from the code review)
    - [x] `e2e/active-sessions-copy.spec.ts` — the phone spec measures the row's flex line, not the `truncate` title cell, against padding plus one line-height (S2)
    - [x] `src/components/CopyJoinCodeButton.tsx` → `src/components/CopyJoinCommandButton.tsx`, and `FireteamRow.tsx`'s comments say Join Command; user-facing text unchanged (T1)

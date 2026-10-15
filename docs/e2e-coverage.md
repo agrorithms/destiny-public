@@ -1708,9 +1708,13 @@ leader, who started most recently and has a 26-character name, the longest a Bun
 6. **Rows keep the API's order**: both six-player fireteams, newest first, then the solo player,
    who started last.
 7. **At 360px**, the toggle and the long-named solo row sit inside the viewport, the row doesn't
-   scroll sideways and neither does the page. Before the #157 review it measured the first row,
-   whose name is short. With both `min-w-0` and `truncate` dropped from the title, that version
-   passed and this one fails (the row scrolls sideways by 78px).
+   scroll sideways and neither does the page, and the row's title is one line tall. Before the
+   #157 review it measured the first row, whose name is short. With both `min-w-0` and `truncate`
+   dropped from the title, that version passed and this one fails (the row scrolls sideways by
+   78px). The one-line check is what catches `truncate` dropped alone: the title then wraps
+   (40px tall against a 20px line), so nothing scrolls sideways, but the unbreakable `Name#Code`
+   spills over the player count. `min-w-0` dropped alone still passes, correctly: `truncate`'s
+   `overflow: hidden` already lets the title shrink.
 
 **Changed:**
 - `active-sessions-cap.spec.ts` proves ADR 0001 by counting **list rows**: 8 fireteams of 6 render 8
@@ -1739,9 +1743,7 @@ and spec 3 failed.
   names always resolve.
 - The toggle with localStorage unavailable (private modes): the view still switches for the visit,
   but nothing checks it.
-- A row title that wraps. Dropping `truncate` alone (or `min-w-0` alone, which `truncate`'s
-  `overflow: hidden` makes redundant) passes spec 7: without `nowrap` the title wraps to two lines
-  and nothing scrolls, but an unbreakable `Name#Code` spills past its own box over the player count.
-  No spec checks that a row stays one line or that its cells don't overlap.
+- A row's other cells overlapping each other. Spec 7 checks only that the title stays one line,
+  which is the overlap a long name causes; nothing measures the count against the elapsed time.
 - Rows on refresh: the 30-second poll and Refresh re-render the rows, but no spec changes data
   between polls. Open rows across refreshes are #158.

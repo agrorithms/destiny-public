@@ -152,6 +152,17 @@ test.describe('active sessions list view', () => {
             }
             await expectNoElementOverflow(row, 'a list row');
             await expectNoHorizontalPageOverflow(page);
+
+            // Sideways overflow alone misses a title that wraps. Without `truncate` the long
+            // name breaks onto a second line instead, so nothing scrolls sideways, but the
+            // unbreakable Name#Code spills over the "1/6" count beside it. So the title cell
+            // (the link's parent) must also be exactly one line tall.
+            const titleCell = row.getByRole('link', { name: `${SOLO.name}#${SOLO.code}`, exact: true }).locator('..');
+            const { height, lineHeight } = await titleCell.evaluate((cell) => ({
+                height: cell.clientHeight,
+                lineHeight: parseFloat(getComputedStyle(cell).lineHeight),
+            }));
+            expect(height, "the row's title is one line tall").toBe(lineHeight);
         });
     });
 });

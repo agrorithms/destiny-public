@@ -55,6 +55,10 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
    - [x] `src/hooks/useSessionsView.ts` — no cross-tab sync; `unstoredView` only when a write throws
    - [x] `e2e/active-sessions-list.spec.ts` — the phone spec measures a 26-character name
    - [x] `docs/e2e-coverage.md` — spec 7, the `872` fixture, and the wrap gap it still misses
+6. Second review pass (user-approved)
+   - [x] `src/hooks/useSessionsView.ts` — a write that succeeds clears `unstoredView`
+   - [x] `e2e/active-sessions-list.spec.ts` — the phone spec checks the title is one line tall
+   - [x] `docs/e2e-coverage.md` — spec 7 covers the wrapped title; the gap bullet narrowed
 
 ## Notes
 
@@ -111,3 +115,13 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
   item a zero minimum width, and without `truncate` the title wraps instead. That gap is recorded
   in `docs/e2e-coverage.md`. Re-verified: lint 0 errors (29 warnings, `gos10k/`), build
   (`○ /active-sessions`, exit 0), `npm test` 547/547, `npm run e2e` 105/105.
+- #157 second review pass (one commit, user-approved). `writeView` clears `unstoredView` when
+  `setItem` succeeds: without that, one failed write followed by successful ones left the view
+  stuck on the failed pick, because `readView` checks `unstoredView` first. Proved with a
+  throwaway Playwright spec, not committed: only the first view write throws, then Tiles, then
+  List. List stayed unpressed before the fix ("Expected: true, Received: false") and was pressed
+  after it. The phone spec also checks that the long-named row's title cell is one line tall
+  (`clientHeight` against its computed `line-height`). With only `truncate` removed it fails
+  ("Expected: 20, Received: 40"). With only `min-w-0` removed it passes, and restored it passes.
+  The one-line check was chosen over "the link ends before the count": the `<a>`'s box isn't
+  clipped by `truncate`'s `overflow: hidden`, so that check would fail on the working row too.

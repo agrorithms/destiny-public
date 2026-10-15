@@ -8,12 +8,13 @@ const SESSIONS_VIEW_KEY = 'destiny-farm-finder-sessions-view';
 const DEFAULT_VIEW: SessionsView = 'list';
 
 const listeners = new Set<() => void>();
-// Used only when localStorage throws (some private modes), so the toggle still works
-// for the visit even though it can't be remembered.
+// Set only while the latest write threw (some private modes, a full quota), so the toggle
+// still works for the visit even though it can't be remembered. Cleared by the next write
+// that succeeds.
 let unstoredView: SessionsView | null = null;
 
 function readView(): SessionsView {
-    // Checked first: once a write has failed, whatever localStorage still holds is stale.
+    // Checked first: while the latest write has failed, whatever localStorage holds is stale.
     if (unstoredView) {
         return unstoredView;
     }
@@ -32,6 +33,8 @@ function readView(): SessionsView {
 function writeView(next: SessionsView): void {
     try {
         localStorage.setItem(SESSIONS_VIEW_KEY, next);
+        // This write stuck, so localStorage is current again and the fallback must not win.
+        unstoredView = null;
     } catch {
         unstoredView = next;
     }

@@ -177,9 +177,11 @@ through Playwright.
    - [x] `src/components/SessionSizeChips.tsx` (new) — six toggle chips
    - [x] `src/app/active-sessions/page.tsx` — the size filter inside `filteredSessions`, `changeSizes`, the refresh path's live raids, the empty state
 4. Bookkeeping
-   - [ ] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
+   - [x] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)
    - [ ] `CLAUDE.md` — e2e flow list: proposed to the orchestrator, not edited here
+5. Full-suite fix
+   - [x] `e2e/active-sessions-size.spec.ts` — its own `x-forwarded-for`, so its page loads don't share the middleware's 60-a-minute bucket with every other active-sessions spec
 
 ## Notes
 
@@ -502,3 +504,32 @@ through Playwright.
 - #160 verified (at `3bf58bf`, the last code commit; the re-stamp after it is this file only):
   tsc exit 0, lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0),
   `npm test` 565/565 (46 files), `npm run e2e` 142/142.
+
+- #161: which chip a fireteam falls under is `rosterSizeChip` in `roster.ts`, the player count
+  its row shows clamped to 1–`ROSTER_SIZE`, so a count past 6 is under chip 6 (and full by
+  `isFullRoster`, so its copy button is disabled) and a count below 1 under chip 1. With every chip
+  on, nothing is ever hidden, which is the property #163 lacks for the raid filter's Select All.
+  `FireteamRow`'s "N/6", its title and `full`, and the tile's count read the same two exports.
+- #161: the chips are `SessionSizeChips` (a `role="group"` "Fireteam size" of six
+  `aria-pressed` buttons, "Fireteams of N"), between [Refresh + Collapse all] and View. Joined like
+  the View toggle, `h-9 w-8`, `ui-toggle-active` / `ui-toggle-idle`, border and dividers in
+  `--ui-border-input`. The selection is `useSessionSizes` (key
+  `destiny-farm-finder-sessions-sizes`, a JSON array): a `useSyncExternalStore` whose snapshot is
+  the canonical string "1,2,5", stable by value, parsed in a `useMemo`. Anything but an array of
+  whole numbers 1–6 reads as all six; `[]` is all off. No cross-tab sync (the user's call).
+  Every chip off shows nothing (the user's call), with "Select at least one fireteam size", and a
+  page the chips empty inside the raid filter reads "Try selecting more fireteam sizes".
+- #161: `isSessionShown` (raid filter AND sizes) is the one predicate for `filteredSessions` and
+  for forgetting collapsed sections. `changeSizes` wraps the hook's setter like
+  `changeRaidFilter`. The fetch forgets raids with nothing *shown* (`shownRaidKeys` over this
+  poll's sessions with the current filters, read through `filtersRef`, written in an effect),
+  not raids missing from the response: a fireteam that grows to a size the chips hide can empty
+  a section the API still sends. Open rows still follow the unfiltered sessions, so a row a chip
+  hides comes back open.
+- #161 proof that tests bite: Vitest, 4 breaks of the clamp and `isFullRoster`; Playwright, all 14
+  red against `ec8e74f`, then 12 breaks in 5 builds, each failing its predicted specs (listed in
+  `docs/e2e-coverage.md`'s #161 entry).
+- #161: the first full `npm run e2e` failed 6 of this file's specs on a 429 from `middleware.ts`'s
+  per-IP limit on `/api/active-sessions` (60 a minute, one shared `'unknown'` bucket for every
+  spec). The file now sends its own `x-forwarded-for`. The other active-sessions files still share
+  the bucket: a follow-up.

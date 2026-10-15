@@ -28,6 +28,15 @@ const PREFIX_OF_SIZE = { 1: '911', 2: '912', 3: '913', 4: '914', 5: '915', 6: '9
 const OTHER_RAID = RAID_B;
 const OTHER_PREFIX = '917';
 
+// A client address of this file's own, for the middleware's rate limit on /api/active-sessions:
+// 60 requests a minute per client IP (middleware.ts). Every other spec sends no forwarding
+// header, so they all share one bucket, keyed 'unknown'. This file loads and reloads the page
+// about twenty-five times in a few seconds, on top of the other active-sessions files, and in a
+// full run that pushed the shared bucket past 60: the API answered 429, and the page showed
+// "Could not load active sessions" until the window reset. In production each visitor has a
+// bucket of their own, so this matches it. 198.51.100.0/24 is reserved for documentation.
+test.use({ extraHTTPHeaders: { 'x-forwarded-for': '198.51.100.91' } });
+
 test.beforeAll(async () => {
     for (const [size, prefix] of Object.entries(PREFIX_OF_SIZE)) {
         seedFireteams({ count: 1, size: Number(size), prefix, raid: SIZE_RAID, leaderSeat: 0 });

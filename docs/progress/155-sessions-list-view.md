@@ -116,7 +116,7 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — namespace `89`, journal entry (twenty-four flows, 130 tests)
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
-   - [ ] `CLAUDE.md` — e2e flow list (proposed in the report; the orchestrating session applies it)
+   - [x] `CLAUDE.md` — e2e flow list (`be65941`, by the orchestrating session at the user's request; proposed by the implementing session, refined by the review session after S1/S6)
 5. Review fixes (the user's picks from the code review)
    - [x] `e2e/support/seed-world.ts` — `REAPPEAR_RAID` (The Desert Perpetual) and `endFireteams`, which ends a prefix's fireteams through `deleteActiveSessionForPlayer` (S1)
    - [x] `e2e/active-sessions-collapse.spec.ts` — spec 14, a raid that leaves the response and comes back starts expanded (`893`) (S1); the tile spec checks the collapsed name on screen and collapse across a List↔Tiles switch (S6)

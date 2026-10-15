@@ -173,9 +173,9 @@ through Playwright.
    - [x] `e2e/support/seed-world.ts` — `SIZE_RAID` (Pantheon: Morgeth Surpassing)
    - [x] `e2e/active-sessions-size.spec.ts` (new, prefix `91`)
 3. The chips (green)
-   - [ ] `src/hooks/useSessionSizes.ts` (new) — the stored selection, `useSyncExternalStore`, failed-save fallback
-   - [ ] `src/components/SessionSizeChips.tsx` (new) — six toggle chips
-   - [ ] `src/app/active-sessions/page.tsx` — the size filter inside `filteredSessions`, `changeSizes`, the refresh path's live raids, the empty state
+   - [x] `src/hooks/useSessionSizes.ts` (new) — the stored selection, `useSyncExternalStore`, failed-save fallback
+   - [x] `src/components/SessionSizeChips.tsx` (new) — six toggle chips
+   - [x] `src/app/active-sessions/page.tsx` — the size filter inside `filteredSessions`, `changeSizes`, the refresh path's live raids, the empty state
 4. Bookkeeping
    - [ ] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)

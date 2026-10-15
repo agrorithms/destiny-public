@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState, useCallback, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, useCallback, type MouseEvent } from 'react';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
 import FireteamRow from '@/components/FireteamRow';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
+import SessionSizeChips from '@/components/SessionSizeChips';
 import SessionsViewToggle from '@/components/SessionsViewToggle';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
+import { useSessionSizes } from '@/hooks/useSessionSizes';
 import { useSessionsView } from '@/hooks/useSessionsView';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
-import { followOpenSessions, isOpenSession, sessionIdentity, toggleOpenSession, type SessionIdentity } from '@/lib/active-session/roster';
+import { followOpenSessions, isOpenSession, rosterSizeChip, sessionIdentity, toggleOpenSession, type SessionIdentity } from '@/lib/active-session/roster';
 
 interface PartyMember {
     membershipId: string;
@@ -79,6 +81,24 @@ function raidSectionKey(session: ActiveSession): string {
     return session.raidKey ?? '';
 }
 
+// Whether the size chips show a session: its chip, from the player count its row shows, is on.
+// No chip on means no size, so nothing shows, unlike the raid filter's empty selection.
+function isSizeShown(sizes: readonly number[], session: ActiveSession): boolean {
+    return sizes.includes(rosterSizeChip(session.playerCount));
+}
+
+// Whether the page shows a session: the raid filter and the size chips both let it through.
+// The sessions filter and every forgetting of collapsed sections read this, so a section is
+// on the page exactly when one of its sessions passes it.
+function isSessionShown(selectedRaids: string[], sizes: readonly number[], session: ActiveSession): boolean {
+    return isRaidShown(selectedRaids, raidSectionKey(session)) && isSizeShown(sizes, session);
+}
+
+// The raid sections that hold at least one session the page shows.
+function shownRaidKeys(sessions: ActiveSession[], selectedRaids: string[], sizes: readonly number[]): Set<string> {
+    return new Set(sessions.filter((session) => isSessionShown(selectedRaids, sizes, session)).map(raidSectionKey));
+}
+
 // The collapsed raids for which `stillShown` holds. A section that leaves the page is
 // forgotten, so it comes back expanded, as anything newly on the page does.
 function keepCollapsed(collapsed: ReadonlySet<string>, stillShown: (raidKey: string) => boolean): ReadonlySet<string> {
@@ -99,6 +119,7 @@ export default function ActiveSessionsPage() {
     const [sessions, setSessions] = useState<ActiveSession[]>([]);
     const [selectedRaids, setSelectedRaids] = useRaidFilter();
     const [view, setView] = useSessionsView();
+    const [sizes, setSizes] = useSessionSizes();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [total, setTotal] = useState(0);
@@ -112,6 +133,12 @@ export default function ActiveSessionsPage() {
     // but not a reload. Every raid the API sends a null key for groups under '', so those
     // sections collapse and expand together; they have no key to tell them apart.
     const [collapsedRaids, setCollapsedRaids] = useState<ReadonlySet<string>>(() => new Set());
+    // The filters as of the latest render, for the fetch: it is created once, so its own
+    // closure would only ever see the first render's. Written in an effect, never in render.
+    const filtersRef = useRef({ selectedRaids, sizes });
+    useEffect(() => {
+        filtersRef.current = { selectedRaids, sizes };
+    }, [selectedRaids, sizes]);
 
     const fetchSessions = useCallback(async () => {
         setLoading(true);
@@ -126,10 +153,13 @@ export default function ActiveSessionsPage() {
             // its empty list means no sessions could be read, not that they ended, so open rows
             // are kept for when they come back, as they are on a failed fetch.
             // Collapsed sections are kept for the same reason, and otherwise forgotten once
-            // their raid has no sessions left, so a raid that comes back starts expanded.
+            // their raid has no session left on the page, so a raid that comes back starts
+            // expanded. On the page, not just in the response: a fireteam that grows to a size
+            // the chips hide can empty a section the API still sends.
             if (!data.maintenance) {
                 setOpenSessions((open) => followOpenSessions(open, nextSessions.map(sessionIdentity)));
-                const liveRaids = new Set(nextSessions.map(raidSectionKey));
+                const { selectedRaids: raidsNow, sizes: sizesNow } = filtersRef.current;
+                const liveRaids = shownRaidKeys(nextSessions, raidsNow, sizesNow);
                 setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => liveRaids.has(raidKey)));
             }
             setTotal(data.total ?? 0);
@@ -166,6 +196,14 @@ export default function ActiveSessionsPage() {
         setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => isRaidShown(nextRaids, raidKey)));
     }
 
+    // The same for the size chips: a section they empty is forgotten as collapsed, so it starts
+    // expanded when they show it again. A section they leave on the page keeps its collapse.
+    function changeSizes(nextSizes: readonly number[]) {
+        setSizes(nextSizes);
+        const stillShown = shownRaidKeys(sessions, selectedRaids, nextSizes);
+        setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => stillShown.has(raidKey)));
+    }
+
     function toggleSection(raidKey: string) {
         setCollapsedRaids((collapsed) => {
             const next = new Set(collapsed);
@@ -185,7 +223,7 @@ export default function ActiveSessionsPage() {
     // Surface data freshness in the nav stats strip
     useReportPageLiveStatus(lastUpdated, 30);
 
-    const filteredSessions = sessions.filter((s) => isRaidShown(selectedRaids, raidSectionKey(s)));
+    const filteredSessions = sessions.filter((s) => isSessionShown(selectedRaids, sizes, s));
 
     // Group filtered sessions by raid key, never by display name: two raids sharing a name
     // would merge into one section.
@@ -271,6 +309,11 @@ export default function ActiveSessionsPage() {
                         </button>
                     </div>
 
+                    <div>
+                        <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">Size</span>
+                        <SessionSizeChips sizes={sizes} onChange={changeSizes} />
+                    </div>
+
                     {/* On the right, apart from the controls that act on the sessions. */}
                     <div className="ml-auto">
                         <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">View</span>
@@ -300,9 +343,13 @@ export default function ActiveSessionsPage() {
                     <div className="text-center py-12 ui-text-secondary">
                         <p className="text-lg">No active raid sessions found</p>
                         <p className="text-sm mt-1">
-                            {selectedRaids.length > 0
-                                ? 'Try selecting different raids or wait for new sessions'
-                                : 'Sessions will appear here when players are detected in raids'}
+                            {sizes.length === 0
+                                ? 'Select at least one fireteam size'
+                                : sessions.some((s) => isRaidShown(selectedRaids, raidSectionKey(s)))
+                                    ? 'Try selecting more fireteam sizes'
+                                    : selectedRaids.length > 0
+                                        ? 'Try selecting different raids or wait for new sessions'
+                                        : 'Sessions will appear here when players are detected in raids'}
                         </p>
                     </div>
                 </div>

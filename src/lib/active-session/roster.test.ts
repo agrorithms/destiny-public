@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findFireteamLeader, fireteamTitle } from './roster';
+import { findFireteamLeader, fireteamTitle, followOpenSessions, isSameSession, otherRosterMembers, sessionIdentity } from './roster';
 
 // The Roster rules behind each list-view row on /active-sessions (#157). They run in the
 // browser, so they live in a module that imports nothing from the database, and they are
@@ -104,5 +104,126 @@ describe('fireteamTitle', () => {
         const tracked = { membershipId: '4611686018400000005', membershipType: 3, displayName: '4611686018400000005', status: 1 };
 
         expect(fireteamTitle(session([tracked], tracked)).name).toBe('Unknown player');
+    });
+});
+
+describe('session identity', () => {
+    const SALVATIONS_EDGE = 2192826039;
+    const CROTAS_END = 1566480315;
+
+    /** One poll's view of a fireteam: the raid, the tracked player dedupe kept, and the Roster's seats. */
+    function poll(activityHash: number, seats: number[], trackedSeat = seats[0]) {
+        const roster = seats.map((seat) => member(seat, 1));
+        const tracked = member(trackedSeat, 1);
+        return { activityHash, membershipId: tracked.membershipId, displayName: tracked.displayName, partyMembers: roster };
+    }
+
+    function same(a: ReturnType<typeof poll>, b: ReturnType<typeof poll>): boolean {
+        return isSameSession(sessionIdentity(a), sessionIdentity(b));
+    }
+
+    // The plain case: the next poll reports the same people in a different order. Order isn't
+    // meaningful in a Roster, so the open row has to survive it.
+    it('matches the same members in the same raid, in any order', () => {
+        expect(same(poll(SALVATIONS_EDGE, [0, 1, 2]), poll(SALVATIONS_EDGE, [2, 0, 1]))).toBe(true);
+    });
+
+    // Someone joins between polls (or Bungie discloses one more member). The row must stay
+    // open, so a Roster that grows into a superset is still the same fireteam.
+    it('matches a Roster that grew between polls', () => {
+        expect(same(poll(SALVATIONS_EDGE, [0, 1]), poll(SALVATIONS_EDGE, [0, 1, 2, 3]))).toBe(true);
+    });
+
+    // Someone leaves between polls. The mirror image of growth, checked on its own so a rule
+    // that only looks one way (old ⊆ new) fails here.
+    it('matches a Roster that shrank between polls', () => {
+        expect(same(poll(SALVATIONS_EDGE, [0, 1, 2, 3]), poll(SALVATIONS_EDGE, [1, 2]))).toBe(true);
+    });
+
+    // Why the old `${membershipId}-${index}` key couldn't hold an open row: dedupe keeps the
+    // newest row, so the tracked player changes between polls while the fireteam doesn't.
+    it('matches when the tracked player changed but the Roster did not', () => {
+        expect(same(poll(SALVATIONS_EDGE, [0, 1, 2], 0), poll(SALVATIONS_EDGE, [0, 1, 2], 2))).toBe(true);
+    });
+
+    // The same people in another raid are another fireteam: they finished one raid and
+    // launched the next. An open row must not carry over to it.
+    it('does not match the same members in a different raid', () => {
+        expect(same(poll(SALVATIONS_EDGE, [0, 1, 2]), poll(CROTAS_END, [0, 1, 2]))).toBe(false);
+    });
+
+    // Two fireteams in the same raid that only share some members, or none, are different
+    // fireteams. Matching on any overlap would open the wrong row.
+    it('does not match unrelated or partly overlapping Rosters in the same raid', () => {
+        expect(same(poll(SALVATIONS_EDGE, [0, 1, 2]), poll(SALVATIONS_EDGE, [3, 4, 5]))).toBe(false);
+        expect(same(poll(SALVATIONS_EDGE, [0, 1, 2]), poll(SALVATIONS_EDGE, [2, 3, 4]))).toBe(false);
+    });
+
+    // Each poll is compared with the one before, not with the poll the row was opened on.
+    // Here one member joins, then an original member leaves: the third Roster isn't a subset or
+    // superset of the first, so an open row only survives if what's remembered moves with each
+    // poll.
+    it('follows an open fireteam across polls as its Roster changes', () => {
+        const opened = [sessionIdentity(poll(SALVATIONS_EDGE, [0, 1]))];
+        const unrelated = poll(SALVATIONS_EDGE, [7, 8]);
+
+        const second = followOpenSessions(opened, [unrelated, poll(SALVATIONS_EDGE, [0, 1, 2])].map(sessionIdentity));
+        const third = followOpenSessions(second, [poll(SALVATIONS_EDGE, [1, 2]), unrelated].map(sessionIdentity));
+
+        expect(third).toEqual([sessionIdentity(poll(SALVATIONS_EDGE, [1, 2]))]);
+    });
+
+    // A fireteam that's gone from the page (the raid ended, or a filter or the display cap
+    // dropped it) is forgotten, so a later fireteam that happens to share a member with it in
+    // the same raid doesn't open by itself.
+    it('forgets an open fireteam that is no longer on the page', () => {
+        const opened = [sessionIdentity(poll(SALVATIONS_EDGE, [0, 1]))];
+
+        expect(followOpenSessions(opened, [sessionIdentity(poll(CROTAS_END, [0, 1]))])).toEqual([]);
+    });
+});
+
+describe('otherRosterMembers', () => {
+    function session(partyMembers: ReturnType<typeof member>[], tracked = partyMembers[0]) {
+        return { membershipId: tracked.membershipId, displayName: tracked.displayName, partyMembers };
+    }
+
+    function ids(members: { membershipId: string }[]): string[] {
+        return members.map((m) => m.membershipId);
+    }
+
+    // The user's decision (2026-10-14): the expanded row lists everyone except the one member
+    // the row is titled after, so each member shows exactly once. With a leader, that's the
+    // leader, wherever they sit and whoever the tracked player is.
+    it('leaves out the Fireteam Leader, who titles the row', () => {
+        const roster = [member(0, 1), member(1, 1), member(2, 9), member(3, 1)];
+
+        expect(ids(otherRosterMembers(session(roster, roster[0])))).toEqual(ids([roster[0], roster[1], roster[3]]));
+    });
+
+    // No leader flagged: the title falls back to the tracked player, so the tracked player is
+    // the one left out. Leaving out nobody would list the title's name twice.
+    it('leaves out the tracked player when nobody is flagged as leader', () => {
+        const roster = [member(0, 1), member(1, 1), member(2, 1)];
+
+        expect(ids(otherRosterMembers(session(roster, roster[1])))).toEqual(ids([roster[0], roster[2]]));
+    });
+
+    // The title still names one member when it reads "Unknown player": the exclusion goes by
+    // membership ID, not by the name shown, so the unnamed leader is left out like any other.
+    it('leaves out the titled member when the title reads "Unknown player"', () => {
+        const unnamed = { membershipId: '4611686018400000009', membershipType: 3, displayName: '4611686018400000009', status: 9 };
+        const roster = [member(0, 1), unnamed, member(2, 1)];
+
+        expect(fireteamTitle(session(roster)).name).toBe('Unknown player');
+        expect(ids(otherRosterMembers(session(roster)))).toEqual(ids([roster[0], roster[2]]));
+    });
+
+    // "Exactly once" holds even if Bungie's Roster names someone twice: a repeated member is
+    // listed once, in the place they first appear.
+    it('lists a member the Roster repeats only once', () => {
+        const roster = [member(0, 9), member(1, 1), member(2, 1), member(1, 1)];
+
+        expect(ids(otherRosterMembers(session(roster)))).toEqual(ids([roster[1], roster[2]]));
     });
 });

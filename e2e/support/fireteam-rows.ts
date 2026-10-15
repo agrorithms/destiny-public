@@ -10,8 +10,8 @@ import type { Locator } from '@playwright/test';
  * So the path is spelled out one level at a time, and never loosened to a descendant `ul li`.
  *
  * Since #159 the list sits inside the section's collapsible content wrapper, a `<div>` that is
- * the section's second child (the header row is the first, and holds no list). A collapsed
- * section renders no list, so it has no rows.
+ * the section's second child. The header row is a `<div>` child too, but holds no list, so only
+ * the wrapper's rows match.
  */
 export function fireteamRows(section: Locator): Locator {
     return section.locator(':scope > div > ul > li');

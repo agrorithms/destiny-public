@@ -71,8 +71,15 @@ function isRaidShown(selectedRaids: string[], raidKey: string): boolean {
     return selectedRaids.length === 0 || selectedRaids.includes(raidKey);
 }
 
-// Only the collapsed raids still in `stillShown`. A section that leaves the page is forgotten,
-// so it comes back expanded, as anything newly on the page does.
+// A session's raid section, by raid key. The API sends a null key for a raid-mode activity no
+// raid definition knows, so those group under '' rather than under a null React key. Grouping
+// and the collapse-state forgetting both read the key here, so they can't disagree about it.
+function raidSectionKey(session: ActiveSession): string {
+    return session.raidKey ?? '';
+}
+
+// The collapsed raids for which `stillShown` holds. A section that leaves the page is
+// forgotten, so it comes back expanded, as anything newly on the page does.
 function keepCollapsed(collapsed: ReadonlySet<string>, stillShown: (raidKey: string) => boolean): ReadonlySet<string> {
     return new Set([...collapsed].filter(stillShown));
 }
@@ -121,7 +128,7 @@ export default function ActiveSessionsPage() {
             // their raid has no sessions left, so a raid that comes back starts expanded.
             if (!data.maintenance) {
                 setOpenSessions((open) => followOpenSessions(open, nextSessions.map(sessionIdentity)));
-                const liveRaids = new Set(nextSessions.map((session) => session.raidKey ?? ''));
+                const liveRaids = new Set(nextSessions.map(raidSectionKey));
                 setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => liveRaids.has(raidKey)));
             }
             setTotal(data.total ?? 0);
@@ -177,15 +184,13 @@ export default function ActiveSessionsPage() {
     // Surface data freshness in the nav stats strip
     useReportPageLiveStatus(lastUpdated, 30);
 
-    // Filter sessions by selected raids (empty = all raids)
     const filteredSessions = sessions.filter((s) => isRaidShown(selectedRaids, s.raidKey));
 
     // Group filtered sessions by raid key, never by display name: two raids sharing a name
-    // would merge into one section. The API sends a null key for a raid-mode activity no raid
-    // definition knows, so those group under '' rather than under a null React key.
+    // would merge into one section.
     const sessionsByRaid = new Map<string, ActiveSession[]>();
     for (const session of filteredSessions) {
-        const raidKey = session.raidKey ?? '';
+        const raidKey = raidSectionKey(session);
         const group = sessionsByRaid.get(raidKey);
         if (group) {
             group.push(session);
@@ -352,7 +357,7 @@ export default function ActiveSessionsPage() {
                         <div id={contentId} hidden={collapsed} className="mt-3">
                             {/* One row or one tile per fireteam, never per player (ADR 0001). Both
                                 keep the API's order: multi-player fireteams first, then newest first. */}
-                            {collapsed ? null : view === 'list' ? (
+                            {!collapsed && (view === 'list' ? (
                                 <ul className="ui-card divide-y ui-divider overflow-hidden">
                                     {raidSessions.map((session) => {
                                         const identity = sessionIdentity(session);
@@ -372,7 +377,7 @@ export default function ActiveSessionsPage() {
                                         <ActiveSessionCard key={fireteamKey(sessionIdentity(session))} session={session} />
                                     ))}
                                 </div>
-                            )}
+                            ))}
                         </div>
                     </section>
                 );

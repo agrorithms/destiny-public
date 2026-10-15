@@ -333,4 +333,34 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
   the hidden wrapper) stayed green, correctly, and led to the role-based collapsed check.
 - #159 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 560/560, `npm run e2e` 130/130.
+- #159 simplify pass (separate commit). No behaviour change.
+  - `raidSectionKey` in `page.tsx` is the one place for the null-key `?? ''` fallback. The
+    grouping and the fetch's forgetting both call it, so they can't disagree about which section
+    a null-key session belongs to. The null-key note moved there from the grouping comment.
+  - The content wrapper's ternary is `{!collapsed && (...)}`. It still unmounts the rows or tiles,
+    and `hidden` stays on the kept wrapper.
+  - Comments: `keepCollapsed`'s reads as a predicate, not a set. The filter's comment that
+    repeated `isRaidShown`'s was dropped. `fireteamRows`' docblock says the header is a `<div>`
+    child too (it matches `:scope > div` but holds no list). It no longer says a collapsed section
+    renders no list, because the spec leaves that choice to the page.
+
+  Left as they are:
+  - The header's own-button guard, with the toggle wired on the button and the div. Wiring it on
+    the div alone would behave the same today, but the brief lists the guard as deliberate.
+  - `toggleAllSections` as plain `new Set()` / `new Set(visibleRaidKeys)`. That works only while
+    `collapsedRaids` stays within the visible raids, an invariant two separate prune sites keep.
+  - Rows kept mounted under `hidden` alone. That is a DOM change (#168's remount note).
+  - Dropping `filteredSessions`' no-filter shortcut: microseconds at 600 rows.
+  - An unchanged Set returned from `keepCollapsed`: React batches it with `setSessions` anyway.
+  - A spec-local `collapse()` and raid-filter-trigger helper: inline reads fine.
+
+  Deferred, all outside the diff:
+  - a shared chevron icon, which `FireteamRow` also draws (two uses);
+  - a `RaidSection` component;
+  - an `expectInsideViewport` in `e2e/support/viewport.ts`, now hand-written in the collapse,
+    list, expand and timeline specs;
+  - a shared Refresh-and-wait and maintenance stub for the expand and collapse specs.
+
+  Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0),
+  `npm test` 560/560, `npm run e2e` 130/130.
 

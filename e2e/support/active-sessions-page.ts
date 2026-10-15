@@ -13,7 +13,13 @@ import { expect, type Page } from '@playwright/test';
  * '@playwright/test' directly.
  */
 
-const ACTIVE_SESSIONS_API = '**/api/active-sessions*';
+/**
+ * The page's sessions request, matched by path. One rule for the stub and for the wait on a
+ * response, so the two can't disagree about which requests count.
+ */
+function isSessionsRequest(url: URL): boolean {
+    return url.pathname === '/api/active-sessions';
+}
 
 /** The banner text the maintenance stub sends, so a spec can wait for it. */
 export const MAINTENANCE_MESSAGE = 'Database maintenance is in progress.';
@@ -24,7 +30,7 @@ export const MAINTENANCE_MESSAGE = 'Database maintenance is in progress.';
  * again means the response has rendered.
  */
 export async function refreshSessions(page: Page): Promise<void> {
-    const refreshed = page.waitForResponse((response) => response.url().includes('/api/active-sessions'));
+    const refreshed = page.waitForResponse((response) => isSessionsRequest(new URL(response.url())));
     await page.getByRole('button', { name: 'Refresh' }).click();
     await refreshed;
     await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
@@ -32,12 +38,17 @@ export async function refreshSessions(page: Page): Promise<void> {
 
 /**
  * Answers every /api/active-sessions request from here on with the route's maintenance
- * response: no sessions, because none could be read, not because they ended. Stubbed at the
- * network layer, so the page's own fetch and its handling of the response are what run.
- * {@link endMaintenance} lets the real API answer again.
+ * response: no sessions, because none could be read, not because they ended. The page's own
+ * fetch and its handling of the response are what run. {@link endMaintenance} lets the real
+ * API answer again.
+ *
+ * This stubs one of our own API routes, which ADR 0004 otherwise forbids in the browser
+ * suite. It is the one exception the ADR's 2026-10-15 amendment allows: the e2e server can't
+ * be put into maintenance, so a stub is the only way to get this response. Anything the
+ * server *can* be driven into is seeded instead (see `endFireteams` in seed-world.ts).
  */
 export async function serveMaintenance(page: Page): Promise<void> {
-    await page.route(ACTIVE_SESSIONS_API, (route) => route.fulfill({
+    await page.route(isSessionsRequest, (route) => route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
             raidKey: 'all', count: 0, total: 0, shown: 0, sessions: [],
@@ -48,5 +59,5 @@ export async function serveMaintenance(page: Page): Promise<void> {
 
 /** Removes {@link serveMaintenance}'s stub, so the next fetch reaches the real API. */
 export async function endMaintenance(page: Page): Promise<void> {
-    await page.unroute(ACTIVE_SESSIONS_API);
+    await page.unroute(isSessionsRequest);
 }

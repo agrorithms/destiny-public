@@ -188,12 +188,12 @@ test.describe('active sessions expandable rows', () => {
         await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
 
         await serveMaintenance(page);
-        await page.getByRole('button', { name: 'Refresh' }).click();
+        await refreshSessions(page);
         await expect(page.getByText(MAINTENANCE_MESSAGE)).toBeVisible();
         await expect(row).toHaveCount(0);
 
         await endMaintenance(page);
-        await page.getByRole('button', { name: 'Refresh' }).click();
+        await refreshSessions(page);
 
         await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
         await expect(memberList(row).getByRole('listitem')).toHaveText(othersOf(0));

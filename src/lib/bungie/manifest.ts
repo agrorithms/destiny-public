@@ -17,7 +17,7 @@ const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
     pantheon_insurrection_prime_revolutionary: {
         name: "Pantheon: Insurrection Prime Revolutionary",
         slug: 'pantheon-insurrection-prime-revolutionary',
-        hashes: [2530656885, 747671496],
+        hashes: [747671496],
     },
     pantheon_calus_resplendent: {
         name: "Pantheon: Calus Resplendent",

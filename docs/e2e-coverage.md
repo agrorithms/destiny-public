@@ -2238,7 +2238,7 @@ the next one to add page loads is likely to hit the same wall; see "still NOT co
     attempt seeds a fresh one, and an earlier attempt's, left at 6, stays hidden under chips 2 and 6.
 
 **Proof that the specs bite.** All fourteen were red against the page before the chips (no chip to
-find). Then fourteen breaks of the finished code in five builds, each restored, never committed,
+find). Then twelve breaks of the finished code in five builds, each restored, never committed,
 each failing exactly the predicted specs:
 - `changeSizes` not forgetting sections → 11;
 - a successful save not clearing the failed-save fallback → 9 (chip 5);

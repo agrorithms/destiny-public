@@ -1,5 +1,6 @@
 import { expect, test } from './support/test-fixtures';
 import { RAID_A, seedFireteams } from './support/seed-world';
+import { fireteamRows } from './support/fireteam-rows';
 
 /**
  * Flow #2, and the first executable proof of ADR 0001 and ADR 0002.
@@ -47,9 +48,8 @@ test.describe('active sessions', () => {
         // section-wide count would depend on which files ran first, or on a retry.
         // None of the 81 fireteams has a flagged leader, so each row is titled after
         // the tracked player that dedupe kept, who is always one of its members.
-        const rows = page
-            .getByRole('region', { name: RAID_A.name })
-            .getByRole('listitem')
+        // fireteamRows leaves out the member items an open row nests inside itself (#158).
+        const rows = fireteamRows(page.getByRole('region', { name: RAID_A.name }))
             .filter({ hasText: /Roster81F\d+S\d+#/ });
 
         // The load-bearing assertion of ADR 0001. Eight fireteams of six are 48

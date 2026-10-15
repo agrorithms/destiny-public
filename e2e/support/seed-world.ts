@@ -89,6 +89,16 @@ export const LIST_RAID: FixtureRaid = {
     name: 'Garden of Salvation',
 };
 
+/**
+ * A raid only the expandable-rows spec seeds (#158). Its spec seeds a fireteam again partway
+ * through to grow its Roster, so nothing else may share the raid.
+ */
+export const EXPAND_RAID: FixtureRaid = {
+    key: 'last_wish',
+    hash: 2122313384,
+    name: 'Last Wish',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;

@@ -159,6 +159,22 @@ export const COPY_EDGE_RAID: FixtureRaid = {
     name: 'Pantheon: Insurrection Prime Revolutionary',
 };
 
+/**
+ * A raid only the fireteam-size spec seeds (#161), with one fireteam of each size from 1 to 6:
+ * its section's rows are counted as chips hide them, so no other spec's fireteams may share it.
+ *
+ * Its one hash, 2530656885, is also listed under Pantheon: Insurrection Prime Revolutionary in
+ * `RAID_DEFINITIONS`. The stored `raid_key` is this key, as seeded, so the section groups here;
+ * the heading comes from the hash, and the hash map is built in definition order with the later
+ * entry winning, so the API names it after this raid. COPY_EDGE_RAID seeds Insurrection Prime by
+ * its other hash, so the two sections never meet.
+ */
+export const SIZE_RAID: FixtureRaid = {
+    key: 'pantheon_morgeth_surpassing',
+    hash: 2530656885,
+    name: 'Pantheon: Morgeth Surpassing',
+};
+
 interface FixturePlayer {
     membershipId: string;
     name: string;

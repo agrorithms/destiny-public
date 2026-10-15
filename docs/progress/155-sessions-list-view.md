@@ -170,8 +170,8 @@ through Playwright.
    - [x] `src/components/FireteamRow.tsx` — "N/6", its title and the disabled 6/6 button read `ROSTER_SIZE` / `isFullRoster`
    - [x] `src/components/ActiveSessionCard.tsx` — the constant only, no tile markup change (#153)
 2. Specs, red against today's page
-   - [ ] `e2e/support/seed-world.ts` — `SIZE_RAID` (Pantheon: Morgeth Surpassing)
-   - [ ] `e2e/active-sessions-size.spec.ts` (new, prefix `91`)
+   - [x] `e2e/support/seed-world.ts` — `SIZE_RAID` (Pantheon: Morgeth Surpassing)
+   - [x] `e2e/active-sessions-size.spec.ts` (new, prefix `91`)
 3. The chips (green)
    - [ ] `src/hooks/useSessionSizes.ts` (new) — the stored selection, `useSyncExternalStore`, failed-save fallback
    - [ ] `src/components/SessionSizeChips.tsx` (new) — six toggle chips

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, type MouseEvent } from 'react';
 import ActiveSessionCard from '@/components/ActiveSessionCard';
 import FireteamRow from '@/components/FireteamRow';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
@@ -66,6 +66,17 @@ function raidSectionRank(raidKey: string): number {
     return RAID_SECTION_ORDER.get(raidKey) ?? AVAILABLE_RAIDS.length;
 }
 
+// Whether the raid filter shows a raid's sessions. No raid selected means every raid.
+function isRaidShown(selectedRaids: string[], raidKey: string): boolean {
+    return selectedRaids.length === 0 || selectedRaids.includes(raidKey);
+}
+
+// Only the collapsed raids still in `stillShown`. A section that leaves the page is forgotten,
+// so it comes back expanded, as anything newly on the page does.
+function keepCollapsed(collapsed: ReadonlySet<string>, stillShown: (raidKey: string) => boolean): ReadonlySet<string> {
+    return new Set([...collapsed].filter(stillShown));
+}
+
 // One key for a row and a tile alike, so the two views can't drift apart: the fireteam's raid
 // and member set. Never the tracked player or the index, which both change between polls.
 // Unique on the page, because dedupe already merged any two sessions in one raid whose member
@@ -89,6 +100,10 @@ export default function ActiveSessionsPage() {
     // The list rows open right now, by session identity rather than by row, so a row stays
     // open across refreshes even as its tracked player changes or its Roster grows or shrinks.
     const [openSessions, setOpenSessions] = useState<SessionIdentity[]>([]);
+    // The raid sections collapsed right now, by raid key, in memory only: they survive refreshes
+    // but not a reload. Every raid the API sends a null key for groups under '', so those
+    // sections collapse and expand together; they have no key to tell them apart.
+    const [collapsedRaids, setCollapsedRaids] = useState<ReadonlySet<string>>(() => new Set());
 
     const fetchSessions = useCallback(async () => {
         setLoading(true);
@@ -102,8 +117,12 @@ export default function ActiveSessionsPage() {
             // it. Fireteams that left the page are forgotten. Not on a maintenance response:
             // its empty list means no sessions could be read, not that they ended, so open rows
             // are kept for when they come back, as they are on a failed fetch.
+            // Collapsed sections are kept for the same reason, and otherwise forgotten once
+            // their raid has no sessions left, so a raid that comes back starts expanded.
             if (!data.maintenance) {
                 setOpenSessions((open) => followOpenSessions(open, nextSessions.map(sessionIdentity)));
+                const liveRaids = new Set(nextSessions.map((session) => session.raidKey ?? ''));
+                setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => liveRaids.has(raidKey)));
             }
             setTotal(data.total ?? 0);
             setShown(data.shown ?? 0);
@@ -132,13 +151,34 @@ export default function ActiveSessionsPage() {
         setOpenSessions((open) => toggleOpenSession(open, identity));
     }
 
+    // A section the filter hides is forgotten as collapsed, so it starts expanded when the
+    // filter shows it again.
+    function changeRaidFilter(nextRaids: string[]) {
+        setSelectedRaids(nextRaids);
+        setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => isRaidShown(nextRaids, raidKey)));
+    }
+
+    function toggleSection(raidKey: string) {
+        setCollapsedRaids((collapsed) => {
+            const next = new Set(collapsed);
+            if (!next.delete(raidKey)) next.add(raidKey);
+            return next;
+        });
+    }
+
+    // A click anywhere on a section's header toggles it, like a list row's (#158). The button
+    // inside the h2 toggles by itself, so a click on it is left to it.
+    function handleHeaderClick(event: MouseEvent<HTMLDivElement>, raidKey: string) {
+        const control = (event.target as Element).closest('button');
+        if (control && event.currentTarget.contains(control)) return;
+        toggleSection(raidKey);
+    }
+
     // Surface data freshness in the nav stats strip
     useReportPageLiveStatus(lastUpdated, 30);
 
     // Filter sessions by selected raids (empty = all raids)
-    const filteredSessions = selectedRaids.length === 0
-        ? sessions
-        : sessions.filter((s) => selectedRaids.includes(s.raidKey));
+    const filteredSessions = sessions.filter((s) => isRaidShown(selectedRaids, s.raidKey));
 
     // Group filtered sessions by raid key, never by display name: two raids sharing a name
     // would merge into one section. The API sends a null key for a raid-mode activity no raid
@@ -159,6 +199,22 @@ export default function ActiveSessionsPage() {
     const sortedRaidGroups = [...sessionsByRaid.entries()].sort(
         ([a], [b]) => raidSectionRank(a) - raidSectionRank(b) || a.localeCompare(b)
     );
+
+    // Collapse all acts on the sections on the page now. It offers Expand all only once every
+    // one of them is collapsed; with no sections at all it offers nothing, so it is disabled.
+    const visibleRaidKeys = sortedRaidGroups.map(([raidKey]) => raidKey);
+    const allCollapsed = visibleRaidKeys.length > 0 && visibleRaidKeys.every((raidKey) => collapsedRaids.has(raidKey));
+
+    function toggleAllSections() {
+        setCollapsedRaids((collapsed) => {
+            const next = new Set(collapsed);
+            for (const raidKey of visibleRaidKeys) {
+                if (allCollapsed) next.delete(raidKey);
+                else next.add(raidKey);
+            }
+            return next;
+        });
+    }
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
@@ -186,17 +242,26 @@ export default function ActiveSessionsPage() {
                         <RaidMultiSelect
                             raids={AVAILABLE_RAIDS}
                             selected={selectedRaids}
-                            onChange={setSelectedRaids}
+                            onChange={changeRaidFilter}
                         />
                     </div>
 
-                    <div>
+                    {/* One flex item, so Collapse all wraps with Refresh and stays beside it. */}
+                    <div className="flex gap-2">
                         <button
                             onClick={fetchSessions}
                             disabled={loading}
                             className="px-4 py-2 text-sm rounded-lg ui-btn-primary disabled:opacity-50"
                         >
                             {loading ? 'Loading...' : 'Refresh'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={toggleAllSections}
+                            disabled={visibleRaidKeys.length === 0}
+                            className="inline-flex items-center h-9 px-4 text-sm rounded-lg border border-[var(--ui-border-input)] ui-toggle-idle disabled:opacity-50"
+                        >
+                            {allCollapsed ? 'Expand all' : 'Collapse all'}
                         </button>
                     </div>
 
@@ -239,43 +304,79 @@ export default function ActiveSessionsPage() {
 
             {/* Session Groups. Each is a region landmark named by its h2, so a screen reader can
                 list the raids and jump to one. Specs find a section's rows the same way, by raid
-                name. The h2's only text stays the bare raid name. */}
-            {sortedRaidGroups.map(([raidKey, raidSessions]) => (
-                <section key={raidKey} aria-labelledby={`raid-section-${raidKey}`} className="mb-8">
-                    <div className="flex items-center justify-between mb-3">
-                        <h2 id={`raid-section-${raidKey}`} className="text-xl font-bold ui-text-primary">
-                            {raidSessions[0].raidName || 'Unknown Raid'}
-                        </h2>
-                        <span className="text-sm ui-text-muted">
-                            {raidSessions.length} {raidSessions.length === 1 ? 'session' : 'sessions'}
-                        </span>
-                    </div>
-
-                    {/* One row or one tile per fireteam, never per player (ADR 0001). Both keep
-                        the API's order: multi-player fireteams first, then newest first. */}
-                    {view === 'list' ? (
-                        <ul className="ui-card divide-y ui-divider overflow-hidden">
-                            {raidSessions.map((session) => {
-                                const identity = sessionIdentity(session);
-                                return (
-                                    <FireteamRow
-                                        key={fireteamKey(identity)}
-                                        session={session}
-                                        open={isOpenSession(openSessions, identity)}
-                                        onToggle={() => toggleSession(identity)}
-                                    />
-                                );
-                            })}
-                        </ul>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {raidSessions.map((session) => (
-                                <ActiveSessionCard key={fireteamKey(sessionIdentity(session))} session={session} />
-                            ))}
+                name. The h2's only text stays the bare raid name: the chevron is an aria-hidden
+                icon, and the count sits outside the h2. */}
+            {sortedRaidGroups.map(([raidKey, raidSessions]) => {
+                const collapsed = collapsedRaids.has(raidKey);
+                const headingId = `raid-section-${raidKey}`;
+                const contentId = `${headingId}-content`;
+                return (
+                    <section key={raidKey} aria-labelledby={headingId} className="mb-8">
+                        <div
+                            onClick={(event) => handleHeaderClick(event, raidKey)}
+                            className="group flex items-center justify-between gap-3 cursor-pointer"
+                        >
+                            <h2 id={headingId} className="min-w-0 text-xl font-bold ui-text-primary">
+                                {/* The keyboard and screen-reader path: a real button that says
+                                    whether the section is open and names the content it hides. */}
+                                <button
+                                    type="button"
+                                    onClick={() => toggleSection(raidKey)}
+                                    aria-expanded={!collapsed}
+                                    aria-controls={contentId}
+                                    className="flex items-center gap-2 text-left group-hover:text-[var(--ui-accent)] transition-colors"
+                                >
+                                    <svg
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                        aria-hidden="true"
+                                        className={`w-5 h-5 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`}
+                                    >
+                                        <path
+                                            fillRule="evenodd"
+                                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
+                                            clipRule="evenodd"
+                                        />
+                                    </svg>
+                                    {raidSessions[0].raidName || 'Unknown Raid'}
+                                </button>
+                            </h2>
+                            <span className="shrink-0 text-sm ui-text-muted">
+                                {raidSessions.length} {raidSessions.length === 1 ? 'session' : 'sessions'}
+                            </span>
                         </div>
-                    )}
-                </section>
-            ))}
+
+                        {/* One wrapper for both views. It stays in the page while collapsed, so the
+                            header's aria-controls always resolves; only its rows or tiles go. Open
+                            rows are the page's state, so they come back open. */}
+                        <div id={contentId} hidden={collapsed} className="mt-3">
+                            {/* One row or one tile per fireteam, never per player (ADR 0001). Both
+                                keep the API's order: multi-player fireteams first, then newest first. */}
+                            {collapsed ? null : view === 'list' ? (
+                                <ul className="ui-card divide-y ui-divider overflow-hidden">
+                                    {raidSessions.map((session) => {
+                                        const identity = sessionIdentity(session);
+                                        return (
+                                            <FireteamRow
+                                                key={fireteamKey(identity)}
+                                                session={session}
+                                                open={isOpenSession(openSessions, identity)}
+                                                onToggle={() => toggleSession(identity)}
+                                            />
+                                        );
+                                    })}
+                                </ul>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                    {raidSessions.map((session) => (
+                                        <ActiveSessionCard key={fireteamKey(sessionIdentity(session))} session={session} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                );
+            })}
         </div>
     );
 }

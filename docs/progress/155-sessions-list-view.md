@@ -109,8 +109,8 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
    - [x] `e2e/support/seed-world.ts` — `COLLAPSE_RAID` (Root of Nightmares), `COLLAPSE_OTHER_RAID` (King's Fall), `UNSEEDED_RAID` (Vow of the Disciple, never seeded)
    - [x] `e2e/active-sessions-collapse.spec.ts` (new, prefix `89`: `891`, `892`)
 2. Collapsible sections (green)
-   - [ ] `src/app/active-sessions/page.tsx` — collapse state by `raidKey`, the header button, the content wrapper, Collapse all / Expand all
-   - [ ] `e2e/support/fireteam-rows.ts` — rows sit one level deeper, under the content wrapper (same commit as the wrapper)
+   - [x] `src/app/active-sessions/page.tsx` — collapse state by `raidKey`, the header button, the content wrapper, Collapse all / Expand all
+   - [x] `e2e/support/fireteam-rows.ts` — rows sit one level deeper, under the content wrapper (same commit as the wrapper)
 3. Bookkeeping
    - [ ] `docs/e2e-coverage.md` — flow list, prefix `89`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)

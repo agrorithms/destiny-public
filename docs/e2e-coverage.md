@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -2013,3 +2013,120 @@ against it:
   which the `aria-label` kept.
 - Switching view clearing collapse state: only spec 2 failed, at the `expectCollapsed` after the
   switch to List ("Expected: \"false\", Received: \"true\"").
+
+## 2026-10-15 — #160 the list rows' copy join code button
+
+`e2e/active-sessions-copy.spec.ts`, **new**, ten specs; `e2e/support/seed-world.ts` changed. The
+suite is now **twenty-five flows, 141 tests including the two canary setups**.
+
+Each list row on `/active-sessions` has an icon-only `<button type="button">` named and titled
+"Copy join code", between the elapsed time and the chevron. It copies the fireteam's Join Command
+(`/join Name#Code`) with the async Clipboard API. The target is `joinCommand` in
+`src/lib/active-session/roster.ts`: the Fireteam Leader if their full `Name#Code` is known,
+otherwise the first Roster member whose full name is, otherwise none (Vitest covers the rule,
+`roster.test.ts`). On success the icon turns into a check mark and a `role="status"` tooltip reads
+"Copied /join Name#Code" for two seconds. On failure the tooltip reads "Copy failed: /join
+Name#Code", with the command selectable, and stays until Escape or a press outside it. At a
+displayed 6/6 the button is disabled with the title "Fireteam full". With no target there is no
+button, and an `aria-hidden` placeholder of its width keeps the columns aligned. A fireteam of one
+keeps the chevron's placeholder to the button's right, so every row's button sits in one column.
+
+**Seed world:** `COPY_RAID` (Pantheon: Calus Resplendent), a raid only this spec seeds.
+`seedFireteams` gains two options:
+- `nameOnlySeats`: those seats' `players` rows have a name and no code, so the API sends the bare
+  name;
+- `unseenSeats`: those seats have no `players` row and no session row of their own, and the Roster
+  names them by membership id, as Bungie does for a teammate it has no name for.
+
+Both are seeded, not stubbed (ADR 0004). Fixture namespace **90**:
+- `901`: a six-player fireteam (leader in seat 2), so 6/6;
+- `902`: a five-player fireteam with the leader in seat 1 and every name full, so a full name sits
+  ahead of the leader;
+- `903`: a four-player fireteam whose leader (seat 0) has no code;
+- `904`: a three-player fireteam whose leader has no code and whose other two seats are unseen;
+- `905`: a tracked player alone, with a 26-character name.
+
+**The clipboard is real.** The specs that read it back run with `clipboard-read` and
+`clipboard-write` granted on the context, and read it with `navigator.clipboard.readText()`. The
+failure spec runs in a context granted neither, where headless Chromium itself refuses the write
+("NotAllowedError: … Write permission denied"). That refusal was probed on a throwaway page before
+the spec was written: no grant, and a CDP `Browser.setPermission` denial, both refuse; a grant
+succeeds. So nothing in the browser is replaced, and no ADR 0004 exception is needed. If a
+Chromium version ever allowed the write, the spec would fail rather than pass.
+
+**The two-second revert uses Playwright's clock.** The spec installs `page.clock` before loading
+the page and pauses it once loaded, then steps it 1.9s (still shown) and 0.2s more (gone). That
+proves "about two seconds" from both sides without sleeping. The page's 30-second poll stays
+frozen too, so nothing re-renders mid-spec.
+
+1. **The leader's join code is copied** and read back: `/join Roster902F0S1#1000`, not seat 0's.
+   The button's title is "Copy join code".
+2. **A leader with no code falls back** to the next member with a full name (`903`).
+3. **Copying doesn't toggle the row**, closed or open, and each click is shown to have copied.
+4. **The check mark and "Copied /join …" show for about two seconds, then revert.** The icon is
+   compared as markup before, during and after, so the spec doesn't know either icon's shape.
+5. **At 6/6 the button is disabled**, with the title and accessible description "Fireteam full".
+6. **No button when nobody has a full name** (`904`), and the row's elapsed time ends where it
+   does on a row with a button.
+7. **A fireteam of one has a button** in the same column as the others, and its elapsed time
+   lines up.
+8. **At 360px**, the solo row's button is inside the viewport and its long title stays one line
+   tall. The "Copied" tooltip is inside the viewport and inside the list top to bottom. The list
+   clips its rows' corners, so a tooltip taller than the last row would lose a line without
+   anything overflowing.
+9. **A refused copy shows the command to copy by hand.** No check mark, still shown after 10s on
+   the paused clock, one click on it selects exactly the command without toggling the row, and
+   Escape or a click on the page's heading dismisses it.
+10. **At 360px the failure tooltip fits** the same way as 8. Its wording is the longer of the two.
+
+**Verified red first:** the first nine specs (all but 10, which came with the tooltip's phone
+fixes) ran against the page at `1dff438`, and eight failed on the missing button. Spec 6 passed,
+correctly: no row had a button yet, so "no button" and the alignment held trivially. The breaks
+below are what give it teeth.
+
+Then each spec was shown failing against a targeted break of the finished page, in seven batches.
+Each batch was one build, and each failing set matched the prediction:
+- no fallback (the leader or nobody) → 2, plus 7, 8 and 10, because the solo row has no leader;
+- the 6/6 disable dropped → 5 ("Expected: disabled, Received: enabled");
+- a press inside the failure tooltip dismissing it → 9 (the selection read "", not the command);
+- the leader never preferred → 1, 3, 4 and 9 (the tooltip read `…F0S0#1000`);
+- the no-button placeholder removed → 6 (elapsed time at 1195, not 1159);
+- a button even with no target → 6 ("Expected: 0, Received: 1");
+- no revert timer → 4;
+- the solo row's button in the chevron's slot → 7 (button at 1207, not 1171);
+- a click outside not dismissing the failure → 9;
+- bare names accepted as full → 2 and 6;
+- a failed copy left idle → 9 and 10;
+- the row's click guard not excluding the copy button → 3 and 9;
+- a 500ms revert → 4, at the 1.9s step;
+- all-digit names accepted → 6;
+- the tooltip's click not stopped → 9 (the row opened);
+- the button hidden at 6/6, not disabled → 5 ("element(s) not found");
+- Escape not dismissing → 9.
+
+While the specs were being written, the phone checks were also red against two earlier versions of
+the tooltip:
+- at a `100vw-7rem` cap it started at x −5;
+- with the command in monospace, wrapping at its space, it took three lines and ended 6px past the
+  list.
+
+The first version of spec 8 measured an empty status `<span>` around an absolutely positioned
+tooltip and passed on a zero-size box. The `role="status"` element is now the tooltip itself, so
+the specs measure what a visitor sees.
+
+### What is still NOT covered
+
+- A raw membership ID as long as Bungie's (16+ digits) in the browser. The `unseenSeats` IDs are
+  seven digits (`9040001`), so the API's `isLikelyMembershipId` passes them through as names. The
+  spec still proves they aren't used, because they have no `#code`. The 19-digit case is covered
+  in Vitest.
+- A platform name that itself ends in `#` and four digits. The browser can't tell it from a
+  Bungie Name (see the open question on #160's report).
+- A browser without `navigator.clipboard` (an insecure origin). The same `catch` handles it, but no
+  spec loads the page over plain HTTP from a non-local host.
+- Clicking the button again while "Copied" restarts the two seconds. It works by construction
+  (each copy sets a new state object), but no spec steps the clock across a second click.
+- The feedback lost when a section collapses (accepted, #168).
+- Hover colours, the disabled look and the tooltip's look. They were checked once in throwaway
+  screenshots at 1280px and 360px, light and dark, and are not asserted.
+- Tile view has no button (#153).

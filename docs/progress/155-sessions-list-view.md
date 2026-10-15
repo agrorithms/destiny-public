@@ -143,7 +143,7 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `src/components/CopyJoinCodeButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
    - [x] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target
 4. Bookkeeping
-   - [ ] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
+   - [x] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)
    - [ ] `CLAUDE.md` — e2e flow list (proposed text only; the orchestrating session applies it at the user's request)
 5. Review fixes
@@ -419,3 +419,41 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
     red by a fetch that clears open rows and collapse state (five specs), and by removing only
     the maintenance guard (the two maintenance specs), then green. The expand spec's plain Refresh
     clicks stay plain.
+
+- #160: the Join Command target is `joinCommand` in `roster.ts`: the Fireteam Leader if
+  `hasFullBungieName`, else the first Roster member who passes it, else null. "Full" is
+  `/^.+#\d{4}$/` on the display name, the shape the server writes when the players row has both
+  parts. A bare name has no `#code` and a raw membership ID is all digits, so neither can pass.
+  An `isLikelyMembershipId` check on top would be unreachable, so there isn't one; the Vitest
+  raw-ID case still covers it. The tracked player outside the Roster is never a target: the rule
+  is the Roster's.
+- #160: the button is `src/components/CopyJoinCodeButton.tsx`, between the elapsed time and the
+  chevron. It is the chevron's width (`-my-1 p-1`, a 16px icon) at every size. Its state (idle,
+  copied, failed) lives in the component, so it is in the row and lost when a section collapses
+  (#168).
+  - Copied: a check mark and a `role="status"` tooltip, "Copied /join …", for `COPIED_MS` (2000).
+    Each copy sets a new state object, so a second click restarts the timer.
+  - Failed: "Copy failed: /join …", the command `select-all`. It stays until Escape or a
+    `pointerdown` outside the button and tooltip. The tooltip stops its own click, so selecting
+    the command doesn't toggle the row. That is the one bit of click wiring added; the button
+    itself relies on #158's guard.
+  - Full (`playerCount >= 6`, the number the row shows): `disabled`, title "Fireteam full",
+    aria-label still "Copy join code".
+  - No target: no button, and an `aria-hidden` `w-6` placeholder keeps the count and time
+    aligned (like #158's fix A).
+  - The fireteam of one keeps #158's chevron placeholder to the button's right, so every row's
+    button is in one column. The rejected alternative, the button taking the chevron's slot,
+    put it 36px right of the others and moved the count and time with it.
+- #160: the tooltip sits to the button's left, over the row's own line, because the list's
+  `overflow-hidden` (for the rounded hover corners) clips anything above its first row or below
+  its last. That makes the row's height (about 41px) the limit: two lines of `text-xs`. At 360px
+  the card has 32px gutters, so the cap is `calc(100vw - 10rem)`. The command is in the body font
+  and `break-all`, because monospace wrapping at its space took three lines for a 26-character
+  name. The phone specs measure the tooltip inside the viewport and inside the list.
+- #160: the row divider borders are `currentColor`, which is pre-existing. `divide-y` borders the
+  `li`s, but `ui-divider` sets `border-color` on the `ul`. Seen in the #160 screenshots and left
+  for #169.
+- #160 proof that tests bite: Vitest, 6 breaks of `joinCommand`, each failing its tests (leader
+  never preferred; no fallback; any member as a last resort; bare names accepted; raw IDs
+  accepted; a code-less leader taken). Playwright, 17 breaks in 7 batches (one build each),
+  every failing set as predicted; the list is in `docs/e2e-coverage.md`'s #160 entry.

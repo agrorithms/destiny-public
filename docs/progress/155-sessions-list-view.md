@@ -111,9 +111,11 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
 2. Collapsible sections (green)
    - [x] `src/app/active-sessions/page.tsx` — collapse state by `raidKey`, the header button, the content wrapper, Collapse all / Expand all
    - [x] `e2e/support/fireteam-rows.ts` — rows sit one level deeper, under the content wrapper (same commit as the wrapper)
-3. Bookkeeping
-   - [ ] `docs/e2e-coverage.md` — flow list, prefix `89`, journal entry
-   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+3. A spec fix found by the bite checks
+   - [x] `e2e/active-sessions-collapse.spec.ts` — a collapsed section's check counts rows on screen by role, not by the CSS row locator
+4. Bookkeeping
+   - [x] `docs/e2e-coverage.md` — namespace `89`, journal entry (twenty-four flows, 130 tests)
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
    - [ ] `CLAUDE.md` — e2e flow list (proposed in the report; the orchestrating session applies it)
 
 ## Notes
@@ -308,3 +310,27 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
     - `:focus-visible` on the chevron shows the focus ring;
     - the toggle sits at x 1149 of 1280 and 229 of 360, `scrollWidth` equals the viewport, and
       Tile/List still switch at 360px.
+- #159: collapse state is `collapsedRaids: ReadonlySet<string>` in `page.tsx`, by `raidKey` (null
+  keys share `''` and collapse together). It is forgotten for a raid that leaves the page: on each
+  non-maintenance fetch, raids with no sessions in the response (`keepCollapsed` in the fetch), and
+  on a raid-filter change, raids the filter hides (`changeRaidFilter`, which wraps the hook's
+  setter). A maintenance response and a failed fetch keep it, as they keep open rows (#158's S3).
+  `isRaidShown` is the filter's own predicate, used by both the session filter and the forgetting,
+  so the two can't disagree.
+- #159: the header is `h2 > button` (the accordion pattern), with the chevron an `aria-hidden` SVG
+  and the count outside the `h2`, so the `h2`'s text is still the bare raid name and the #156 order
+  spec passes unmodified. The header row also toggles on a click anywhere on it, ignoring clicks on
+  its own button, like `FireteamRow`. The content wrapper `raid-section-<raidKey>-content` stays in
+  the page with `hidden`; its rows or tiles are unmounted while collapsed.
+- #159: Collapse all is `ui-toggle-idle` with a `--ui-border-input` border (the raid filter's input
+  border), `h-9` so it matches Refresh's height. It shares one flex item with Refresh so the two
+  wrap together. With no visible section it reads Collapse all and is **disabled** (not hidden), so
+  the control bar doesn't change shape when a filter empties the page.
+- #159 proof that tests bite: all thirteen specs red against `c88ef31`; then 14 targeted breaks in
+  three batches, each failing exactly its predicted spec(s); the row locator shown caught both too
+  narrow (`:scope > ul > li`, cap spec 8 vs 0) and too loose (`:scope ul li`, collapse spec 12, 2 vs
+  7). The details are in `docs/e2e-coverage.md`'s #159 entry. One break (tiles kept mounted inside
+  the hidden wrapper) stayed green, correctly, and led to the role-based collapsed check.
+- #159 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
+  `npm test` 560/560, `npm run e2e` 130/130.
+

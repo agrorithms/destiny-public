@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1838,3 +1838,95 @@ setups**, still twenty-three flows.
 
 Not covered: a row opened as two players that shrinks to one. The page still holds it open, and
 the row hides the list because it has nobody to list; no spec reseeds that.
+
+## 2026-10-15 — #159 collapsible raid sections, Collapse all / Expand all
+
+`e2e/active-sessions-collapse.spec.ts`, **new**, thirteen specs; `e2e/support/fireteam-rows.ts`
+changed. The suite is now **twenty-four flows, 130 tests including the two canary setups**.
+
+Each raid section's `h2` on `/active-sessions` holds a `<button type="button">` with
+`aria-expanded` and `aria-controls`, so the section collapses and expands, in list view and tile
+view. A click anywhere on the header row (the count included) toggles it too, like a list row. The
+`h2`'s text is still the bare raid name (the chevron is an `aria-hidden` SVG, and the count sits
+outside the `h2`), so the #156 order spec passes unchanged. `aria-controls` names the section's
+content wrapper, `raid-section-<raidKey>-content`, which stays in the page with `hidden` while
+collapsed; its rows or tiles are unmounted. A **Collapse all** button beside Refresh reads
+**Expand all** only when every visible section is collapsed, and is disabled when no section is
+visible. Collapse state is in memory, by `raidKey`: it survives Refresh and a maintenance response,
+not a reload, and a section that leaves the page (its raid has no sessions, or the raid filter hides
+it) is forgotten, so it comes back expanded.
+
+**Locators:** the list now sits one level deeper, inside the content wrapper, so `fireteamRows` is
+`:scope > div > ul > li`, still the section's own list and nothing nested in a row. The old
+`:scope > ul > li` fails loudly (the cap spec: "Expected: 8, Received: 0"). A descendant `:scope ul
+li` is caught by spec 12, which counts rows with one open ("Expected: 2, Received: 7"). The cap spec
+alone would not catch it, because none of its rows is open.
+
+**Seed world:** `COLLAPSE_RAID` (Root of Nightmares) and `COLLAPSE_OTHER_RAID` (King's Fall), two
+raids only this spec seeds, and `UNSEEDED_RAID` (Vow of the Disciple), which **no spec may ever
+seed**: spec 11 filters to it to get a page with no sections. Fixture namespace **89**: `891` for
+two six-player fireteams on Root of Nightmares with the leader in seat 2, and `892` for one
+four-player fireteam on King's Fall. The specs about "every visible section" first filter the page
+to this file's two raids through the raid filter's own dropdown, because other files leave their
+sections live.
+
+1. **A header click collapses and expands a section in list view**; while collapsed, the `h2` and
+   "2 sessions" are still visible. The second click lands on the count, so the whole header is
+   the target.
+2. **The same in tile view**: two tiles (`h3`s), then none, then two.
+3. **A collapsed section stays collapsed after Refresh**, and the other one stays expanded.
+4. **A reload expands every section again.**
+5. **Collapse all collapses every visible section** and then reads Expand all, which reverses it.
+6. **The button reads Collapse all while any visible section is expanded**, Expand all once the
+   last is collapsed, and Collapse all again once one is reopened.
+7. **A section the raid filter brings in starts expanded** (after Collapse all), the button goes
+   back to Collapse all, and the already-collapsed section stays collapsed.
+8. **A section the filter hides and shows again comes back expanded.**
+9. **The header from the keyboard**: Enter collapses, Space expands, and `aria-controls` resolves to
+   one element, hidden while collapsed.
+10. **Collapse state survives a maintenance response** (stubbed with `page.route`, as in the expand
+    spec), like open rows do.
+11. **No visible section → Collapse all, disabled**, not Expand all.
+12. **An open row is still open when its section expands again**, and the section still has 2
+    rows, not 2 plus the open row's 5 members.
+13. **At 360px** the control bar wraps: the raid filter, Refresh, Collapse all and the View toggle
+    each sit inside the viewport and overlap none of the others; Collapse all is on Refresh's line,
+    after it; a collapsed header's name and count end inside the viewport; the page doesn't scroll
+    sideways.
+
+**Verified red first:** against the page at `c88ef31`, all thirteen failed, each on the missing
+header button or the missing Collapse all button (the raid-filter helper and the open-row step ran).
+Then each spec was shown failing against a targeted break of the finished page, in three batches
+whose failing sets matched the predictions exactly:
+- the header row not clickable → 1;
+- tiles rendered outside the hidden wrapper → 2 ("Expected: 0, Received: 2");
+- every fetch forgetting collapse → 3 and 10;
+- collapse kept in `sessionStorage` → 4;
+- the button that only ever collapses → 5;
+- Expand all when *any* section is collapsed → 6 and 7;
+- Collapse all acting on every raid with sessions, not only the visible ones → 7;
+- no forgetting on a filter change → 8;
+- the wrapper losing its id while collapsed → 9 ("Expected: 1, Received: 0");
+- a maintenance response forgetting collapse → 10;
+- the button not disabled → 11;
+- collapsing a section closing every open row → 12;
+- the control bar `flex-nowrap` → 13 (Refresh ends at 366px);
+- Collapse all before Refresh → 13.
+
+One break stayed green and was right to: tile view ignoring collapse *inside* the hidden wrapper
+changes nothing on screen. It exposed that the spec's collapsed check counted rows with the CSS row
+locator, which counts hidden elements and so tied the spec to unmounting. That check now counts
+`listitem`s by role, which leaves hidden ones out.
+
+### What is still NOT covered
+
+- The 30-second poll itself; Refresh stands in for it, as in #158.
+- A section that leaves the page because its raid's **last fireteam ended**, then comes back: the
+  rule is the same as for a filter change (spec 8), but no spec reseeds a raid away.
+- A failed fetch (an error response): collapse state isn't touched on that path at all, so it is
+  kept, but no spec stubs one.
+- Null-key raids collapsing together under `''`: seeded keys are always strings.
+- Hover colours and the chevron's rotation. They were checked once in throwaway screenshots at
+  1280px and 360px, light and dark, and are not asserted.
+- Tile view beyond collapse: spec 2 counts tiles, nothing more (#153).
+

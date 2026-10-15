@@ -51,6 +51,7 @@ function CheckIcon() {
 export default function CopyJoinCodeButton({ command, full }: CopyJoinCodeButtonProps) {
     const [state, setState] = useState<CopyState>(IDLE);
     const wrapperRef = useRef<HTMLSpanElement>(null);
+    const shown = state.kind !== 'idle';
 
     useEffect(() => {
         if (state.kind !== 'copied') return;
@@ -111,9 +112,9 @@ export default function CopyJoinCodeButton({ command, full }: CopyJoinCodeButton
             <span
                 role="status"
                 onClick={(event) => event.stopPropagation()}
-                className={state.kind === 'idle' ? undefined : 'ui-card ui-text-primary absolute right-full top-1/2 -translate-y-1/2 mr-2 z-10 w-max max-w-[calc(100vw-10rem)] rounded-md px-2 py-0.5 text-xs shadow-sm cursor-auto'}
+                className={shown ? 'ui-card ui-text-primary absolute right-full top-1/2 -translate-y-1/2 mr-2 z-10 w-max max-w-[calc(100vw-10rem)] rounded-md px-2 py-0.5 text-xs shadow-sm cursor-auto' : undefined}
             >
-                {state.kind !== 'idle' && (
+                {shown && (
                     <>
                         {state.kind === 'copied' ? 'Copied ' : 'Copy failed: '}
                         <code className="select-all break-all font-[inherit]">{command}</code>

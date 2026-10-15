@@ -321,8 +321,8 @@ export interface SeedFireteamsOptions {
     /**
      * Seats whose player is known by name but not by code: their `players` row has no
      * `bungie_global_display_name_code`, so the API sends the bare name rather than
-     * `Name#Code` (see `enrichPartyMembersFromJson`). Their rendered name is
-     * {@link fireteamMemberName} without the `#code`.
+     * `Name#Code` (see `formatBungieDisplayName`, which `/api/active-sessions` calls). Their
+     * rendered name is {@link fireteamMemberName} without the `#code`.
      */
     nameOnlySeats?: number[];
     /**

@@ -54,9 +54,14 @@ function bareName(prefix: string, seat: number): string {
 const LEADER = fireteamMemberName(LEADER_PREFIX, 0, 1);
 const SOLO_NAME = `${SOLO.name}#${SOLO.code}`;
 
+/** This spec's raid section. */
+function sectionOf(page: Page): Locator {
+    return page.getByRole('region', { name: COPY_RAID.name });
+}
+
 /** The row titled "<name>'s fireteam" in this spec's raid section. */
 function rowOf(page: Page, name: string): Locator {
-    return fireteamRow(page.getByRole('region', { name: COPY_RAID.name }), name);
+    return fireteamRow(sectionOf(page), name);
 }
 
 function copyButtonOf(row: Locator): Locator {
@@ -78,19 +83,19 @@ function chevronOf(row: Locator): Locator {
  * section's list top to bottom. The list clips its rows' corners, so feedback taller than its
  * row would lose a line on the first or last row without anything overflowing.
  */
-async function expectFeedbackToFit(page: Page, feedback: Locator, list: Locator): Promise<void> {
+async function expectFeedbackToFit(page: Page, feedback: Locator): Promise<void> {
     await expectInsideViewport(feedback, 'the feedback');
     await expectNoElementOverflow(feedback, 'the feedback');
     await expectNoHorizontalPageOverflow(page);
     const box = await boxOf(feedback);
-    const clip = await boxOf(list);
+    const clip = await boxOf(listOf(page));
     expect(box.y, 'the feedback starts inside the list').toBeGreaterThanOrEqual(clip.y);
     expect(box.y + box.height, 'the feedback ends inside the list').toBeLessThanOrEqual(clip.y + clip.height);
 }
 
 /** This spec's raid section's list of rows. */
 function listOf(page: Page): Locator {
-    return page.getByRole('region', { name: COPY_RAID.name }).getByRole('list').first();
+    return sectionOf(page).getByRole('list').first();
 }
 
 /** What the page's clipboard holds right now. Needs clipboard-read. */
@@ -101,7 +106,8 @@ function readClipboard(page: Page): Promise<string> {
 /**
  * Takes over the page's clock from now on, paused. Nothing in the page runs on a timer until
  * the spec moves the clock on, so the success state's revert can be stepped to either side of
- * its two seconds instead of waited for. Call before `goto`, then `pauseClock` once loaded.
+ * its two seconds instead of waited for. Call `page.clock.install()` before `goto`, then this
+ * once loaded.
  */
 async function pauseClock(page: Page): Promise<void> {
     const now = await page.evaluate(() => Date.now());
@@ -149,10 +155,11 @@ test.describe('active sessions copy join code', () => {
         test('copies without opening or closing the row', async ({ page }) => {
             await page.goto('/active-sessions');
             const row = rowOf(page, LEADER);
+            const button = copyButtonOf(row);
             const chevron = chevronOf(row);
             await expect(chevron).toHaveAttribute('aria-expanded', 'false');
 
-            await copyButtonOf(row).click();
+            await button.click();
             await expect(feedbackOf(row)).toHaveText(`Copied /join ${LEADER}`);
             await expect(chevron).toHaveAttribute('aria-expanded', 'false');
             await expect(memberList(row)).toHaveCount(0);
@@ -160,7 +167,7 @@ test.describe('active sessions copy join code', () => {
             await chevron.click();
             await expect(chevron).toHaveAttribute('aria-expanded', 'true');
             await page.evaluate(() => navigator.clipboard.writeText(''));
-            await copyButtonOf(row).click();
+            await button.click();
             await expect.poll(() => readClipboard(page)).toBe(`/join ${LEADER}`);
             await expect(chevron).toHaveAttribute('aria-expanded', 'true');
             await expect(memberList(row)).toBeVisible();
@@ -277,7 +284,7 @@ test.describe('active sessions copy join code', () => {
 
                 const feedback = feedbackOf(row);
                 await expect(feedback).toHaveText(`Copied /join ${SOLO_NAME}`);
-                await expectFeedbackToFit(page, feedback, listOf(page));
+                await expectFeedbackToFit(page, feedback);
             });
         });
     });
@@ -337,7 +344,7 @@ test.describe('active sessions copy join code', () => {
 
                 const feedback = feedbackOf(row);
                 await expect(feedback).toContainText(`/join ${SOLO_NAME}`);
-                await expectFeedbackToFit(page, feedback, listOf(page));
+                await expectFeedbackToFit(page, feedback);
             });
         });
     });

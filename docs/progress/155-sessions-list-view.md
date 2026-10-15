@@ -146,8 +146,17 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
    - [ ] `CLAUDE.md` — e2e flow list (proposed text only; the orchestrating session applies it at the user's request)
-5. Review fixes
-6. Styling
+5. Review fixes (the user's picks from the code review)
+   - [x] `e2e/active-sessions-copy.spec.ts` — the phone spec measures the row's flex line, not the `truncate` title cell, against padding plus one line-height (S2)
+   - [x] `src/components/CopyJoinCodeButton.tsx` → `src/components/CopyJoinCommandButton.tsx`, and `FireteamRow.tsx`'s comments say Join Command; user-facing text unchanged (T1)
+   - [x] `docs/e2e-coverage.md` — not covered: a click on the disabled 6/6 button (S5); dismissing the failure tooltip by touch, scrolling included, and selecting the command by keyboard (S6)
+   - [x] `docs/progress/155-sessions-list-view.md` — re-stamped at the final code commit (S3)
+6. Styling (the user's pick from the code review, a commit of its own)
+   - [x] `src/app/active-sessions/page.tsx` — the list `ul` loses #158's `overflow-hidden` (S1)
+   - [x] `src/components/FireteamRow.tsx` — the first and last rows round their own hover at the card's inner radius, the last only while closed (S1)
+   - [x] `src/components/CopyJoinCommandButton.tsx` — the comment no longer claims two lines; cap, `break-all` and body font kept (S1)
+   - [x] `e2e/support/seed-world.ts` — `COPY_EDGE_RAID`; `e2e/active-sessions-copy.spec.ts` — spec 11, the widest names on the first and last rows (`906`, `907`), and the feedback checks measure clipping rather than the list's bounds (S1)
+   - [x] `docs/e2e-coverage.md` — `906`/`907`, spec 11, review-fixes entry (142 tests) (S1)
 
 ## Notes
 
@@ -444,18 +453,29 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
   - The fireteam of one keeps #158's chevron placeholder to the button's right, so every row's
     button is in one column. The rejected alternative, the button taking the chevron's slot,
     put it 36px right of the others and moved the count and time with it.
-- #160: the tooltip sits to the button's left, over the row's own line, because the list's
-  `overflow-hidden` (for the rounded hover corners) clips anything above its first row or below
-  its last. That makes the row's height (about 41px) the limit: two lines of `text-xs`. At 360px
-  the card has 32px gutters, so the cap is `calc(100vw - 10rem)`. The command is in the body font
-  and `break-all`, because monospace wrapping at its space took three lines for a 26-character
-  name. The phone specs measure the tooltip inside the viewport and inside the list.
+- #160: the tooltip sits to the button's left, centred on the row's own line. It was first held
+  to two lines of `text-xs`, because the list's `overflow-hidden` (for the rounded hover corners)
+  clipped anything above its first row or below its last. The review (S1) found that 26 `M`s, `W`s
+  or CJK characters take three lines (54px against a 40px row) and lost 6px at the list's edge.
+  So the list no longer clips: the first and last rows round their own hover instead (see
+  Styling). At 360px the card has 32px gutters, so the cap is `calc(100vw - 10rem)`. The command
+  is in the body font and `break-all`, because monospace wrapping at its space only makes it
+  taller. The phone specs measure the tooltip inside the viewport and not clipped or drawn over.
 - #160: the row divider borders are `currentColor`, which is pre-existing. `divide-y` borders the
   `li`s, but `ui-divider` sets `border-color` on the `ul`. Seen in the #160 screenshots and left
   for #169.
+- #160 review, issues and decisions:
+  - #165: comment https://github.com/agrorithms/destiny-public/issues/165#issuecomment-6201049149 (Name#NNNN-shaped fallback names pass `hasFullBungieName`).
+  - #169: comment https://github.com/agrorithms/destiny-public/issues/169#issuecomment-6201080815 (list dividers draw in `currentColor`).
+  - S4 accepted, with no issue: "Fireteam full" is only the disabled button's `title`, but the visible 6/6 carries the fact.
+  - T2 (duplicated spec helpers), T3 (`hasFullBungieName` vs `hasCompleteBungieDisplayName`), T4 (`joinCommand`'s inline parameter type): no action.
+- #160 review bite proofs:
+  - S2: with the row broken to wrap (`flex-wrap` on the line, `basis-full` on the button), the new check failed "the row is one line tall … Expected: 40, Received: 80". The old check's title assertion passed under the same break.
+  - S1: spec 11 was red against the list's `overflow-hidden` (clipped "by 6.0px" on the first row), then green after the styling fix.
 - #160 proof that tests bite: Vitest, 6 breaks of `joinCommand`, each failing its tests (leader
   never preferred; no fallback; any member as a last resort; bare names accepted; raw IDs
   accepted; a code-less leader taken). Playwright, 17 breaks in 7 batches (one build each),
   every failing set as predicted; the list is in `docs/e2e-coverage.md`'s #160 entry.
-- #160 verified (at `cfc12a0`): lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`,
-  exit 0), tsc, `npm test` 565/565, `npm run e2e` 141/141.
+- #160 verified (at `3bf58bf`, the last code commit; the re-stamp after it is this file only):
+  tsc exit 0, lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0),
+  `npm test` 565/565 (46 files), `npm run e2e` 142/142.

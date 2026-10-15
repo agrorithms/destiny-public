@@ -1866,7 +1866,9 @@ alone would not catch it, because none of its rows is open.
 raids only this spec seeds, and `UNSEEDED_RAID` (Vow of the Disciple), which **no spec may ever
 seed**: spec 11 filters to it to get a page with no sections. Fixture namespace **89**: `891` for
 two six-player fireteams on Root of Nightmares with the leader in seat 2, and `892` for one
-four-player fireteam on King's Fall. The specs about "every visible section" first filter the page
+four-player fireteam on King's Fall. Since the review fixes below, also `893` for one three-player
+fireteam on `REAPPEAR_RAID` (The Desert Perpetual), a third raid only this spec seeds, which
+spec 14 ends and reseeds. The specs about "every visible section" first filter the page
 to this file's two raids through the raid filter's own dropdown, because other files leave their
 sections live.
 
@@ -1921,14 +1923,18 @@ locator, which counts hidden elements and so tied the spec to unmounting. That c
 ### What is still NOT covered
 
 - The 30-second poll itself; Refresh stands in for it, as in #158.
-- A section that leaves the page because its raid's **last fireteam ended**, then comes back: the
-  rule is the same as for a filter change (spec 8), but no spec reseeds a raid away.
+- ~~A section that leaves the page because its raid's last fireteam ended, then comes back.~~
+  Covered by spec 14 in the review fixes below. This note used to say the rule was the same as for
+  a filter change (spec 8). The outcome is the same, but the code path isn't: the page forgets a
+  raid that left the response in its fetch, and one the filter hid in the filter's handler, so
+  spec 8 never ran the fetch path. With that path deleted, every spec still passed.
 - A failed fetch (an error response): collapse state isn't touched on that path at all, so it is
   kept, but no spec stubs one.
 - Null-key raids collapsing together under `''`: seeded keys are always strings.
 - Hover colours and the chevron's rotation. They were checked once in throwaway screenshots at
   1280px and 360px, light and dark, and are not asserted.
-- Tile view beyond collapse: spec 2 counts tiles, nothing more (#153).
+- Tile view beyond collapse: spec 2 counts tiles and checks the collapsed header and a switch to
+  List and back, nothing more (#153).
 
 
 ### Support helpers extracted (same day)
@@ -1955,7 +1961,8 @@ expand and collapse specs:
 
 The stub still runs at the network layer, so the page's own fetch handles the response. The
 expand spec's other Refresh clicks stay plain clicks, as before: "a member joins", and both
-clicks in its maintenance spec. Swapping them would add a wait they don't have today. A new file,
+clicks in its maintenance spec. Swapping them would add a wait they don't have today. (The two
+maintenance clicks moved to `refreshSessions` in the review fixes below.) A new file,
 because `fireteam-rows.ts` only builds locators and `viewport.ts` only measures layout. Test
 count unchanged.
 
@@ -1966,3 +1973,43 @@ Shown biting, then restored and green:
 - Only the `!data.maintenance` guard removed: exactly the two maintenance specs failed (collapse
   `:262` "Expected: \"false\", Received: \"true\""; expand `:198` "Expected: \"true\", Received:
   \"false\"").
+
+### Review fixes (same day)
+
+One more collapse spec, so the file has **fourteen** and the suite **131 tests including the two
+canary setups**, still twenty-four flows. The numbers below continue the list above. Spec 14
+sits after spec 8 in the file, because the two are the same rule on two paths.
+
+14. **A section whose raid leaves the API response and comes back starts expanded.** Spec 14
+    collapses the `893` fireteam's section, then calls `endFireteams` (new in
+    `e2e/support/seed-world.ts`), which deletes that fireteam's `active_sessions` rows through
+    `deleteActiveSessionForPlayer`, the query the crawler uses. After Refresh the section is
+    gone. The spec then reseeds and refreshes, and the section is back, expanded. Nothing is
+    stubbed: the e2e server really stops returning the raid. Only rows under prefix `893` are
+    touched.
+
+Spec 2 (tile view) gains two checks:
+- While collapsed, the raid name is on screen as text, not only as the button's accessible name.
+- After a switch to List and back, the section is still collapsed, because collapse state is
+  by raid, not by view.
+
+The expand spec's maintenance spec now uses `refreshSessions` for both of its Refresh clicks.
+It waits for each response, which only makes it stricter. `active-sessions-page.ts` matches the
+sessions request with one path predicate, for both the stub and the response wait. The
+maintenance stub's docblock cites ADR 0004's 2026-10-15 amendment, the one exception to "our own
+API routes are not stubbed". The page filters on `raidSectionKey(s)`, the same key that grouping
+and forgetting use (no spec change: seeded keys are never null).
+
+Shown biting, then restored and green. Each break was its own build, and the collapse file ran
+against it:
+- The fetch path's `liveRaids` / `keepCollapsed` lines deleted, together with the raid name
+  hidden in tile view while collapsed (kept as an `aria-label` on the button). Exactly two specs
+  failed:
+  - spec 14 at its final `expectExpanded` ("Expected: \"true\", Received: \"false\""), after its
+    section-gone check had passed;
+  - spec 2 on the new name check ("Expected: visible, Received: hidden").
+
+  The old spec 2 would have passed this break: its `headerOf` locator reads the accessible name,
+  which the `aria-label` kept.
+- Switching view clearing collapse state: only spec 2 failed, at the `expectCollapsed` after the
+  switch to List ("Expected: \"false\", Received: \"true\"").

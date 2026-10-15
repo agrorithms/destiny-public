@@ -117,6 +117,16 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
    - [x] `docs/e2e-coverage.md` — namespace `89`, journal entry (twenty-four flows, 130 tests)
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
    - [ ] `CLAUDE.md` — e2e flow list (proposed in the report; the orchestrating session applies it)
+5. Review fixes (the user's picks from the code review)
+   - [x] `e2e/support/seed-world.ts` — `REAPPEAR_RAID` (The Desert Perpetual) and `endFireteams`, which ends a prefix's fireteams through `deleteActiveSessionForPlayer` (S1)
+   - [x] `e2e/active-sessions-collapse.spec.ts` — spec 14, a raid that leaves the response and comes back starts expanded (`893`) (S1); the tile spec checks the collapsed name on screen and collapse across a List↔Tiles switch (S6)
+   - [x] `docs/adr/0004-mock-only-at-the-network-boundary.md` — 2026-10-15 amendment: the maintenance stub is the one own-API exception (P1)
+   - [x] `e2e/support/active-sessions-page.ts` — the stub's docblock cites the amendment (P1); one path predicate for the stub and the response wait (P4)
+   - [x] `src/app/active-sessions/page.tsx` — the filter reads `raidSectionKey(s)`, like grouping and forgetting (S4)
+   - [x] `e2e/active-sessions-expand.spec.ts` — the maintenance spec's two Refresh clicks use `refreshSessions` (P3)
+   - [x] `docs/e2e-coverage.md` — the not-covered note corrected, `893`, review-fixes entry (131 tests)
+6. Styling (the user's request, a commit of its own)
+   - [ ] `src/app/active-sessions/page.tsx` — the whole section header strip gets the warm row hover, with rounded corners; the text's accent hover kept
 
 ## Notes
 
@@ -262,6 +272,18 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
 
   Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 560/560, `npm run e2e` 115/115.
+- #159 review fixes (the user's picks, 2026-10-15). S2, S3, S5 and P5 were no action.
+  - S1: spec 14 ends the `893` fireteam in the e2e Tracker and reseeds it, with no stub. Red with
+    the fetch path's forgetting deleted ("Expected: \"true\", Received: \"false\"").
+  - S6: the tile spec checks the raid name as text on screen while collapsed, and that collapse
+    survives a switch to List and back. Red with the name hidden behind an `aria-label` (the old
+    spec passed that), and red with a view switch clearing collapse state.
+  - S4: the filter, grouping and forgetting all read `raidSectionKey`. That makes "can't
+    disagree" true by construction. The only change in behaviour is that a stored `""` in the
+    raid filter now shows null-key raids. `raidKey: string` is unchanged.
+  - P1: ADR 0004's 2026-10-15 amendment names the maintenance stub as the one exception: a
+    response the e2e server can't be put into.
+  - P3, P4: no behaviour change. The expand maintenance spec now waits for each response.
 - #158 review fixes (the user's picks, 2026-10-15):
   - A: a row whose `otherRosterMembers` is empty (about 40% of rows, a Roster of one) has no
     chevron, no row click and no pointer cursor. An `aria-hidden` 24px placeholder takes the

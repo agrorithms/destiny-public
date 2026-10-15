@@ -86,7 +86,7 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
 5. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
-   - [ ] `CLAUDE.md` — e2e flow list: proposed text handed to the orchestrating session, not edited here
+   - [x] `CLAUDE.md` — e2e flow list (`83c3267`, by the orchestrating session at the user's request; the implementing session proposed the text)
 
 ## Notes
 
@@ -180,3 +180,11 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
   in one line) passed the first phone spec, which then gained the whole-name check.
 - #158 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 559/559, `npm run e2e` 115/115.
+- #158: `CLAUDE.md`'s e2e flow list (twenty-three flows, plus the expandable rows) was applied in
+  `83c3267` by the orchestrating session, at the user's request, from the implementing session's
+  proposed text.
+- #158 orchestrator review, user decisions (2026-10-15): a one-player row shows a chevron and opens
+  onto an empty list; that goes to the code-review pass to fix. A dedupe unit-test seam goes to a
+  follow-up issue, not this ticket. A raw-ID member name in the expanded list is left for #165.
+  Drag-selecting row text toggling the row is left as is. `followOpenSessions` and the Roster-growth
+  and keyboard specs stay.

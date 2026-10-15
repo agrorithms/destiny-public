@@ -21,6 +21,9 @@ describe('findFireteamLeader', () => {
         expect(findFireteamLeader(roster)).toBe(roster[1]);
     });
 
+    // The test above only shows 11 winning. These are the other statuses the design snapshot
+    // saw: 9 and 15 are leaders, 3 and 7 are not. Checking each real value means a rule that
+    // only recognises 11 (or any one combination) fails here.
     it('treats 9 and 15 as leaders and 3 and 7 as not', () => {
         const nine = [member(0, 3), member(1, 9)];
         const fifteen = [member(0, 7), member(1, 15)];
@@ -35,6 +38,9 @@ describe('findFireteamLeader', () => {
         expect(findFireteamLeader([member(0, 17), member(1, 3)])).toBeNull();
     });
 
+    // fireteamTitle relies on getting null here: null is what sends the row's title to the
+    // tracked player instead. Picking the first member, or anyone else, would hide that the
+    // Roster has no leader at all.
     it('finds no leader when nobody in the Roster is flagged', () => {
         expect(findFireteamLeader([member(0, 1), member(1, 3)])).toBeNull();
     });
@@ -91,6 +97,9 @@ describe('fireteamTitle', () => {
         });
     });
 
+    // The two fallbacks can stack: no leader sends the title to the tracked player, and the
+    // tracked player can be unnamed too. The raw-ID check has to apply after the fallback,
+    // not only to a leader, or this row would show a 19-digit number.
     it('shows "Unknown player" when the tracked player it falls back to has no name either', () => {
         const tracked = { membershipId: '4611686018400000005', membershipType: 3, displayName: '4611686018400000005', status: 1 };
 

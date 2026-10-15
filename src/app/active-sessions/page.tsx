@@ -215,8 +215,9 @@ export default function ActiveSessionsPage() {
                 </div>
             )}
 
-            {/* Session Groups. Each is a region named by its h2, so a section's rows can be
-                found by raid name; the h2's only text stays the bare raid name. */}
+            {/* Session Groups. Each is a region landmark named by its h2, so a screen reader can
+                list the raids and jump to one. Specs find a section's rows the same way, by raid
+                name. The h2's only text stays the bare raid name. */}
             {sortedRaidGroups.map(([raidKey, raidSessions]) => (
                 <section key={raidKey} aria-labelledby={`raid-section-${raidKey}`} className="mb-8">
                     <div className="flex items-center justify-between mb-3">

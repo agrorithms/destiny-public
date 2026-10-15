@@ -1,5 +1,7 @@
 'use client';
 
+import { ROSTER_SIZE } from '@/lib/active-session/roster';
+
 interface PartyMember {
     membershipId: string;
     membershipType?: number;
@@ -75,10 +77,10 @@ export default function ActiveSessionCard({ session }: ActiveSessionCardProps) {
 
             <div className="flex items-center justify-between mb-3">
                 <span className="text-xs ui-text-muted">
-                    {session.playerCount} / 6 players
+                    {session.playerCount} / {ROSTER_SIZE} players
                 </span>
                 <div className="flex gap-1">
-                    {Array.from({ length: 6 }).map((_, i) => (
+                    {Array.from({ length: ROSTER_SIZE }).map((_, i) => (
                         <div
                             key={i}
                             className={`w-2 h-2 rounded-full ${i < session.playerCount ? 'bg-green-500' : 'bg-gray-600'

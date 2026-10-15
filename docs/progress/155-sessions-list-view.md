@@ -158,6 +158,29 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `e2e/support/seed-world.ts` — `COPY_EDGE_RAID`; `e2e/active-sessions-copy.spec.ts` — spec 11, the widest names on the first and last rows (`906`, `907`), and the feedback checks measure clipping rather than the list's bounds (S1)
    - [x] `docs/e2e-coverage.md` — `906`/`907`, spec 11, review-fixes entry (142 tests) (S1)
 
+## #161 — fireteam-size filter chips
+
+Branch `feat/161-ft-size-filter` (from `7bddb71`, so all of #156–#160 is in it). Seams, agreed with
+`orchestrate-161-ft-size-filter`: the Roster size rules through Vitest (`roster.ts`), the chips
+through Playwright.
+
+1. Roster size, red then green (Vitest), and the literal 6 replaced
+   - [x] `src/lib/active-session/roster.test.ts` — `ROSTER_SIZE`, `isFullRoster`, `rosterSizeChip` (7+ under chip 6, 0 or less under chip 1)
+   - [x] `src/lib/active-session/roster.ts` — the three exports
+   - [x] `src/components/FireteamRow.tsx` — "N/6", its title and the disabled 6/6 button read `ROSTER_SIZE` / `isFullRoster`
+   - [x] `src/components/ActiveSessionCard.tsx` — the constant only, no tile markup change (#153)
+2. Specs, red against today's page
+   - [ ] `e2e/support/seed-world.ts` — `SIZE_RAID` (Pantheon: Morgeth Surpassing)
+   - [ ] `e2e/active-sessions-size.spec.ts` (new, prefix `91`)
+3. The chips (green)
+   - [ ] `src/hooks/useSessionSizes.ts` (new) — the stored selection, `useSyncExternalStore`, failed-save fallback
+   - [ ] `src/components/SessionSizeChips.tsx` (new) — six toggle chips
+   - [ ] `src/app/active-sessions/page.tsx` — the size filter inside `filteredSessions`, `changeSizes`, the refresh path's live raids, the empty state
+4. Bookkeeping
+   - [ ] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
+   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [ ] `CLAUDE.md` — e2e flow list: proposed to the orchestrator, not edited here
+
 ## Notes
 
 - #156: sections group by `raidKey` and sort by their index in `AVAILABLE_RAIDS`

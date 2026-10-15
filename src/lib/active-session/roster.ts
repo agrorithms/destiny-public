@@ -122,6 +122,26 @@ export function joinCommand(session: { partyMembers: RosterMember[] }): string |
     return target ? `/join ${target.displayName}` : null;
 }
 
+/** The most players a raid Roster holds. Rows read "N/6" against it. */
+export const ROSTER_SIZE = 6;
+
+/**
+ * Whether a fireteam has no room, by the player count its row shows: its Join Command button is
+ * disabled. The same fireteams fall under the size filter's last chip.
+ */
+export function isFullRoster(playerCount: number): boolean {
+    return playerCount >= ROSTER_SIZE;
+}
+
+/**
+ * The size filter's chip a fireteam falls under, from the player count its row shows: 1 to
+ * {@link ROSTER_SIZE}. A count past the Roster size goes under the last chip, as it reads full,
+ * and one below 1 under the first, so with every chip on no fireteam is ever hidden.
+ */
+export function rosterSizeChip(playerCount: number): number {
+    return Math.min(Math.max(playerCount, 1), ROSTER_SIZE);
+}
+
 // Member-set rules behind isSameSession, which the server's dedupe (dedupe.ts) also calls to
 // collapse one row per tracked player into one per fireteam.
 

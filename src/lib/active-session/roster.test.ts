@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     findFireteamLeader, fireteamTitle, followOpenSessions, isOpenSession, isSameSession, joinCommand, otherRosterMembers,
-    sessionIdentity, toggleOpenSession,
+    isFullRoster, rosterSizeChip, sessionIdentity, toggleOpenSession,
 } from './roster';
 
 // The Roster rules behind each list-view row on /active-sessions (#157). They run in the
@@ -291,5 +291,48 @@ describe('joinCommand', () => {
     // first full name is the target, so a fireteam of one still gets its button.
     it('names the first member with a full Name#Code when nobody is flagged as leader', () => {
         expect(joinCommand({ partyMembers: [member(0, 1, 'Solo#4242')] })).toBe('/join Solo#4242');
+    });
+});
+
+describe('rosterSizeChip', () => {
+    // #161: the size filter's chips are 1 to 6, one per displayed Roster size, so a fireteam
+    // falls under the chip of the number its row shows.
+    it('puts each Roster size from 1 to 6 under its own chip', () => {
+        expect([1, 2, 3, 4, 5, 6].map(rosterSizeChip)).toEqual([1, 2, 3, 4, 5, 6]);
+    });
+
+    // A count past 6 isn't a raid Roster Bungie sends, but nothing stops the API sending one.
+    // It goes under chip 6, the "full" chip, because its row reads full (7/6) and its join code
+    // button is disabled. And with every chip on, the filter must hide nothing: a count that
+    // fell under no chip would vanish from the page with no filter set.
+    it('puts a Roster larger than 6 under chip 6', () => {
+        expect(rosterSizeChip(7)).toBe(6);
+        expect(rosterSizeChip(12)).toBe(6);
+    });
+
+    // The other end of the same rule: a count below 1 is just as impossible and just as
+    // unfiltered with every chip on, so it goes under the nearest chip, 1.
+    it('puts a Roster count below 1 under chip 1', () => {
+        expect(rosterSizeChip(0)).toBe(1);
+        expect(rosterSizeChip(-3)).toBe(1);
+    });
+});
+
+describe('isFullRoster', () => {
+    // #160's rule, now shared with #161's chip 6: a fireteam showing 6/6 has no room, so its
+    // join code button is disabled. A count past 6 reads full too, the same fireteams that
+    // rosterSizeChip puts under chip 6, so chip 6 and the disabled button can't disagree.
+    it('reads a Roster of 6 or more as full and one of 5 as not', () => {
+        expect(isFullRoster(5)).toBe(false);
+        expect(isFullRoster(6)).toBe(true);
+        expect(isFullRoster(7)).toBe(true);
+    });
+
+    // Every fireteam under chip 6 is full and no fireteam under another chip is, across the
+    // whole range the clamp covers.
+    it('agrees with chip 6 for every player count', () => {
+        for (const playerCount of [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8]) {
+            expect(isFullRoster(playerCount), `${playerCount} players`).toBe(rosterSizeChip(playerCount) === 6);
+        }
     });
 });

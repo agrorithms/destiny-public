@@ -142,6 +142,9 @@ export function rosterSizeChip(playerCount: number): number {
     return Math.min(Math.max(playerCount, 1), ROSTER_SIZE);
 }
 
+/** The size filter's chips, 1 to {@link ROSTER_SIZE}: every chip {@link rosterSizeChip} can return. */
+export const ROSTER_SIZE_CHIPS: readonly number[] = Array.from({ length: ROSTER_SIZE }, (_, i) => i + 1);
+
 // Member-set rules behind isSameSession, which the server's dedupe (dedupe.ts) also calls to
 // collapse one row per tracked player into one per fireteam.
 

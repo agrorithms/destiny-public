@@ -1,17 +1,15 @@
 'use client';
 
 import { useMemo, useSyncExternalStore } from 'react';
-import { ROSTER_SIZE } from '@/lib/active-session/roster';
+import { ROSTER_SIZE_CHIPS } from '@/lib/active-session/roster';
 
 const SESSION_SIZES_KEY = 'destiny-farm-finder-sessions-sizes';
-
-/** Every chip, 1 to the Roster size: the default, and what the page is prerendered with. */
-export const ALL_SESSION_SIZES: readonly number[] = Array.from({ length: ROSTER_SIZE }, (_, i) => i + 1);
 
 // The snapshot is the selection as a string, "1,2,5": a primitive, so useSyncExternalStore
 // sees an unchanged selection as unchanged. An array read fresh from storage on every call
 // would be a new object each time, and React would re-render forever.
-const DEFAULT_SNAPSHOT = ALL_SESSION_SIZES.join(',');
+// Every chip on is the default, and what the page is prerendered with.
+const DEFAULT_SNAPSHOT = ROSTER_SIZE_CHIPS.join(',');
 
 const listeners = new Set<() => void>();
 // Set only while the latest write threw (some private modes, a full quota), so the chips still
@@ -28,8 +26,8 @@ function snapshotOf(stored: string | null): string {
     if (stored === null) return DEFAULT_SNAPSHOT;
     try {
         const parsed: unknown = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.every((size) => ALL_SESSION_SIZES.includes(size))) {
-            return ALL_SESSION_SIZES.filter((size) => parsed.includes(size)).join(',');
+        if (Array.isArray(parsed) && parsed.every((size) => ROSTER_SIZE_CHIPS.includes(size))) {
+            return ROSTER_SIZE_CHIPS.filter((size) => parsed.includes(size)).join(',');
         }
     } catch {
         // Not JSON
@@ -51,7 +49,7 @@ function readSnapshot(): string {
 
 // Module-level, so its identity is stable without a useCallback.
 function writeSizes(next: readonly number[]): void {
-    const sorted = ALL_SESSION_SIZES.filter((size) => next.includes(size));
+    const sorted = ROSTER_SIZE_CHIPS.filter((size) => next.includes(size));
     try {
         localStorage.setItem(SESSION_SIZES_KEY, JSON.stringify(sorted));
         // This write stuck, so localStorage is current again and the fallback must not win.

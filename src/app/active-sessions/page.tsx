@@ -99,6 +99,15 @@ function shownRaidKeys(sessions: ActiveSession[], selectedRaids: string[], sizes
     return new Set(sessions.filter((session) => isSessionShown(selectedRaids, sizes, session)).map(raidSectionKey));
 }
 
+// The empty state's hint, when no session is shown: the chips first, since every chip off hides
+// everything, then the chips again if the raid filter alone would show something.
+function emptyStateHint(sessions: ActiveSession[], selectedRaids: string[], sizes: readonly number[]): string {
+    if (sizes.length === 0) return 'Select at least one fireteam size';
+    if (sessions.some((s) => isRaidShown(selectedRaids, raidSectionKey(s)))) return 'Try selecting more fireteam sizes';
+    if (selectedRaids.length > 0) return 'Try selecting different raids or wait for new sessions';
+    return 'Sessions will appear here when players are detected in raids';
+}
+
 // The collapsed raids for which `stillShown` holds. A section that leaves the page is
 // forgotten, so it comes back expanded, as anything newly on the page does.
 function keepCollapsed(collapsed: ReadonlySet<string>, stillShown: (raidKey: string) => boolean): ReadonlySet<string> {
@@ -342,15 +351,7 @@ export default function ActiveSessionsPage() {
                 <div className="ui-card p-4">
                     <div className="text-center py-12 ui-text-secondary">
                         <p className="text-lg">No active raid sessions found</p>
-                        <p className="text-sm mt-1">
-                            {sizes.length === 0
-                                ? 'Select at least one fireteam size'
-                                : sessions.some((s) => isRaidShown(selectedRaids, raidSectionKey(s)))
-                                    ? 'Try selecting more fireteam sizes'
-                                    : selectedRaids.length > 0
-                                        ? 'Try selecting different raids or wait for new sessions'
-                                        : 'Sessions will appear here when players are detected in raids'}
-                        </p>
+                        <p className="text-sm mt-1">{emptyStateHint(sessions, selectedRaids, sizes)}</p>
                     </div>
                 </div>
             )}

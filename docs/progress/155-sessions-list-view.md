@@ -46,8 +46,15 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
    - [x] `src/app/active-sessions/page.tsx` — toggle, list by default, sections as labelled regions
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flow list, prefix `87`, tile view's lost coverage (#153), journal entry
-   - [ ] `CLAUDE.md` — e2e flow list (see notes: proposed text, not edited from a peer request)
+   - [x] `CLAUDE.md` — e2e flow list (`993246d`, by the orchestrating session; see notes)
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
+5. Review fixes (findings S1, S2, S3, S6, P2, and the user's P3 decision)
+   - [x] `docs/progress/155-sessions-list-view.md` — the CLAUDE.md item and note agree with `993246d`
+   - [x] `src/lib/active-session/roster.test.ts` — a why-comment on the three tests that lacked one
+   - [x] `src/app/active-sessions/page.tsx` — the section comment leads with the landmark
+   - [x] `src/hooks/useSessionsView.ts` — no cross-tab sync; `unstoredView` only when a write throws
+   - [x] `e2e/active-sessions-list.spec.ts` — the phone spec measures a 26-character name
+   - [x] `docs/e2e-coverage.md` — spec 7, the `872` fixture, and the wrap gap it still misses
 
 ## Notes
 
@@ -78,9 +85,9 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
   after a reload. The leaderboard's View toggle likely has the same latent highlight bug; not touched.
 - #157: raid sections are `<section aria-labelledby>` regions named by their h2 (text unchanged).
   Row keys are still `${membershipId}-${index}`; stable identity is #158's.
-- #157: `CLAUDE.md`'s e2e flow list is **not** edited: the request came from a peer session, and
-  this session doesn't edit CLAUDE.md on a peer's request. The proposed text is in the handoff
-  message to the orchestrator, for the user to apply.
+- #157: `CLAUDE.md`'s e2e flow list was edited in `993246d` by the orchestrating session, at the
+  user's request. The implementing session doesn't edit CLAUDE.md on a peer's request, so it
+  handed the proposed text over rather than applying it.
 - #157 verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 547/547, `npm run e2e` 105/105.
 - #157 simplify pass (separate commit): `fireteamTitle` returns the row's `tooltip` (name, or the
@@ -92,3 +99,15 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
   making the route's and `format.ts`'s `isLikelyMembershipId` import one regex from `roster.ts`.
   Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
   `npm test` 547/547, `npm run e2e` 105/105.
+- #157 review pass (two commits). The view no longer follows other tabs (the `storage` listener
+  is gone; the user's call on finding P3). `unstoredView` is set only when `setItem` throws, and
+  `readView` checks it before localStorage, so a write that fails while an old value is still
+  stored doesn't leave the toggle stuck. Checked with a throwaway Playwright spec, not committed:
+  every storage call throwing, and only writes throwing with "tiles" stored; the toggle switched
+  both ways in both. The phone spec now measures the solo row, renamed
+  `Roster872SoloWithALongName`. With `min-w-0` and `truncate` both removed from the title, the old
+  `.first()` spec passed and the new one failed: the row scrolled sideways by 78px. Removing
+  either class alone passes both versions: `truncate`'s `overflow: hidden` already gives the flex
+  item a zero minimum width, and without `truncate` the title wraps instead. That gap is recorded
+  in `docs/e2e-coverage.md`. Re-verified: lint 0 errors (29 warnings, `gos10k/`), build
+  (`○ /active-sessions`, exit 0), `npm test` 547/547, `npm run e2e` 105/105.

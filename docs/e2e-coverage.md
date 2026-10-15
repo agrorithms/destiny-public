@@ -1697,7 +1697,7 @@ spec's `sectionHeadings()` didn't need to change.
 (FireteamMember 1 + PartyLeader 8). Without it every member is status 1 and the fireteam has no
 leader. `LIST_RAID` (Garden of Salvation) is a raid only this spec seeds. Fixture namespace **87**:
 `871` for two six-player fireteams with the leader in seat 2, `872` for one solo player with no
-leader, who started most recently.
+leader, who started most recently and has a 26-character name, the longest a Bungie Name can be.
 
 1. **List view on a first visit**: three rows in the section, no tile headings, "List view" pressed.
 2. **The toggle's halves** carry the tooltips "List view" / "Tile view", an `aria-label` and `aria-pressed`.
@@ -1707,7 +1707,10 @@ leader, who started most recently.
 5. **No flagged leader → the tracked player** (the solo row), with `1/6` and `3Nm`.
 6. **Rows keep the API's order**: both six-player fireteams, newest first, then the solo player,
    who started last.
-7. **At 360px**, the toggle and a row sit inside the viewport and the page doesn't scroll sideways.
+7. **At 360px**, the toggle and the long-named solo row sit inside the viewport, the row doesn't
+   scroll sideways and neither does the page. Before the #157 review it measured the first row,
+   whose name is short. With both `min-w-0` and `truncate` dropped from the title, that version
+   passed and this one fails (the row scrolls sideways by 78px).
 
 **Changed:**
 - `active-sessions-cap.spec.ts` proves ADR 0001 by counting **list rows**: 8 fireteams of 6 render 8
@@ -1736,5 +1739,9 @@ and spec 3 failed.
   names always resolve.
 - The toggle with localStorage unavailable (private modes): the view still switches for the visit,
   but nothing checks it.
+- A row title that wraps. Dropping `truncate` alone (or `min-w-0` alone, which `truncate`'s
+  `overflow: hidden` makes redundant) passes spec 7: without `nowrap` the title wraps to two lines
+  and nothing scrolls, but an unbreakable `Name#Code` spills past its own box over the player count.
+  No spec checks that a row stays one line or that its cells don't overlap.
 - Rows on refresh: the 30-second poll and Refresh re-render the rows, but no spec changes data
   between polls. Open rows across refreshes are #158.

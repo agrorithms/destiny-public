@@ -13,6 +13,10 @@ const listeners = new Set<() => void>();
 let unstoredView: SessionsView | null = null;
 
 function readView(): SessionsView {
+    // Checked first: once a write has failed, whatever localStorage still holds is stale.
+    if (unstoredView) {
+        return unstoredView;
+    }
     try {
         const stored = localStorage.getItem(SESSIONS_VIEW_KEY);
         if (stored === 'list' || stored === 'tiles') {
@@ -21,26 +25,24 @@ function readView(): SessionsView {
     } catch {
         // Ignore
     }
-    return unstoredView ?? DEFAULT_VIEW;
+    return DEFAULT_VIEW;
 }
 
 // Module-level, so its identity is stable without a useCallback.
 function writeView(next: SessionsView): void {
-    unstoredView = next;
     try {
         localStorage.setItem(SESSIONS_VIEW_KEY, next);
     } catch {
-        // Ignore
+        unstoredView = next;
     }
     listeners.forEach((listener) => listener());
 }
 
+// Only this tab's own writes notify: another tab changing its view leaves this one alone.
 function subscribe(listener: () => void): () => void {
     listeners.add(listener);
-    window.addEventListener('storage', listener);
     return () => {
         listeners.delete(listener);
-        window.removeEventListener('storage', listener);
     };
 }
 

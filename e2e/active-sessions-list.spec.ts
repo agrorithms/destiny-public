@@ -14,13 +14,14 @@ import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from '
  *
  * Fixture namespace `87`: two six-player fireteams with a leader in seat 2 (`871`), and one
  * solo player with no leader flagged (`872`), all on a raid no other spec seeds. The solo
- * player started most recently, so the row order proves fireteam size outranks recency.
+ * player started most recently, so the row order proves fireteam size outranks recency, and
+ * has a 26-character name, the longest a Bungie Name can be, for the phone-width check.
  * Every Playwright test gets a fresh browser context, so each one starts on a first visit
  * with nothing in localStorage.
  */
 const FIRETEAM_PREFIX = '871';
 const LEADER_SEAT = 2;
-const SOLO = { membershipId: '87200', name: 'Roster872Solo', code: 1872 };
+const SOLO = { membershipId: '87200', name: 'Roster872SoloWithALongName', code: 1872 };
 
 test.beforeAll(async () => {
     // Fireteam 1 starts a minute after fireteam 0 (seedFireteams staggers them).
@@ -132,12 +133,15 @@ test.describe('active sessions list view', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 
         // The ticket's phone criterion: the toggle and a row fit, and nothing makes the page
-        // scroll sideways. A long Name#Code is the likeliest thing to push a row wide.
-        test('fits the toggle and a row inside a 360px viewport', async ({ page }) => {
+        // scroll sideways. A long Name#Code is the likeliest thing to push a row wide, so the
+        // row measured is the solo player's, whose name is as long as a Bungie Name gets. A
+        // short-named row fits at 360px even when the title can't shrink, so measuring one
+        // proves nothing.
+        test('fits the toggle and a long-named row inside a 360px viewport', async ({ page }) => {
             await page.goto('/active-sessions');
 
             const toggle = page.getByRole('group', { name: 'View' });
-            const row = listSection(page).getByRole('listitem').first();
+            const row = listSection(page).getByRole('listitem').filter({ hasText: SOLO.name });
             await expect(toggle).toBeVisible();
             await expect(row).toBeVisible();
 

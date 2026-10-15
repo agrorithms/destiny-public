@@ -8,6 +8,7 @@ import SessionsViewToggle from '@/components/SessionsViewToggle';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useSessionsView } from '@/hooks/useSessionsView';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
+import { followOpenSessions, isSameSession, sessionIdentity, type SessionIdentity } from '@/lib/active-session/roster';
 
 interface PartyMember {
     membershipId: string;
@@ -65,9 +66,13 @@ function raidSectionRank(raidKey: string): number {
     return RAID_SECTION_ORDER.get(raidKey) ?? AVAILABLE_RAIDS.length;
 }
 
-// One key for a row and a tile alike, so the two views can't drift apart.
-function fireteamKey(session: ActiveSession, index: number): string {
-    return `${session.membershipId}-${index}`;
+// One key for a row and a tile alike, so the two views can't drift apart: the fireteam's raid
+// and member set. Never the tracked player or the index, which both change between polls.
+// Unique on the page, because dedupe already merged any two sessions in one raid whose member
+// sets are equal or nested. A Roster change gives the row a new key, which is harmless: rows
+// keep no state, and open rows are tracked by the page.
+function fireteamKey(identity: SessionIdentity): string {
+    return `${identity.activityHash}:${identity.memberIds.join(',')}`;
 }
 
 export default function ActiveSessionsPage() {
@@ -80,6 +85,9 @@ export default function ActiveSessionsPage() {
     const [shown, setShown] = useState(0);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
+    // The list rows open right now, by session identity rather than by row, so a row stays
+    // open across refreshes even as its tracked player changes or its Roster grows or shrinks.
+    const [openSessions, setOpenSessions] = useState<SessionIdentity[]>([]);
 
     const fetchSessions = useCallback(async () => {
         setLoading(true);
@@ -87,7 +95,11 @@ export default function ActiveSessionsPage() {
             const response = await fetch('/api/active-sessions');
             if (!response.ok) throw new Error(`API error: ${response.status}`);
             const data: ApiResponse = await response.json();
-            setSessions(data.sessions || []);
+            const nextSessions = data.sessions || [];
+            setSessions(nextSessions);
+            // Re-anchor each open row to this poll's Roster, so the next poll compares against
+            // it. Fireteams that left the page are forgotten.
+            setOpenSessions((open) => followOpenSessions(open, nextSessions.map(sessionIdentity)));
             setTotal(data.total ?? 0);
             setShown(data.shown ?? 0);
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
@@ -110,6 +122,12 @@ export default function ActiveSessionsPage() {
         const interval = setInterval(fetchSessions, 30000);
         return () => clearInterval(interval);
     }, [fetchSessions]);
+
+    const toggleSession = useCallback((identity: SessionIdentity) => {
+        setOpenSessions((open) => open.some((opened) => isSameSession(opened, identity))
+            ? open.filter((opened) => !isSameSession(opened, identity))
+            : [...open, identity]);
+    }, []);
 
     // Surface data freshness in the nav stats strip
     useReportPageLiveStatus(lastUpdated, 30);
@@ -233,14 +251,22 @@ export default function ActiveSessionsPage() {
                         the API's order: multi-player fireteams first, then newest first. */}
                     {view === 'list' ? (
                         <ul className="ui-card divide-y ui-divider">
-                            {raidSessions.map((session, index) => (
-                                <FireteamRow key={fireteamKey(session, index)} session={session} />
-                            ))}
+                            {raidSessions.map((session) => {
+                                const identity = sessionIdentity(session);
+                                return (
+                                    <FireteamRow
+                                        key={fireteamKey(identity)}
+                                        session={session}
+                                        open={openSessions.some((opened) => isSameSession(opened, identity))}
+                                        onToggle={() => toggleSession(identity)}
+                                    />
+                                );
+                            })}
                         </ul>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {raidSessions.map((session, index) => (
-                                <ActiveSessionCard key={fireteamKey(session, index)} session={session} />
+                            {raidSessions.map((session) => (
+                                <ActiveSessionCard key={fireteamKey(sessionIdentity(session))} session={session} />
                             ))}
                         </div>
                     )}

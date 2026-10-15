@@ -75,12 +75,14 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
    - [x] `src/lib/active-session/format.ts` — imports `isLikelyMembershipId` from `roster.ts`
    - [x] `src/app/api/active-sessions/route.ts` — imports `isLikelyMembershipId` from `roster.ts`
 3. Specs, red against the collapsed-only rows
-   - [ ] `e2e/active-sessions-expand.spec.ts` (new, prefix `88`)
-   - [ ] `e2e/player-names.spec.ts` — expand the row, check a non-titled member's `Name#Code`
-   - [ ] `e2e/active-sessions-cap.spec.ts`, `e2e/active-sessions-list.spec.ts` — row locators narrowed past nested member items
+   - [x] `e2e/active-sessions-expand.spec.ts` (new, prefix `88`)
+   - [x] `e2e/player-names.spec.ts` — expand the row, check a non-titled member's `Name#Code`
+   - [x] `e2e/support/fireteam-rows.ts` (new) — a section's own `ul > li`, so an open row's member items aren't rows
+   - [x] `e2e/support/seed-world.ts` — `EXPAND_RAID` (Last Wish), a raid only the expand spec seeds
+   - [x] `e2e/active-sessions-cap.spec.ts`, `e2e/active-sessions-list.spec.ts` — row locators narrowed past nested member items
 4. Expandable rows (green)
-   - [ ] `src/components/FireteamRow.tsx` — whole-row toggle, chevron, the expanded member list
-   - [ ] `src/app/active-sessions/page.tsx` — open state keyed by session identity; `fireteamKey` from it
+   - [x] `src/components/FireteamRow.tsx` — whole-row toggle, chevron, the expanded member list
+   - [x] `src/app/active-sessions/page.tsx` — open state keyed by session identity; `fireteamKey` from it
 5. Bookkeeping
    - [ ] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)

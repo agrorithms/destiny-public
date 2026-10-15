@@ -73,6 +73,26 @@ function chevronOf(row: Locator): Locator {
     return row.getByRole('button', { name: 'Fireteam members' });
 }
 
+/**
+ * The feedback fits a phone: inside the viewport, not scrolling inside itself, and inside its
+ * section's list top to bottom. The list clips its rows' corners, so feedback taller than its
+ * row would lose a line on the first or last row without anything overflowing.
+ */
+async function expectFeedbackToFit(page: Page, feedback: Locator, list: Locator): Promise<void> {
+    await expectInsideViewport(feedback, 'the feedback');
+    await expectNoElementOverflow(feedback, 'the feedback');
+    await expectNoHorizontalPageOverflow(page);
+    const box = await boxOf(feedback);
+    const clip = await boxOf(list);
+    expect(box.y, 'the feedback starts inside the list').toBeGreaterThanOrEqual(clip.y);
+    expect(box.y + box.height, 'the feedback ends inside the list').toBeLessThanOrEqual(clip.y + clip.height);
+}
+
+/** This spec's raid section's list of rows. */
+function listOf(page: Page): Locator {
+    return page.getByRole('region', { name: COPY_RAID.name }).getByRole('list').first();
+}
+
 /** What the page's clipboard holds right now. Needs clipboard-read. */
 function readClipboard(page: Page): Promise<string> {
     return page.evaluate(() => navigator.clipboard.readText());
@@ -233,7 +253,8 @@ test.describe('active sessions copy join code', () => {
             // The ticket's phone criterion: the button is there and inside the screen, and
             // it doesn't push the row's title onto a second line. The row measured has the
             // longest name, the likeliest to crowd the button out. The feedback after a click
-            // has to fit too, with the whole command readable.
+            // has to fit too, with the whole command readable: the row is the list's last
+            // (solo fireteams sort after the rest), so a feedback taller than it is clipped.
             test('fits the button, the one-line title and the feedback in a 360px viewport', async ({ page }) => {
                 await page.clock.install();
                 await page.goto('/active-sessions');
@@ -256,9 +277,7 @@ test.describe('active sessions copy join code', () => {
 
                 const feedback = feedbackOf(row);
                 await expect(feedback).toHaveText(`Copied /join ${SOLO_NAME}`);
-                await expectInsideViewport(feedback, 'the copied command');
-                await expectNoElementOverflow(feedback, 'the copied command');
-                await expectNoHorizontalPageOverflow(page);
+                await expectFeedbackToFit(page, feedback, listOf(page));
             });
         });
     });
@@ -283,11 +302,13 @@ test.describe('active sessions copy join code', () => {
 
             const feedback = feedbackOf(row);
             await expect(feedback).toContainText(`/join ${LEADER}`);
+            await expect(feedback).toBeVisible();
             await expect(feedback).not.toContainText('Copied');
             expect(await button.innerHTML(), 'no check mark on a failed copy').toBe(idleIcon);
 
             await page.clock.runFor(10_000);
             await expect(feedback).toContainText(`/join ${LEADER}`);
+            await expect(feedback).toBeVisible();
 
             await feedback.getByText(`/join ${LEADER}`).click();
             expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(`/join ${LEADER}`);
@@ -301,6 +322,23 @@ test.describe('active sessions copy join code', () => {
             await expect(feedback).toContainText(`/join ${LEADER}`);
             await page.getByRole('heading', { level: 1 }).click();
             await expect(feedback).toHaveText('');
+        });
+
+        test.describe('on a phone', () => {
+            test.use({ viewport: { width: 360, height: 780 } });
+
+            // The failure's wording is longer than the success's, so it is the feedback most
+            // likely to outgrow a phone. Measured on the longest name, in the list's last row.
+            test('fits the join code to copy by hand in a 360px viewport', async ({ page }) => {
+                await page.goto('/active-sessions');
+                const row = rowOf(page, SOLO_NAME);
+
+                await copyButtonOf(row).click();
+
+                const feedback = feedbackOf(row);
+                await expect(feedback).toContainText(`/join ${SOLO_NAME}`);
+                await expectFeedbackToFit(page, feedback, listOf(page));
+            });
         });
     });
 });

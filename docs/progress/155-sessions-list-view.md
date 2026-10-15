@@ -140,8 +140,8 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `e2e/support/seed-world.ts` — `COPY_RAID`, and seats seeded with a name but no code, or never seen
    - [x] `e2e/active-sessions-copy.spec.ts` (new, prefix `90`)
 3. The button (green)
-   - [ ] `src/components/CopyJoinCodeButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
-   - [ ] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target
+   - [x] `src/components/CopyJoinCodeButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
+   - [x] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target
 4. Bookkeeping
    - [ ] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
    - [ ] `docs/progress/155-sessions-list-view.md` (this file)

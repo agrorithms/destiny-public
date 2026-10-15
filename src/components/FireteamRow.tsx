@@ -2,7 +2,8 @@
 
 import { useId, type MouseEvent } from 'react';
 import { getElapsedTime } from '@/components/ActiveSessionCard';
-import { fireteamTitle, otherRosterMembers, type RosterMember, type RosterSession } from '@/lib/active-session/roster';
+import CopyJoinCodeButton from '@/components/CopyJoinCodeButton';
+import { fireteamTitle, joinCommand, otherRosterMembers, type RosterMember, type RosterSession } from '@/lib/active-session/roster';
 
 interface FireteamRowProps {
     session: RosterSession & {
@@ -21,9 +22,12 @@ function playerHref(member: Pick<RosterMember, 'membershipId' | 'membershipType'
         : null;
 }
 
+/** Rows read "N/6": a Roster this size has no room, so its join code button is disabled. */
+const FULL_ROSTER = 6;
+
 /**
- * One fireteam in list view: "<Fireteam Leader>'s fireteam", the player count and the elapsed
- * time, and when open, everyone else in the Roster.
+ * One fireteam in list view: "<Fireteam Leader>'s fireteam", the player count, the elapsed
+ * time and a join code button, and when open, everyone else in the Roster.
  */
 export default function FireteamRow({ session, open, onToggle }: FireteamRowProps) {
     const title = fireteamTitle(session);
@@ -33,11 +37,15 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
     // A fireteam of one has nobody to list besides the member it is titled after, so its row
     // offers nothing to open: no chevron, no click, no hover.
     const expandable = others.length > 0;
+    // Null when nobody in the Roster has a full Name#Code: no button then, since a command
+    // naming nobody can't work.
+    const command = joinCommand(session);
 
     // A click anywhere on the row toggles it, except on its own links and buttons: the
-    // title link navigates, and the chevron button toggles by itself. Any link or button
-    // added to the row later (#160's copy button) is left alone the same way. Only controls
-    // inside this row count, so an ancestor link or button can't swallow every row's click.
+    // title link navigates, the chevron button toggles by itself, and the join code button
+    // copies without toggling. Any link or button added later is left alone the same way.
+    // Only controls inside this row count, so an ancestor link or button can't swallow every
+    // row's click.
     function handleRowClick(event: MouseEvent<HTMLDivElement>) {
         const control = (event.target as Element).closest('a, button');
         if (control && event.currentTarget.contains(control)) return;
@@ -71,6 +79,13 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                 <span className="shrink-0 w-14 text-right text-xs ui-text-muted tabular-nums" title="Time elapsed">
                     {getElapsedTime(session.startedAt)}
                 </span>
+                {command ? (
+                    <CopyJoinCodeButton command={command} full={session.playerCount >= FULL_ROSTER} />
+                ) : (
+                    // The button's width, like the chevron's placeholder below, so the count and
+                    // elapsed time line up with the rows that have one.
+                    <span aria-hidden="true" className="shrink-0 w-6" />
+                )}
                 {expandable ? (
                     <button
                         type="button"
@@ -95,7 +110,7 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                     </button>
                 ) : (
                     // The chevron's width (a 16px icon in 4px of padding each side), so the
-                    // count and elapsed time line up with the rows that have one.
+                    // count, elapsed time and join code button line up with the rows that have one.
                     <span aria-hidden="true" className="shrink-0 w-6" />
                 )}
             </div>

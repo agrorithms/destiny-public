@@ -144,7 +144,7 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
-   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
    - [ ] `CLAUDE.md` — e2e flow list (proposed text only; the orchestrating session applies it at the user's request)
 5. Review fixes
 6. Styling
@@ -457,3 +457,5 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
   never preferred; no fallback; any member as a last resort; bare names accepted; raw IDs
   accepted; a code-less leader taken). Playwright, 17 breaks in 7 batches (one build each),
   every failing set as predicted; the list is in `docs/e2e-coverage.md`'s #160 entry.
+- #160 verified (at `cfc12a0`): lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`,
+  exit 0), tsc, `npm test` 565/565, `npm run e2e` 141/141.

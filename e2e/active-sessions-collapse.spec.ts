@@ -74,7 +74,9 @@ async function expectExpanded(page: Page, raid: FixtureRaid, fireteams: number):
 
 async function expectCollapsed(page: Page, raid: FixtureRaid): Promise<void> {
     await expect(headerOf(page, raid)).toHaveAttribute('aria-expanded', 'false');
-    await expect(fireteamRows(sectionOf(page, raid))).toHaveCount(0);
+    // No row on screen, by role, which leaves out hidden elements. Whether a collapsed
+    // section's rows stay in the page (hidden) or leave it is the page's choice, not this spec's.
+    await expect(sectionOf(page, raid).getByRole('listitem')).toHaveCount(0);
 }
 
 /** Clicks Refresh and waits for the new response to render. */

@@ -87,6 +87,33 @@ test.describe('active sessions list view', () => {
         await expect(listSection(page).getByRole('listitem')).toHaveCount(3);
     });
 
+    // A browser that can't save (full storage, some private modes) must still let you switch
+    // views, and once saving works again the latest pick has to win. Only the first save of
+    // the view fails here; other keys, like the theme's, save normally. A stale in-memory
+    // fallback that kept the failed pick once got past a review, so both halves are checked.
+    test('switches view when saving fails, and the next successful save wins', async ({ page }) => {
+        await page.addInitScript(() => {
+            const setItem = Storage.prototype.setItem;
+            let viewSaves = 0;
+            Storage.prototype.setItem = function (key: string, value: string) {
+                if (key === 'destiny-farm-finder-sessions-view' && viewSaves++ === 0) {
+                    throw new DOMException('Storage is full', 'QuotaExceededError');
+                }
+                setItem.call(this, key, value);
+            };
+        });
+        await page.goto('/active-sessions');
+        const list = page.getByRole('button', { name: 'List view' });
+        const tiles = page.getByRole('button', { name: 'Tile view' });
+
+        await tiles.click(); // this save fails, but the view still switches
+        await expect(tiles).toHaveAttribute('aria-pressed', 'true');
+
+        await list.click(); // this save works, so List must win
+        await expect(list).toHaveAttribute('aria-pressed', 'true');
+        await expect(tiles).toHaveAttribute('aria-pressed', 'false');
+    });
+
     // A row is "<leader Name#Code>'s fireteam", the player count and the elapsed time. The
     // leader sits in seat 2, not seat 0, so a row titled after the first member, or after
     // whichever tracked player's row dedupe kept, would show a different name.

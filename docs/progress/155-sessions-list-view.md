@@ -59,6 +59,9 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
    - [x] `src/hooks/useSessionsView.ts` — a write that succeeds clears `unstoredView`
    - [x] `e2e/active-sessions-list.spec.ts` — the phone spec checks the title is one line tall
    - [x] `docs/e2e-coverage.md` — spec 7 covers the wrapped title; the gap bullet narrowed
+7. The failed-save toggle check, made permanent (user-approved)
+   - [x] `e2e/active-sessions-list.spec.ts` — the first view save throws; Tiles still switches, the next save wins
+   - [x] `docs/e2e-coverage.md` — spec 8, eight specs, 106 tests, the private-mode gap narrowed
 
 ## Notes
 
@@ -125,3 +128,8 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
   ("Expected: 20, Received: 40"). With only `min-w-0` removed it passes, and restored it passes.
   The one-line check was chosen over "the link ends before the count": the `<a>`'s box isn't
   clipped by `truncate`'s `overflow: hidden`, so that check would fail on the working row too.
+- #157: the failed-save check is now a committed spec (list spec 8, user-approved). `addInitScript`
+  makes only the first `setItem` on the view key throw `QuotaExceededError`. It asserts Tiles is
+  pressed after the failed save and List wins after the next one. Red with `unstoredView = null;`
+  removed from `writeView` ("Expected: \"true\", Received: \"false\"" on List), green restored.
+  No new seed data. The CLAUDE.md flow list is unchanged; its list-view wording still fits.

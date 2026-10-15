@@ -1683,9 +1683,9 @@ on which sections other spec files have left live.
 
 ## 2026-10-14 — #157 list view by default, the List | Tiles toggle, Fireteam Leader rows
 
-`e2e/active-sessions-list.spec.ts`, **new**, seven specs; `active-sessions-cap.spec.ts` and
-`player-names.spec.ts` changed. The suite is now **twenty-two flows, 105 tests including the two
-canary setups**.
+`e2e/active-sessions-list.spec.ts`, **new**, eight specs (the eighth added after the #157
+review); `active-sessions-cap.spec.ts` and `player-names.spec.ts` changed. The suite is now
+**twenty-two flows, 106 tests including the two canary setups**.
 
 `/active-sessions` opens in list view: one row per fireteam, "`<Fireteam Leader Name#Code>`'s
 fireteam", with `N/6` and the elapsed time. A List | Tiles toggle switches views, and the choice is
@@ -1715,6 +1715,10 @@ leader, who started most recently and has a 26-character name, the longest a Bun
    (40px tall against a 20px line), so nothing scrolls sideways, but the unbreakable `Name#Code`
    spills over the player count. `min-w-0` dropped alone still passes, correctly: `truncate`'s
    `overflow: hidden` already lets the title shrink.
+8. **The toggle when saving fails**: the first save of the view throws `QuotaExceededError` (other
+   keys save normally). Tiles is still pressed after the click, and a later List click, whose save
+   works, wins. Added after the #157 review: the in-memory fallback once kept the failed pick for
+   the rest of the visit, and this spec fails with the line that clears it removed.
 
 **Changed:**
 - `active-sessions-cap.spec.ts` proves ADR 0001 by counting **list rows**: 8 fireteams of 6 render 8
@@ -1741,8 +1745,9 @@ and spec 3 failed.
   and nothing more. Restoring tile coverage is tracked on **#153**.
 - "Unknown player" with the ID in a tooltip, in a browser: it is covered by Vitest only. Seeded
   names always resolve.
-- The toggle with localStorage unavailable (private modes): the view still switches for the visit,
-  but nothing checks it.
+- The toggle when localStorage can't even be read (`getItem` throws too, as in some private
+  modes). Spec 8 covers a failed save only; the read-failure path was checked once by hand with a
+  throwaway spec during the #157 review.
 - A row's other cells overlapping each other. Spec 7 checks only that the title stays one line,
   which is the overlap a long name causes; nothing measures the count against the elapsed time.
 - Rows on refresh: the 30-second poll and Refresh re-render the rows, but no spec changes data

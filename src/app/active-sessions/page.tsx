@@ -318,9 +318,13 @@ export default function ActiveSessionsPage() {
                 const contentId = `${headingId}-content`;
                 return (
                     <section key={raidKey} aria-labelledby={headingId} className="mb-8">
+                        {/* The whole strip is the click target, so it takes the list rows' warm
+                            hover. The negative margin cancels its padding, so the raid name and
+                            count stay in line with the rows below; it stays inside the page's
+                            gutter, so a phone doesn't scroll sideways. */}
                         <div
                             onClick={(event) => handleHeaderClick(event, raidKey)}
-                            className="group flex items-center justify-between gap-3 cursor-pointer"
+                            className="group flex items-center justify-between gap-3 cursor-pointer -mx-3 px-3 py-2 rounded-lg ui-list-item-hover"
                         >
                             <h2 id={headingId} className="min-w-0 text-xl font-bold ui-text-primary">
                                 {/* The keyboard and screen-reader path: a real button that says
@@ -355,7 +359,7 @@ export default function ActiveSessionsPage() {
                         {/* One wrapper for both views. It stays in the page while collapsed, so the
                             header's aria-controls always resolves; only its rows or tiles go. Open
                             rows are the page's state, so they come back open. */}
-                        <div id={contentId} hidden={collapsed} className="mt-3">
+                        <div id={contentId} hidden={collapsed} className="mt-1">
                             {/* One row or one tile per fireteam, never per player (ADR 0001). Both
                                 keep the API's order: multi-player fireteams first, then newest first. */}
                             {!collapsed && (view === 'list' ? (

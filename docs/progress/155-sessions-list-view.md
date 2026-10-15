@@ -126,7 +126,7 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
    - [x] `e2e/active-sessions-expand.spec.ts` — the maintenance spec's two Refresh clicks use `refreshSessions` (P3)
    - [x] `docs/e2e-coverage.md` — the not-covered note corrected, `893`, review-fixes entry (131 tests)
 6. Styling (the user's request, a commit of its own)
-   - [ ] `src/app/active-sessions/page.tsx` — the whole section header strip gets the warm row hover, with rounded corners; the text's accent hover kept
+   - [x] `src/app/active-sessions/page.tsx` — the whole section header strip gets the warm row hover (`ui-list-item-hover`), with rounded corners and `-mx-3 px-3 py-2`, so the name stays in line with the rows; the content gap `mt-3` → `mt-1` keeps the text-to-rows spacing at 12px; the text's accent hover kept
 
 ## Notes
 

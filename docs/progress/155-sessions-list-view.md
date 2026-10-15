@@ -97,6 +97,8 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
 7. Styling (the user's requests, a commit of its own)
    - [x] `src/components/FireteamRow.tsx` — warm row hover on clickable rows (B); warm hovers on the title link, member links and chevron (B2); a normal-weight title name (C)
    - [x] `src/app/active-sessions/page.tsx` — `overflow-hidden` on the list card (B); the View toggle on the right (D)
+8. Bookkeeping after the review
+   - [x] `CLAUDE.md` — e2e flow list: the maintenance response and the fireteam of one (`545537c`, by the orchestrating session at the user's request; the review session proposed the text)
 
 ## Notes
 

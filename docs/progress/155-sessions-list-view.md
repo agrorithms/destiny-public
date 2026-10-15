@@ -63,6 +63,28 @@ Branch `feat/157-sessions-list-view` (from `352d9dd`, so all of #156 is in it).
    - [x] `e2e/active-sessions-list.spec.ts` — the first view save throws; Tiles still switches, the next save wins
    - [x] `docs/e2e-coverage.md` — spec 8, eight specs, 106 tests, the private-mode gap narrowed
 
+## #158 — expandable list rows that stay open across refreshes
+
+Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 is in it).
+
+1. Roster rules, red then green (Vitest)
+   - [x] `src/lib/active-session/roster.test.ts` — session identity (growth, shrinkage, tracked player changes, other raid, unrelated Rosters), following open fireteams across polls, the one excluded member
+   - [x] `src/lib/active-session/roster.ts` — `sessionIdentity`, `isSameSession`, `followOpenSessions`, `otherRosterMembers`; the member-set helpers and `isLikelyMembershipId`, exported
+2. One copy of each shared rule (behaviour unchanged)
+   - [x] `src/lib/active-session/dedupe.ts` — imports the member-set helpers from `roster.ts`
+   - [x] `src/lib/active-session/format.ts` — imports `isLikelyMembershipId` from `roster.ts`
+   - [x] `src/app/api/active-sessions/route.ts` — imports `isLikelyMembershipId` from `roster.ts`
+3. Specs, red against the collapsed-only rows
+   - [ ] `e2e/active-sessions-expand.spec.ts` (new, prefix `88`)
+   - [ ] `e2e/player-names.spec.ts` — expand the row, check a non-titled member's `Name#Code`
+   - [ ] `e2e/active-sessions-cap.spec.ts`, `e2e/active-sessions-list.spec.ts` — row locators narrowed past nested member items
+4. Expandable rows (green)
+   - [ ] `src/components/FireteamRow.tsx` — whole-row toggle, chevron, the expanded member list
+   - [ ] `src/app/active-sessions/page.tsx` — open state keyed by session identity; `fireteamKey` from it
+5. Bookkeeping
+   - [ ] `docs/e2e-coverage.md` — flow list, prefix `88`, journal entry
+   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
+
 ## Notes
 
 - #156: sections group by `raidKey` and sort by their index in `AVAILABLE_RAIDS`

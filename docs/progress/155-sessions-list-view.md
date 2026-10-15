@@ -184,8 +184,8 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
   `83c3267` by the orchestrating session, at the user's request, from the implementing session's
   proposed text.
 - #158 orchestrator review, user decisions (2026-10-15): a one-player row shows a chevron and opens
-  onto an empty list; that goes to the code-review pass to fix. A dedupe unit-test seam goes to a
-  follow-up issue, not this ticket. A raw-ID member name in the expanded list is left for #165.
+  onto an empty list; that goes to the code-review pass to fix. A dedupe unit-test seam goes to
+  #166, not this ticket. A raw-ID member name in the expanded list is left for #165.
   Drag-selecting row text toggling the row is left as is. `followOpenSessions` and the Roster-growth
   and keyboard specs stay.
 - #158 simplify pass (separate commit). Dedupe now calls `isSameSession` instead of spelling out

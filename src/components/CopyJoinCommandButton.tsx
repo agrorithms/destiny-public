@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-interface CopyJoinCodeButtonProps {
+interface CopyJoinCommandButtonProps {
     /** The Join Command to copy, `/join Name#Code` (see `joinCommand` in roster.ts). */
     command: string;
     /** A displayed Roster of 6/6: the button stays, disabled, so the row keeps its width. */
@@ -41,14 +41,14 @@ function CheckIcon() {
 }
 
 /**
- * A list row's join code button: copies the fireteam's Join Command for a PC player to paste
+ * A list row's Join Command button: copies the fireteam's Join Command for a PC player to paste
  * into game chat. "Join code" is what a visitor sees; Join Command is the code's word (CONTEXT.md).
  *
  * Icon-only and the chevron's width at every screen size, so it never widens a row. The
  * feedback state lives here, in the row, so collapsing a raid section (which unmounts its rows)
  * drops it; that is accepted (#168).
  */
-export default function CopyJoinCodeButton({ command, full }: CopyJoinCodeButtonProps) {
+export default function CopyJoinCommandButton({ command, full }: CopyJoinCommandButtonProps) {
     const [state, setState] = useState<CopyState>(IDLE);
     const wrapperRef = useRef<HTMLSpanElement>(null);
     const shown = state.kind !== 'idle';

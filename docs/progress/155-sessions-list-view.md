@@ -140,7 +140,7 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `e2e/support/seed-world.ts` — `COPY_RAID`, and seats seeded with a name but no code, or never seen
    - [x] `e2e/active-sessions-copy.spec.ts` (new, prefix `90`)
 3. The button (green)
-   - [x] `src/components/CopyJoinCodeButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
+   - [x] `src/components/CopyJoinCommandButton.tsx` (new) — the button, its ~2s success state and its failure tooltip
    - [x] `src/components/FireteamRow.tsx` — the button beside the chevron, disabled at 6/6, absent with no target
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flows, namespace `90`, journal entry
@@ -427,7 +427,7 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
   An `isLikelyMembershipId` check on top would be unreachable, so there isn't one; the Vitest
   raw-ID case still covers it. The tracked player outside the Roster is never a target: the rule
   is the Roster's.
-- #160: the button is `src/components/CopyJoinCodeButton.tsx`, between the elapsed time and the
+- #160: the button is `src/components/CopyJoinCommandButton.tsx`, between the elapsed time and the
   chevron. It is the chevron's width (`-my-1 p-1`, a 16px icon) at every size. Its state (idle,
   copied, failed) lives in the component, so it is in the row and lost when a section collapses
   (#168).

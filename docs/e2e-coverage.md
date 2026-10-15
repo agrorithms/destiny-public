@@ -2070,8 +2070,9 @@ frozen too, so nothing re-renders mid-spec.
    does on a row with a button.
 7. **A fireteam of one has a button** in the same column as the others, and its elapsed time
    lines up.
-8. **At 360px**, the solo row's button is inside the viewport and its long title stays one line
-   tall. The "Copied" tooltip is inside the viewport and inside the list top to bottom. The list
+8. **At 360px**, the solo row's button is inside the viewport and the row stays one line tall: its
+   flex line's height is its padding plus one line-height, measured on the whole row rather than
+   the `truncate` title cell, which is one line however the row breaks. The "Copied" tooltip is inside the viewport and inside the list top to bottom. The list
    clips its rows' corners, so a tooltip taller than the last row would lose a line without
    anything overflowing.
 9. **A refused copy shows the command to copy by hand.** No check mark, still shown after 10s on
@@ -2127,6 +2128,16 @@ the specs measure what a visitor sees.
 - Clicking the button again while "Copied" restarts the two seconds. It works by construction
   (each copy sets a new state object), but no spec steps the clock across a second click.
 - The feedback lost when a section collapses (accepted, #168).
+- A click on the disabled 6/6 button. A review probe found that Chromium dispatches no click at
+  all, even at the icon inside the button: a capture listener on `document` saw none, and the row
+  stayed closed. If one ever arrived, the row's click guard would still find the button and
+  leave the row alone.
+- Dismissing the failure tooltip by touch. A tap outside it fires the same `pointerdown` a mouse
+  press does, and so does the start of a scroll gesture, so scrolling the page dismisses it too.
+  No spec runs a touch context.
+- Selecting the command by keyboard alone. The `<code>` in the failure tooltip isn't focusable,
+  so only a pointer can select it. A screen reader still hears the command, since the tooltip is
+  the `role="status"` region.
 - Hover colours, the disabled look and the tooltip's look. They were checked once in throwaway
   screenshots at 1280px and 360px, light and dark, and are not asserted.
 - Tile view has no button (#153).

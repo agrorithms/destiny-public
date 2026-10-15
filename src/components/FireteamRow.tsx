@@ -2,7 +2,7 @@
 
 import { useId, type MouseEvent } from 'react';
 import { getElapsedTime } from '@/components/ActiveSessionCard';
-import CopyJoinCodeButton from '@/components/CopyJoinCodeButton';
+import CopyJoinCommandButton from '@/components/CopyJoinCommandButton';
 import { fireteamTitle, joinCommand, otherRosterMembers, type RosterMember, type RosterSession } from '@/lib/active-session/roster';
 
 interface FireteamRowProps {
@@ -22,12 +22,12 @@ function playerHref(member: Pick<RosterMember, 'membershipId' | 'membershipType'
         : null;
 }
 
-/** Rows read "N/6": a Roster this size has no room, so its join code button is disabled. */
+/** Rows read "N/6": a Roster this size has no room, so its Join Command button is disabled. */
 const FULL_ROSTER = 6;
 
 /**
  * One fireteam in list view: "<Fireteam Leader>'s fireteam", the player count, the elapsed
- * time and a join code button, and when open, everyone else in the Roster.
+ * time and a Join Command button, and when open, everyone else in the Roster.
  */
 export default function FireteamRow({ session, open, onToggle }: FireteamRowProps) {
     const title = fireteamTitle(session);
@@ -42,7 +42,7 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
     const command = joinCommand(session);
 
     // A click anywhere on the row toggles it, except on its own links and buttons: the
-    // title link navigates, the chevron button toggles by itself, and the join code button
+    // title link navigates, the chevron button toggles by itself, and the Join Command button
     // copies without toggling. Any link or button added later is left alone the same way.
     // Only controls inside this row count, so an ancestor link or button can't swallow every
     // row's click.
@@ -80,7 +80,7 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                     {getElapsedTime(session.startedAt)}
                 </span>
                 {command ? (
-                    <CopyJoinCodeButton command={command} full={session.playerCount >= FULL_ROSTER} />
+                    <CopyJoinCommandButton command={command} full={session.playerCount >= FULL_ROSTER} />
                 ) : (
                     // The button's width, like the chevron's placeholder below, so the count and
                     // elapsed time line up with the rows that have one.
@@ -110,7 +110,7 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                     </button>
                 ) : (
                     // The chevron's width (a 16px icon in 4px of padding each side), so the
-                    // count, elapsed time and join code button line up with the rows that have one.
+                    // count, elapsed time and Join Command button line up with the rows that have one.
                     <span aria-hidden="true" className="shrink-0 w-6" />
                 )}
             </div>

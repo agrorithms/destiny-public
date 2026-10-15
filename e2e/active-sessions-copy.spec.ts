@@ -257,12 +257,15 @@ test.describe('active sessions copy join code', () => {
         test.describe('on a phone', () => {
             test.use({ viewport: { width: 360, height: 780 } });
 
-            // The ticket's phone criterion: the button is there and inside the screen, and
-            // it doesn't push the row's title onto a second line. The row measured has the
-            // longest name, the likeliest to crowd the button out. The feedback after a click
-            // has to fit too, with the whole command readable: the row is the list's last
-            // (solo fireteams sort after the rest), so a feedback taller than it is clipped.
-            test('fits the button, the one-line title and the feedback in a 360px viewport', async ({ page }) => {
+            // The ticket's phone criterion: the button is there and inside the screen, and the
+            // row stays on one line. The row measured has the longest name, the likeliest to
+            // crowd the button out. "One line" is the row's own line, the flex row holding the
+            // title, count, time and button: its height is its padding plus one line. The
+            // title cell alone can't show a wrap, since `truncate` keeps it one line however
+            // the row breaks. The feedback after a click has to fit too, with the whole command
+            // readable: the row is the list's last (solo fireteams sort after the rest), so a
+            // feedback taller than it is clipped.
+            test('fits the button, the one-line row and the feedback in a 360px viewport', async ({ page }) => {
                 await page.clock.install();
                 await page.goto('/active-sessions');
                 const row = rowOf(page, SOLO_NAME);
@@ -273,12 +276,15 @@ test.describe('active sessions copy join code', () => {
                 await expectInsideViewport(button, 'the copy button');
                 await expectNoElementOverflow(row, 'a list row');
                 await expectNoHorizontalPageOverflow(page);
-                const titleCell = row.getByRole('link', { name: SOLO_NAME, exact: true }).locator('..');
-                const { height, lineHeight } = await titleCell.evaluate((cell) => ({
-                    height: cell.clientHeight,
-                    lineHeight: parseFloat(getComputedStyle(cell).lineHeight),
-                }));
-                expect(height, "the row's title is one line tall").toBe(lineHeight);
+                const rowLine = row.locator(':scope > div');
+                const { height, oneLine } = await rowLine.evaluate((line) => {
+                    const style = getComputedStyle(line);
+                    return {
+                        height: line.clientHeight,
+                        oneLine: parseFloat(style.paddingTop) + parseFloat(style.lineHeight) + parseFloat(style.paddingBottom),
+                    };
+                });
+                expect(height, 'the row is one line tall').toBe(oneLine);
 
                 await button.click();
 

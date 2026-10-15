@@ -1945,3 +1945,24 @@ Shown biting: the Collapse all button at `min-w-[380px]` and the View toggle's w
 and the list spec on "the view toggle ends inside the viewport" (471), both inside the helper.
 The expand phone spec failed first on its page-overflow check. Restored, all fifteen phone specs
 passed.
+
+**`e2e/support/active-sessions-page.ts`, new: `refreshSessions(page)`, `serveMaintenance(page)` /
+`endMaintenance(page)` and `MAINTENANCE_MESSAGE`.** They replace the word-for-word copies in the
+expand and collapse specs:
+- the Refresh-and-wait: the expand spec's "after Refresh" spec and the collapse spec's local
+  `refresh()`, four calls;
+- the `page.route` maintenance stub and its `unroute`, one copy in each spec's maintenance spec.
+
+The stub still runs at the network layer, so the page's own fetch handles the response. The
+expand spec's other Refresh clicks stay plain clicks, as before: "a member joins", and both
+clicks in its maintenance spec. Swapping them would add a wait they don't have today. A new file,
+because `fireteam-rows.ts` only builds locators and `viewport.ts` only measures layout. Test
+count unchanged.
+
+Shown biting, then restored and green:
+- Every fetch clearing open rows and collapse state: the five refresh and maintenance specs
+  across the two files failed, each on the assertion right after the helper call. The maintenance
+  banner check passed first, so the stub served maintenance.
+- Only the `!data.maintenance` guard removed: exactly the two maintenance specs failed (collapse
+  `:262` "Expected: \"false\", Received: \"true\""; expand `:198` "Expected: \"true\", Received:
+  \"false\"").

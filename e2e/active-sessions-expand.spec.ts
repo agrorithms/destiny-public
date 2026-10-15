@@ -3,6 +3,7 @@ import { expect, test } from './support/test-fixtures';
 import { EXPAND_RAID, fireteamMemberName, seedFireteams, seedPlayerWithSession } from './support/seed-world';
 import { fireteamRow, memberList } from './support/fireteam-rows';
 import { boxOf, expectInsideViewport, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
+import { MAINTENANCE_MESSAGE, endMaintenance, refreshSessions, serveMaintenance } from './support/active-sessions-page';
 import { seedPlayer } from '../tests/helpers/seed';
 
 /**
@@ -150,11 +151,8 @@ test.describe('active sessions expandable rows', () => {
         const open = rowOf(page, leaderOf(0));
         const shut = rowOf(page, leaderOf(1));
         await open.getByTitle('6 of 6 players').click();
-        const refreshed = page.waitForResponse((response) => response.url().includes('/api/active-sessions'));
 
-        await page.getByRole('button', { name: 'Refresh' }).click();
-        await refreshed;
-        await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
+        await refreshSessions(page);
 
         await expect(chevronOf(open)).toHaveAttribute('aria-expanded', 'true');
         await expect(memberList(open).getByRole('listitem')).toHaveText(othersOf(0));
@@ -189,18 +187,12 @@ test.describe('active sessions expandable rows', () => {
         await row.getByTitle('6 of 6 players').click();
         await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
 
-        await page.route('**/api/active-sessions*', (route) => route.fulfill({
-            contentType: 'application/json',
-            body: JSON.stringify({
-                raidKey: 'all', count: 0, total: 0, shown: 0, sessions: [],
-                maintenance: true, message: 'Database maintenance is in progress.',
-            }),
-        }));
+        await serveMaintenance(page);
         await page.getByRole('button', { name: 'Refresh' }).click();
-        await expect(page.getByText('Database maintenance is in progress.')).toBeVisible();
+        await expect(page.getByText(MAINTENANCE_MESSAGE)).toBeVisible();
         await expect(row).toHaveCount(0);
 
-        await page.unroute('**/api/active-sessions*');
+        await endMaintenance(page);
         await page.getByRole('button', { name: 'Refresh' }).click();
 
         await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');

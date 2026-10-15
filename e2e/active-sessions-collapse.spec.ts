@@ -10,6 +10,7 @@ import {
 } from './support/seed-world';
 import { fireteamRow, fireteamRows, memberList } from './support/fireteam-rows';
 import { boxOf, expectInsideViewport, expectNoHorizontalPageOverflow } from './support/viewport';
+import { MAINTENANCE_MESSAGE, endMaintenance, refreshSessions, serveMaintenance } from './support/active-sessions-page';
 
 /**
  * #159: each raid section on /active-sessions collapses and expands from its header, in list
@@ -79,14 +80,6 @@ async function expectCollapsed(page: Page, raid: FixtureRaid): Promise<void> {
     await expect(sectionOf(page, raid).getByRole('listitem')).toHaveCount(0);
 }
 
-/** Clicks Refresh and waits for the new response to render. */
-async function refresh(page: Page): Promise<void> {
-    const refreshed = page.waitForResponse((response) => response.url().includes('/api/active-sessions'));
-    await page.getByRole('button', { name: 'Refresh' }).click();
-    await refreshed;
-    await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
-}
-
 function leaderOf(fireteam: number): string {
     return fireteamMemberName(FIRETEAM_PREFIX, fireteam, LEADER_SEAT);
 }
@@ -140,7 +133,7 @@ test.describe('active sessions collapsible raid sections', () => {
         await headerOf(page, COLLAPSE_RAID).click();
         await expectCollapsed(page, COLLAPSE_RAID);
 
-        await refresh(page);
+        await refreshSessions(page);
 
         await expectCollapsed(page, COLLAPSE_RAID);
         await expectExpanded(page, COLLAPSE_OTHER_RAID, 1);
@@ -258,19 +251,13 @@ test.describe('active sessions collapsible raid sections', () => {
         await headerOf(page, COLLAPSE_RAID).click();
         await expectCollapsed(page, COLLAPSE_RAID);
 
-        await page.route('**/api/active-sessions*', (route) => route.fulfill({
-            contentType: 'application/json',
-            body: JSON.stringify({
-                raidKey: 'all', count: 0, total: 0, shown: 0, sessions: [],
-                maintenance: true, message: 'Database maintenance is in progress.',
-            }),
-        }));
-        await refresh(page);
-        await expect(page.getByText('Database maintenance is in progress.')).toBeVisible();
+        await serveMaintenance(page);
+        await refreshSessions(page);
+        await expect(page.getByText(MAINTENANCE_MESSAGE)).toBeVisible();
         await expect(sectionOf(page, COLLAPSE_RAID)).toHaveCount(0);
 
-        await page.unroute('**/api/active-sessions*');
-        await refresh(page);
+        await endMaintenance(page);
+        await refreshSessions(page);
 
         await expectCollapsed(page, COLLAPSE_RAID);
         await expectExpanded(page, COLLAPSE_OTHER_RAID, 1);

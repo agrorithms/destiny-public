@@ -370,3 +370,9 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
     only that swap. It checks both edges against the page's viewport, never weaker than before.
     Shown red through the helper by widening Collapse all and pushing the View toggle off the
     right edge, then green.
+  - `e2e/support/active-sessions-page.ts` (new): `refreshSessions`, `serveMaintenance` /
+    `endMaintenance` and `MAINTENANCE_MESSAGE`. They replace the Refresh-and-wait and
+    maintenance-stub copies in the expand and collapse specs. The stub is still `page.route`. Shown
+    red by a fetch that clears open rows and collapse state (five specs), and by removing only
+    the maintenance guard (the two maintenance specs), then green. The expand spec's plain Refresh
+    clicks stay plain.

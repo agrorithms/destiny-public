@@ -49,19 +49,19 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
             {/* The one-line row. The member list sits below it, outside the truncated title. */}
             <div
                 onClick={expandable ? handleRowClick : undefined}
-                className={`flex items-center gap-3 px-4 py-2.5 min-w-0 ${expandable ? 'cursor-pointer' : ''}`}
+                className={`flex items-center gap-3 px-4 py-2.5 min-w-0 ${expandable ? 'cursor-pointer ui-list-item-hover' : ''}`}
             >
                 <span className="min-w-0 flex-1 truncate ui-text-primary">
                     {href ? (
                         <a
                             href={href}
                             title={title.tooltip}
-                            className="font-semibold hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                            className="hover:text-[var(--ui-accent)] transition-colors"
                         >
                             {title.name}
                         </a>
                     ) : (
-                        <span title={title.tooltip} className="font-semibold">{title.name}</span>
+                        <span title={title.tooltip}>{title.name}</span>
                     )}
                     &apos;s fireteam
                 </span>
@@ -78,7 +78,7 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                         aria-expanded={open}
                         aria-controls={membersId}
                         aria-label="Fireteam members"
-                        className="shrink-0 -my-1 p-1 rounded ui-text-muted hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        className="shrink-0 -my-1 p-1 rounded ui-text-muted hover:text-[var(--ui-accent)] transition-colors"
                     >
                         <svg
                             viewBox="0 0 20 20"
@@ -114,7 +114,7 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                                     <a
                                         href={memberHref}
                                         title={name}
-                                        className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                        className="hover:text-[var(--ui-accent)] transition-colors"
                                     >
                                         {name}
                                     </a>

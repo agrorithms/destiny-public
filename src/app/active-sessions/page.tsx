@@ -200,7 +200,8 @@ export default function ActiveSessionsPage() {
                         </button>
                     </div>
 
-                    <div>
+                    {/* On the right, apart from the controls that act on the sessions. */}
+                    <div className="ml-auto">
                         <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">View</span>
                         <SessionsViewToggle view={view} onChange={setView} />
                     </div>
@@ -253,7 +254,7 @@ export default function ActiveSessionsPage() {
                     {/* One row or one tile per fireteam, never per player (ADR 0001). Both keep
                         the API's order: multi-player fireteams first, then newest first. */}
                     {view === 'list' ? (
-                        <ul className="ui-card divide-y ui-divider">
+                        <ul className="ui-card divide-y ui-divider overflow-hidden">
                             {raidSessions.map((session) => {
                                 const identity = sessionIdentity(session);
                                 return (

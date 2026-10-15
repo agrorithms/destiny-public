@@ -94,6 +94,9 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
    - [x] `src/lib/active-session/roster.test.ts` — the "forgets" test's comment: the raid filter doesn't drop an open row (S2)
    - [x] `e2e/active-sessions-expand.spec.ts` — the maintenance spec and the fireteam-of-one spec (`884`)
    - [x] `docs/e2e-coverage.md` — `884`, the two specs, 117 tests
+7. Styling (the user's requests, a commit of its own)
+   - [x] `src/components/FireteamRow.tsx` — warm row hover on clickable rows (B); warm hovers on the title link, member links and chevron (B2); a normal-weight title name (C)
+   - [x] `src/app/active-sessions/page.tsx` — `overflow-hidden` on the list card (B); the View toggle on the right (D)
 
 ## Notes
 
@@ -265,3 +268,25 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
     who leaves and starts the same raid solo gets an open solo row they never opened. It is rare
     (same raid, same `activityHash`) and harmless. If it is ever changed, change
     `followOpenSessions`, never `isSameSession` (see P3).
+- #158 styling (the user's requests, 2026-10-15):
+  - B: the one-line row of a clickable row (not a fireteam of one, not the `li`, not the member
+    list) takes the existing `ui-list-item-hover`, the warm `--ui-surface-card-muted` that
+    RaidMultiSelect and PlayerSearch use. The list's `ul` gains `overflow-hidden`, so a hovered
+    first or last row keeps the card's rounded corners.
+  - B2: the title link, the member links and the chevron hover to `hover:text-[var(--ui-accent)]`
+    instead of Tailwind blue, the same arbitrary value the nav's site title uses. No new colours
+    or tokens. Focus is unchanged: the browser's own ring, still visible on the chevron. Tiles keep
+    their blue until #153.
+  - C: the title name is normal weight, on the link and on the fallback `<span>`.
+  - D: the View toggle's wrapper has `ml-auto`, so it sits at the right of the control bar. Raid
+    and Refresh stay on the left, where #159's Collapse all will join Refresh. At 360px the bar
+    wraps and the toggle sits at the right of the second line, beside Refresh.
+  - Checked with a throwaway Playwright script (deleted, never committed) at 1280px and 360px in
+    light and dark:
+    - the computed colours equal the tokens: the hovered row is `--ui-surface-card-muted`
+      (#f7f6f1 light, #2a2a28 dark), and the three hovers are `--ui-accent` (#9a6324, #c18a3b);
+    - a fireteam of one has a transparent background and an `auto` cursor on hover;
+    - the title is font-weight 400;
+    - `:focus-visible` on the chevron shows the focus ring;
+    - the toggle sits at x 1149 of 1280 and 229 of 360, `scrollWidth` equals the viewport, and
+      Tile/List still switch at 360px.

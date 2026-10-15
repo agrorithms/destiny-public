@@ -3,7 +3,9 @@ import { expect, test } from './support/test-fixtures';
 import {
     COLLAPSE_OTHER_RAID,
     COLLAPSE_RAID,
+    REAPPEAR_RAID,
     UNSEEDED_RAID,
+    endFireteams,
     fireteamMemberName,
     seedFireteams,
     type FixtureRaid,
@@ -23,16 +25,21 @@ import { MAINTENANCE_MESSAGE, endMaintenance, refreshSessions, serveMaintenance 
  *
  * Fixture namespace `89`, on two raids no other spec seeds:
  * - `891`: two six-player fireteams on COLLAPSE_RAID, the leader in seat 2;
- * - `892`: one four-player fireteam on COLLAPSE_OTHER_RAID, the leader in seat 0.
+ * - `892`: one four-player fireteam on COLLAPSE_OTHER_RAID, the leader in seat 0;
+ * - `893`: one three-player fireteam on REAPPEAR_RAID, the leader in seat 0, which one spec
+ *   ends and reseeds.
  * UNSEEDED_RAID is never seeded, so filtering to it leaves the page with no sections.
  */
 const FIRETEAM_PREFIX = '891';
 const LEADER_SEAT = 2;
 const OTHER_PREFIX = '892';
+const REAPPEAR_PREFIX = '893';
+const REAPPEAR_FIRETEAM = { count: 1, size: 3, prefix: REAPPEAR_PREFIX } as const;
 
 test.beforeAll(async () => {
     seedFireteams({ count: 2, size: 6, prefix: FIRETEAM_PREFIX, raid: COLLAPSE_RAID, leaderSeat: LEADER_SEAT });
     seedFireteams({ count: 1, size: 4, prefix: OTHER_PREFIX, raid: COLLAPSE_OTHER_RAID, leaderSeat: 0 });
+    seedFireteams({ ...REAPPEAR_FIRETEAM, raid: REAPPEAR_RAID, leaderSeat: 0 });
 });
 
 /** A raid's section: a region named by its h2. */
@@ -106,7 +113,10 @@ test.describe('active sessions collapsible raid sections', () => {
     });
 
     // The same criterion in tile view: one wrapper covers both views, so tiles fold away too.
-    // A tile's raid name is an h3, which is how the list spec counts tiles.
+    // A tile's raid name is an h3, which is how the list spec counts tiles. The name is checked
+    // as text on screen, not only as the button's accessible name, which a label could supply
+    // with nothing shown. Collapse state is by raid, not by view, so the section is still
+    // collapsed after a switch to List and back.
     test('collapses and expands a section from its header in tile view', async ({ page }) => {
         await page.goto('/active-sessions');
         await page.getByRole('button', { name: 'Tile view' }).click();
@@ -118,7 +128,13 @@ test.describe('active sessions collapsible raid sections', () => {
 
         await expect(headerOf(page, COLLAPSE_RAID)).toHaveAttribute('aria-expanded', 'false');
         await expect(tiles).toHaveCount(0);
+        await expect(section.getByText(COLLAPSE_RAID.name, { exact: true })).toBeVisible();
         await expect(section.getByText('2 sessions', { exact: true })).toBeVisible();
+
+        await page.getByRole('button', { name: 'List view' }).click();
+        await expectCollapsed(page, COLLAPSE_RAID);
+        await page.getByRole('button', { name: 'Tile view' }).click();
+        await expect(tiles).toHaveCount(0);
 
         await headerOf(page, COLLAPSE_RAID).click();
 
@@ -215,6 +231,25 @@ test.describe('active sessions collapsible raid sections', () => {
         await toggleInRaidFilter(page, COLLAPSE_RAID);
 
         await expectExpanded(page, COLLAPSE_RAID, 2);
+    });
+
+    // The other way a section leaves the page: its raid's last fireteam ends, so the API stops
+    // sending it. That forgets its collapse too, so when the raid is back on a later refresh it
+    // starts expanded, like anything newly on the page. The page forgets it in its fetch, not
+    // in the filter's handler, so the spec above can't stand in for this one.
+    test('brings a section back expanded after its raid leaves the API response and returns', async ({ page }) => {
+        await page.goto('/active-sessions');
+        await headerOf(page, REAPPEAR_RAID).click();
+        await expectCollapsed(page, REAPPEAR_RAID);
+
+        endFireteams(REAPPEAR_FIRETEAM);
+        await refreshSessions(page);
+        await expect(sectionOf(page, REAPPEAR_RAID)).toHaveCount(0);
+
+        seedFireteams({ ...REAPPEAR_FIRETEAM, raid: REAPPEAR_RAID, leaderSeat: 0 });
+        await refreshSessions(page);
+
+        await expectExpanded(page, REAPPEAR_RAID, 1);
     });
 
     // The header is a real button inside the h2, so keyboard and screen-reader users can fold

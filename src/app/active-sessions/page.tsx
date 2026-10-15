@@ -72,8 +72,9 @@ function isRaidShown(selectedRaids: string[], raidKey: string): boolean {
 }
 
 // A session's raid section, by raid key. The API sends a null key for a raid-mode activity no
-// raid definition knows, so those group under '' rather than under a null React key. Grouping
-// and the collapse-state forgetting both read the key here, so they can't disagree about it.
+// raid definition knows, so those group under '' rather than under a null React key. Grouping,
+// the raid filter and the collapse-state forgetting all read the key here, so they can't
+// disagree about it.
 function raidSectionKey(session: ActiveSession): string {
     return session.raidKey ?? '';
 }
@@ -184,7 +185,7 @@ export default function ActiveSessionsPage() {
     // Surface data freshness in the nav stats strip
     useReportPageLiveStatus(lastUpdated, 30);
 
-    const filteredSessions = sessions.filter((s) => isRaidShown(selectedRaids, s.raidKey));
+    const filteredSessions = sessions.filter((s) => isRaidShown(selectedRaids, raidSectionKey(s)));
 
     // Group filtered sessions by raid key, never by display name: two raids sharing a name
     // would merge into one section.

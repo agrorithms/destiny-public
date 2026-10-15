@@ -1,4 +1,4 @@
-import { upsertActiveSession } from '../../src/lib/db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession } from '../../src/lib/db/queries';
 import { hoursAgo, seedPlayer, seedRun } from '../../tests/helpers/seed';
 import { fixtureRunId } from './fixture-db';
 
@@ -114,6 +114,17 @@ export const COLLAPSE_OTHER_RAID: FixtureRaid = {
     key: 'kings_fall',
     hash: 1374392663,
     name: "King's Fall",
+};
+
+/**
+ * A third raid only the section-collapse spec seeds: one fireteam it ends and reseeds, so the
+ * raid leaves the API's response and comes back. No other spec's fireteams may share it, or
+ * ending this spec's fireteam would leave the section on the page.
+ */
+export const REAPPEAR_RAID: FixtureRaid = {
+    key: 'the_desert_perpetual',
+    hash: 2586252122,
+    name: 'The Desert Perpetual',
 };
 
 /**
@@ -298,6 +309,11 @@ export interface SeedFireteamsOptions {
     leaderSeat?: number;
 }
 
+/** The membership id of one seeded roster member. */
+function fireteamMemberId(prefix: string, fireteam: number, seat: number): string {
+    return `${prefix}${String(fireteam).padStart(2, '0')}${String(seat).padStart(2, '0')}`;
+}
+
 /** The rendered `Name#Code` of one seeded roster member. */
 export function fireteamMemberName(prefix: string, fireteam: number, seat: number): string {
     return `Roster${prefix}F${fireteam}S${seat}#${1000 + fireteam}`;
@@ -320,7 +336,7 @@ export function seedFireteams(options: SeedFireteamsOptions): string[] {
 
     for (let fireteam = 0; fireteam < count; fireteam++) {
         const roster = Array.from({ length: size }, (_, seat) => ({
-            membershipId: `${prefix}${String(fireteam).padStart(2, '0')}${String(seat).padStart(2, '0')}`,
+            membershipId: fireteamMemberId(prefix, fireteam, seat),
             membershipType: 3,
             // The prefix is in the display name too, not just the membership id,
             // so two specs seeding fireteams never produce two players with the
@@ -352,4 +368,29 @@ export function seedFireteams(options: SeedFireteamsOptions): string[] {
     }
 
     return startedAtIso;
+}
+
+export interface EndFireteamsOptions {
+    /** How many of the prefix's fireteams to end, from fireteam 0. */
+    count: number;
+    /** Members per fireteam, as seeded. */
+    size?: number;
+    /** The namespace the fireteams were seeded under. Only its rows are touched. */
+    prefix: string;
+}
+
+/**
+ * Ends fireteams {@link seedFireteams} started: every member's `active_sessions` row goes,
+ * so the API stops returning the fireteam, as it does once the crawler finds its players
+ * have left. Deletes through `deleteActiveSessionForPlayer`, the query the crawler uses, one
+ * membership id at a time, so nothing outside the prefix's own rows can be touched. The
+ * players themselves stay; reseeding with the same options brings the fireteam back.
+ */
+export function endFireteams(options: EndFireteamsOptions): void {
+    const { count, size = 6, prefix } = options;
+    for (let fireteam = 0; fireteam < count; fireteam++) {
+        for (let seat = 0; seat < size; seat++) {
+            deleteActiveSessionForPlayer(fireteamMemberId(prefix, fireteam, seat));
+        }
+    }
 }

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { LIST_RAID, fireteamMemberName, seedFireteams, seedPlayerWithSession } from './support/seed-world';
 import { fireteamRows } from './support/fireteam-rows';
-import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
+import { expectInsideViewport, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * #157: /active-sessions opens in list view, one row per fireteam titled after its
@@ -178,11 +178,8 @@ test.describe('active sessions list view', () => {
             await expect(toggle).toBeVisible();
             await expect(row).toBeVisible();
 
-            for (const [what, element] of [['the view toggle', toggle], ['a list row', row]] as const) {
-                const box = await boxOf(element);
-                expect(box.x, `${what} starts inside the viewport`).toBeGreaterThanOrEqual(0);
-                expect(box.x + box.width, `${what} ends inside the viewport`).toBeLessThanOrEqual(360);
-            }
+            await expectInsideViewport(toggle, 'the view toggle');
+            await expectInsideViewport(row, 'a list row');
             await expectNoElementOverflow(row, 'a list row');
             await expectNoHorizontalPageOverflow(page);
 

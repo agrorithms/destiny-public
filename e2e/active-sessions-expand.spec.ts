@@ -2,7 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { EXPAND_RAID, fireteamMemberName, seedFireteams, seedPlayerWithSession } from './support/seed-world';
 import { fireteamRow, memberList } from './support/fireteam-rows';
-import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
+import { boxOf, expectInsideViewport, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 import { seedPlayer } from '../tests/helpers/seed';
 
 /**
@@ -244,8 +244,7 @@ test.describe('active sessions expandable rows', () => {
             // Each name must also show in full. A member list squeezed into one line doesn't
             // overflow anything, because each name truncates instead, into an unreadable stub.
             for (const member of await members.all()) {
-                const box = await boxOf(member);
-                expect(box.x + box.width, 'a member ends inside the viewport').toBeLessThanOrEqual(360);
+                await expectInsideViewport(member, 'a member');
                 await expectNoElementOverflow(member, 'a member name (cut off)');
             }
 

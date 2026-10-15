@@ -364,3 +364,9 @@ through Playwright only. Collapse state isn't a Roster rule, so `roster.ts` is u
   Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0),
   `npm test` 560/560, `npm run e2e` 130/130.
 
+- #159 e2e helpers (the user's request, past #159's diff for these two items only):
+  - `expectInsideViewport` in `e2e/support/viewport.ts` replaces the five hand-written
+    viewport-edge checks in the collapse, list, expand and timeline specs. The timeline change is
+    only that swap. It checks both edges against the page's viewport, never weaker than before.
+    Shown red through the helper by widening Collapse all and pushing the View toggle off the
+    right edge, then green.

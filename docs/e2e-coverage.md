@@ -1930,3 +1930,18 @@ locator, which counts hidden elements and so tied the spec to unmounting. That c
   1280px and 360px, light and dark, and are not asserted.
 - Tile view beyond collapse: spec 2 counts tiles, nothing more (#153).
 
+
+### Support helpers extracted (same day)
+
+**`expectInsideViewport(locator, what)` joins `e2e/support/viewport.ts`.** It checks the left edge
+against 0 and the right edge against the page's own viewport width, with one wording: "<what>
+starts / ends inside the viewport". It replaces five hand-written copies of the same check, with a
+hard-coded 360: the list view's toggle and long-named row, the open row's members, #159's controls
+and collapsed header (name and count), and the timeline's tooltip, whose separate edge checks
+against the chart are unchanged. Three of them checked only the right edge before. The left edge
+is now checked too, so the checks are now stronger, never weaker. Test count unchanged.
+Shown biting: the Collapse all button at `min-w-[380px]` and the View toggle's wrapper at
+`ml-[340px]`. The collapse spec failed on "collapseAll ends inside the viewport" (518 against 360)
+and the list spec on "the view toggle ends inside the viewport" (471), both inside the helper.
+The expand phone spec failed first on its page-overflow check. Restored, all fifteen phone specs
+passed.

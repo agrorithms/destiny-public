@@ -9,7 +9,7 @@ import {
     type FixtureRaid,
 } from './support/seed-world';
 import { fireteamRow, fireteamRows, memberList } from './support/fireteam-rows';
-import { boxOf, expectNoHorizontalPageOverflow } from './support/viewport';
+import { boxOf, expectInsideViewport, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * #159: each raid section on /active-sessions collapses and expands from its header, in list
@@ -328,9 +328,8 @@ test.describe('active sessions collapsible raid sections', () => {
                 await Promise.all(Object.entries(controls).map(async ([name, control]) => [name, await boxOf(control)] as const)),
             );
 
-            for (const [name, box] of Object.entries(boxes)) {
-                expect(box.x, `${name} starts inside the viewport`).toBeGreaterThanOrEqual(0);
-                expect(box.x + box.width, `${name} ends inside the viewport`).toBeLessThanOrEqual(360);
+            for (const [name, control] of Object.entries(controls)) {
+                await expectInsideViewport(control, name);
             }
             const names = Object.keys(boxes);
             for (const [i, a] of names.entries()) {
@@ -346,10 +345,8 @@ test.describe('active sessions collapsible raid sections', () => {
             await headerOf(page, COLLAPSE_RAID).click();
             await expectCollapsed(page, COLLAPSE_RAID);
             const section = sectionOf(page, COLLAPSE_RAID);
-            for (const part of [headerOf(page, COLLAPSE_RAID), section.getByText('2 sessions', { exact: true })]) {
-                const box = await boxOf(part);
-                expect(box.x + box.width, 'the collapsed header ends inside the viewport').toBeLessThanOrEqual(360);
-            }
+            await expectInsideViewport(headerOf(page, COLLAPSE_RAID), "the collapsed header's name");
+            await expectInsideViewport(section.getByText('2 sessions', { exact: true }), "the collapsed header's count");
             await expectNoHorizontalPageOverflow(page);
         });
     });

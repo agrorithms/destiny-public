@@ -50,3 +50,24 @@ export async function boxOf(element: Locator): Promise<{ x: number; y: number; w
     if (!box) throw new Error('nothing to measure: the element is not rendered');
     return box;
 }
+
+/**
+ * "This element sits inside the viewport, left edge and right edge" — the phone criterion
+ * for one control, row or tooltip, which neither overflow helper above can see. An ancestor
+ * with `overflow: hidden` (a rounded card, a truncated cell) clips a too-wide child, so
+ * neither the page nor the ancestor scrolls, and the part past the edge is cut off without
+ * anything reporting it.
+ *
+ * Extracted because the `box.x >= 0` / `box.x + box.width <= 360` pair had been hand-written
+ * five times across four specs (the list view's toggle and row, the expanded row's members,
+ * #159's controls and collapsed header, the timeline's tooltip), with a hard-coded 360 and
+ * four wordings for the failure. The width is the page's own viewport, so a spec run at
+ * another size measures against that size.
+ */
+export async function expectInsideViewport(element: Locator, what: string): Promise<void> {
+    const viewport = element.page().viewportSize();
+    if (!viewport) throw new Error('nothing to measure against: the page has no fixed viewport');
+    const box = await boxOf(element);
+    expect(box.x, `${what} starts inside the viewport`).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width, `${what} ends inside the viewport`).toBeLessThanOrEqual(viewport.width);
+}

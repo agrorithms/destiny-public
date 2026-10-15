@@ -11,3 +11,13 @@ import type { Locator } from '@playwright/test';
 export function fireteamRows(section: Locator): Locator {
     return section.locator(':scope > ul > li');
 }
+
+/** The row in one raid section titled "<name>'s fireteam". */
+export function fireteamRow(section: Locator, name: string): Locator {
+    return fireteamRows(section).filter({ hasText: `${name}'s fireteam` });
+}
+
+/** An open row's list of the rest of its Roster. A closed row has none. */
+export function memberList(row: Locator): Locator {
+    return row.getByRole('list', { name: 'Other fireteam members' });
+}

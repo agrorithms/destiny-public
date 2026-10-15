@@ -31,12 +31,14 @@ test.beforeAll(async () => {
     seedPlayerWithSession({ ...SOLO, raid: LIST_RAID });
 });
 
-/**
- * The list raid's section: a region named by its h2, so other raids' rows stay out of it. Its
- * rows are read through fireteamRows, which leaves out the member items an open row nests (#158).
- */
+/** The list raid's section: a region named by its h2, so other raids' rows stay out of it. */
 function listSection(page: Page) {
     return page.getByRole('region', { name: LIST_RAID.name });
+}
+
+/** The section's rows, leaving out the member items an open row nests (#158). */
+function listRows(page: Page) {
+    return fireteamRows(listSection(page));
 }
 
 function leaderOf(fireteam: number): string {
@@ -49,7 +51,7 @@ test.describe('active sessions list view', () => {
     test('opens in list view on a first visit', async ({ page }) => {
         await page.goto('/active-sessions');
 
-        await expect(fireteamRows(listSection(page))).toHaveCount(3);
+        await expect(listRows(page)).toHaveCount(3);
         await expect(listSection(page).getByRole('heading', { level: 3 })).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'true');
         await expect(page.getByRole('button', { name: 'Tile view' })).toHaveAttribute('aria-pressed', 'false');
@@ -72,14 +74,14 @@ test.describe('active sessions list view', () => {
     // keeps the same address and must still come back in tile view.
     test('switches to tile view and keeps the choice across a reload', async ({ page }) => {
         await page.goto('/active-sessions');
-        await expect(fireteamRows(listSection(page))).toHaveCount(3);
+        await expect(listRows(page)).toHaveCount(3);
 
         await page.getByRole('button', { name: 'Tile view' }).click();
 
         // Each tile carries its raid name as an h3.
         const tiles = listSection(page).getByRole('heading', { level: 3, name: LIST_RAID.name });
         await expect(tiles).toHaveCount(3);
-        await expect(fireteamRows(listSection(page))).toHaveCount(0);
+        await expect(listRows(page)).toHaveCount(0);
 
         await page.reload();
 
@@ -88,7 +90,7 @@ test.describe('active sessions list view', () => {
         await expect(page.getByRole('button', { name: 'List view' })).toHaveAttribute('aria-pressed', 'false');
 
         await page.getByRole('button', { name: 'List view' }).click();
-        await expect(fireteamRows(listSection(page))).toHaveCount(3);
+        await expect(listRows(page)).toHaveCount(3);
     });
 
     // A browser that can't save (full storage, some private modes) must still let you switch
@@ -124,7 +126,7 @@ test.describe('active sessions list view', () => {
     test('titles a row after its Fireteam Leader with the player count and elapsed time', async ({ page }) => {
         await page.goto('/active-sessions');
 
-        const row = fireteamRows(listSection(page)).filter({ hasText: leaderOf(0) });
+        const row = listRows(page).filter({ hasText: leaderOf(0) });
         await expect(row).toContainText(`${leaderOf(0)}'s fireteam`);
         // Read cell by cell through their tooltips: the row's text runs the cells
         // together ("6/61h 0m"), which no word-boundary pattern can split.
@@ -140,7 +142,7 @@ test.describe('active sessions list view', () => {
     test('titles a row with no flagged leader after the tracked player', async ({ page }) => {
         await page.goto('/active-sessions');
 
-        const row = fireteamRows(listSection(page)).filter({ hasText: SOLO.name });
+        const row = listRows(page).filter({ hasText: SOLO.name });
         await expect(row).toContainText(`${SOLO.name}#${SOLO.code}'s fireteam`);
         await expect(row.getByTitle('1 of 6 players')).toHaveText('1/6');
         // Seeded as started half an hour ago.
@@ -153,7 +155,7 @@ test.describe('active sessions list view', () => {
     test('keeps the API order: multi-player fireteams first, then newest first', async ({ page }) => {
         await page.goto('/active-sessions');
 
-        const rows = fireteamRows(listSection(page));
+        const rows = listRows(page);
         await expect(rows).toHaveCount(3);
         await expect(rows.nth(0)).toContainText(`${leaderOf(1)}'s fireteam`);
         await expect(rows.nth(1)).toContainText(`${leaderOf(0)}'s fireteam`);
@@ -172,7 +174,7 @@ test.describe('active sessions list view', () => {
             await page.goto('/active-sessions');
 
             const toggle = page.getByRole('group', { name: 'View' });
-            const row = fireteamRows(listSection(page)).filter({ hasText: SOLO.name });
+            const row = listRows(page).filter({ hasText: SOLO.name });
             await expect(toggle).toBeVisible();
             await expect(row).toBeVisible();
 

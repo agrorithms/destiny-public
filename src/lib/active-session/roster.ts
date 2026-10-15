@@ -63,11 +63,17 @@ function isRawMembershipId(displayName: string, membershipId: string): boolean {
 }
 
 /**
- * A row's title: the Fireteam Leader, or the session's tracked player when nobody in the
- * Roster is flagged (the crawler's filled-in solo row is the case seen in practice).
+ * The one member a row is titled after: the Fireteam Leader, or the session's tracked player
+ * when nobody in the Roster is flagged (the crawler's filled-in solo row is the case seen in
+ * practice).
  */
+function titleSubject(session: RosterSession): Omit<RosterMember, 'status'> {
+    return findFireteamLeader(session.partyMembers) ?? session;
+}
+
+/** A row's title, named after {@link titleSubject}. */
 export function fireteamTitle(session: RosterSession): FireteamTitle {
-    const subject = findFireteamLeader(session.partyMembers) ?? session;
+    const subject = titleSubject(session);
     const unknown = isRawMembershipId(subject.displayName, subject.membershipId);
 
     return {
@@ -83,8 +89,8 @@ export function fireteamTitle(session: RosterSession): FireteamTitle {
  * after (the leader, else the tracked player, "Unknown player" included), each listed once, in
  * Roster order. Excluded by membership ID, never by the name shown.
  */
-export function otherRosterMembers<T extends RosterMember>(session: { membershipId: string; displayName: string; partyMembers: T[] }): T[] {
-    const listed = new Set([fireteamTitle(session).membershipId]);
+export function otherRosterMembers(session: RosterSession): RosterMember[] {
+    const listed = new Set([titleSubject(session).membershipId]);
     return session.partyMembers.filter((member) => {
         if (listed.has(member.membershipId)) return false;
         listed.add(member.membershipId);
@@ -92,8 +98,8 @@ export function otherRosterMembers<T extends RosterMember>(session: { membership
     });
 }
 
-// Member-set rules, shared with the server's dedupe (dedupe.ts), which collapses one row per
-// tracked player into one per fireteam with the same comparisons.
+// Member-set rules behind isSameSession, which the server's dedupe (dedupe.ts) also calls to
+// collapse one row per tracked player into one per fireteam.
 
 /** Membership IDs as a set: blanks dropped, duplicates removed, sorted. */
 export function uniqueSortedMemberIds(ids: string[]): string[] {
@@ -101,7 +107,7 @@ export function uniqueSortedMemberIds(ids: string[]): string[] {
 }
 
 /** Whether two lists from {@link uniqueSortedMemberIds} hold the same members. */
-export function haveSameMembers(a: string[], b: string[]): boolean {
+function haveSameMembers(a: string[], b: string[]): boolean {
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) {
         if (a[i] !== b[i]) return false;
@@ -110,7 +116,7 @@ export function haveSameMembers(a: string[], b: string[]): boolean {
 }
 
 /** Whether every member of `subset` is also in `superset`. */
-export function isSubset(subset: string[], superset: string[]): boolean {
+function isSubset(subset: string[], superset: string[]): boolean {
     if (subset.length > superset.length) return false;
     const supersetSet = new Set(superset);
     return subset.every((id) => supersetSet.has(id));
@@ -136,8 +142,8 @@ export function sessionIdentity(session: { activityHash: number; partyMembers: {
 
 /**
  * Whether two polls describe the same fireteam: the same raid, and the same members or one
- * member set containing the other (the Roster grew or shrank). The same comparison dedupe
- * uses to decide two rows are one fireteam.
+ * member set containing the other (the Roster grew or shrank). Dedupe calls this too, to decide
+ * two rows are one fireteam, so the page and the server can't disagree on it.
  */
 export function isSameSession(a: SessionIdentity, b: SessionIdentity): boolean {
     return a.activityHash === b.activityHash && (
@@ -153,5 +159,17 @@ export function isSameSession(a: SessionIdentity, b: SessionIdentity): boolean {
  * gains a member and later loses another stays open. Fireteams no longer on the page drop out.
  */
 export function followOpenSessions(open: SessionIdentity[], current: SessionIdentity[]): SessionIdentity[] {
-    return current.filter((session) => open.some((opened) => isSameSession(opened, session)));
+    return current.filter((session) => isOpenSession(open, session));
+}
+
+/** Whether a session is one of the open fireteams. */
+export function isOpenSession(open: SessionIdentity[], session: SessionIdentity): boolean {
+    return open.some((opened) => isSameSession(opened, session));
+}
+
+/** The open fireteams after a click on one row: opened if it was closed, closed if it was open. */
+export function toggleOpenSession(open: SessionIdentity[], session: SessionIdentity): SessionIdentity[] {
+    return isOpenSession(open, session)
+        ? open.filter((opened) => !isSameSession(opened, session))
+        : [...open, session];
 }

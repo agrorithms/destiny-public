@@ -8,7 +8,7 @@ import SessionsViewToggle from '@/components/SessionsViewToggle';
 import { useRaidFilter } from '@/hooks/useRaidFilter';
 import { useSessionsView } from '@/hooks/useSessionsView';
 import { useReportPageLiveStatus } from '@/hooks/usePageLiveStatus';
-import { followOpenSessions, isSameSession, sessionIdentity, type SessionIdentity } from '@/lib/active-session/roster';
+import { followOpenSessions, isOpenSession, sessionIdentity, toggleOpenSession, type SessionIdentity } from '@/lib/active-session/roster';
 
 interface PartyMember {
     membershipId: string;
@@ -123,11 +123,9 @@ export default function ActiveSessionsPage() {
         return () => clearInterval(interval);
     }, [fetchSessions]);
 
-    const toggleSession = useCallback((identity: SessionIdentity) => {
-        setOpenSessions((open) => open.some((opened) => isSameSession(opened, identity))
-            ? open.filter((opened) => !isSameSession(opened, identity))
-            : [...open, identity]);
-    }, []);
+    function toggleSession(identity: SessionIdentity) {
+        setOpenSessions((open) => toggleOpenSession(open, identity));
+    }
 
     // Surface data freshness in the nav stats strip
     useReportPageLiveStatus(lastUpdated, 30);
@@ -257,7 +255,7 @@ export default function ActiveSessionsPage() {
                                     <FireteamRow
                                         key={fireteamKey(identity)}
                                         session={session}
-                                        open={openSessions.some((opened) => isSameSession(opened, identity))}
+                                        open={isOpenSession(openSessions, identity)}
                                         onToggle={() => toggleSession(identity)}
                                     />
                                 );

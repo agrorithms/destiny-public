@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { findFireteamLeader, fireteamTitle, followOpenSessions, isSameSession, otherRosterMembers, sessionIdentity } from './roster';
+import {
+    findFireteamLeader, fireteamTitle, followOpenSessions, isOpenSession, isSameSession, otherRosterMembers, sessionIdentity,
+    toggleOpenSession,
+} from './roster';
 
 // The Roster rules behind each list-view row on /active-sessions (#157). They run in the
 // browser, so they live in a module that imports nothing from the database, and they are
@@ -180,6 +183,19 @@ describe('session identity', () => {
         const opened = [sessionIdentity(poll(SALVATIONS_EDGE, [0, 1]))];
 
         expect(followOpenSessions(opened, [sessionIdentity(poll(CROTAS_END, [0, 1]))])).toEqual([]);
+    });
+
+    // A click on a closed row opens it and a second click closes it, and neither touches any
+    // other open row: several rows can be open at once.
+    it('toggles one fireteam open and shut, leaving other open fireteams alone', () => {
+        const clicked = sessionIdentity(poll(SALVATIONS_EDGE, [0, 1]));
+        const other = sessionIdentity(poll(SALVATIONS_EDGE, [7, 8]));
+
+        const opened = toggleOpenSession([other], clicked);
+        expect(isOpenSession(opened, clicked)).toBe(true);
+        expect(isOpenSession(opened, other)).toBe(true);
+
+        expect(toggleOpenSession(opened, clicked)).toEqual([other]);
     });
 });
 

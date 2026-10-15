@@ -5,9 +5,9 @@
 // Both the /active-sessions API (display list) and the OG cards (live count) must collapse
 // these the same way, or the numbers drift.
 import { getActiveSessions, type ActiveSessionDbRow } from '../db/queries';
-// The member-set rules live in the browser-safe Roster module, so the page's session identity
-// (which open rows follow across polls) compares rosters exactly the way dedupe does.
-import { haveSameMembers, isSubset, uniqueSortedMemberIds } from './roster';
+// "Same fireteam" lives in the browser-safe Roster module, so the page's session identity
+// (which open rows follow across polls) is the very rule dedupe applies here.
+import { isSameSession, uniqueSortedMemberIds, type SessionIdentity } from './roster';
 
 /** Minimal fields needed to decide whether two rows are the same fireteam session. */
 export interface DedupeKey {
@@ -34,27 +34,14 @@ export function dedupeActiveSessions<T>(items: T[], keyOf: (item: T) => DedupeKe
         return Date.parse(b.key.startedAt || '') - Date.parse(a.key.startedAt || '');
     });
 
-    const kept: { item: T; members: string[]; activityHash: number }[] = [];
+    const kept: (SessionIdentity & { item: T })[] = [];
 
     for (const { item, key } of sorted) {
-        const members = uniqueSortedMemberIds(key.memberIds);
-        if (members.length === 0) continue;
+        const identity = { activityHash: key.activityHash, memberIds: uniqueSortedMemberIds(key.memberIds) };
+        if (identity.memberIds.length === 0) continue;
 
-        let suppressed = false;
-        for (const existing of kept) {
-            if (existing.activityHash !== key.activityHash) continue;
-            if (
-                haveSameMembers(members, existing.members) ||
-                isSubset(members, existing.members) ||
-                isSubset(existing.members, members)
-            ) {
-                suppressed = true;
-                break;
-            }
-        }
-
-        if (!suppressed) {
-            kept.push({ item, members, activityHash: key.activityHash });
+        if (!kept.some((existing) => isSameSession(identity, existing))) {
+            kept.push({ item, ...identity });
         }
     }
 

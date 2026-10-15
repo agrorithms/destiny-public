@@ -1,7 +1,7 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { EXPAND_RAID, fireteamMemberName, seedFireteams, seedPlayerWithSession } from './support/seed-world';
-import { fireteamRows } from './support/fireteam-rows';
+import { fireteamRow, memberList } from './support/fireteam-rows';
 import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 import { seedPlayer } from '../tests/helpers/seed';
 
@@ -39,7 +39,12 @@ test.beforeAll(async () => {
 
 /** The row titled "<name>'s fireteam" in this spec's raid section. */
 function rowOf(page: Page, name: string) {
-    return fireteamRows(page.getByRole('region', { name: EXPAND_RAID.name })).filter({ hasText: `${name}'s fireteam` });
+    return fireteamRow(page.getByRole('region', { name: EXPAND_RAID.name }), name);
+}
+
+/** The row's chevron: the button that opens and closes it. */
+function chevronOf(row: Locator) {
+    return row.getByRole('button', { name: 'Fireteam members' });
 }
 
 function leaderOf(fireteam: number): string {
@@ -58,14 +63,14 @@ test.describe('active sessions expandable rows', () => {
     test('opens and closes a row on a click, with the chevron showing which', async ({ page }) => {
         await page.goto('/active-sessions');
         const row = rowOf(page, leaderOf(0));
-        const chevron = row.getByRole('button', { name: 'Fireteam members' });
+        const chevron = chevronOf(row);
+        const members = memberList(row);
         await expect(chevron).toHaveAttribute('aria-expanded', 'false');
-        await expect(row.getByRole('list')).toHaveCount(0);
+        await expect(members).toHaveCount(0);
 
         await row.getByTitle('6 of 6 players').click();
 
         await expect(chevron).toHaveAttribute('aria-expanded', 'true');
-        const members = row.getByRole('list', { name: 'Other fireteam members' });
         await expect(members.getByRole('listitem')).toHaveText(othersOf(0));
         for (const name of othersOf(0)) {
             await expect(members.getByRole('link', { name, exact: true })).toHaveAttribute('href', /^\/player\/3\/881\d+$/);
@@ -81,8 +86,7 @@ test.describe('active sessions expandable rows', () => {
     // too: Enter toggles it, and aria-controls names the list it opens.
     test('opens a row from the keyboard through the chevron button', async ({ page }) => {
         await page.goto('/active-sessions');
-        const row = rowOf(page, leaderOf(0));
-        const chevron = row.getByRole('button', { name: 'Fireteam members' });
+        const chevron = chevronOf(rowOf(page, leaderOf(0)));
 
         await chevron.focus();
         await page.keyboard.press('Enter');
@@ -104,7 +108,7 @@ test.describe('active sessions expandable rows', () => {
 
         await link.click();
 
-        await expect(row.getByRole('button', { name: 'Fireteam members' })).toHaveAttribute('aria-expanded', 'false');
+        await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'false');
     });
 
     // The other half: the same click, not cancelled, goes to the leader's player page. The
@@ -129,9 +133,9 @@ test.describe('active sessions expandable rows', () => {
         await rowOf(page, leaderOf(1)).getByTitle('6 of 6 players').click();
 
         for (const fireteam of [0, 1]) {
-            await expect(rowOf(page, leaderOf(fireteam)).getByRole('button', { name: 'Fireteam members' }))
-                .toHaveAttribute('aria-expanded', 'true');
-            await expect(rowOf(page, leaderOf(fireteam)).getByRole('list').getByRole('listitem')).toHaveText(othersOf(fireteam));
+            const row = rowOf(page, leaderOf(fireteam));
+            await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
+            await expect(memberList(row).getByRole('listitem')).toHaveText(othersOf(fireteam));
         }
     });
 
@@ -140,16 +144,18 @@ test.describe('active sessions expandable rows', () => {
     // row stays shut, so a refresh that opened everything would fail too.
     test('keeps an open row open after Refresh', async ({ page }) => {
         await page.goto('/active-sessions');
-        await rowOf(page, leaderOf(0)).getByTitle('6 of 6 players').click();
+        const open = rowOf(page, leaderOf(0));
+        const shut = rowOf(page, leaderOf(1));
+        await open.getByTitle('6 of 6 players').click();
         const refreshed = page.waitForResponse((response) => response.url().includes('/api/active-sessions'));
 
         await page.getByRole('button', { name: 'Refresh' }).click();
         await refreshed;
         await expect(page.getByRole('button', { name: 'Refresh' })).toBeEnabled();
 
-        await expect(rowOf(page, leaderOf(0)).getByRole('button', { name: 'Fireteam members' })).toHaveAttribute('aria-expanded', 'true');
-        await expect(rowOf(page, leaderOf(0)).getByRole('list').getByRole('listitem')).toHaveText(othersOf(0));
-        await expect(rowOf(page, leaderOf(1)).getByRole('button', { name: 'Fireteam members' })).toHaveAttribute('aria-expanded', 'false');
+        await expect(chevronOf(open)).toHaveAttribute('aria-expanded', 'true');
+        await expect(memberList(open).getByRole('listitem')).toHaveText(othersOf(0));
+        await expect(chevronOf(shut)).toHaveAttribute('aria-expanded', 'false');
     });
 
     // Someone joins between refreshes: the five-player Roster becomes six, so the row's member
@@ -161,14 +167,14 @@ test.describe('active sessions expandable rows', () => {
         await page.goto('/active-sessions');
         const row = rowOf(page, leader);
         await row.getByTitle('5 of 6 players').click();
-        await expect(row.getByRole('list').getByRole('listitem')).toHaveCount(4);
+        await expect(memberList(row).getByRole('listitem')).toHaveCount(4);
 
         seedFireteams({ count: 1, size: 6, prefix: GROWING_PREFIX, raid: EXPAND_RAID, leaderSeat: 0 });
         await page.getByRole('button', { name: 'Refresh' }).click();
 
         await expect(row.getByTitle('6 of 6 players')).toBeVisible();
-        await expect(row.getByRole('button', { name: 'Fireteam members' })).toHaveAttribute('aria-expanded', 'true');
-        await expect(row.getByRole('list').getByRole('link', { name: newcomer, exact: true })).toBeVisible();
+        await expect(chevronOf(row)).toHaveAttribute('aria-expanded', 'true');
+        await expect(memberList(row).getByRole('link', { name: newcomer, exact: true })).toBeVisible();
     });
 
     test.describe('on a phone', () => {
@@ -181,7 +187,7 @@ test.describe('active sessions expandable rows', () => {
             await page.goto('/active-sessions');
             const row = rowOf(page, `${LONG.name}#${LONG.code}`);
             await row.getByTitle('6 of 6 players').click();
-            const members = row.getByRole('list').getByRole('listitem');
+            const members = memberList(row).getByRole('listitem');
             await expect(members).toHaveCount(5);
 
             await expectNoElementOverflow(row, 'an open list row');

@@ -188,3 +188,47 @@ Branch `feat/158-expandable-list-rows` (from `9fff24e`, so all of #156 and #157 
   follow-up issue, not this ticket. A raw-ID member name in the expanded list is left for #165.
   Drag-selecting row text toggling the row is left as is. `followOpenSessions` and the Roster-growth
   and keyboard specs stay.
+- #158 simplify pass (separate commit). Dedupe now calls `isSameSession` instead of spelling out
+  the same raid and equal-or-nested rule by hand, so "same fireteam" is written once. The page and
+  the server can't drift apart on it, and `haveSameMembers`/`isSubset` are private to `roster.ts`
+  (bodies unchanged). The open-set rules moved from the page to `roster.ts`:
+  - `isOpenSession` (also used by `followOpenSessions`);
+  - `toggleOpenSession`, with one new Vitest test, shown red by three breaks (never closes, closes
+    every row, opening replaces the others).
+
+  The page's `toggleSession` is a plain function: the `useCallback` bought nothing, because each
+  row gets a new arrow anyway. `otherRosterMembers` takes `RosterSession` instead of an inline
+  copy of it, and reads the excluded member from a private `titleSubject`, which `fireteamTitle`
+  also uses, rather than building a whole title. Specs:
+  - `fireteamRow` and `memberList` in `e2e/support/fireteam-rows.ts`, used by the expand and
+    player-names specs;
+  - a local `chevronOf` in the expand spec;
+  - `listRows` in the list spec.
+
+  The helpers find the member list by its name everywhere; before, most call sites used a bare
+  `getByRole('list')`. No behaviour change. Dedupe was checked by a throwaway script, not
+  committed: the old function from `9fff24e` and the new one on 20,000 random inputs gave 0
+  mismatches. With the superset branch of `isSameSession` removed, the same script found 5,413.
+  The spec helpers were shown red by four breaks of the app, one build each, never committed:
+  - the member list unnamed: 6 failed;
+  - the fetch forgetting open rows: the 2 refresh specs failed;
+  - `aria-expanded` pinned false: 5 failed;
+  - the section's rows in an `<ol>`: the cap, list and player-names row specs, 9 failed.
+
+  Deferred:
+  - one shared `playerHref` for `/player/{type}/{id}`, which five files build (`FireteamRow`,
+    `ActiveSessionCard` (#153's), `LeaderboardTable`, `PlayerSearch`, `PlayerProfileClient`): a
+    new issue;
+  - an `expectOneLineTall` in `e2e/support/viewport.ts` for the one-line-title check that the
+    list and expand phone specs both carry: outside the diff;
+  - the member-name fallback (`displayName || membershipId`), which copies `ActiveSessionCard`'s
+    `getDisplayName`: #165.
+
+  Rejected:
+  - `React.memo` on rows and one identity per session per poll: under 1ms at 600 rows;
+  - a shared `PlayerName` link-or-span component for the title and the members: two uses;
+  - moving `fireteamKey` into `roster.ts`: it is a React key, so it belongs with the rendering;
+  - dropping player-names' now-tautological `toContainText`: it states the test's intent.
+
+  Re-verified: lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0), tsc,
+  `npm test` 560/560, `npm run e2e` 115/115.

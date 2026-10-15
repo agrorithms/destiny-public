@@ -1,6 +1,6 @@
 import { expect, test } from './support/test-fixtures';
 import { RAID_B, fireteamMemberName, seedFireteams } from './support/seed-world';
-import { fireteamRows } from './support/fireteam-rows';
+import { fireteamRow, memberList } from './support/fireteam-rows';
 
 /**
  * Flow #3. A player is identified by `Name#Code` and the full form must reach
@@ -63,7 +63,7 @@ test.describe('player identity', () => {
         // identity is missing, which is the failure this pins. Since #157 the list
         // view is the default and a row shows only its Fireteam Leader by name.
         const leader = fireteamMemberName(SESSION_PREFIX, 0, LEADER_SEAT);
-        const row = fireteamRows(page.getByRole('region', { name: RAID_B.name })).filter({ hasText: `${leader}'s fireteam` });
+        const row = fireteamRow(page.getByRole('region', { name: RAID_B.name }), leader);
 
         await expect(row).toContainText(`${leader}'s fireteam`);
         await expect(row.getByRole('link', { name: leader, exact: true })).toBeVisible();
@@ -77,11 +77,11 @@ test.describe('player identity', () => {
         // screen through that list, enriched by the same server-side path as the title.
         const leader = fireteamMemberName(SESSION_PREFIX, 0, LEADER_SEAT);
         const member = fireteamMemberName(SESSION_PREFIX, 0, 0);
-        const row = fireteamRows(page.getByRole('region', { name: RAID_B.name })).filter({ hasText: `${leader}'s fireteam` });
+        const row = fireteamRow(page.getByRole('region', { name: RAID_B.name }), leader);
 
         await row.getByTitle('6 of 6 players').click();
 
-        await expect(row.getByRole('list').getByRole('link', { name: member, exact: true }))
+        await expect(memberList(row).getByRole('link', { name: member, exact: true }))
             .toHaveAttribute('href', /^\/player\/3\/\d+$/);
     });
 

@@ -2032,8 +2032,9 @@ button, and an `aria-hidden` placeholder of its width keeps the columns aligned.
 keeps the chevron's placeholder to the button's right, so every row's button sits in one column.
 
 **Seed world:** `COPY_RAID` (Pantheon: Calus Resplendent) and `COPY_EDGE_RAID` (Pantheon:
-Insurrection Prime Revolutionary, seeded by its own hash `747671496`; its other hash is shared with
-Morgeth), two raids only this spec seeds. `seedFireteams` gains two options:
+Insurrection Prime Revolutionary, seeded by its own hash `747671496`. `RAID_DEFINITIONS` also listed
+`2530656885` under it, a hash that names Morgeth; fix/manifest-dupe-2530656885 removes that listing,
+and seeding by `747671496` holds either way), two raids only this spec seeds. `seedFireteams` gains two options:
 - `nameOnlySeats`: those seats' `players` rows have a name and no code, so the API sends the bare
   name;
 - `unseenSeats`: those seats have no `players` row and no session row of their own, and the Roster

@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1643,3 +1643,682 @@ cell's link, because the cell also holds the tooltip text.
 - Touch: tapping the time opens raid.report. No tap tooltip exists, and none was asked for.
 - Whether raid.report's page itself loads. The test checks only the `href`; the format comes from
   raid.report's route table (`/pgcr/:activityId`).
+
+## 2026-10-14 — #156 the active-sessions raid sections' fixed order
+
+`e2e/active-sessions-order.spec.ts`, **new**, three specs. The suite is now **twenty-one flows, 98
+tests including the two canary setups**.
+
+Raid sections on `/active-sessions` are grouped by `raidKey` and sit in the page's `AVAILABLE_RAIDS`
+order (the raid filter's), with any key the list doesn't know last. They used to be grouped by display
+name and sorted busiest-first.
+
+**Seed world:** `seedFireteams` takes any `FixtureRaid`, not only `RAID_A`/`RAID_B`. Four new raids,
+under fixture namespace **86** with one sub-prefix each (`861`–`864`) so their rosters can't share a
+membership id:
+- `ORDER_EARLIER_RAID` (Vault of Glass, 1 fireteam) and `ORDER_LATER_RAID` (Deep Stone Crypt, 3).
+  No other spec seeds them, so the counts hold whatever other files leave live on `RAID_A`/`RAID_B`.
+- `UNLISTED_RAID` (key `e2e_unlisted_raid`, 4 fireteams) and `UNLISTED_NAMESAKE_RAID`
+  (`e2e_unlisted_namesake_raid`, 1). Their hashes (1 and 2) are in no raid definition, so the API
+  names both after activity mode 4 and both headings read **"Raid"**.
+
+1. **Sections follow the raid list, not fireteam counts.** Deep Stone Crypt has more fireteams than
+   Vault of Glass and still renders below it.
+2. **An unlisted raid key renders after every listed raid**, though it is the busiest seeded raid.
+3. **Two raid keys with one display name stay two sections**: two "Raid" headings, not one.
+
+The assertions compare positions among `h2`s, the page's only section headings, so they don't depend
+on which sections other spec files have left live.
+
+**Verified red first:** with the pre-#156 `page.tsx` all three fail. The page rendered
+`Raid, Deep Stone Crypt, Vault of Glass` (busiest first) and merged the two "Raid" sections into one.
+
+### What is still NOT covered
+
+- Order stability *across a refresh* as counts change. The specs check one render; the order no longer
+  depends on counts, so a second render can't differ, but no spec changes counts between polls.
+- A `null` `raidKey` (a raid-mode activity whose hash no raid definition knows). The page groups it
+  under `''`, which sorts with the unknown keys. Seeded keys are always strings.
+- Tile view loses its e2e coverage under #157, when list view becomes the default (tracked on #153).
+
+## 2026-10-14 — #157 list view by default, the List | Tiles toggle, Fireteam Leader rows
+
+`e2e/active-sessions-list.spec.ts`, **new**, eight specs (the eighth added after the #157
+review); `active-sessions-cap.spec.ts` and `player-names.spec.ts` changed. The suite is now
+**twenty-two flows, 106 tests including the two canary setups**.
+
+`/active-sessions` opens in list view: one row per fireteam, "`<Fireteam Leader Name#Code>`'s
+fireteam", with `N/6` and the elapsed time. A List | Tiles toggle switches views, and the choice is
+kept in localStorage. Each raid section is now a `<section>` labelled by its `h2`, so specs find a
+section's rows with `getByRole('region', { name })`; the `h2` text is unchanged, so the #156 order
+spec's `sectionHeadings()` didn't need to change.
+
+**Seed world:** `seedFireteams` takes `leaderSeat`, which seeds that member with status 9
+(FireteamMember 1 + PartyLeader 8). Without it every member is status 1 and the fireteam has no
+leader. `LIST_RAID` (Garden of Salvation) is a raid only this spec seeds. Fixture namespace **87**:
+`871` for two six-player fireteams with the leader in seat 2, `872` for one solo player with no
+leader, who started most recently and has a 26-character name, the longest a Bungie Name can be.
+
+1. **List view on a first visit**: three rows in the section, no tile headings, "List view" pressed.
+2. **The toggle's halves** carry the tooltips "List view" / "Tile view", an `aria-label` and `aria-pressed`.
+3. **Tile view survives a reload**, `aria-pressed` included, and List switches back.
+4. **A row is titled after its Fireteam Leader** (seat 2, so not the first member or the tracked
+   player by accident), links to their player page, and shows `6/6` and `1h Nm`.
+5. **No flagged leader → the tracked player** (the solo row), with `1/6` and `3Nm`.
+6. **Rows keep the API's order**: both six-player fireteams, newest first, then the solo player,
+   who started last.
+7. **At 360px**, the toggle and the long-named solo row sit inside the viewport, the row doesn't
+   scroll sideways and neither does the page, and the row's title is one line tall. Before the
+   #157 review it measured the first row, whose name is short. With both `min-w-0` and `truncate`
+   dropped from the title, that version passed and this one fails (the row scrolls sideways by
+   78px). The one-line check is what catches `truncate` dropped alone: the title then wraps
+   (40px tall against a 20px line), so nothing scrolls sideways, but the unbreakable `Name#Code`
+   spills over the player count. `min-w-0` dropped alone still passes, correctly: `truncate`'s
+   `overflow: hidden` already lets the title shrink.
+8. **The toggle when saving fails**: the first save of the view throws `QuotaExceededError` (other
+   keys save normally). Tiles is still pressed after the click, and a later List click, whose save
+   works, wins. Added after the #157 review: the in-memory fallback once kept the failed pick for
+   the rest of the visit, and this spec fails with the line that clears it removed.
+
+**Changed:**
+- `active-sessions-cap.spec.ts` proves ADR 0001 by counting **list rows**: 8 fireteams of 6 render 8
+  rows, not 48. It counts only rows inside the Salvation's Edge region whose title is one of its own
+  `81` players. The client-write specs leave sessions live on the same raid, so a section-wide count
+  would depend on file order or a retry.
+- `player-names.spec.ts` seeds its fireteam's leader in seat 3 and checks that leader's full
+  `Name#Code` in the row title (a link). Before #157 it checked seat 0's name on a tile.
+
+Which member leads, the tracked-player fallback and "Unknown player" for a raw membership ID are
+Roster rules in `src/lib/active-session/roster.ts`, covered by Vitest
+(`roster.test.ts`), not here.
+
+**Verified red first:** against the tile-only page (commit `958bfcd`), 9 of the 22 active-session
+tests failed: all seven list specs, the cap spec's row count and the player-names row title. The
+toggle's hook was also checked against the `useState`-initializer pattern the leaderboard's prefs
+use. With it, after a reload in tile view, "Tile view" kept the prerendered `aria-pressed="false"`,
+and spec 3 failed.
+
+### What is still NOT covered
+
+- **Tile view lost its per-fireteam e2e coverage.** The cap spec's "one per fireteam" count and the
+  player-names roster check now run in list view only. Spec 3 shows tiles render, three per section,
+  and nothing more. Restoring tile coverage is tracked on **#153**.
+- "Unknown player" with the ID in a tooltip, in a browser: it is covered by Vitest only. Seeded
+  names always resolve.
+- The toggle when localStorage can't even be read (`getItem` throws too, as in some private
+  modes). Spec 8 covers a failed save only; the read-failure path was checked once by hand with a
+  throwaway spec during the #157 review.
+- A row's other cells overlapping each other. Spec 7 checks only that the title stays one line,
+  which is the overlap a long name causes; nothing measures the count against the elapsed time.
+- Rows on refresh: the 30-second poll and Refresh re-render the rows, but no spec changes data
+  between polls. Open rows across refreshes are #158.
+
+## 2026-10-15 — #158 expandable list rows that stay open across refreshes
+
+`e2e/active-sessions-expand.spec.ts`, **new**, eight specs; `player-names.spec.ts` gains one, and
+the cap, list and player-names specs read rows through a narrower locator. The suite is now
+**twenty-three flows, 115 tests including the two canary setups**.
+
+A list row on `/active-sessions` expands to show the rest of its Roster: every member except the
+one the row is titled after (the leader, else the tracked player, "Unknown player" included), each
+once, as a `Name#Code` link to their player page. A click anywhere on the row toggles it, except on
+a link or button inside it; the chevron is a real button with `aria-expanded` and `aria-controls`.
+The page keeps the open rows by **session identity** (raid + member set, one Roster containing the
+other counting as the same fireteam) and re-anchors them to each poll, so they stay open across
+Refresh and the 30-second poll.
+
+**Locators:** an open row's member list is a nested `<ul>`, and its items are `listitem`s too.
+`e2e/support/fireteam-rows.ts` (`fireteamRows(section)`) reads only the section's own `ul > li`,
+and the cap, list and player-names specs use it, so ADR 0001's "8 rows, not 48" can't pick up
+member items. No existing spec opens a row, so the old locator would still have passed today; the
+helper keeps it that way once one does.
+
+**Seed world:** `EXPAND_RAID` (Last Wish), a raid only this spec seeds, because the growth spec
+reseeds a fireteam partway through. Fixture namespace **88**: `881` for two six-player fireteams
+with the leader in seat 2, `882` for a five-player fireteam (leader in seat 0) that grows to six,
+`883` for a tracked player with no leader and five other members, all with 26-character names,
+and `884` for a fireteam of one (added by the review fixes below).
+
+1. **A click on the row opens and closes it** (on the player count, then the elapsed time), the
+   chevron's `aria-expanded` follows, and the open row lists the five non-leader members, in Roster
+   order, as links to `/player/3/<id>`.
+2. **The chevron works from the keyboard**: Enter opens the row, and `aria-controls` names the list.
+3. **Clicking the title link doesn't toggle the row.** The spec cancels the navigation itself, so
+   it can check the row afterwards.
+4. **The title link still navigates** to the leader's player page. The player page is answered with
+   a stub, because the real one calls the client-write endpoints for this spec's players on load.
+5. **Several rows open at once.**
+6. **An open row stays open after Refresh**, and a closed one stays closed.
+7. **An open row stays open when a member joins** between refreshes: `882` is reseeded as six, the
+   row shows `6/6`, is still open, and lists the newcomer.
+8. **At 360px**, the open `883` row (five 26-character names) doesn't scroll sideways, nor does the
+   page, every member ends inside the viewport **and shows its whole name**, and the row's title is
+   still one line tall. The whole-name check came from a break that got past the first version:
+   members laid out in one line overflow nothing, because each name truncates into a stub (211px of
+   name cut off). Moving the member list inside the truncated title is caught the same way (160px).
+
+`player-names.spec.ts`: a new test opens its row and checks seat 0's full `Name#Code` link in the
+member list. Seat 0 isn't the leader, so it reaches the screen only through that list.
+
+Which member is left out, session identity under growth, shrinkage and a tracked-player change,
+and re-anchoring across polls are Roster rules in `src/lib/active-session/roster.ts`, covered by
+Vitest (`roster.test.ts`), not here.
+
+**Verified red first:** against the collapsed-only rows (commit `d70253c`), 8 tests failed: seven of
+the eight expand specs and player-names' expanded member. Spec 4 passed, as it should: the link
+already navigated, so it guards against the row's click handler swallowing it. Each spec was then
+also shown failing against a targeted break of the finished code (the #158 progress notes list
+them), for example spec 7 alone with open rows matched on the exact member set, and spec 8 with
+the member list moved inside the truncated title or laid out in one line.
+
+### What is still NOT covered
+
+- The 30-second poll itself. Refresh runs the same fetch, so spec 6 stands in for it; no spec
+  waits out or fast-forwards the timer.
+- A Roster that **shrinks** between refreshes, in a browser. Vitest covers the rule, and spec 7
+  covers the same page path for growth; no spec reseeds a smaller Roster.
+- An open row whose fireteam leaves the page and comes back: it comes back closed, by design
+  (`followOpenSessions` forgets it). Not asserted anywhere.
+- A raw-ID member in the open list. It renders the ID, as tiles do; seeded names always resolve.
+- Tile view, still (#153). Only its React key changed.
+
+### Review fixes (same day)
+
+Two more expand specs, so the file has **ten** and the suite **117 tests including the two canary
+setups**, still twenty-three flows.
+
+9. **An open row survives a maintenance response.** The next `/api/active-sessions` answer is
+   stubbed with `page.route` as a maintenance response (no sessions, `maintenance: true`), then the
+   route is lifted and Refresh brings the fireteam back still open. Red before the fix: the row came
+   back closed (`aria-expanded` "false").
+10. **A fireteam of one (`884`) offers nothing to open**: no chevron, a click on the row opens no
+   list, and its elapsed time ends at the same x as on a row with a chevron (a placeholder keeps the
+   columns aligned). Red before the fix: the chevron was there. The alignment check was also shown
+   red with the placeholder's width removed (1219 against 1195).
+
+Not covered: a row opened as two players that shrinks to one. The page still holds it open, and
+the row hides the list because it has nobody to list; no spec reseeds that.
+
+## 2026-10-15 — #159 collapsible raid sections, Collapse all / Expand all
+
+`e2e/active-sessions-collapse.spec.ts`, **new**, thirteen specs; `e2e/support/fireteam-rows.ts`
+changed. The suite is now **twenty-four flows, 130 tests including the two canary setups**.
+
+Each raid section's `h2` on `/active-sessions` holds a `<button type="button">` with
+`aria-expanded` and `aria-controls`, so the section collapses and expands, in list view and tile
+view. A click anywhere on the header row (the count included) toggles it too, like a list row. The
+`h2`'s text is still the bare raid name (the chevron is an `aria-hidden` SVG, and the count sits
+outside the `h2`), so the #156 order spec passes unchanged. `aria-controls` names the section's
+content wrapper, `raid-section-<raidKey>-content`, which stays in the page with `hidden` while
+collapsed; its rows or tiles are unmounted. A **Collapse all** button beside Refresh reads
+**Expand all** only when every visible section is collapsed, and is disabled when no section is
+visible. Collapse state is in memory, by `raidKey`: it survives Refresh and a maintenance response,
+not a reload, and a section that leaves the page (its raid has no sessions, or the raid filter hides
+it) is forgotten, so it comes back expanded.
+
+**Locators:** the list now sits one level deeper, inside the content wrapper, so `fireteamRows` is
+`:scope > div > ul > li`, still the section's own list and nothing nested in a row. The old
+`:scope > ul > li` fails loudly (the cap spec: "Expected: 8, Received: 0"). A descendant `:scope ul
+li` is caught by spec 12, which counts rows with one open ("Expected: 2, Received: 7"). The cap spec
+alone would not catch it, because none of its rows is open.
+
+**Seed world:** `COLLAPSE_RAID` (Root of Nightmares) and `COLLAPSE_OTHER_RAID` (King's Fall), two
+raids only this spec seeds, and `UNSEEDED_RAID` (Vow of the Disciple), which **no spec may ever
+seed**: spec 11 filters to it to get a page with no sections. Fixture namespace **89**: `891` for
+two six-player fireteams on Root of Nightmares with the leader in seat 2, and `892` for one
+four-player fireteam on King's Fall. Since the review fixes below, also `893` for one three-player
+fireteam on `REAPPEAR_RAID` (The Desert Perpetual), a third raid only this spec seeds, which
+spec 14 ends and reseeds. The specs about "every visible section" first filter the page
+to this file's two raids through the raid filter's own dropdown, because other files leave their
+sections live.
+
+1. **A header click collapses and expands a section in list view**; while collapsed, the `h2` and
+   "2 sessions" are still visible. The second click lands on the count, so the whole header is
+   the target.
+2. **The same in tile view**: two tiles (`h3`s), then none, then two.
+3. **A collapsed section stays collapsed after Refresh**, and the other one stays expanded.
+4. **A reload expands every section again.**
+5. **Collapse all collapses every visible section** and then reads Expand all, which reverses it.
+6. **The button reads Collapse all while any visible section is expanded**, Expand all once the
+   last is collapsed, and Collapse all again once one is reopened.
+7. **A section the raid filter brings in starts expanded** (after Collapse all), the button goes
+   back to Collapse all, and the already-collapsed section stays collapsed.
+8. **A section the filter hides and shows again comes back expanded.**
+9. **The header from the keyboard**: Enter collapses, Space expands, and `aria-controls` resolves to
+   one element, hidden while collapsed.
+10. **Collapse state survives a maintenance response** (stubbed with `page.route`, as in the expand
+    spec), like open rows do.
+11. **No visible section → Collapse all, disabled**, not Expand all.
+12. **An open row is still open when its section expands again**, and the section still has 2
+    rows, not 2 plus the open row's 5 members.
+13. **At 360px** the control bar wraps: the raid filter, Refresh, Collapse all and the View toggle
+    each sit inside the viewport and overlap none of the others; Collapse all is on Refresh's line,
+    after it; a collapsed header's name and count end inside the viewport; the page doesn't scroll
+    sideways.
+
+**Verified red first:** against the page at `c88ef31`, all thirteen failed, each on the missing
+header button or the missing Collapse all button (the raid-filter helper and the open-row step ran).
+Then each spec was shown failing against a targeted break of the finished page, in three batches
+whose failing sets matched the predictions exactly:
+- the header row not clickable → 1;
+- tiles rendered outside the hidden wrapper → 2 ("Expected: 0, Received: 2");
+- every fetch forgetting collapse → 3 and 10;
+- collapse kept in `sessionStorage` → 4;
+- the button that only ever collapses → 5;
+- Expand all when *any* section is collapsed → 6 and 7;
+- Collapse all acting on every raid with sessions, not only the visible ones → 7;
+- no forgetting on a filter change → 8;
+- the wrapper losing its id while collapsed → 9 ("Expected: 1, Received: 0");
+- a maintenance response forgetting collapse → 10;
+- the button not disabled → 11;
+- collapsing a section closing every open row → 12;
+- the control bar `flex-nowrap` → 13 (Refresh ends at 366px);
+- Collapse all before Refresh → 13.
+
+One break stayed green and was right to: tile view ignoring collapse *inside* the hidden wrapper
+changes nothing on screen. It exposed that the spec's collapsed check counted rows with the CSS row
+locator, which counts hidden elements and so tied the spec to unmounting. That check now counts
+`listitem`s by role, which leaves hidden ones out.
+
+### What is still NOT covered
+
+- The 30-second poll itself; Refresh stands in for it, as in #158.
+- ~~A section that leaves the page because its raid's last fireteam ended, then comes back.~~
+  Covered by spec 14 in the review fixes below. This note used to say the rule was the same as for
+  a filter change (spec 8). The outcome is the same, but the code path isn't: the page forgets a
+  raid that left the response in its fetch, and one the filter hid in the filter's handler, so
+  spec 8 never ran the fetch path. With that path deleted, every spec still passed.
+- A failed fetch (an error response): collapse state isn't touched on that path at all, so it is
+  kept, but no spec stubs one.
+- Null-key raids collapsing together under `''`: seeded keys are always strings.
+- Hover colours and the chevron's rotation. They were checked once in throwaway screenshots at
+  1280px and 360px, light and dark, and are not asserted.
+- Tile view beyond collapse: spec 2 counts tiles and checks the collapsed header and a switch to
+  List and back, nothing more (#153).
+
+
+### Support helpers extracted (same day)
+
+**`expectInsideViewport(locator, what)` joins `e2e/support/viewport.ts`.** It checks the left edge
+against 0 and the right edge against the page's own viewport width, with one wording: "<what>
+starts / ends inside the viewport". It replaces five hand-written copies of the same check, with a
+hard-coded 360: the list view's toggle and long-named row, the open row's members, #159's controls
+and collapsed header (name and count), and the timeline's tooltip, whose separate edge checks
+against the chart are unchanged. Three of them checked only the right edge before. The left edge
+is now checked too, so the checks are now stronger, never weaker. Test count unchanged.
+Shown biting: the Collapse all button at `min-w-[380px]` and the View toggle's wrapper at
+`ml-[340px]`. The collapse spec failed on "collapseAll ends inside the viewport" (518 against 360)
+and the list spec on "the view toggle ends inside the viewport" (471), both inside the helper.
+The expand phone spec failed first on its page-overflow check. Restored, all fifteen phone specs
+passed.
+
+**`e2e/support/active-sessions-page.ts`, new: `refreshSessions(page)`, `serveMaintenance(page)` /
+`endMaintenance(page)` and `MAINTENANCE_MESSAGE`.** They replace the word-for-word copies in the
+expand and collapse specs:
+- the Refresh-and-wait: the expand spec's "after Refresh" spec and the collapse spec's local
+  `refresh()`, four calls;
+- the `page.route` maintenance stub and its `unroute`, one copy in each spec's maintenance spec.
+
+The stub still runs at the network layer, so the page's own fetch handles the response. The
+expand spec's other Refresh clicks stay plain clicks, as before: "a member joins", and both
+clicks in its maintenance spec. Swapping them would add a wait they don't have today. (The two
+maintenance clicks moved to `refreshSessions` in the review fixes below.) A new file,
+because `fireteam-rows.ts` only builds locators and `viewport.ts` only measures layout. Test
+count unchanged.
+
+Shown biting, then restored and green:
+- Every fetch clearing open rows and collapse state: the five refresh and maintenance specs
+  across the two files failed, each on the assertion right after the helper call. The maintenance
+  banner check passed first, so the stub served maintenance.
+- Only the `!data.maintenance` guard removed: exactly the two maintenance specs failed (collapse
+  `:262` "Expected: \"false\", Received: \"true\""; expand `:198` "Expected: \"true\", Received:
+  \"false\"").
+
+### Review fixes (same day)
+
+One more collapse spec, so the file has **fourteen** and the suite **131 tests including the two
+canary setups**, still twenty-four flows. The numbers below continue the list above. Spec 14
+sits after spec 8 in the file, because the two are the same rule on two paths.
+
+14. **A section whose raid leaves the API response and comes back starts expanded.** Spec 14
+    collapses the `893` fireteam's section, then calls `endFireteams` (new in
+    `e2e/support/seed-world.ts`), which deletes that fireteam's `active_sessions` rows through
+    `deleteActiveSessionForPlayer`, the query the crawler uses. After Refresh the section is
+    gone. The spec then reseeds and refreshes, and the section is back, expanded. Nothing is
+    stubbed: the e2e server really stops returning the raid. Only rows under prefix `893` are
+    touched.
+
+Spec 2 (tile view) gains two checks:
+- While collapsed, the raid name is on screen as text, not only as the button's accessible name.
+- After a switch to List and back, the section is still collapsed, because collapse state is
+  by raid, not by view.
+
+The expand spec's maintenance spec now uses `refreshSessions` for both of its Refresh clicks.
+It waits for each response, which only makes it stricter. `active-sessions-page.ts` matches the
+sessions request with one path predicate, for both the stub and the response wait. The
+maintenance stub's docblock cites ADR 0004's 2026-10-15 amendment, the one exception to "our own
+API routes are not stubbed". The page filters on `raidSectionKey(s)`, the same key that grouping
+and forgetting use (no spec change: seeded keys are never null).
+
+Shown biting, then restored and green. Each break was its own build, and the collapse file ran
+against it:
+- The fetch path's `liveRaids` / `keepCollapsed` lines deleted, together with the raid name
+  hidden in tile view while collapsed (kept as an `aria-label` on the button). Exactly two specs
+  failed:
+  - spec 14 at its final `expectExpanded` ("Expected: \"true\", Received: \"false\""), after its
+    section-gone check had passed;
+  - spec 2 on the new name check ("Expected: visible, Received: hidden").
+
+  The old spec 2 would have passed this break: its `headerOf` locator reads the accessible name,
+  which the `aria-label` kept.
+- Switching view clearing collapse state: only spec 2 failed, at the `expectCollapsed` after the
+  switch to List ("Expected: \"false\", Received: \"true\"").
+
+## 2026-10-15 — #160 the list rows' copy join code button
+
+`e2e/active-sessions-copy.spec.ts`, **new**, eleven specs; `e2e/support/seed-world.ts` changed.
+The suite is now **twenty-five flows, 142 tests including the two canary setups**.
+
+Each list row on `/active-sessions` has an icon-only `<button type="button">` named and titled
+"Copy join code", between the elapsed time and the chevron. It copies the fireteam's Join Command
+(`/join Name#Code`) with the async Clipboard API. The target is `joinCommand` in
+`src/lib/active-session/roster.ts`: the Fireteam Leader if their full `Name#Code` is known,
+otherwise the first Roster member whose full name is, otherwise none (Vitest covers the rule,
+`roster.test.ts`). On success the icon turns into a check mark and a `role="status"` tooltip reads
+"Copied /join Name#Code" for two seconds. On failure the tooltip reads "Copy failed: /join
+Name#Code", with the command selectable, and stays until Escape or a press outside it. At a
+displayed 6/6 the button is disabled with the title "Fireteam full". With no target there is no
+button, and an `aria-hidden` placeholder of its width keeps the columns aligned. A fireteam of one
+keeps the chevron's placeholder to the button's right, so every row's button sits in one column.
+
+**Seed world:** `COPY_RAID` (Pantheon: Calus Resplendent) and `COPY_EDGE_RAID` (Pantheon:
+Insurrection Prime Revolutionary, seeded by its own hash `747671496`. `RAID_DEFINITIONS` also listed
+`2530656885` under it, a hash that names Morgeth; fix/manifest-dupe-2530656885 removes that listing,
+and seeding by `747671496` holds either way), two raids only this spec seeds. `seedFireteams` gains two options:
+- `nameOnlySeats`: those seats' `players` rows have a name and no code, so the API sends the bare
+  name;
+- `unseenSeats`: those seats have no `players` row and no session row of their own, and the Roster
+  names them by membership id, as Bungie does for a teammate it has no name for.
+
+Both are seeded, not stubbed (ADR 0004). Fixture namespace **90**:
+- `901`: a six-player fireteam (leader in seat 2), so 6/6;
+- `902`: a five-player fireteam with the leader in seat 1 and every name full, so a full name sits
+  ahead of the leader;
+- `903`: a four-player fireteam whose leader (seat 0) has no code;
+- `904`: a three-player fireteam whose leader has no code and whose other two seats are unseen;
+- `905`: a tracked player alone, with a 26-character name;
+- `906` (on `COPY_EDGE_RAID`): a tracked player named with 26 `M`s and one unseen teammate, so
+  the section's first row;
+- `907` (on `COPY_EDGE_RAID`): a tracked player alone, named with 26 `W`s, so its last row.
+
+**The clipboard is real.** The specs that read it back run with `clipboard-read` and
+`clipboard-write` granted on the context, and read it with `navigator.clipboard.readText()`. The
+failure spec runs in a context granted neither, where headless Chromium itself refuses the write
+("NotAllowedError: … Write permission denied"). That refusal was probed on a throwaway page before
+the spec was written: no grant, and a CDP `Browser.setPermission` denial, both refuse; a grant
+succeeds. So nothing in the browser is replaced, and no ADR 0004 exception is needed. If a
+Chromium version ever allowed the write, the spec would fail rather than pass.
+
+**The two-second revert uses Playwright's clock.** The spec installs `page.clock` before loading
+the page and pauses it once loaded, then steps it 1.9s (still shown) and 0.2s more (gone). That
+proves "about two seconds" from both sides without sleeping. The page's 30-second poll stays
+frozen too, so nothing re-renders mid-spec.
+
+1. **The leader's join code is copied** and read back: `/join Roster902F0S1#1000`, not seat 0's.
+   The button's title is "Copy join code".
+2. **A leader with no code falls back** to the next member with a full name (`903`).
+3. **Copying doesn't toggle the row**, closed or open, and each click is shown to have copied.
+4. **The check mark and "Copied /join …" show for about two seconds, then revert.** The icon is
+   compared as markup before, during and after, so the spec doesn't know either icon's shape.
+5. **At 6/6 the button is disabled**, with the title and accessible description "Fireteam full".
+6. **No button when nobody has a full name** (`904`), and the row's elapsed time ends where it
+   does on a row with a button.
+7. **A fireteam of one has a button** in the same column as the others, and its elapsed time
+   lines up.
+8. **At 360px**, the solo row's button is inside the viewport and the row stays one line tall: its
+   flex line's height is its padding plus one line-height, measured on the whole row rather than
+   the `truncate` title cell, which is one line however the row breaks. The "Copied" tooltip is
+   inside the viewport, and nothing clips it or is drawn over it: no ancestor that clips its
+   overflow ends inside the tooltip, and a point just inside each of its edges hits the tooltip.
+9. **A refused copy shows the command to copy by hand.** No check mark, still shown after 10s on
+   the paused clock, one click on it selects exactly the command without toggling the row, and
+   Escape or a click on the page's heading dismisses it.
+10. **At 360px the failure tooltip fits** the same way as 8. Its wording is the longer of the two.
+11. **At 360px the failure tooltip is whole on the list's first and last rows with the widest
+    names** (`906` and `907`, on a section of just those two rows). Each tooltip is asserted taller
+    than its row first, so the spec can't pass on one that never reached the list's edge. Then
+    each is inside the viewport, the page doesn't scroll sideways, and nothing clips it or is
+    drawn over it, as in 8.
+
+**Review fixes (2026-10-15).** The review found two holes.
+- Spec 8's one-line check measured the `truncate` title cell, which can't wrap. It now measures
+  the row's flex line. Against a break that wraps the row (`flex-wrap` on the line, `basis-full`
+  on the button), the new check fails with "the row is one line tall … Expected: 40, Received:
+  80". The old check passed that assertion and failed only later, at "the feedback starts inside
+  the viewport" (−159), because the moved button dragged the tooltip off-screen.
+- A 26-letter name of `M`s, `W`s or CJK took three lines (54px) in the failure tooltip at
+  360px, against a 40px row. On the list's last row it ended 6px below the list's clipped edge.
+  Spec 11 was red against the list's `overflow-hidden` ("`<ul class="ui-card divide-y ui-divider
+  overflow-hidden">` by 6.0px", on the first row). Then the clip moved off the list: #158's
+  `overflow-hidden` on the `ul` (there so a hovered first or last row kept the card's rounded
+  corners) is gone. The rows round their own hover instead: the first row's line at the top, and
+  the last row's at the bottom while it is closed, both at the card's inner radius
+  (`calc(0.5rem-1px)`). Checked once in a throwaway probe, light and dark: computed radii of 7px
+  on those corners, 0 on an open last row's line, and clean corners in 4× screenshots. The
+  tooltip's width cap, `break-all` and body font stay. The cap keeps it inside a 360px viewport;
+  a Bungie Name has no space to break at; and monospace only makes it taller.
+
+**Verified red first:** the first nine specs (all but 10, which came with the tooltip's phone
+fixes) ran against the page at `1dff438`, and eight failed on the missing button. Spec 6 passed,
+correctly: no row had a button yet, so "no button" and the alignment held trivially. The breaks
+below are what give it teeth.
+
+Then each spec was shown failing against a targeted break of the finished page, in seven batches.
+Each batch was one build, and each failing set matched the prediction:
+- no fallback (the leader or nobody) → 2, plus 7, 8 and 10, because the solo row has no leader;
+- the 6/6 disable dropped → 5 ("Expected: disabled, Received: enabled");
+- a press inside the failure tooltip dismissing it → 9 (the selection read "", not the command);
+- the leader never preferred → 1, 3, 4 and 9 (the tooltip read `…F0S0#1000`);
+- the no-button placeholder removed → 6 (elapsed time at 1195, not 1159);
+- a button even with no target → 6 ("Expected: 0, Received: 1");
+- no revert timer → 4;
+- the solo row's button in the chevron's slot → 7 (button at 1207, not 1171);
+- a click outside not dismissing the failure → 9;
+- bare names accepted as full → 2 and 6;
+- a failed copy left idle → 9 and 10;
+- the row's click guard not excluding the copy button → 3 and 9;
+- a 500ms revert → 4, at the 1.9s step;
+- all-digit names accepted → 6;
+- the tooltip's click not stopped → 9 (the row opened);
+- the button hidden at 6/6, not disabled → 5 ("element(s) not found");
+- Escape not dismissing → 9.
+
+While the specs were being written, the phone checks were also red against two earlier versions of
+the tooltip:
+- at a `100vw-7rem` cap it started at x −5;
+- with the command in monospace, wrapping at its space, it took three lines and ended 6px past the
+  list.
+
+The first version of spec 8 measured an empty status `<span>` around an absolutely positioned
+tooltip and passed on a zero-size box. The `role="status"` element is now the tooltip itself, so
+the specs measure what a visitor sees.
+
+### What is still NOT covered
+
+- A raw membership ID as long as Bungie's (16+ digits) in the browser. The `unseenSeats` IDs are
+  seven digits (`9040001`), so the API's `isLikelyMembershipId` passes them through as names. The
+  spec still proves they aren't used, because they have no `#code`. The 19-digit case is covered
+  in Vitest.
+- A platform name that itself ends in `#` and four digits. The browser can't tell it from a
+  Bungie Name (see the open question on #160's report).
+- A browser without `navigator.clipboard` (an insecure origin). The same `catch` handles it, but no
+  spec loads the page over plain HTTP from a non-local host.
+- Clicking the button again while "Copied" restarts the two seconds. It works by construction
+  (each copy sets a new state object), but no spec steps the clock across a second click.
+- The feedback lost when a section collapses (accepted, #168).
+- A click on the disabled 6/6 button. A review probe found that Chromium dispatches no click at
+  all, even at the icon inside the button: a capture listener on `document` saw none, and the row
+  stayed closed. If one ever arrived, the row's click guard would still find the button and
+  leave the row alone.
+- Dismissing the failure tooltip by touch. A tap outside it fires the same `pointerdown` a mouse
+  press does, and so does the start of a scroll gesture, so scrolling the page dismisses it too.
+  No spec runs a touch context.
+- Selecting the command by keyboard alone. The `<code>` in the failure tooltip isn't focusable,
+  so only a pointer can select it. A screen reader still hears the command, since the tooltip is
+  the `role="status"` region.
+- Hover colours, the disabled look and the tooltip's look. They were checked once in throwaway
+  screenshots at 1280px and 360px, light and dark, and are not asserted.
+- Tile view has no button (#153).
+
+## 2026-10-15 — #161 the fireteam-size filter chips
+
+`e2e/active-sessions-size.spec.ts`, **new**, fourteen specs; `e2e/support/seed-world.ts` changed.
+The suite is now **twenty-six flows, 156 tests including the two canary setups**.
+
+The control bar on `/active-sessions` gains six toggle chips, `1`–`6`, between [Refresh + Collapse
+all] and the View toggle. The group is `role="group"` named "Fireteam size", and each chip is a
+`<button aria-pressed>` named and titled "Fireteams of N". All six are on by default. The
+selection is kept in localStorage (`destiny-farm-finder-sessions-sizes`, a JSON array) by
+`useSessionSizes`, a copy of #157's `useSyncExternalStore` hook with its failed-save handling,
+and with no cross-tab sync (the user's decision, as for the view toggle). The filter runs in the
+browser on the player count each row shows, after the server's display cap (ADR 0001, unchanged),
+inside `filteredSessions` alongside the raid filter, so it applies in list and tile view alike.
+A raid section with nothing left to show is gone. Every chip off shows nothing (the user's
+decision): the empty state reads "Select at least one fireteam size", and a page the chips empty
+inside the raid filter reads "Try selecting more fireteam sizes".
+
+Which chip a count falls under is `rosterSizeChip` in `src/lib/active-session/roster.ts` (Vitest):
+the count clamped to 1–6, so a count past 6 falls under chip 6, the same fireteams
+`isFullRoster` calls full, whose copy button is disabled.
+
+**Seed world:** `SIZE_RAID` (Pantheon: Morgeth Surpassing), which no other spec seeds, by hash
+`2530656885`. The stored `raid_key` is Morgeth's, so the section groups there, and the heading
+comes from the hash, which resolves to Morgeth. (`RAID_DEFINITIONS` also listed the hash under
+Insurrection Prime, where Morgeth's later entry won; fix/manifest-dupe-2530656885 removes it.)
+The first red run's page snapshot showed the section "Pantheon: Morgeth
+Surpassing" with "6 sessions". Fixture namespace **91**:
+- `911`–`916` (on `SIZE_RAID`): one fireteam of each size from 1 to 6, the leader in seat 0;
+- `917` (on `RAID_B`): one two-player fireteam, for a second section. RAID_B's only other
+  fireteam is player-names' six-player `82`, live or not depending on file order, so every spec
+  that needs RAID_B's section gone switches off chips 2 **and** 6, and none counts RAID_B's rows;
+- `918` (on `RAID_B`): ended, then seeded, inside spec 14, the file's last (since the review
+  fixes below; it carried the retry number before).
+
+**The file sends its own client address.** `middleware.ts` rate-limits `/api/active-sessions` to 60
+requests a minute per client IP. No other spec sends a forwarding header, so every spec shares one
+bucket, keyed `'unknown'`. Run alone, this file passed. In the first full run, the shared bucket went past 60 a
+few specs in: the API answered 429 (seen with a temporary response listener), the page showed
+"Could not load active sessions", and specs 3–8 failed until the window reset, and then 9–14
+passed. Two full runs failed identically. The file now sets `extraHTTPHeaders: { 'x-forwarded-for':
+'198.51.100.91' }` (a documentation range), which gives it a bucket of its own, as each visitor has in
+production, and the full run is green. The other active-sessions files still share `'unknown'`, so
+the next one to add page loads is likely to hit the same wall; see "still NOT covered".
+
+1. **Six chips, all on, on a first visit**, each with its text, title and `aria-pressed`.
+2. **Each chip toggles on its own**: 3 off, 5 off, 3 on leaves only 5 off.
+3. **A chip switched off hides its size in list view**, and only its size (5 rows left, each
+   named).
+4. **The same in tile view**, counted per section by the tiles' `h3`s (6 → 4 with 1 and 6 off).
+   No per-fireteam tile coverage; that is #153's to restore.
+5. **A section with no match disappears** (chips 2 and 6 off empty RAID_B; SIZE_RAID keeps 4).
+6. **Combined with the raid filter**, only fireteams passing both show.
+7. **The selection survives a reload**, `aria-pressed` included, since the page is prerendered with
+   every chip on.
+8. **A stored value the page can't read is all six on**: not JSON, `null`, an object, `["3"]`,
+   `[2.5]` and `[1,7]`.
+9. **A failed save still filters, and the next successful save wins**, through a reload.
+10. **The empty state** with every chip off (and Collapse all disabled, as in collapse spec 11),
+    and the chips' own line inside a raid filter.
+11. **A section the chips empty comes back expanded**; one they leave on the page stays collapsed.
+12. **An open row a chip hides is still open** when its size is shown again.
+13. **At 360px** every chip and the group are inside the viewport and overlap no other control,
+    the page doesn't scroll sideways, and a row's flex line is one line tall (padding plus one
+    line-height, never the `truncate` title cell; #160's S2).
+14. **A section a refresh empties under the chips comes back expanded.** A collapsed raid's only
+    shown fireteam grows from 5 to 6 while chip 6 is off: the API still sends the raid, so the
+    fetch now forgets raids with nothing *shown*, not nothing sent. Kept last in the file, and its
+    membership ids carry `testInfo.retry`, because a grown fireteam can't shrink back: each
+    attempt seeds a fresh one, and an earlier attempt's, left at 6, stays hidden under chips 2 and 6.
+
+**Proof that the specs bite.** All fourteen were red against the page before the chips (no chip to
+find). Then twelve breaks of the finished code in five builds, each restored, never committed,
+each failing exactly the predicted specs:
+- `changeSizes` not forgetting sections → 11;
+- a successful save not clearing the failed-save fallback → 9 (chip 5);
+- any JSON array accepted as a selection → 8 (`["3"]`);
+- the fetch forgetting only raids missing from the response → 14;
+- a failed save keeping nothing in memory → 9 (chip 3);
+- no "Try selecting more fireteam sizes" line → 10;
+- a chip change closing every open row → 12;
+- the size predicate always true → 3, 4, 5, 6, 7, 9, 10, 11, 12, 14;
+- switching a chip on switching the others off → 2;
+- the selection read in a `useState` initializer (#157's bug) → 7 and 9 (`aria-pressed` after
+  the reload);
+- the raid filter dropped from the combined predicate → 6 and 10;
+- `getSnapshot` returning a new array on every call → all fourteen (the page crashed with
+  "Application error: a client-side exception has occurred").
+
+### What is still NOT covered
+
+- A count above 6 or below 1 in the browser. Nothing seeded can produce one, and the API would
+  pass the stored `player_count` through; the clamp is covered in Vitest.
+- Cross-tab behaviour. There is none by design: another tab's change shows here only after a reload.
+- The chips' look, their hover and the first and last rows' hover corners once rows are hidden.
+  They were checked once in a throwaway probe at 1280px and 360px, light and dark, and are not
+  asserted. With chips 1, 2 and 6 off, the new first row's line had 7px top corners and the new
+  last row's 7px bottom corners, both hovering in `--ui-surface-card-muted` (#f7f6f1 light, #2a2a28
+  dark). The review rechecked them with 26-letter `M`, `W` and CJK names and chips switched off
+  to change the first row, the last row and both: the same 7px corners, at 3× scale, and no
+  sideways scroll at 360px. The 360px layout itself is asserted since the review fixes below.
+- The shared rate-limit bucket. Every active-sessions spec but this one sends no client address,
+  so together they spend one 60-a-minute budget on `/api/active-sessions`. Nothing asserts how
+  close a full run comes to it. A per-test or per-file address in `test-fixtures.ts` would remove
+  the hazard suite-wide; that is a follow-up, not done here:
+  [#171](https://github.com/agrorithms/destiny-public/issues/171).
+- Tile view per fireteam (#153).
+
+### Review fixes (same day)
+
+Two more size specs, so the file has **sixteen** and the suite **158 tests including the two
+canary setups**, still twenty-six flows. The numbers below continue the list above, not the file
+order: spec 16 sits right after the 360px spec, and spec 15 sits just before spec 14, which stays
+last.
+
+15. **Collapsed sections survive a maintenance response the chips change under.** SIZE_RAID and
+    RAID_B are collapsed, the maintenance stub answers (`serveMaintenance`, ADR 0004's
+    2026-10-15 amendment), and chips 2 and 6 go off while the banner shows. Once the real API
+    answers again, SIZE_RAID, which still has rows, is still collapsed, and RAID_B, which has
+    none, is gone. Chips 2 and 6 back on bring RAID_B back expanded. Before the fix,
+    `changeSizes` worked out which sections were on the page from the maintenance response's
+    empty list, so any chip click forgot every collapse, breaking #159's rule. It now does
+    nothing to collapse state while the banner shows; the first real response forgets what the
+    chips emptied, through the fetch's own forgetting.
+16. **At 375px the chips and the View toggle share one line**, below Refresh, with View flush
+    with the control bar's right edge, and no sideways scroll.
+
+Changed:
+- **13** (360px) also asserts that one line: View on the chips' `y`, the chips below Refresh,
+  Refresh below the raid filter, and View flush right. The overlap check alone can't see it,
+  because View wrapping onto a line of its own overlaps nothing. Its chip-1 tap is now explained:
+  Playwright's click fails if another control covers the chip. The layout change behind it is a
+  styling commit of its own: the chips go from 32px to 28px wide, and the chips and View are one
+  `flex-auto flex-wrap` item with an 8px gap, so they wrap together. That gives 170 + 8 + 82 =
+  260px against the 262px control bar at 360px. Measured at 320–1280px: one line from 360 up,
+  including 768, where View used to wrap alone; at 320 View still drops below the chips.
+- **14** ends fireteam `918` (all six seats, `endFireteams`) before seeding it, instead of keying
+  its ids on `testInfo.retry`. The retry key only covered an attempt that failed after the grow:
+  one that failed before it left a five-player fireteam on RAID_B that chips 2 and 6 don't hide,
+  so every retry failed. A probe seeding `9180` at five, then running spec 14's old steps as
+  attempt 1, failed with "Expected: 0, Received: 1". With the fix, a probe that leaves `918` at
+  five before spec 14 runs passes.
+
+Shown biting, then restored and green. Each break was its own build:
+- `changeSizes`'s maintenance guard removed: only spec 15 failed, at SIZE_RAID's first
+  post-maintenance check ("Expected: \"false\", Received: \"true\"").
+- The chips back at `w-8`: 13 and 16 failed on View's line ("Expected: 447, Received: 521" at
+  360px; "Expected: 411, Received: 485" at 375px).
+- The pair's gap at `gap-x-3` (12px, so 264px): 13 failed (447 against 521); 16 passed, as it
+  should, since 375px's 277px bar holds it.
+- The `filtersRef` sync effect removed, together with the "Select at least one fireteam size"
+  branch: exactly 14 ("Expected: \"true\", Received: \"false\"") and 10 ("Expected: visible")
+  failed. Neither was among the twelve breaks above.

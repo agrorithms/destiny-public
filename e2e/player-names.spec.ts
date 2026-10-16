@@ -1,5 +1,6 @@
 import { expect, test } from './support/test-fixtures';
 import { RAID_B, fireteamMemberName, seedFireteams } from './support/seed-world';
+import { fireteamRow, memberList } from './support/fireteam-rows';
 
 /**
  * Flow #3. A player is identified by `Name#Code` and the full form must reach
@@ -17,12 +18,14 @@ import { RAID_B, fireteamMemberName, seedFireteams } from './support/seed-world'
 /**
  * One fireteam of its own, on the other raid and under its own `82` namespace, so
  * this file's assertions cannot be perturbed by — or perturb — the counts in
- * active-sessions-cap.spec.ts regardless of execution order.
+ * active-sessions-cap.spec.ts regardless of execution order. Its Fireteam Leader
+ * sits in seat 3, so the list row is titled after that member.
  */
 const SESSION_PREFIX = '82';
+const LEADER_SEAT = 3;
 
 test.beforeAll(async () => {
-    seedFireteams({ count: 1, size: 6, prefix: SESSION_PREFIX, raid: RAID_B });
+    seedFireteams({ count: 1, size: 6, prefix: SESSION_PREFIX, raid: RAID_B, leaderSeat: LEADER_SEAT });
 });
 
 test.describe('player identity', () => {
@@ -51,16 +54,35 @@ test.describe('player identity', () => {
         await expect(page.getByRole('link', { name: 'FixtureCharlie#1111' })).toBeVisible();
     });
 
-    test('renders the full Name#Code on an active-session card', async ({ page }) => {
+    test('renders the leader\'s full Name#Code in an active-session row title', async ({ page }) => {
         await page.goto('/active-sessions');
 
-        // The other half of this flow. Card rosters are enriched server-side from
+        // The other half of this flow. Session rosters are enriched server-side from
         // the players table via formatBungieDisplayName — a different code path
         // from the leaderboard, and one that renders raw membership ids when the
-        // identity is missing, which is the failure this pins.
-        await expect(
-            page.getByText(fireteamMemberName(SESSION_PREFIX, 0, 0), { exact: true })
-        ).toBeVisible();
+        // identity is missing, which is the failure this pins. Since #157 the list
+        // view is the default and a row shows only its Fireteam Leader by name.
+        const leader = fireteamMemberName(SESSION_PREFIX, 0, LEADER_SEAT);
+        const row = fireteamRow(page.getByRole('region', { name: RAID_B.name }), leader);
+
+        await expect(row).toContainText(`${leader}'s fireteam`);
+        await expect(row.getByRole('link', { name: leader, exact: true })).toBeVisible();
+    });
+
+    test('renders a member\'s full Name#Code in an expanded active-session row', async ({ page }) => {
+        await page.goto('/active-sessions');
+
+        // Since #158 the rest of the Roster is behind a click: an open row lists every member
+        // but the one it is titled after. Seat 0 is not the leader, so it only reaches the
+        // screen through that list, enriched by the same server-side path as the title.
+        const leader = fireteamMemberName(SESSION_PREFIX, 0, LEADER_SEAT);
+        const member = fireteamMemberName(SESSION_PREFIX, 0, 0);
+        const row = fireteamRow(page.getByRole('region', { name: RAID_B.name }), leader);
+
+        await row.getByTitle('6 of 6 players').click();
+
+        await expect(memberList(row).getByRole('link', { name: member, exact: true }))
+            .toHaveAttribute('href', /^\/player\/3\/\d+$/);
     });
 
     test('links each name to that player\'s profile', async ({ page }) => {

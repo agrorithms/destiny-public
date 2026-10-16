@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import type { TimelinePart } from '../src/app/gos10k/timeline-geometry';
 import { expect, test } from './support/test-fixtures';
-import { boxOf, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
+import { boxOf, expectInsideViewport, expectNoElementOverflow, expectNoHorizontalPageOverflow } from './support/viewport';
 
 /**
  * The timeline (#88, #113) — the half of it that only a browser can see.
@@ -255,7 +255,7 @@ test.describe('the timeline\'s tooltips (#114)', () => {
                         expect(box.x + box.width, `right edge at ${where}`).toBeLessThanOrEqual(
                             timeline.x + timeline.width + 1
                         );
-                        expect(box.x + box.width, `viewport at ${where}`).toBeLessThanOrEqual(360);
+                        await expectInsideViewport(tooltip, `the tooltip at ${where}`);
                     }
                 }
                 await expectNoHorizontalPageOverflow(page);

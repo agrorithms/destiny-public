@@ -1,5 +1,6 @@
 import { expect, test } from './support/test-fixtures';
 import { RAID_A, seedFireteams } from './support/seed-world';
+import { fireteamRows } from './support/fireteam-rows';
 
 /**
  * Flow #2, and the first executable proof of ADR 0001 and ADR 0002.
@@ -10,8 +11,9 @@ import { RAID_A, seedFireteams } from './support/seed-world';
  * long-running raid. ADR 0002: the headline count reports the true total even
  * when the cap trims what is rendered.
  *
- * The denomination is proved through the page (8 fireteams / 48 rows -> 8 cards)
- * and the cap through the API's own `limit` parameter.
+ * The denomination is proved through the page (8 fireteams / 48 rows -> 8 list
+ * rows, in list view, the default since #157) and the cap through the API's own
+ * `limit` parameter.
  */
 
 const FIRETEAMS = 8;
@@ -37,16 +39,22 @@ test.beforeAll(async () => {
 });
 
 test.describe('active sessions', () => {
-    test('renders one card per fireteam, not one per player', async ({ page }) => {
+    test('renders one list row per fireteam, not one per player', async ({ page }) => {
         await page.goto('/active-sessions');
 
-        // Each card carries the raid name as its h3; the group heading above them
-        // is an h2, so this counts cards and nothing else.
-        const cards = page.getByRole('heading', { level: 3, name: RAID_A.name });
+        // Only rows inside this raid's section, and only rows titled after one of this
+        // file's `81` players. Other spec files leave sessions live for 900s, some of
+        // them on this same raid (the client-write specs), so a page-wide or
+        // section-wide count would depend on which files ran first, or on a retry.
+        // None of the 81 fireteams has a flagged leader, so each row is titled after
+        // the tracked player that dedupe kept, who is always one of its members.
+        // fireteamRows leaves out the member items an open row nests inside itself (#158).
+        const rows = fireteamRows(page.getByRole('region', { name: RAID_A.name }))
+            .filter({ hasText: /Roster81F\d+S\d+#/ });
 
         // The load-bearing assertion of ADR 0001. Eight fireteams of six are 48
-        // rows in active_sessions; a row-denominated page would show 48 cards.
-        await expect(cards).toHaveCount(FIRETEAMS);
+        // rows in active_sessions; a row-denominated page would show 48 list rows.
+        await expect(rows).toHaveCount(FIRETEAMS);
     });
 
     test('reports the true fireteam total even when the cap trims the page', async ({ request }) => {

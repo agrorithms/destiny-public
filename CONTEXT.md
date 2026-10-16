@@ -35,6 +35,18 @@ always disclose every member — so a roster of one usually means limited visibi
 genuine solo run.
 _Avoid_: party members, participants, players in session (but see **Participant** (Archive))
 
+**Fireteam Leader**:
+The Roster member Bungie flags as the party leader — the one whose status carries the PartyLeader
+bit (8). A Roster normally has exactly one; a Roster Bungie disclosed nothing about has none.
+_Avoid_: owner, host, party leader
+
+**Join Command**:
+The text `/join Name#Code` a PC player types in game to join a Fireteam. It works with any Roster
+member's full Bungie Name, not only the Fireteam Leader's. Called **join code** wherever a user
+sees it, because that is the community's word; Join Command everywhere else, because "code"
+already means the `#1234` half of a Bungie Name.
+_Avoid_: join link, invite code (and "join code" outside user-facing copy)
+
 **Tracked Player**:
 A player the system knows about and will poll for activity. Identified by `Name#Code`; a player
 becomes tracked by being discovered in a raid alongside someone already tracked.

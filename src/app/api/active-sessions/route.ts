@@ -3,6 +3,7 @@ import { formatBungieDisplayName } from '@/lib/db/queries';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { getDb, isDatabaseMaintenanceError } from '@/lib/db';
 import { getActivityDisplayName } from '@/lib/utils/activity';
+import { isLikelyMembershipId } from '@/lib/active-session/roster';
 import {
     ACTIVE_SESSION_DISPLAY_LIMIT,
     compareSessionsForDisplay,
@@ -216,12 +217,5 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         ));
     }
-}
-
-/**
- * Check if a string looks like a raw membership ID (all digits, 16+ chars)
- */
-function isLikelyMembershipId(str: string): boolean {
-    return /^\d{16,}$/.test(str);
 }
 

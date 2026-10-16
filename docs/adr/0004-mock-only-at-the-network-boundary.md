@@ -48,6 +48,25 @@ the one where the browser sends a payload, the server parses it, SQLite stores i
 and a re-read enriches it. That is the same argument this ADR makes about
 `@/lib/db/queries`, applied one layer out.
 
+## Amendment (2026-10-15): one exception, a response the e2e server can't give
+
+`serveMaintenance` in `e2e/support/active-sessions-page.ts` stubs
+`/api/active-sessions` with `page.route`, answering with the route's maintenance
+response (`maintenance: true`, no sessions). Two specs use it, the expand spec (#158)
+and the collapse spec (#159). Each proves that page state (open rows, collapsed
+sections) survives that response. The e2e server reads a real SQLite file that is
+never in maintenance, and nothing a spec can seed puts it there, so a stub is the
+only way to get that response in a browser.
+
+That is the whole exception: a stub of our own API is allowed only for a response the
+e2e server can't be put into. Anything it *can* be driven into is seeded, not stubbed.
+For example, a raid leaving the response is done by ending its fireteams in the
+Tracker (`endFireteams` in `e2e/support/seed-world.ts`). This is not a general
+permission. The cost is the one this ADR names: the stub is our fixture, so if the
+route's maintenance shape changed, these specs would still pass against the old one.
+Keep every such stub in one helper, so there is one copy to check against the route.
+A second kind of own-API stub is the signal to revisit this exception, not to extend it.
+
 ## Consequences
 
 - Test databases are real; see ADR 0003 for why they are files rather than

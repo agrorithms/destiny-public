@@ -1,4 +1,4 @@
-import { upsertActiveSession } from '../../src/lib/db/queries';
+import { deleteActiveSessionForPlayer, upsertActiveSession } from '../../src/lib/db/queries';
 import { hoursAgo, seedPlayer, seedRun } from '../../tests/helpers/seed';
 import { fixtureRunId } from './fixture-db';
 
@@ -28,6 +28,154 @@ export const RAID_B = {
     hash: 1566480315,
     name: "Crota's End",
 } as const;
+
+/**
+ * A raid as the session seeders need it: the stored key, an activity hash, and the heading
+ * the page renders. RAID_A and RAID_B keep `as const` rather than this type, because
+ * FASTEST_CLEARS is keyed by their literal keys; they still fit it.
+ */
+export interface FixtureRaid {
+    key: string;
+    hash: number;
+    name: string;
+}
+
+/**
+ * Two raids no other spec seeds, adjacent in the page's raid list, for the section-order
+ * spec. Using raids of their own means the spec's counts cannot be perturbed by the
+ * fireteams other specs leave live on RAID_A and RAID_B.
+ */
+export const ORDER_EARLIER_RAID: FixtureRaid = {
+    key: 'vault_of_glass',
+    hash: 3881495763,
+    name: 'Vault of Glass',
+};
+
+export const ORDER_LATER_RAID: FixtureRaid = {
+    key: 'deep_stone_crypt',
+    hash: 910380154,
+    name: 'Deep Stone Crypt',
+};
+
+/**
+ * A raid key the page's raid list does not know: what the page sees if a raid is added to
+ * `RAID_DEFINITIONS` but not to the page. The hash is in no raid definition either, so the
+ * API names it after the activity mode (4, "Raid"), which is the heading the page renders.
+ */
+export const UNLISTED_RAID: FixtureRaid = {
+    key: 'e2e_unlisted_raid',
+    hash: 1,
+    name: 'Raid',
+};
+
+/**
+ * A second unlisted raid with the same rendered name as UNLISTED_RAID, so two raid keys
+ * share one display name: the case that would merge two raids into one section if the page
+ * grouped by name.
+ */
+export const UNLISTED_NAMESAKE_RAID: FixtureRaid = {
+    key: 'e2e_unlisted_namesake_raid',
+    hash: 2,
+    name: 'Raid',
+};
+
+/**
+ * A raid only the list-view spec seeds, so its row count and row order cannot be perturbed
+ * by the fireteams other specs leave live for 900 seconds.
+ */
+export const LIST_RAID: FixtureRaid = {
+    key: 'garden_of_salvation',
+    hash: 2659723068,
+    name: 'Garden of Salvation',
+};
+
+/**
+ * A raid only the expandable-rows spec seeds (#158). Its spec seeds a fireteam again partway
+ * through to grow its Roster, so nothing else may share the raid.
+ */
+export const EXPAND_RAID: FixtureRaid = {
+    key: 'last_wish',
+    hash: 2122313384,
+    name: 'Last Wish',
+};
+
+/**
+ * Two raids only the section-collapse spec seeds (#159). Its assertions cover every section the
+ * raid filter leaves visible, so it filters the page down to these two, and no other spec's
+ * fireteams can be among them.
+ */
+export const COLLAPSE_RAID: FixtureRaid = {
+    key: 'root_of_nightmares',
+    hash: 2381413764,
+    name: 'Root of Nightmares',
+};
+
+export const COLLAPSE_OTHER_RAID: FixtureRaid = {
+    key: 'kings_fall',
+    hash: 1374392663,
+    name: "King's Fall",
+};
+
+/**
+ * A third raid only the section-collapse spec seeds: one fireteam it ends and reseeds, so the
+ * raid leaves the API's response and comes back. No other spec's fireteams may share it, or
+ * ending this spec's fireteam would leave the section on the page.
+ */
+export const REAPPEAR_RAID: FixtureRaid = {
+    key: 'the_desert_perpetual',
+    hash: 2586252122,
+    name: 'The Desert Perpetual',
+};
+
+/**
+ * A raid no spec seeds, ever: the section-collapse spec filters the page down to it to get a
+ * page with no raid sections at all. Seeding it anywhere breaks that spec.
+ */
+export const UNSEEDED_RAID: FixtureRaid = {
+    key: 'vow_of_the_disciple',
+    hash: 2906950631,
+    name: 'Vow of the Disciple',
+};
+
+/**
+ * A raid only the copy-join-code spec seeds (#160). Its rows' buttons are found by fireteam, and
+ * its no-button row is checked against the rows around it, so no other spec's fireteams may
+ * share it.
+ */
+export const COPY_RAID: FixtureRaid = {
+    key: 'pantheon_calus_resplendent',
+    hash: 1516551982,
+    name: 'Pantheon: Calus Resplendent',
+};
+
+/**
+ * A second raid only the copy-join-code spec seeds (#160): its section holds exactly two rows,
+ * so the spec knows which is the list's first and which its last. Seeded by its own hash,
+ * 747671496. `RAID_DEFINITIONS` has also listed 2530656885 under this raid, a hash that names
+ * Pantheon: Morgeth Surpassing (SIZE_RAID); fix/manifest-dupe-2530656885 removes that listing.
+ * Seeding by 747671496 keeps the two sections apart either way.
+ */
+export const COPY_EDGE_RAID: FixtureRaid = {
+    key: 'pantheon_insurrection_prime_revolutionary',
+    hash: 747671496,
+    name: 'Pantheon: Insurrection Prime Revolutionary',
+};
+
+/**
+ * A raid only the fireteam-size spec seeds (#161), with one fireteam of each size from 1 to 6:
+ * its section's rows are counted as chips hide them, so no other spec's fireteams may share it.
+ *
+ * Seeded by its hash, 2530656885, which the API names Pantheon: Morgeth Surpassing; the section
+ * groups by the stored raid_key, this key. RAID_DEFINITIONS has also listed that hash under
+ * Insurrection Prime, with Morgeth's later entry winning the name; fix/manifest-dupe-2530656885
+ * removes that listing. COPY_EDGE_RAID seeds Insurrection Prime by its own hash, 747671496, so the
+ * two sections never meet either way.
+ */
+export const SIZE_RAID: FixtureRaid = {
+    key: 'pantheon_morgeth_surpassing',
+    hash: 2530656885,
+    name: 'Pantheon: Morgeth Surpassing',
+};
 
 interface FixturePlayer {
     membershipId: string;
@@ -143,7 +291,7 @@ export interface SeedPlayerSessionOptions {
     membershipId: string;
     name: string;
     code: number;
-    raid?: typeof RAID_A | typeof RAID_B;
+    raid?: FixtureRaid;
     /**
      * Extra roster members, beyond the player themselves. Deliberately takes raw
      * membership ids and nothing else: this mirrors what Bungie's transitory
@@ -191,7 +339,32 @@ export interface SeedFireteamsOptions {
     size?: number;
     /** Namespace for membership ids and display names, so specs cannot collide. */
     prefix: string;
-    raid?: typeof RAID_A | typeof RAID_B;
+    raid?: FixtureRaid;
+    /**
+     * The seat, from 0, whose member is the Fireteam Leader: seeded with status 9
+     * (FireteamMember 1 + PartyLeader 8), as Bungie sends it. Leave it out and every member
+     * is status 1, so the fireteam has no leader and its row is titled after the tracked
+     * player instead.
+     */
+    leaderSeat?: number;
+    /**
+     * Seats whose player is known by name but not by code: their `players` row has no
+     * `bungie_global_display_name_code`, so the API sends the bare name rather than
+     * `Name#Code` (see `formatBungieDisplayName`, which `/api/active-sessions` calls). Their
+     * rendered name is {@link fireteamMemberName} without the `#code`.
+     */
+    nameOnlySeats?: number[];
+    /**
+     * Seats whose player the Tracker has never seen: no `players` row and no session row of
+     * their own, and the Roster names them by membership id, as Bungie does for a teammate it
+     * has no name for. The API then sends the raw membership id as their name.
+     */
+    unseenSeats?: number[];
+}
+
+/** The membership id of one seeded roster member. */
+function fireteamMemberId(prefix: string, fireteam: number, seat: number): string {
+    return `${prefix}${String(fireteam).padStart(2, '0')}${String(seat).padStart(2, '0')}`;
 }
 
 /** The rendered `Name#Code` of one seeded roster member. */
@@ -211,27 +384,31 @@ export function fireteamMemberName(prefix: string, fireteam: number, seat: numbe
  * the wrong thing.
  */
 export function seedFireteams(options: SeedFireteamsOptions): string[] {
-    const { count, size = 6, prefix, raid = RAID_A } = options;
+    const { count, size = 6, prefix, raid = RAID_A, leaderSeat, nameOnlySeats = [], unseenSeats = [] } = options;
     const startedAtIso: string[] = [];
 
     for (let fireteam = 0; fireteam < count; fireteam++) {
-        const roster = Array.from({ length: size }, (_, seat) => ({
-            membershipId: `${prefix}${String(fireteam).padStart(2, '0')}${String(seat).padStart(2, '0')}`,
-            membershipType: 3,
-            // The prefix is in the display name too, not just the membership id,
-            // so two specs seeding fireteams never produce two players with the
-            // same rendered Name#Code and an ambiguous locator.
-            displayName: `Roster${prefix}F${fireteam}S${seat}`,
-            status: 1,
-        }));
+        const roster = Array.from({ length: size }, (_, seat) => {
+            const membershipId = fireteamMemberId(prefix, fireteam, seat);
+            return {
+                membershipId,
+                membershipType: 3,
+                // The prefix is in the display name too, not just the membership id,
+                // so two specs seeding fireteams never produce two players with the
+                // same rendered Name#Code and an ambiguous locator.
+                displayName: unseenSeats.includes(seat) ? membershipId : `Roster${prefix}F${fireteam}S${seat}`,
+                status: seat === leaderSeat ? 9 : 1,
+            };
+        });
 
         // Staggered so the display sort (newest first, after multi-member rank)
         // is total rather than arbitrary — the cap must drop a predictable set.
         const startedAt = new Date((hoursAgo(1) + fireteam * 60) * 1000).toISOString();
         startedAtIso.push(startedAt);
 
-        for (const member of roster) {
-            seedPlayer(member.membershipId, member.displayName, 1000 + fireteam);
+        for (const [seat, member] of roster.entries()) {
+            if (unseenSeats.includes(seat)) continue;
+            seedPlayer(member.membershipId, member.displayName, nameOnlySeats.includes(seat) ? undefined : 1000 + fireteam);
 
             upsertActiveSession({
                 membershipId: member.membershipId,
@@ -248,4 +425,29 @@ export function seedFireteams(options: SeedFireteamsOptions): string[] {
     }
 
     return startedAtIso;
+}
+
+export interface EndFireteamsOptions {
+    /** How many of the prefix's fireteams to end, from fireteam 0. */
+    count: number;
+    /** Members per fireteam, as seeded. */
+    size?: number;
+    /** The namespace the fireteams were seeded under. Only its rows are touched. */
+    prefix: string;
+}
+
+/**
+ * Ends fireteams {@link seedFireteams} started: every member's `active_sessions` row goes,
+ * so the API stops returning the fireteam, as it does once the crawler finds its players
+ * have left. Deletes through `deleteActiveSessionForPlayer`, the query the crawler uses, one
+ * membership id at a time, so nothing outside the prefix's own rows can be touched. The
+ * players themselves stay; reseeding with the same options brings the fireteam back.
+ */
+export function endFireteams(options: EndFireteamsOptions): void {
+    const { count, size = 6, prefix } = options;
+    for (let fireteam = 0; fireteam < count; fireteam++) {
+        for (let seat = 0; seat < size; seat++) {
+            deleteActiveSessionForPlayer(fireteamMemberId(prefix, fireteam, seat));
+        }
+    }
 }

@@ -4,6 +4,7 @@
 import { getDb } from '../db';
 import { formatBungieDisplayName, type ActiveSessionDbRow, type PlayerIdentity } from '../db/queries';
 import { getActivityDisplayName } from '../utils/activity';
+import { isLikelyMembershipId } from './roster';
 
 interface PartyMemberInput {
     membershipId?: string;
@@ -25,10 +26,6 @@ interface PlayerLookupRow {
     bungie_global_display_name: string | null;
     bungie_global_display_name_code: number | null;
     display_name: string | null;
-}
-
-function isLikelyMembershipId(str: string): boolean {
-    return /^\d{16,}$/.test(str);
 }
 
 export function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): PartyMemberOutput[] {

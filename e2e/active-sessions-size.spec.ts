@@ -310,7 +310,10 @@ test.describe('active sessions fireteam-size filter', () => {
         test.use({ viewport: { width: 360, height: 780 } });
 
         // The ticket's phone criterion: at 360px the control bar wraps, and every chip has to
-        // land inside the viewport without overlapping another control. A row of a fireteam
+        // land inside the viewport without overlapping another control. The chips and the View
+        // toggle share one line, below Refresh, with View at the bar's far right (the user's
+        // call, #161's review): not overlapping is not enough, since View wrapping onto a line
+        // of its own overlaps nothing. A row of a fireteam
         // with a copy button stays one line: the row's flex line is measured, its padding
         // plus one line, never the `truncate` title cell, which is one line however the row
         // breaks (#160's S2).
@@ -342,6 +345,11 @@ test.describe('active sessions fireteam-size filter', () => {
                     expect(apart, `${a} and ${b} don't overlap`).toBe(true);
                 }
             }
+            const bar = await boxOf(page.locator('div.flex.flex-wrap').filter({ has: controls.raidFilter }));
+            expect(boxes.view.y, "View sits on the chips' line").toBe(boxes.sizes.y);
+            expect(boxes.sizes.y, 'the chips sit below Refresh').toBeGreaterThan(boxes.collapseAll.y);
+            expect(boxes.collapseAll.y, 'Refresh sits below the raid filter').toBeGreaterThan(boxes.raidFilter.y);
+            expect(boxes.view.x + boxes.view.width, 'View sits at the far right').toBe(bar.x + bar.width);
             await expectNoHorizontalPageOverflow(page);
 
             // A chip still takes a tap at this width: Playwright's click fails if another
@@ -357,6 +365,28 @@ test.describe('active sessions fireteam-size filter', () => {
                 };
             });
             expect(height, 'the row is one line tall').toBe(oneLine);
+        });
+    });
+
+    test.describe('on a 375px phone', () => {
+        test.use({ viewport: { width: 375, height: 812 } });
+
+        // The same line at 375px, the other common phone width where View wrapped below the
+        // chips before #161's review. Above 390 the pair always fitted.
+        test('keeps the chips and the View toggle on one line at 375px', async ({ page }) => {
+            await page.goto('/active-sessions');
+            await expect(fireteamRows(sectionOf(page, SIZE_RAID))).toHaveCount(6);
+
+            const raidFilter = page.locator('button[aria-haspopup="listbox"]');
+            const collapseAll = await boxOf(page.getByRole('button', { name: /^(Collapse|Expand) all$/ }));
+            const sizes = await boxOf(chipGroup(page));
+            const view = await boxOf(page.getByRole('group', { name: 'View' }));
+            const bar = await boxOf(page.locator('div.flex.flex-wrap').filter({ has: raidFilter }));
+            expect(view.y, "View sits on the chips' line").toBe(sizes.y);
+            expect(sizes.y, 'the chips sit below Refresh').toBeGreaterThan(collapseAll.y);
+            expect(view.x, 'View sits right of the chips').toBeGreaterThan(sizes.x + sizes.width);
+            expect(view.x + view.width, 'View sits at the far right').toBe(bar.x + bar.width);
+            await expectNoHorizontalPageOverflow(page);
         });
     });
 

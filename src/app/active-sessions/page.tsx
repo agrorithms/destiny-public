@@ -322,15 +322,22 @@ export default function ActiveSessionsPage() {
                         </button>
                     </div>
 
-                    <div>
-                        <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">Size</span>
-                        <SessionSizeChips sizes={sizes} onChange={changeSizes} />
-                    </div>
+                    {/* The chips and View as one flex item, so they wrap together and share a line
+                        down to a 360px phone. flex-auto, not flex-1: its basis is the pair's full
+                        width, so the bar moves the pair to a new line whole rather than splitting
+                        it. It grows to the bar's end, so View, on the right, apart from the
+                        controls that act on the sessions, sits at the far right. Its own wrap only
+                        lets View drop below the chips on a screen narrower than the pair. */}
+                    <div className="flex flex-auto flex-wrap items-end gap-x-2 gap-y-4">
+                        <div>
+                            <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">Size</span>
+                            <SessionSizeChips sizes={sizes} onChange={changeSizes} />
+                        </div>
 
-                    {/* On the right, apart from the controls that act on the sessions. */}
-                    <div className="ml-auto">
-                        <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">View</span>
-                        <SessionsViewToggle view={view} onChange={setView} />
+                        <div className="ml-auto">
+                            <span className="block text-xs ui-text-muted mb-1" aria-hidden="true">View</span>
+                            <SessionsViewToggle view={view} onChange={setView} />
+                        </div>
                     </div>
                 </div>
             </div>

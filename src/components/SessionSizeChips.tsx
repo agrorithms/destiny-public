@@ -10,7 +10,8 @@ interface SessionSizeChipsProps {
 
 /**
  * The fireteam-size filter: one toggle chip per Roster size, joined into one rounded control
- * like the View toggle. Each chip switches on and off by itself.
+ * like the View toggle. Each chip switches on and off by itself. The chips are 28px wide, not the
+ * View toggle's 40: at that width the six and View fit one line of a 360px phone's control bar.
  */
 export default function SessionSizeChips({ sizes, onChange }: SessionSizeChipsProps) {
     return (
@@ -26,7 +27,7 @@ export default function SessionSizeChips({ sizes, onChange }: SessionSizeChipsPr
                         aria-pressed={on}
                         aria-label={label}
                         title={label}
-                        className={`inline-flex items-center justify-center w-8 h-9 text-sm tabular-nums transition-colors ${on
+                        className={`inline-flex items-center justify-center w-7 h-9 text-sm tabular-nums transition-colors ${on
                             ? 'ui-toggle-active'
                             : 'ui-toggle-idle'
                             }`}

@@ -2032,8 +2032,9 @@ button, and an `aria-hidden` placeholder of its width keeps the columns aligned.
 keeps the chevron's placeholder to the button's right, so every row's button sits in one column.
 
 **Seed world:** `COPY_RAID` (Pantheon: Calus Resplendent) and `COPY_EDGE_RAID` (Pantheon:
-Insurrection Prime Revolutionary, seeded by its own hash `747671496`; its other hash is shared with
-Morgeth), two raids only this spec seeds. `seedFireteams` gains two options:
+Insurrection Prime Revolutionary, seeded by its own hash `747671496`. `RAID_DEFINITIONS` also listed
+`2530656885` under it, a hash that names Morgeth; fix/manifest-dupe-2530656885 removes that listing,
+and seeding by `747671496` holds either way), two raids only this spec seeds. `seedFireteams` gains two options:
 - `nameOnlySeats`: those seats' `players` rows have a name and no code, so the API sends the bare
   name;
 - `unseenSeats`: those seats have no `players` row and no session row of their own, and the Roster
@@ -2168,3 +2169,156 @@ the specs measure what a visitor sees.
 - Hover colours, the disabled look and the tooltip's look. They were checked once in throwaway
   screenshots at 1280px and 360px, light and dark, and are not asserted.
 - Tile view has no button (#153).
+
+## 2026-10-15 — #161 the fireteam-size filter chips
+
+`e2e/active-sessions-size.spec.ts`, **new**, fourteen specs; `e2e/support/seed-world.ts` changed.
+The suite is now **twenty-six flows, 156 tests including the two canary setups**.
+
+The control bar on `/active-sessions` gains six toggle chips, `1`–`6`, between [Refresh + Collapse
+all] and the View toggle. The group is `role="group"` named "Fireteam size", and each chip is a
+`<button aria-pressed>` named and titled "Fireteams of N". All six are on by default. The
+selection is kept in localStorage (`destiny-farm-finder-sessions-sizes`, a JSON array) by
+`useSessionSizes`, a copy of #157's `useSyncExternalStore` hook with its failed-save handling,
+and with no cross-tab sync (the user's decision, as for the view toggle). The filter runs in the
+browser on the player count each row shows, after the server's display cap (ADR 0001, unchanged),
+inside `filteredSessions` alongside the raid filter, so it applies in list and tile view alike.
+A raid section with nothing left to show is gone. Every chip off shows nothing (the user's
+decision): the empty state reads "Select at least one fireteam size", and a page the chips empty
+inside the raid filter reads "Try selecting more fireteam sizes".
+
+Which chip a count falls under is `rosterSizeChip` in `src/lib/active-session/roster.ts` (Vitest):
+the count clamped to 1–6, so a count past 6 falls under chip 6, the same fireteams
+`isFullRoster` calls full, whose copy button is disabled.
+
+**Seed world:** `SIZE_RAID` (Pantheon: Morgeth Surpassing), which no other spec seeds, by hash
+`2530656885`. The stored `raid_key` is Morgeth's, so the section groups there, and the heading
+comes from the hash, which resolves to Morgeth. (`RAID_DEFINITIONS` also listed the hash under
+Insurrection Prime, where Morgeth's later entry won; fix/manifest-dupe-2530656885 removes it.)
+The first red run's page snapshot showed the section "Pantheon: Morgeth
+Surpassing" with "6 sessions". Fixture namespace **91**:
+- `911`–`916` (on `SIZE_RAID`): one fireteam of each size from 1 to 6, the leader in seat 0;
+- `917` (on `RAID_B`): one two-player fireteam, for a second section. RAID_B's only other
+  fireteam is player-names' six-player `82`, live or not depending on file order, so every spec
+  that needs RAID_B's section gone switches off chips 2 **and** 6, and none counts RAID_B's rows;
+- `918` (on `RAID_B`): ended, then seeded, inside spec 14, the file's last (since the review
+  fixes below; it carried the retry number before).
+
+**The file sends its own client address.** `middleware.ts` rate-limits `/api/active-sessions` to 60
+requests a minute per client IP. No other spec sends a forwarding header, so every spec shares one
+bucket, keyed `'unknown'`. Run alone, this file passed. In the first full run, the shared bucket went past 60 a
+few specs in: the API answered 429 (seen with a temporary response listener), the page showed
+"Could not load active sessions", and specs 3–8 failed until the window reset, and then 9–14
+passed. Two full runs failed identically. The file now sets `extraHTTPHeaders: { 'x-forwarded-for':
+'198.51.100.91' }` (a documentation range), which gives it a bucket of its own, as each visitor has in
+production, and the full run is green. The other active-sessions files still share `'unknown'`, so
+the next one to add page loads is likely to hit the same wall; see "still NOT covered".
+
+1. **Six chips, all on, on a first visit**, each with its text, title and `aria-pressed`.
+2. **Each chip toggles on its own**: 3 off, 5 off, 3 on leaves only 5 off.
+3. **A chip switched off hides its size in list view**, and only its size (5 rows left, each
+   named).
+4. **The same in tile view**, counted per section by the tiles' `h3`s (6 → 4 with 1 and 6 off).
+   No per-fireteam tile coverage; that is #153's to restore.
+5. **A section with no match disappears** (chips 2 and 6 off empty RAID_B; SIZE_RAID keeps 4).
+6. **Combined with the raid filter**, only fireteams passing both show.
+7. **The selection survives a reload**, `aria-pressed` included, since the page is prerendered with
+   every chip on.
+8. **A stored value the page can't read is all six on**: not JSON, `null`, an object, `["3"]`,
+   `[2.5]` and `[1,7]`.
+9. **A failed save still filters, and the next successful save wins**, through a reload.
+10. **The empty state** with every chip off (and Collapse all disabled, as in collapse spec 11),
+    and the chips' own line inside a raid filter.
+11. **A section the chips empty comes back expanded**; one they leave on the page stays collapsed.
+12. **An open row a chip hides is still open** when its size is shown again.
+13. **At 360px** every chip and the group are inside the viewport and overlap no other control,
+    the page doesn't scroll sideways, and a row's flex line is one line tall (padding plus one
+    line-height, never the `truncate` title cell; #160's S2).
+14. **A section a refresh empties under the chips comes back expanded.** A collapsed raid's only
+    shown fireteam grows from 5 to 6 while chip 6 is off: the API still sends the raid, so the
+    fetch now forgets raids with nothing *shown*, not nothing sent. Kept last in the file, and its
+    membership ids carry `testInfo.retry`, because a grown fireteam can't shrink back: each
+    attempt seeds a fresh one, and an earlier attempt's, left at 6, stays hidden under chips 2 and 6.
+
+**Proof that the specs bite.** All fourteen were red against the page before the chips (no chip to
+find). Then twelve breaks of the finished code in five builds, each restored, never committed,
+each failing exactly the predicted specs:
+- `changeSizes` not forgetting sections → 11;
+- a successful save not clearing the failed-save fallback → 9 (chip 5);
+- any JSON array accepted as a selection → 8 (`["3"]`);
+- the fetch forgetting only raids missing from the response → 14;
+- a failed save keeping nothing in memory → 9 (chip 3);
+- no "Try selecting more fireteam sizes" line → 10;
+- a chip change closing every open row → 12;
+- the size predicate always true → 3, 4, 5, 6, 7, 9, 10, 11, 12, 14;
+- switching a chip on switching the others off → 2;
+- the selection read in a `useState` initializer (#157's bug) → 7 and 9 (`aria-pressed` after
+  the reload);
+- the raid filter dropped from the combined predicate → 6 and 10;
+- `getSnapshot` returning a new array on every call → all fourteen (the page crashed with
+  "Application error: a client-side exception has occurred").
+
+### What is still NOT covered
+
+- A count above 6 or below 1 in the browser. Nothing seeded can produce one, and the API would
+  pass the stored `player_count` through; the clamp is covered in Vitest.
+- Cross-tab behaviour. There is none by design: another tab's change shows here only after a reload.
+- The chips' look, their hover and the first and last rows' hover corners once rows are hidden.
+  They were checked once in a throwaway probe at 1280px and 360px, light and dark, and are not
+  asserted. With chips 1, 2 and 6 off, the new first row's line had 7px top corners and the new
+  last row's 7px bottom corners, both hovering in `--ui-surface-card-muted` (#f7f6f1 light, #2a2a28
+  dark). The review rechecked them with 26-letter `M`, `W` and CJK names and chips switched off
+  to change the first row, the last row and both: the same 7px corners, at 3× scale, and no
+  sideways scroll at 360px. The 360px layout itself is asserted since the review fixes below.
+- The shared rate-limit bucket. Every active-sessions spec but this one sends no client address,
+  so together they spend one 60-a-minute budget on `/api/active-sessions`. Nothing asserts how
+  close a full run comes to it. A per-test or per-file address in `test-fixtures.ts` would remove
+  the hazard suite-wide; that is a follow-up, not done here:
+  [#171](https://github.com/agrorithms/destiny-public/issues/171).
+- Tile view per fireteam (#153).
+
+### Review fixes (same day)
+
+Two more size specs, so the file has **sixteen** and the suite **158 tests including the two
+canary setups**, still twenty-six flows. The numbers below continue the list above, not the file
+order: spec 16 sits right after the 360px spec, and spec 15 sits just before spec 14, which stays
+last.
+
+15. **Collapsed sections survive a maintenance response the chips change under.** SIZE_RAID and
+    RAID_B are collapsed, the maintenance stub answers (`serveMaintenance`, ADR 0004's
+    2026-10-15 amendment), and chips 2 and 6 go off while the banner shows. Once the real API
+    answers again, SIZE_RAID, which still has rows, is still collapsed, and RAID_B, which has
+    none, is gone. Chips 2 and 6 back on bring RAID_B back expanded. Before the fix,
+    `changeSizes` worked out which sections were on the page from the maintenance response's
+    empty list, so any chip click forgot every collapse, breaking #159's rule. It now does
+    nothing to collapse state while the banner shows; the first real response forgets what the
+    chips emptied, through the fetch's own forgetting.
+16. **At 375px the chips and the View toggle share one line**, below Refresh, with View flush
+    with the control bar's right edge, and no sideways scroll.
+
+Changed:
+- **13** (360px) also asserts that one line: View on the chips' `y`, the chips below Refresh,
+  Refresh below the raid filter, and View flush right. The overlap check alone can't see it,
+  because View wrapping onto a line of its own overlaps nothing. Its chip-1 tap is now explained:
+  Playwright's click fails if another control covers the chip. The layout change behind it is a
+  styling commit of its own: the chips go from 32px to 28px wide, and the chips and View are one
+  `flex-auto flex-wrap` item with an 8px gap, so they wrap together. That gives 170 + 8 + 82 =
+  260px against the 262px control bar at 360px. Measured at 320–1280px: one line from 360 up,
+  including 768, where View used to wrap alone; at 320 View still drops below the chips.
+- **14** ends fireteam `918` (all six seats, `endFireteams`) before seeding it, instead of keying
+  its ids on `testInfo.retry`. The retry key only covered an attempt that failed after the grow:
+  one that failed before it left a five-player fireteam on RAID_B that chips 2 and 6 don't hide,
+  so every retry failed. A probe seeding `9180` at five, then running spec 14's old steps as
+  attempt 1, failed with "Expected: 0, Received: 1". With the fix, a probe that leaves `918` at
+  five before spec 14 runs passes.
+
+Shown biting, then restored and green. Each break was its own build:
+- `changeSizes`'s maintenance guard removed: only spec 15 failed, at SIZE_RAID's first
+  post-maintenance check ("Expected: \"false\", Received: \"true\"").
+- The chips back at `w-8`: 13 and 16 failed on View's line ("Expected: 447, Received: 521" at
+  360px; "Expected: 411, Received: 485" at 375px).
+- The pair's gap at `gap-x-3` (12px, so 264px): 13 failed (447 against 521); 16 passed, as it
+  should, since 375px's 277px bar holds it.
+- The `filtersRef` sync effect removed, together with the "Select at least one fireteam size"
+  branch: exactly 14 ("Expected: \"true\", Received: \"false\"") and 10 ("Expected: visible")
+  failed. Neither was among the twelve breaks above.

@@ -158,6 +158,43 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
    - [x] `e2e/support/seed-world.ts` — `COPY_EDGE_RAID`; `e2e/active-sessions-copy.spec.ts` — spec 11, the widest names on the first and last rows (`906`, `907`), and the feedback checks measure clipping rather than the list's bounds (S1)
    - [x] `docs/e2e-coverage.md` — `906`/`907`, spec 11, review-fixes entry (142 tests) (S1)
 
+## #161 — fireteam-size filter chips
+
+Branch `feat/161-ft-size-filter` (from `7bddb71`, so all of #156–#160 is in it). Seams, agreed with
+`orchestrate-161-ft-size-filter`: the Roster size rules through Vitest (`roster.ts`), the chips
+through Playwright.
+
+1. Roster size, red then green (Vitest), and the literal 6 replaced
+   - [x] `src/lib/active-session/roster.test.ts` — `ROSTER_SIZE`, `isFullRoster`, `rosterSizeChip` (7+ under chip 6, 0 or less under chip 1)
+   - [x] `src/lib/active-session/roster.ts` — the three exports
+   - [x] `src/components/FireteamRow.tsx` — "N/6", its title and the disabled 6/6 button read `ROSTER_SIZE` / `isFullRoster`
+   - [x] `src/components/ActiveSessionCard.tsx` — the constant only, no tile markup change (#153)
+2. Specs, red against today's page
+   - [x] `e2e/support/seed-world.ts` — `SIZE_RAID` (Pantheon: Morgeth Surpassing)
+   - [x] `e2e/active-sessions-size.spec.ts` (new, prefix `91`)
+3. The chips (green)
+   - [x] `src/hooks/useSessionSizes.ts` (new) — the stored selection, `useSyncExternalStore`, failed-save fallback
+   - [x] `src/components/SessionSizeChips.tsx` (new) — six toggle chips
+   - [x] `src/app/active-sessions/page.tsx` — the size filter inside `filteredSessions`, `changeSizes`, the refresh path's live raids, the empty state
+4. Bookkeeping
+   - [x] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
+   - [x] `CLAUDE.md` — e2e flow list (`c24a8b7`, by the orchestrating session at the user's request; proposed by the implementing session, narrowed by the review session to what the specs cover, with the maintenance and one-line clauses added after the review fixes)
+5. Full-suite fix
+   - [x] `e2e/active-sessions-size.spec.ts` — its own `x-forwarded-for`, so its page loads don't share the middleware's 60-a-minute bucket with every other active-sessions spec
+6. Review fixes (the user's picks from the code review; `b5eaf19`)
+   - [x] `src/app/active-sessions/page.tsx` — `changeSizes` forgets no collapsed section while the maintenance banner shows: `sessions` is then the response's empty list, so any chip click forgot every collapse (#159's rule); the next real response forgets what the chips emptied (P1). `isSessionShown`'s comment names its real readers (S2)
+   - [x] `e2e/active-sessions-size.spec.ts` — spec 15, collapsed sections kept across a maintenance response the chips change under, via `serveMaintenance` (P1); the refresh-gap spec, still last, ends fireteam `918` before seeding it rather than keying ids on the retry number, since an attempt that failed before the grow left it at 5 and failed every retry (S1); the phone spec says why it taps chip 1 (S3)
+   - [x] `e2e/support/seed-world.ts` — `SIZE_RAID`'s docblock holds before and after `fix/manifest-dupe-2530656885` drops the hash's second listing (P4)
+   - [x] `docs/e2e-coverage.md` — the seed-world text the same way (P4); specs 15–16, the changed specs, review-fixes entry (158 tests)
+7. Styling (the user's pick from the code review, a commit of its own; `c57523a`)
+   - [x] `src/components/SessionSizeChips.tsx` — chips `w-8` → `w-7` (28×36) (ST1)
+   - [x] `src/app/active-sessions/page.tsx` — the chips and View are one `flex-auto flex-wrap gap-x-2 gap-y-4` item, View still `ml-auto`, so they wrap together and share a line from 360px up (ST1)
+   - [x] `e2e/active-sessions-size.spec.ts` — the 360px spec asserts the one line, and spec 16 asserts it at 375px (ST1)
+8. Follow-ups on GitHub
+   - [#171](https://github.com/agrorithms/destiny-public/issues/171) — a client address per spec, so the active-sessions specs stop sharing the middleware's `'unknown'` rate-limit bucket
+   - [#164 comment](https://github.com/agrorithms/destiny-public/issues/164#issuecomment-6204283803) — `useSessionSizes` copies `useSessionsView`'s localStorage store; one shared store
+
 ## Notes
 
 - #156: sections group by `raidKey` and sort by their index in `AVAILABLE_RAIDS`
@@ -479,3 +516,32 @@ Join Command target through Vitest (`roster.ts`), the button through Playwright.
 - #160 verified (at `3bf58bf`, the last code commit; the re-stamp after it is this file only):
   tsc exit 0, lint 0 errors (29 warnings, `gos10k/`), build (`○ /active-sessions`, exit 0),
   `npm test` 565/565 (46 files), `npm run e2e` 142/142.
+
+- #161: which chip a fireteam falls under is `rosterSizeChip` in `roster.ts`, the player count
+  its row shows clamped to 1–`ROSTER_SIZE`, so a count past 6 is under chip 6 (and full by
+  `isFullRoster`, so its copy button is disabled) and a count below 1 under chip 1. With every chip
+  on, nothing is ever hidden, which is the property #163 lacks for the raid filter's Select All.
+  `FireteamRow`'s "N/6", its title and `full`, and the tile's count read the same two exports.
+- #161: the chips are `SessionSizeChips` (a `role="group"` "Fireteam size" of six
+  `aria-pressed` buttons, "Fireteams of N"), between [Refresh + Collapse all] and View. Joined like
+  the View toggle, `h-9 w-8`, `ui-toggle-active` / `ui-toggle-idle`, border and dividers in
+  `--ui-border-input`. The selection is `useSessionSizes` (key
+  `destiny-farm-finder-sessions-sizes`, a JSON array): a `useSyncExternalStore` whose snapshot is
+  the canonical string "1,2,5", stable by value, parsed in a `useMemo`. Anything but an array of
+  whole numbers 1–6 reads as all six; `[]` is all off. No cross-tab sync (the user's call).
+  Every chip off shows nothing (the user's call), with "Select at least one fireteam size", and a
+  page the chips empty inside the raid filter reads "Try selecting more fireteam sizes".
+- #161: `isSessionShown` (raid filter AND sizes) is the one predicate for `filteredSessions` and
+  for forgetting collapsed sections. `changeSizes` wraps the hook's setter like
+  `changeRaidFilter`. The fetch forgets raids with nothing *shown* (`shownRaidKeys` over this
+  poll's sessions with the current filters, read through `filtersRef`, written in an effect),
+  not raids missing from the response: a fireteam that grows to a size the chips hide can empty
+  a section the API still sends. Open rows still follow the unfiltered sessions, so a row a chip
+  hides comes back open.
+- #161 proof that tests bite: Vitest, 4 breaks of the clamp and `isFullRoster`; Playwright, all 14
+  red against `ec8e74f`, then 12 breaks in 5 builds, each failing its predicted specs (listed in
+  `docs/e2e-coverage.md`'s #161 entry).
+- #161: the first full `npm run e2e` failed 6 of this file's specs on a 429 from `middleware.ts`'s
+  per-IP limit on `/api/active-sessions` (60 a minute, one shared `'unknown'` bucket for every
+  spec). The file now sends its own `x-forwarded-for`. The other active-sessions files still share
+  the bucket: a follow-up.

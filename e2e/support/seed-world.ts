@@ -150,13 +150,31 @@ export const COPY_RAID: FixtureRaid = {
 
 /**
  * A second raid only the copy-join-code spec seeds (#160): its section holds exactly two rows,
- * so the spec knows which is the list's first and which its last. Seeded by its own hash; the
- * raid's other hash is shared with Pantheon: Morgeth Surpassing in `RAID_DEFINITIONS`.
+ * so the spec knows which is the list's first and which its last. Seeded by its own hash,
+ * 747671496. `RAID_DEFINITIONS` has also listed 2530656885 under this raid, a hash that names
+ * Pantheon: Morgeth Surpassing (SIZE_RAID); fix/manifest-dupe-2530656885 removes that listing.
+ * Seeding by 747671496 keeps the two sections apart either way.
  */
 export const COPY_EDGE_RAID: FixtureRaid = {
     key: 'pantheon_insurrection_prime_revolutionary',
     hash: 747671496,
     name: 'Pantheon: Insurrection Prime Revolutionary',
+};
+
+/**
+ * A raid only the fireteam-size spec seeds (#161), with one fireteam of each size from 1 to 6:
+ * its section's rows are counted as chips hide them, so no other spec's fireteams may share it.
+ *
+ * Seeded by its hash, 2530656885, which the API names Pantheon: Morgeth Surpassing; the section
+ * groups by the stored raid_key, this key. RAID_DEFINITIONS has also listed that hash under
+ * Insurrection Prime, with Morgeth's later entry winning the name; fix/manifest-dupe-2530656885
+ * removes that listing. COPY_EDGE_RAID seeds Insurrection Prime by its own hash, 747671496, so the
+ * two sections never meet either way.
+ */
+export const SIZE_RAID: FixtureRaid = {
+    key: 'pantheon_morgeth_surpassing',
+    hash: 2530656885,
+    name: 'Pantheon: Morgeth Surpassing',
 };
 
 interface FixturePlayer {

@@ -3,7 +3,7 @@
 import { useId, type MouseEvent } from 'react';
 import { getElapsedTime } from '@/components/ActiveSessionCard';
 import CopyJoinCommandButton from '@/components/CopyJoinCommandButton';
-import { fireteamTitle, joinCommand, otherRosterMembers, type RosterMember, type RosterSession } from '@/lib/active-session/roster';
+import { ROSTER_SIZE, fireteamTitle, isFullRoster, joinCommand, otherRosterMembers, type RosterMember, type RosterSession } from '@/lib/active-session/roster';
 
 interface FireteamRowProps {
     session: RosterSession & {
@@ -21,9 +21,6 @@ function playerHref(member: Pick<RosterMember, 'membershipId' | 'membershipType'
         ? `/player/${member.membershipType}/${member.membershipId}`
         : null;
 }
-
-/** Rows read "N/6": a Roster this size has no room, so its Join Command button is disabled. */
-const FULL_ROSTER = 6;
 
 /**
  * One fireteam in list view: "<Fireteam Leader>'s fireteam", the player count, the elapsed
@@ -77,14 +74,14 @@ export default function FireteamRow({ session, open, onToggle }: FireteamRowProp
                     )}
                     &apos;s fireteam
                 </span>
-                <span className="shrink-0 text-xs ui-text-muted tabular-nums" title={`${session.playerCount} of 6 players`}>
-                    {session.playerCount}/6
+                <span className="shrink-0 text-xs ui-text-muted tabular-nums" title={`${session.playerCount} of ${ROSTER_SIZE} players`}>
+                    {session.playerCount}/{ROSTER_SIZE}
                 </span>
                 <span className="shrink-0 w-14 text-right text-xs ui-text-muted tabular-nums" title="Time elapsed">
                     {getElapsedTime(session.startedAt)}
                 </span>
                 {command ? (
-                    <CopyJoinCommandButton command={command} full={session.playerCount >= FULL_ROSTER} />
+                    <CopyJoinCommandButton command={command} full={isFullRoster(session.playerCount)} />
                 ) : (
                     // The button's width, like the chevron's placeholder below, so the count and
                     // elapsed time line up with the rows that have one.

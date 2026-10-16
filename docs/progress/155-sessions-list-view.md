@@ -179,7 +179,7 @@ through Playwright.
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
    - [x] `docs/progress/155-sessions-list-view.md` (this file)
-   - [ ] `CLAUDE.md` — e2e flow list: to be applied by the orchestrating session at the user's request (proposed by the implementing session, narrowed by the review session to what the specs cover)
+   - [x] `CLAUDE.md` — e2e flow list (`c24a8b7`, by the orchestrating session at the user's request; proposed by the implementing session, narrowed by the review session to what the specs cover, with the maintenance and one-line clauses added after the review fixes)
 5. Full-suite fix
    - [x] `e2e/active-sessions-size.spec.ts` — its own `x-forwarded-for`, so its page loads don't share the middleware's 60-a-minute bucket with every other active-sessions spec
 6. Review fixes (the user's picks from the code review; `b5eaf19`)

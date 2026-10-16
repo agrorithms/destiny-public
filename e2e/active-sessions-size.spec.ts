@@ -1,9 +1,9 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
-import { RAID_B, SIZE_RAID, fireteamMemberName, seedFireteams, type FixtureRaid } from './support/seed-world';
+import { RAID_B, SIZE_RAID, endFireteams, fireteamMemberName, seedFireteams, type FixtureRaid } from './support/seed-world';
 import { fireteamRow, fireteamRows, memberList } from './support/fireteam-rows';
 import { boxOf, expectInsideViewport, expectNoHorizontalPageOverflow } from './support/viewport';
-import { refreshSessions } from './support/active-sessions-page';
+import { MAINTENANCE_MESSAGE, endMaintenance, refreshSessions, serveMaintenance } from './support/active-sessions-page';
 
 /**
  * #161: six toggle chips, 1 to 6, filter /active-sessions by the Roster size each row shows.
@@ -22,7 +22,7 @@ import { refreshSessions } from './support/active-sessions-page';
  *   other fireteam is the player-names spec's six-player one (`82`), live or not depending on
  *   which file ran first. So whenever a spec here needs RAID_B's section gone, it switches off
  *   chips 2 AND 6, and it never counts RAID_B's rows;
- * - `918` plus the retry number, on RAID_B: seeded by the last spec only (see there).
+ * - `918`, on RAID_B: seeded by the last spec only (see there).
  */
 const PREFIX_OF_SIZE = { 1: '911', 2: '912', 3: '913', 4: '914', 5: '915', 6: '916' } as const;
 const OTHER_RAID = RAID_B;
@@ -344,6 +344,8 @@ test.describe('active sessions fireteam-size filter', () => {
             }
             await expectNoHorizontalPageOverflow(page);
 
+            // A chip still takes a tap at this width: Playwright's click fails if another
+            // control covers the chip, and the pressed state shows the tap landed.
             await toggleChips(page, 1);
             await expectChipsOff(page, 1);
             const rowLine = rowOfSize(page, 5).locator(':scope > div');
@@ -358,18 +360,48 @@ test.describe('active sessions fireteam-size filter', () => {
         });
     });
 
+    // #159's rule through a maintenance response, with the chips changed under it. The response's
+    // empty list says nothing about which sections are on the page, so a chip toggled while the
+    // banner shows must not forget any collapse. SIZE_RAID keeps rows under chips 2 and 6 off, so
+    // it stays collapsed; RAID_B has none, so the first real response forgets it, and it comes
+    // back expanded when the chips show it again.
+    test('keeps collapsed sections across a maintenance response the chips change under', async ({ page }) => {
+        await page.goto('/active-sessions');
+        await headerOf(page, SIZE_RAID).click();
+        await headerOf(page, OTHER_RAID).click();
+        await expect(headerOf(page, SIZE_RAID)).toHaveAttribute('aria-expanded', 'false');
+        await expect(headerOf(page, OTHER_RAID)).toHaveAttribute('aria-expanded', 'false');
+
+        await serveMaintenance(page);
+        await refreshSessions(page);
+        await expect(page.getByText(MAINTENANCE_MESSAGE)).toBeVisible();
+        await toggleChips(page, 2, 6);
+        await endMaintenance(page);
+        await refreshSessions(page);
+
+        await expect(headerOf(page, SIZE_RAID)).toHaveAttribute('aria-expanded', 'false');
+        await expect(sectionOf(page, OTHER_RAID)).toHaveCount(0);
+
+        await toggleChips(page, 2, 6);
+
+        await expect(headerOf(page, OTHER_RAID)).toHaveAttribute('aria-expanded', 'true');
+        await expect(headerOf(page, SIZE_RAID)).toHaveAttribute('aria-expanded', 'false');
+    });
+
     // Kept LAST in the file, on purpose. A refresh alone can empty a section: here a collapsed
     // raid's only shown fireteam grows from 5 to 6 while chip 6 is off. The raid is still in
     // the API's response, so a page that only forgot raids missing from the response would keep
     // it collapsed, and it would come back collapsed when chip 6 is switched on. The page
     // forgets raids with nothing *shown* instead, so it comes back expanded.
     //
-    // Its fireteam is seeded here, not in beforeAll, so the RAID_B specs above never see it,
-    // and it can't shrink back to 5 once grown. So its membership ids carry the retry number
-    // (CI retries twice): each attempt gets a fresh fireteam, and an earlier attempt's, left at
-    // 6, stays hidden while chips 2 and 6 are off. Nothing after this spec may count RAID_B.
-    test('brings back expanded a section a refresh emptied under the chips', async ({ page }, testInfo) => {
-        const growing = { count: 1, prefix: `918${testInfo.retry}`, raid: OTHER_RAID, leaderSeat: 0 };
+    // Its fireteam is seeded here, not in beforeAll, so the RAID_B specs above never see it.
+    // An earlier attempt (CI retries twice) can leave it live at 5 or 6, depending on where that
+    // attempt failed, and one left at 5 would keep RAID_B on the page under chips 2 and 6. So
+    // the spec first ends whatever an earlier attempt left, all six seats, then seeds it afresh.
+    // It stays live at 6 afterwards, so nothing after this spec may count RAID_B.
+    test('brings back expanded a section a refresh emptied under the chips', async ({ page }) => {
+        const growing = { count: 1, prefix: '918', raid: OTHER_RAID, leaderSeat: 0 };
+        endFireteams({ count: 1, size: 6, prefix: growing.prefix });
         seedFireteams({ ...growing, size: 5 });
         await page.goto('/active-sessions');
         await toggleChips(page, 2, 6);

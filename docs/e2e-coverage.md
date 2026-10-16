@@ -2190,10 +2190,11 @@ Which chip a count falls under is `rosterSizeChip` in `src/lib/active-session/ro
 the count clamped to 1–6, so a count past 6 falls under chip 6, the same fireteams
 `isFullRoster` calls full, whose copy button is disabled.
 
-**Seed world:** `SIZE_RAID` (Pantheon: Morgeth Surpassing), which no other spec seeds. Its one
-hash, `2530656885`, is also listed under Insurrection Prime in `RAID_DEFINITIONS`. The stored
-`raid_key` is Morgeth's as seeded, and the heading comes from the hash, where the later
-definition wins. The first red run's page snapshot showed the section "Pantheon: Morgeth
+**Seed world:** `SIZE_RAID` (Pantheon: Morgeth Surpassing), which no other spec seeds, by hash
+`2530656885`. The stored `raid_key` is Morgeth's, so the section groups there, and the heading
+comes from the hash, which resolves to Morgeth. (`RAID_DEFINITIONS` also listed the hash under
+Insurrection Prime, where Morgeth's later entry won; fix/manifest-dupe-2530656885 removes it.)
+The first red run's page snapshot showed the section "Pantheon: Morgeth
 Surpassing" with "6 sessions". Fixture namespace **91**:
 - `911`–`916` (on `SIZE_RAID`): one fireteam of each size from 1 to 6, the leader in seat 0;
 - `917` (on `RAID_B`): one two-player fireteam, for a second section. RAID_B's only other

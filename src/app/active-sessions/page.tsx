@@ -88,8 +88,8 @@ function isSizeShown(sizes: readonly number[], session: ActiveSession): boolean 
 }
 
 // Whether the page shows a session: the raid filter and the size chips both let it through.
-// The sessions filter and every forgetting of collapsed sections read this, so a section is
-// on the page exactly when one of its sessions passes it.
+// The sessions filter, changeSizes and the fetch's forgetting of collapsed sections read this,
+// so a section is on the page exactly when one of its sessions passes it.
 function isSessionShown(selectedRaids: string[], sizes: readonly number[], session: ActiveSession): boolean {
     return isRaidShown(selectedRaids, raidSectionKey(session)) && isSizeShown(sizes, session);
 }
@@ -209,6 +209,10 @@ export default function ActiveSessionsPage() {
     // expanded when they show it again. A section they leave on the page keeps its collapse.
     function changeSizes(nextSizes: readonly number[]) {
         setSizes(nextSizes);
+        // Not while the maintenance banner shows: `sessions` is then the response's empty list,
+        // which says nothing about which sections are on the page. The next real response
+        // forgets what the chips emptied, through the fetch's own forgetting.
+        if (maintenanceMessage) return;
         const stillShown = shownRaidKeys(sessions, selectedRaids, nextSizes);
         setCollapsedRaids((collapsed) => keepCollapsed(collapsed, (raidKey) => stillShown.has(raidKey)));
     }

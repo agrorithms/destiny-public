@@ -178,10 +178,22 @@ through Playwright.
    - [x] `src/app/active-sessions/page.tsx` — the size filter inside `filteredSessions`, `changeSizes`, the refresh path's live raids, the empty state
 4. Bookkeeping
    - [x] `docs/e2e-coverage.md` — flows, namespace `91`, journal entry
-   - [ ] `docs/progress/155-sessions-list-view.md` (this file)
-   - [ ] `CLAUDE.md` — e2e flow list: proposed to the orchestrator, not edited here
+   - [x] `docs/progress/155-sessions-list-view.md` (this file)
+   - [ ] `CLAUDE.md` — e2e flow list: to be applied by the orchestrating session at the user's request (proposed by the implementing session, narrowed by the review session to what the specs cover)
 5. Full-suite fix
    - [x] `e2e/active-sessions-size.spec.ts` — its own `x-forwarded-for`, so its page loads don't share the middleware's 60-a-minute bucket with every other active-sessions spec
+6. Review fixes (the user's picks from the code review; `b5eaf19`)
+   - [x] `src/app/active-sessions/page.tsx` — `changeSizes` forgets no collapsed section while the maintenance banner shows: `sessions` is then the response's empty list, so any chip click forgot every collapse (#159's rule); the next real response forgets what the chips emptied (P1). `isSessionShown`'s comment names its real readers (S2)
+   - [x] `e2e/active-sessions-size.spec.ts` — spec 15, collapsed sections kept across a maintenance response the chips change under, via `serveMaintenance` (P1); the refresh-gap spec, still last, ends fireteam `918` before seeding it rather than keying ids on the retry number, since an attempt that failed before the grow left it at 5 and failed every retry (S1); the phone spec says why it taps chip 1 (S3)
+   - [x] `e2e/support/seed-world.ts` — `SIZE_RAID`'s docblock holds before and after `fix/manifest-dupe-2530656885` drops the hash's second listing (P4)
+   - [x] `docs/e2e-coverage.md` — the seed-world text the same way (P4); specs 15–16, the changed specs, review-fixes entry (158 tests)
+7. Styling (the user's pick from the code review, a commit of its own; `c57523a`)
+   - [x] `src/components/SessionSizeChips.tsx` — chips `w-8` → `w-7` (28×36) (ST1)
+   - [x] `src/app/active-sessions/page.tsx` — the chips and View are one `flex-auto flex-wrap gap-x-2 gap-y-4` item, View still `ml-auto`, so they wrap together and share a line from 360px up (ST1)
+   - [x] `e2e/active-sessions-size.spec.ts` — the 360px spec asserts the one line, and spec 16 asserts it at 375px (ST1)
+8. Follow-ups on GitHub
+   - [#171](https://github.com/agrorithms/destiny-public/issues/171) — a client address per spec, so the active-sessions specs stop sharing the middleware's `'unknown'` rate-limit bucket
+   - [#164 comment](https://github.com/agrorithms/destiny-public/issues/164#issuecomment-6204283803) — `useSessionSizes` copies `useSessionsView`'s localStorage store; one shared store
 
 ## Notes
 

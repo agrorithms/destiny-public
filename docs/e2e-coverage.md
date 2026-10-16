@@ -2200,7 +2200,8 @@ Surpassing" with "6 sessions". Fixture namespace **91**:
 - `917` (on `RAID_B`): one two-player fireteam, for a second section. RAID_B's only other
   fireteam is player-names' six-player `82`, live or not depending on file order, so every spec
   that needs RAID_B's section gone switches off chips 2 **and** 6, and none counts RAID_B's rows;
-- `918` + the retry number (on `RAID_B`): seeded inside spec 14, the file's last.
+- `918` (on `RAID_B`): ended, then seeded, inside spec 14, the file's last (since the review
+  fixes below; it carried the retry number before).
 
 **The file sends its own client address.** `middleware.ts` rate-limits `/api/active-sessions` to 60
 requests a minute per client IP. No other spec sends a forwarding header, so every spec shares one
@@ -2265,9 +2266,58 @@ each failing exactly the predicted specs:
   They were checked once in a throwaway probe at 1280px and 360px, light and dark, and are not
   asserted. With chips 1, 2 and 6 off, the new first row's line had 7px top corners and the new
   last row's 7px bottom corners, both hovering in `--ui-surface-card-muted` (#f7f6f1 light, #2a2a28
-  dark). At 360px the chips sit on their own line, and View wraps below them at the right.
+  dark). The review rechecked them with 26-letter `M`, `W` and CJK names and chips switched off
+  to change the first row, the last row and both: the same 7px corners, at 3× scale, and no
+  sideways scroll at 360px. The 360px layout itself is asserted since the review fixes below.
 - The shared rate-limit bucket. Every active-sessions spec but this one sends no client address,
   so together they spend one 60-a-minute budget on `/api/active-sessions`. Nothing asserts how
   close a full run comes to it. A per-test or per-file address in `test-fixtures.ts` would remove
-  the hazard suite-wide; that is a follow-up, not done here.
+  the hazard suite-wide; that is a follow-up, not done here:
+  [#171](https://github.com/agrorithms/destiny-public/issues/171).
 - Tile view per fireteam (#153).
+
+### Review fixes (same day)
+
+Two more size specs, so the file has **sixteen** and the suite **158 tests including the two
+canary setups**, still twenty-six flows. The numbers below continue the list above, not the file
+order: spec 16 sits right after the 360px spec, and spec 15 sits just before spec 14, which stays
+last.
+
+15. **Collapsed sections survive a maintenance response the chips change under.** SIZE_RAID and
+    RAID_B are collapsed, the maintenance stub answers (`serveMaintenance`, ADR 0004's
+    2026-10-15 amendment), and chips 2 and 6 go off while the banner shows. Once the real API
+    answers again, SIZE_RAID, which still has rows, is still collapsed, and RAID_B, which has
+    none, is gone. Chips 2 and 6 back on bring RAID_B back expanded. Before the fix,
+    `changeSizes` worked out which sections were on the page from the maintenance response's
+    empty list, so any chip click forgot every collapse, breaking #159's rule. It now does
+    nothing to collapse state while the banner shows; the first real response forgets what the
+    chips emptied, through the fetch's own forgetting.
+16. **At 375px the chips and the View toggle share one line**, below Refresh, with View flush
+    with the control bar's right edge, and no sideways scroll.
+
+Changed:
+- **13** (360px) also asserts that one line: View on the chips' `y`, the chips below Refresh,
+  Refresh below the raid filter, and View flush right. The overlap check alone can't see it,
+  because View wrapping onto a line of its own overlaps nothing. Its chip-1 tap is now explained:
+  Playwright's click fails if another control covers the chip. The layout change behind it is a
+  styling commit of its own: the chips go from 32px to 28px wide, and the chips and View are one
+  `flex-auto flex-wrap` item with an 8px gap, so they wrap together. That gives 170 + 8 + 82 =
+  260px against the 262px control bar at 360px. Measured at 320–1280px: one line from 360 up,
+  including 768, where View used to wrap alone; at 320 View still drops below the chips.
+- **14** ends fireteam `918` (all six seats, `endFireteams`) before seeding it, instead of keying
+  its ids on `testInfo.retry`. The retry key only covered an attempt that failed after the grow:
+  one that failed before it left a five-player fireteam on RAID_B that chips 2 and 6 don't hide,
+  so every retry failed. A probe seeding `9180` at five, then running spec 14's old steps as
+  attempt 1, failed with "Expected: 0, Received: 1". With the fix, a probe that leaves `918` at
+  five before spec 14 runs passes.
+
+Shown biting, then restored and green. Each break was its own build:
+- `changeSizes`'s maintenance guard removed: only spec 15 failed, at SIZE_RAID's first
+  post-maintenance check ("Expected: \"false\", Received: \"true\"").
+- The chips back at `w-8`: 13 and 16 failed on View's line ("Expected: 447, Received: 521" at
+  360px; "Expected: 411, Received: 485" at 375px).
+- The pair's gap at `gap-x-3` (12px, so 264px): 13 failed (447 against 521); 16 passed, as it
+  should, since 375px's 277px bar holds it.
+- The `filtersRef` sync effect removed, together with the "Select at least one fireteam size"
+  branch: exactly 14 ("Expected: \"true\", Received: \"false\"") and 10 ("Expected: visible")
+  failed. Neither was among the twelve breaks above.

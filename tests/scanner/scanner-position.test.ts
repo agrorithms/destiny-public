@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetTestDb, testDb } from '../helpers/db';
 import { bungieEnvelope } from '../helpers/bungie-profile-builder';
 import { buildPGCR, NON_RAID_HASH } from '../helpers/pgcr-builder';
+import { seedRun } from '../helpers/seed';
 
 type Scanner = typeof import('@/lib/scanner');
 
@@ -25,6 +26,10 @@ const SCANNER_CONFIG = {
     pauseOnCatchupMs: 5,
     maxConsecutiveMisses: BATCH_SIZE,
 };
+
+// Each wait is bounded by real 100ms gaps between batches plus the work in them,
+// so vi.waitFor's default 1s leaves little headroom on a loaded CI machine.
+const WAIT = { timeout: 5000 };
 
 let scanner: Scanner;
 
@@ -93,7 +98,7 @@ afterEach(async () => {
     // Wait for the loop to actually exit. Its timers would otherwise keep writing
     // to the database the next test is about to reset.
     scanner.stopScanner();
-    await vi.waitFor(() => expect(scanner.isScannerRunning()).toBe(false), { timeout: 2000 });
+    await vi.waitFor(() => expect(scanner.isScannerRunning()).toBe(false), WAIT);
 });
 
 describe('scanner position', () => {
@@ -110,7 +115,7 @@ describe('scanner position', () => {
         stubBungie(() => true);
 
         await scanner.startScanner(SCANNER_CONFIG);
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(BATCH_SIZE));
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(BATCH_SIZE), WAIT);
         expect(requested[0]).toBe(start + BigInt(1));
 
         const jumpIndex = requested.length;
@@ -118,7 +123,7 @@ describe('scanner position', () => {
         writeScannerPosition(jumpTo);
 
         // Two full batches past the jump, so there is something to check after it.
-        await vi.waitFor(() => expect(requested).toContain(jumpTo + BigInt(2 * BATCH_SIZE)));
+        await vi.waitFor(() => expect(requested).toContain(jumpTo + BigInt(2 * BATCH_SIZE)), WAIT);
 
         const afterJump = requested.slice(jumpIndex);
         const resumeAt = afterJump.indexOf(jumpTo + BigInt(1));
@@ -148,10 +153,10 @@ describe('scanner position at the leading edge', () => {
 
         await scanner.startScanner(SCANNER_CONFIG);
 
-        // Twelve batches is more misses than RETRY_THRESHOLD (50), so if any of them
-        // were queued a retry pass would fire and ask for an id outside the batch.
+        // Over many cycles, the position holds and the same batch is asked for again
+        // each time.
         const cycles = 12;
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(cycles * BATCH_SIZE));
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(cycles * BATCH_SIZE), WAIT);
 
         expect(readScannerPosition()).toBe(start);
         const sameBatch = idRange(start + BigInt(1), BATCH_SIZE);
@@ -168,11 +173,35 @@ describe('scanner position at the leading edge', () => {
         stubBungie((id) => id <= lastExisting);
 
         await scanner.startScanner(SCANNER_CONFIG);
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(2 * BATCH_SIZE));
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(2 * BATCH_SIZE), WAIT);
 
         expect(readScannerPosition()).toBe(lastExisting);
         expect(requested.slice(BATCH_SIZE, 2 * BATCH_SIZE)).toEqual(
             idRange(lastExisting + BigInt(1), BATCH_SIZE)
+        );
+    });
+
+    // The crawler stores PGCRs it finds through player histories, often for ids the
+    // scanner hasn't reached yet. scanSinglePGCR skips those without asking Bungie
+    // and reports them as not_raid, so the position can land on one. That is safe:
+    // a stored PGCR came from Bungie, so its id exists and can't be past the Leading
+    // Edge. The crawler moves the position onto ids that exist, never beyond them.
+    it('stops on an id already stored, without asking Bungie for it', async () => {
+        const start = BigInt('17000000000');
+        // Mid-batch: the first batch is start+1..start+5, and only start+3 is stored.
+        const stored = start + BigInt(3);
+        seedRun({ instanceId: stored.toString() });
+        writeScannerPosition(start);
+        stubBungie(() => false);
+
+        await scanner.startScanner(SCANNER_CONFIG);
+        // Four requests for the first batch (start+3 is skipped), five for the next.
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(2 * BATCH_SIZE - 1), WAIT);
+
+        expect(readScannerPosition()).toBe(stored);
+        expect(requested).not.toContain(stored);
+        expect(requested.slice(BATCH_SIZE - 1, 2 * BATCH_SIZE - 1)).toEqual(
+            idRange(stored + BigInt(1), BATCH_SIZE)
         );
     });
 });
@@ -193,8 +222,9 @@ describe('scanner position at the leading edge', () => {
 // retry would ask for it in the same order; the second test infers it from the set's
 // size.
 describe('missed ids', () => {
-    // One batch big enough to hold RETRY_THRESHOLD (50) gap ids. The catch-up pause
-    // still fires on the misses at the end of the batch, and the retry pass runs there.
+    // One batch big enough to hold RETRY_THRESHOLD (50, in src/lib/scanner/index.ts)
+    // gap ids. The catch-up pause still fires on the misses at the end of the batch,
+    // and the retry pass runs there.
     const WIDE_BATCH = 60;
     const wideConfig = { ...SCANNER_CONFIG, batchSize: WIDE_BATCH, maxConsecutiveMisses: 5 };
 
@@ -207,7 +237,7 @@ describe('missed ids', () => {
         stubBungie((id) => id === confirmed);
 
         await scanner.startScanner(wideConfig);
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(WIDE_BATCH + gap.length));
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(WIDE_BATCH + gap.length), WAIT);
 
         expect(readScannerPosition()).toBe(confirmed);
         expect(requested.slice(0, WIDE_BATCH)).toEqual(idRange(start + BigInt(1), WIDE_BATCH));
@@ -217,15 +247,16 @@ describe('missed ids', () => {
     it('does not queue misses past the last id that exists', async () => {
         const start = BigInt('17000000000');
         // start+1..start+10 missing, start+11 exists, start+12..start+60 missing.
-        // 10 gap ids stay under RETRY_THRESHOLD; with the 49 past start+11 the set
-        // would reach 59, the retry pass would fire, and it would ask for the gap again.
+        // 10 gap ids stay under RETRY_THRESHOLD (src/lib/scanner/index.ts); with the
+        // 49 past start+11 the set would reach 59, the retry pass would fire, and it
+        // would ask for the gap again.
         const gapEnd = start + BigInt(10);
         const confirmed = start + BigInt(11);
         writeScannerPosition(start);
         stubBungie((id) => id === confirmed);
 
         await scanner.startScanner(wideConfig);
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * WIDE_BATCH));
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * WIDE_BATCH), WAIT);
 
         expect(readScannerPosition()).toBe(confirmed);
         expect(requested.slice(WIDE_BATCH).filter((id) => id <= gapEnd)).toEqual([]);

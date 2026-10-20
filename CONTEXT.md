@@ -144,6 +144,19 @@ How long ago a browser tab last fetched — the age of what is on screen. Says n
 the data behind it is current: a tab can be seconds old and still be displaying hours-old data.
 _Avoid_: last updated, refresh time
 
+**Scanner Position**:
+The highest instance id confirmed to exist that the scanner has reached, and where it resumes after
+a restart. It only moves forward and only onto an id confirmed to exist. The scanner moves it by
+getting the id back from Bungie or finding it already stored. Discovery can move it ahead to
+Bungie's newest id when the scanner has fallen far behind. The ids skipped that way aren't
+guaranteed to be scanned.
+_Avoid_: scanner cursor, current instance id, present
+
+**Leading Edge**:
+The newest instance id Bungie has issued. It isn't stored anywhere. The scanner finds it by asking
+for ids past it and getting "not found". The Scanner Position trails it and can never pass it.
+_Avoid_: present, head, now, caught up
+
 **Farm**:
 Repeatedly replaying a single raid encounter or checkpoint for rewards, rather than progressing
 through the raid. The activity the site is named for.

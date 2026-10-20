@@ -60,6 +60,8 @@ tests/
 ├── db/                  tests that need a database
 ├── fixtures/            captured Bungie PGCR JSON, the Archive seed, + README
 ├── helpers/             builders, seeding, db access — SHARED with e2e/
+├── routes/              API route handlers called directly, against the test db
+├── scanner/             the PGCR scanner's real loop, against the test db
 └── setup/               global setup: db path, network guard
 src/**/*.test.ts         pure-logic tests, next to what they cover
 e2e/**/*.spec.ts         Playwright browser tests (different runner)

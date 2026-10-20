@@ -544,7 +544,7 @@ async function scanBatch(
     consecutiveMisses: number;
     missedIdsAdded: number;
     missedIdsDropped: number;
-    lastId: bigint;
+    lastConfirmedId: bigint;
     systemDisabled: boolean;
     fatalNoClients: boolean;
 }> {
@@ -563,7 +563,8 @@ async function scanBatch(
     let systemDisabled = false;
     let fatalNoClients = false;
 
-    // Track results in order for consecutive miss calculation
+    // Per-id outcomes in id order: they set the Scanner Position, the missed-id
+    // queue and the consecutive-miss count
     const results: Array<ScannerRequestResult | undefined> = new Array(batchSize);
 
     async function worker() {
@@ -609,11 +610,23 @@ async function scanBatch(
     );
     await Promise.all(workers);
 
-    // *** THIS IS THE KEY PART ***
-    // Collect ALL IDs that were not_found or error_retryable for retry
+    // The Scanner Position only lands on an id confirmed to exist: one Bungie
+    // returned, or one already stored (scanSinglePGCR reports those as not_raid).
+    // A batch with none leaves the position where it was, so the scanner can
+    // never run past the Leading Edge.
+    let lastConfirmedIndex = -1;
+    for (let i = results.length - 1; i >= 0; i--) {
+        if (results[i] === 'raid' || results[i] === 'not_raid') {
+            lastConfirmedIndex = i;
+            break;
+        }
+    }
+
+    // Queue only the misses below the last confirmed id — real gaps. Misses past
+    // it are rescanned by the next batch, which starts just after it.
     let addedThisBatch = 0;
     let droppedThisBatch = 0;
-    for (let i = 0; i < results.length; i++) {
+    for (let i = 0; i < lastConfirmedIndex; i++) {
         if (results[i] === 'not_found' || results[i] === 'error_retryable') {
             const sizeBefore = missedIdsSet.size;
             const droppedBefore = missedIdsDroppedDueToCap;
@@ -622,6 +635,7 @@ async function scanBatch(
             if (missedIdsDroppedDueToCap > droppedBefore) droppedThisBatch++;
         }
     }
+
     // Calculate consecutive misses from the END of the batch
     let consecutiveMisses = 0;
     for (let i = results.length - 1; i >= 0; i--) {
@@ -632,9 +646,9 @@ async function scanBatch(
         }
     }
 
-    const lastId = fatalNoClients
-        ? startId - BigInt(1)
-        : startId + BigInt(batchSize - 1);
+    const lastConfirmedId = lastConfirmedIndex >= 0
+        ? startId + BigInt(lastConfirmedIndex)
+        : startId - BigInt(1);
 
     return {
         scanned,
@@ -643,7 +657,7 @@ async function scanBatch(
         consecutiveMisses,
         missedIdsAdded: addedThisBatch,
         missedIdsDropped: droppedThisBatch,
-        lastId,
+        lastConfirmedId,
         systemDisabled,
         fatalNoClients,
     };
@@ -828,7 +842,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         state.totalRaidsFound += result.raidsFound;
         state.totalMisses += result.misses;
         state.consecutiveMisses = result.consecutiveMisses;
-        state.currentInstanceId = result.lastId;
+        state.currentInstanceId = result.lastConfirmedId;
 
         saveScannerPosition(state.currentInstanceId);
 
@@ -859,10 +873,10 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             writeScannerStats();
         }
 
-        // Caught up to present — pause then retry missed IDs
+        // At the Leading Edge — pause then retry missed IDs
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
-                `[SCANNER] Caught up to present (${state.consecutiveMisses} consecutive misses). ` +
+                `[SCANNER] Reached the Leading Edge (${state.consecutiveMisses} consecutive misses). ` +
                 `${missedIdsSet.size} missed IDs to retry. ` +
                 `Pausing for ${config.pauseOnCatchupMs / 1000}s...`
             );

@@ -193,7 +193,8 @@ describe('scanner position at the leading edge', () => {
 // Both tests observe the set through the ids fetch is asked for, using the fact that
 // only the retry pass ever asks for an id below the Scanner Position: the forward
 // batches start just past it. So a gap id requested a second time was retried, and
-// a gap id never requested again means the retry pass never fired. A miss past the
+// a gap id never requested again means the retry pass never fired. That only holds
+// once the position has moved past the gap, so each test asserts that first. A miss past the
 // confirmed id can't be watched directly, because the forward rescan and a retry
 // would ask for it in the same order; the second test infers it from the set's size.
 describe('missed ids', () => {
@@ -213,6 +214,7 @@ describe('missed ids', () => {
         await scanner.startScanner(wideConfig);
         await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(WIDE_BATCH + gap.length));
 
+        expect(readScannerPosition()).toBe(confirmed);
         expect(requested.slice(0, WIDE_BATCH)).toEqual(idRange(start + BigInt(1), WIDE_BATCH));
         expect(requested.slice(WIDE_BATCH, WIDE_BATCH + gap.length)).toEqual(gap);
     });
@@ -230,6 +232,7 @@ describe('missed ids', () => {
         await scanner.startScanner(wideConfig);
         await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * WIDE_BATCH));
 
+        expect(readScannerPosition()).toBe(confirmed);
         expect(requested.slice(WIDE_BATCH).filter((id) => id <= gapEnd)).toEqual([]);
     });
 });

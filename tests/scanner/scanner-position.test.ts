@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetTestDb, testDb } from '../helpers/db';
+import { bungieEnvelope } from '../helpers/bungie-profile-builder';
 import { buildPGCR, NON_RAID_HASH } from '../helpers/pgcr-builder';
 
 type Scanner = typeof import('@/lib/scanner');
@@ -47,19 +48,12 @@ function stubBungie(exists: (instanceId: bigint) => boolean): void {
         requested.push(instanceId);
 
         const body = exists(instanceId)
-            ? {
-                Response: buildPGCR({ instanceId: match[1], activityHash: NON_RAID_HASH }),
-                ErrorCode: 1,
-                ErrorStatus: 'Success',
-                ThrottleSeconds: 0,
-                Message: 'Ok',
-            }
-            : {
+            ? bungieEnvelope(buildPGCR({ instanceId: match[1], activityHash: NON_RAID_HASH }))
+            : bungieEnvelope(undefined, {
                 ErrorCode: 1653,
                 ErrorStatus: 'DestinyPGCRNotFound',
-                ThrottleSeconds: 0,
                 Message: 'The activity you are looking for was not found.',
-            };
+            });
 
         return new Response(JSON.stringify(body), { status: 200 });
     });
@@ -194,9 +188,10 @@ describe('scanner position at the leading edge', () => {
 // only the retry pass ever asks for an id below the Scanner Position: the forward
 // batches start just past it. So a gap id requested a second time was retried, and
 // a gap id never requested again means the retry pass never fired. That only holds
-// once the position has moved past the gap, so each test asserts that first. A miss past the
-// confirmed id can't be watched directly, because the forward rescan and a retry
-// would ask for it in the same order; the second test infers it from the set's size.
+// once the position has moved past the gap, so each test asserts that first. A miss
+// past the confirmed id can't be watched directly, because the forward rescan and a
+// retry would ask for it in the same order; the second test infers it from the set's
+// size.
 describe('missed ids', () => {
     // One batch big enough to hold RETRY_THRESHOLD (50) gap ids. The catch-up pause
     // still fires on the misses at the end of the batch, and the retry pass runs there.

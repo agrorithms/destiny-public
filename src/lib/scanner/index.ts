@@ -544,7 +544,7 @@ async function scanBatch(
     consecutiveMisses: number;
     missedIdsAdded: number;
     missedIdsDropped: number;
-    lastId: bigint;
+    lastConfirmedId: bigint;
     systemDisabled: boolean;
     fatalNoClients: boolean;
 }> {
@@ -563,7 +563,8 @@ async function scanBatch(
     let systemDisabled = false;
     let fatalNoClients = false;
 
-    // Track results in order for consecutive miss calculation
+    // Per-id outcomes in id order: they set the Scanner Position, the missed-id
+    // queue and the consecutive-miss count
     const results: Array<ScannerRequestResult | undefined> = new Array(batchSize);
 
     async function worker() {
@@ -634,6 +635,7 @@ async function scanBatch(
             if (missedIdsDroppedDueToCap > droppedBefore) droppedThisBatch++;
         }
     }
+
     // Calculate consecutive misses from the END of the batch
     let consecutiveMisses = 0;
     for (let i = results.length - 1; i >= 0; i--) {
@@ -644,7 +646,7 @@ async function scanBatch(
         }
     }
 
-    const lastId = lastConfirmedIndex >= 0
+    const lastConfirmedId = lastConfirmedIndex >= 0
         ? startId + BigInt(lastConfirmedIndex)
         : startId - BigInt(1);
 
@@ -655,7 +657,7 @@ async function scanBatch(
         consecutiveMisses,
         missedIdsAdded: addedThisBatch,
         missedIdsDropped: droppedThisBatch,
-        lastId,
+        lastConfirmedId,
         systemDisabled,
         fatalNoClients,
     };
@@ -840,7 +842,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         state.totalRaidsFound += result.raidsFound;
         state.totalMisses += result.misses;
         state.consecutiveMisses = result.consecutiveMisses;
-        state.currentInstanceId = result.lastId;
+        state.currentInstanceId = result.lastConfirmedId;
 
         saveScannerPosition(state.currentInstanceId);
 

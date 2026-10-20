@@ -185,7 +185,7 @@ describe('scanner position at the leading edge', () => {
     // scanner hasn't reached yet. scanSinglePGCR skips those without asking Bungie
     // and reports them as not_raid, so the position can land on one. That is safe:
     // a stored PGCR came from Bungie, so its id exists and can't be past the Leading
-    // Edge. The crawler moves the position onto ids that exist, never beyond them.
+    // Edge. So stored ids can only move the position onto ids that exist.
     it('stops on an id already stored, without asking Bungie for it', async () => {
         const start = BigInt('17000000000');
         // Mid-batch: the first batch is start+1..start+5, and only start+3 is stored.

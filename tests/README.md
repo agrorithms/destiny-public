@@ -82,12 +82,14 @@ statuses mean:
 | Compile error | The TypeScript checker rejected the mutant (`--typecheck` only) | Nothing — it is discarded, not scored |
 | Ignored | A static mutant: it runs only while a module loads (a top-level constant), so no test can be picked for it. Skipped by `ignoreStatic` | Nothing — not scored; the script prints how many |
 
-The script prints two scores. The **overall** score is killed ÷ (killed + survived + no coverage):
-a line no test runs counts against it. That is the number a threshold applies to. The
+The script prints two scores. The **overall** score is (killed + timeout) ÷ (killed + timeout +
+survived + no coverage): a line no test runs counts against it. That is the number a threshold applies to. The
 **covered-code** score leaves no-coverage out, so it says how sharp the tests that exist are, not
 whether the changed code has tests at all. The threshold is 62.5% overall (5 of 8), applied only
 when at least 8 mutants were scored: on fewer, one survivor moves the score by 15 points or more.
-The script prints `threshold: PASS`, `FAIL` (and exits non-zero) or `not applied`. A score worth reporting comes from a full run with
+The script prints `threshold: PASS`, `FAIL` (and exits non-zero) or `not applied`; if Stryker
+dies before writing its report (a test already failing, a broken config), it prints `no report`
+and exits non-zero, with no score at all. A score worth reporting comes from a full run with
 `--typecheck`: without the checker, a mutant that wouldn't compile still runs and is counted as
 killed or survived for reasons that mean nothing. The checker is off by default only because it
 multiplies the wall time. `--incremental` reuses old results and is for the kill-and-rerun loops
@@ -114,8 +116,8 @@ lists those files instead, and Playwright is what covers them.
 
 On a PR that touches `.ts` under `src/`, CI's `mutation` workflow runs the same thing with
 `--typecheck` and puts the summary in the run's job summary, with the score and verdict as a
-notice on the PR's Checks tab. It reports and never blocks: a FAIL there is information for
-review, not a red check.
+notice on the PR's Checks tab. It reports and never blocks: a FAIL or a crash marks the step
+failed-and-continued, which is information for review, not a red check.
 
 Stryker copies the project into `.stryker-tmp/` and runs its own Vitest processes there. Each
 test file still mints its own temp database (`tests/setup/test-db-path.ts`), so parallel workers
@@ -130,6 +132,7 @@ tests/
 ├── helpers/             builders, seeding, db access — SHARED with e2e/
 ├── routes/              API route handlers called directly, against the test db
 ├── scanner/             the PGCR scanner's real loop, against the test db
+├── scripts/             pure logic from scripts/ (Vitest's include has no scripts/)
 └── setup/               global setup: db path, network guard
 src/**/*.test.ts         pure-logic tests, next to what they cover
 e2e/**/*.spec.ts         Playwright browser tests (different runner)

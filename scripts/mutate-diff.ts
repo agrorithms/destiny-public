@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -49,18 +49,17 @@ const CHECKER_TSCONFIG = 'tsconfig.stryker.json';
 const THRESHOLD = 0.625;
 const THRESHOLD_MIN_SCORED = 8;
 
-/** Changed `.ts` that a Vitest test could reach. */
-function isMutable(file: string): boolean {
-    return file.startsWith('src/')
-        && file.endsWith('.ts')
-        && !file.endsWith('.test.ts')
-        && !file.endsWith('.d.ts')
-        && !file.startsWith('src/hooks/');
-}
-
-/** Changed source no Vitest test can reach: rendered code. */
-function isBrowserOnly(file: string): boolean {
-    return file.startsWith('src/') && (file.endsWith('.tsx') || (file.startsWith('src/hooks/') && file.endsWith('.ts')));
+/**
+ * Which list a changed file belongs in. One rule, so a source file under src/ always lands
+ * in exactly one: `vitest` (mutated) or `browser` (rendered code — a `.tsx` component or a
+ * `src/hooks/` hook — which no Vitest test can reach, so it is listed as not mutated).
+ * Tests, declarations and anything that is not TypeScript are neither.
+ */
+function reachedBy(file: string): 'vitest' | 'browser' | null {
+    if (!file.startsWith('src/') || file.endsWith('.test.ts') || file.endsWith('.d.ts')) return null;
+    if (file.endsWith('.tsx')) return 'browser';
+    if (!file.endsWith('.ts')) return null;
+    return file.startsWith('src/hooks/') ? 'browser' : 'vitest';
 }
 
 function parseArgs(argv: string[]) {
@@ -82,6 +81,30 @@ function parseArgs(argv: string[]) {
     };
 }
 
+/**
+ * Set by Ctrl+C. The terminal sends it to Stryker too, which stops on its own; this only
+ * notes it, so the run still removes a past range's worktree in its `finally`, then exits
+ * 130 (128 + SIGINT) with no score. Without a listener node would die on the spot and
+ * leave the worktree behind.
+ */
+let interrupted = false;
+process.on('SIGINT', () => {
+    interrupted = true;
+});
+
+/**
+ * Stryker, waited for without blocking. Under `npm run` this script runs as a child of
+ * tsx, which forwards a Ctrl+C and SIGKILLs a child that hasn't acknowledged it within
+ * ~60ms; a process blocked in spawnSync can't, and was killed mid-cleanup.
+ */
+function runStryker(args: string[], cwd: string): Promise<{ status: number | null; signal: NodeJS.Signals | null }> {
+    return new Promise((resolve, reject) => {
+        const child = spawn(STRYKER, args, { cwd, stdio: 'inherit' });
+        child.on('error', reject);
+        child.on('close', (status, signal) => resolve({ status, signal }));
+    });
+}
+
 /** A checkout of `range.head` to run in, and how to remove it afterwards. */
 function workdirFor(range: ResolvedRange): { dir: string; cleanup: () => void } {
     if (range.atHead) return { dir: REPO, cleanup: () => {} };
@@ -89,16 +112,27 @@ function workdirFor(range: ResolvedRange): { dir: string; cleanup: () => void } 
     // In the OS temp dir, not under the repo: tsconfig.json includes **/*.ts, so a
     // second copy of src/ inside the repo would be type-checked by every build.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dff-mutate-'));
-    execFileSync('git', ['worktree', 'add', '--detach', dir, range.head], { stdio: 'ignore' });
-    // The worktree gets this checkout's installed packages rather than a fresh install.
-    fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
-    // The checker's tsconfig may postdate the range's head. Its paths are relative, so the
-    // copy checks the worktree's src/ and tests/, not this checkout's.
-    fs.copyFileSync(path.join(REPO, CHECKER_TSCONFIG), path.join(dir, CHECKER_TSCONFIG));
-    return {
-        dir,
-        cleanup: () => execFileSync('git', ['worktree', 'remove', '--force', dir], { stdio: 'ignore' }),
-    };
+    try {
+        execFileSync('git', ['worktree', 'add', '--detach', dir, range.head], { stdio: 'ignore' });
+    } catch (err) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        throw err;
+    }
+    // `--force` because the worktree holds untracked files: reports, the node_modules
+    // symlink (which git unlinks and does not follow).
+    const cleanup = () => execFileSync('git', ['worktree', 'remove', '--force', dir], { stdio: 'ignore' });
+
+    try {
+        // The worktree gets this checkout's installed packages rather than a fresh install.
+        fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
+        // The checker's tsconfig may postdate the range's head. Its paths are relative, so the
+        // copy checks the worktree's src/ and tests/, not this checkout's.
+        fs.copyFileSync(path.join(REPO, CHECKER_TSCONFIG), path.join(dir, CHECKER_TSCONFIG));
+    } catch (err) {
+        cleanup();
+        throw err;
+    }
+    return { dir, cleanup };
 }
 
 interface ReportMutant {
@@ -134,7 +168,10 @@ function summarise(report: Report): boolean {
         + `no coverage ${noCoverage}, compile error ${count('CompileError')}, runtime error ${count('RuntimeError')}, `
         + `ignored ${count('Ignored')}`);
     // ignoreStatic (stryker.config.mjs) skips these unscored; say so, so the score's
-    // denominator is never quietly smaller than the mutant count.
+    // denominator is never quietly smaller than the mutant count. Stryker's reason text is
+    // the only signal that tells them apart: a disable comment's mutant is Ignored too, and
+    // the report's `static: true` is set on a disabled static mutant as well (Stryker 10,
+    // mutants/mutant-test-planner.js). If Stryker rewords the reason, this prints 0.
     const skippedStatic = all.filter((m) => m.status === 'Ignored' && m.statusReason?.startsWith('Static mutant')).length;
     console.log(`static mutants skipped (ignoreStatic): ${skippedStatic}`);
     // The overall score is the threshold number: no-coverage counts against it. The
@@ -163,13 +200,14 @@ function summarise(report: Report): boolean {
     return passed;
 }
 
-function main(): void {
+async function main(): Promise<void> {
     const args = parseArgs(process.argv.slice(2));
     const range = resolveRange(args.range);
     const changed = changedFiles(range);
 
-    const targets = changed.filter((f) => isMutable(f.path) && f.ranges.length > 0);
-    const browserOnly = changed.filter((f) => isBrowserOnly(f.path)).map((f) => f.path);
+    // A file whose hunks only delete lines has no line left to mutate (git-range.ts).
+    const targets = changed.filter((f) => reachedBy(f.path) === 'vitest' && f.ranges.length > 0);
+    const browserOnly = changed.filter((f) => reachedBy(f.path) === 'browser').map((f) => f.path);
 
     console.log(`range ${args.range}: ${range.base.slice(0, 8)} → ${range.atHead ? 'working tree' : range.head.slice(0, 8)}`);
     if (targets.length === 0) {
@@ -181,21 +219,25 @@ function main(): void {
         );
         console.log(`mutating ${args.wholeFiles ? 'whole files' : 'changed lines'}:\n  ${mutate.join('\n  ')}`);
 
+        // Cleared first, so a run that dies before writing its report leaves no report rather
+        // than the last run's, which would be summarised below as if it were this one's.
+        fs.rmSync(REPORT_DIR, { recursive: true, force: true });
+
         const { dir, cleanup } = workdirFor(range);
         const started = Date.now();
-        let status: number | null;
+        let run: Awaited<ReturnType<typeof runStryker>>;
         try {
             const strykerArgs = ['run', CONFIG, '--mutate', mutate.join(',')];
             // Named explicitly so a past range's worktree, deleted below, reads and writes
             // the incremental file in this checkout rather than its own throwaway copy.
             if (args.incremental) strykerArgs.push('--incremental', '--incrementalFile', INCREMENTAL_FILE);
             if (args.typecheck) strykerArgs.push('--checkers', 'typescript');
-            status = spawnSync(STRYKER, strykerArgs, { cwd: dir, stdio: 'inherit' }).status;
+            run = await runStryker(strykerArgs, dir);
 
             // Reports land in the run's cwd; a worktree is about to be deleted.
-            if (!range.atHead) {
-                fs.rmSync(REPORT_DIR, { recursive: true, force: true });
-                fs.cpSync(path.join(dir, 'reports', 'mutation'), REPORT_DIR, { recursive: true });
+            const worktreeReport = path.join(dir, 'reports', 'mutation');
+            if (!range.atHead && fs.existsSync(worktreeReport)) {
+                fs.cpSync(worktreeReport, REPORT_DIR, { recursive: true });
             }
         } finally {
             cleanup();
@@ -203,12 +245,19 @@ function main(): void {
         const seconds = ((Date.now() - started) / 1000).toFixed(0);
 
         const reportFile = path.join(REPORT_DIR, 'mutation.json');
-        const passed = fs.existsSync(reportFile)
-            ? summarise(JSON.parse(fs.readFileSync(reportFile, 'utf8')) as Report)
-            : true;
-        console.log(`\nwall time: ${seconds}s · report: ${path.relative(REPO, path.join(REPORT_DIR, 'mutation.html'))}`);
-        if (status !== 0) process.exitCode = status ?? 1;
-        else if (!passed) process.exitCode = 1;
+        if (interrupted) {
+            console.log('\ninterrupted: no score');
+            process.exitCode = 130;
+        } else if (fs.existsSync(reportFile)) {
+            const passed = summarise(JSON.parse(fs.readFileSync(reportFile, 'utf8')) as Report);
+            console.log(`\nwall time: ${seconds}s · report: ${path.relative(REPO, path.join(REPORT_DIR, 'mutation.html'))}`);
+            if (run.status !== 0) process.exitCode = run.status ?? 1;
+            else if (!passed) process.exitCode = 1;
+        } else {
+            // Nothing to summarise, so no score and no verdict: a missing report is a failure.
+            console.log(`\nno report: Stryker failed before scoring (exit ${run.status ?? run.signal}) — see its output above`);
+            process.exitCode = run.status || 1;
+        }
     }
 
     if (browserOnly.length > 0) {
@@ -216,4 +265,7 @@ function main(): void {
     }
 }
 
-main();
+main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+});

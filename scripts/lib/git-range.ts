@@ -53,8 +53,12 @@ export function resolveRange(spec: string): ResolvedRange {
     return { base, head, atHead };
 }
 
-/** Parses `git diff -U0` output into the added/changed line ranges of each surviving file. */
-function parseZeroContextDiff(diff: string): ChangedFile[] {
+/**
+ * Parses `git diff -U0` output into the added/changed line ranges of each surviving file.
+ * Exported for tests/scripts/git-range.test.ts: it decides which lines get mutated, and a
+ * slip here reads as "no changed logic" rather than as an error.
+ */
+export function parseZeroContextDiff(diff: string): ChangedFile[] {
     const files: ChangedFile[] = [];
     let current: ChangedFile | null = null;
 

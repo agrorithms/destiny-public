@@ -102,6 +102,20 @@ describe('the Difficulty of an activity hash', () => {
     });
 });
 
+describe('the raid of an activity hash', () => {
+    it('every version of a raid, Master and Epic included, still resolves to that raid', () => {
+        // Retagging must not cost a hash its raid: raid_key is what groups every version under
+        // one card (decision 5).
+        expect(manifest.getRaidKeyFromHash(1681562271)).toBe('vault_of_glass');
+        expect(manifest.getRaidKeyFromHash(3817322389)).toBe('the_desert_perpetual');
+        for (const [key, raid] of Object.entries(getAllRaidDefinitions())) {
+            for (const hash of Object.keys(raid.hashes).map(Number)) {
+                expect(manifest.getRaidKeyFromHash(hash)).toBe(key);
+            }
+        }
+    });
+});
+
 describe('which raids have a version at a Difficulty', () => {
     it('Master leaves out DSC, Garden, Last Wish, the Pantheons and The Desert Perpetual', () => {
         expect(sorted(getRaidKeysWithDifficulty('master'))).toEqual(sorted([

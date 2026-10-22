@@ -24,15 +24,15 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
    - [x] `src/lib/bungie/manifest.test.ts` (new)
    - [x] `scripts/cleanup/debug-sessions.ts`: reads the new `hashes` shape. Gitignored (`scripts/cleanup/*`), so the edit is local only and no commit carries it
 2. Server: the clause, the routes, the omitted boards
-   - [ ] `src/lib/db/queries.ts`: `buildRaidFilterClause` on `activity_hash`, accepts `epic`
-   - [ ] `src/lib/cache/leaderboard-cache.ts`: boards narrowed to raids with a version at the Difficulty
-   - [ ] `src/app/api/leaderboard/route.ts`: accepts `difficulty=epic`
-   - [ ] `src/app/api/analytics/raid-stats/route.ts`: accepts `difficulty=epic`
-   - [ ] `tests/db/leaderboard.test.ts`
-   - [ ] `tests/db/fastest-clears.test.ts`
-   - [ ] `tests/db/raid-stats.test.ts`
-   - [ ] `tests/routes/leaderboard.test.ts` (new)
-   - [ ] `tests/routes/raid-stats.test.ts` (new)
+   - [x] `src/lib/db/queries.ts`: `buildRaidFilterClause` on `activity_hash`, accepts `epic`
+   - [x] `src/lib/cache/leaderboard-cache.ts`: boards narrowed to raids with a version at the Difficulty
+   - [x] `src/app/api/leaderboard/route.ts`: accepts `difficulty=epic`
+   - [x] `src/app/api/analytics/raid-stats/route.ts`: accepts `difficulty=epic`
+   - [x] `tests/db/leaderboard.test.ts`
+   - [x] `tests/db/fastest-clears.test.ts`
+   - [x] `tests/db/raid-stats.test.ts`
+   - [x] `tests/routes/leaderboard.test.ts` (new)
+   - [x] `tests/routes/raid-stats.test.ts` (new)
 3. UI, e2e and bookkeeping
    - [ ] `src/hooks/useLeaderboardPrefs.ts`: `DifficultyFilter` accepts `epic`
    - [ ] `src/app/leaderboard/page.tsx`: the Difficulty dropdown, back on both tabs

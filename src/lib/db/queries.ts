@@ -1,6 +1,6 @@
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
-import type { Difficulty } from '../bungie/manifest';
+import { getHashesWithDifficulty, type Difficulty } from '../bungie/manifest';
 
 /**
  * Instance-level: the run reached the end, having been started from the beginning.
@@ -854,10 +854,16 @@ export function buildRaidFilterClause(filters?: RaidFilters): { clause: string; 
     let clause = '';
     const params: (string | number)[] = [];
 
-    if (filters?.difficulty === 'master') {
-        clause += ` AND p.difficulty_tier > 0`;
-    } else if (filters?.difficulty === 'normal') {
-        clause += ` AND COALESCE(p.difficulty_tier, -1) <= 0`;
+    // Difficulty is a property of the activity hash (#41), never of `difficulty_tier`, which
+    // records Feats. Normal is every hash tagged neither Master nor Epic, a hash in no raid
+    // definition included, so All = Normal + Master + Epic holds over every stored run.
+    if (filters?.difficulty) {
+        const tagged = filters.difficulty === 'normal'
+            ? [...getHashesWithDifficulty('master'), ...getHashesWithDifficulty('epic')]
+            : getHashesWithDifficulty(filters.difficulty);
+        const operator = filters.difficulty === 'normal' ? 'NOT IN' : 'IN';
+        clause += ` AND p.activity_hash ${operator} (${tagged.map(() => '?').join(', ')})`;
+        params.push(...tagged);
     }
 
     if (filters?.exactPlayers != null) {

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const maxPlayersParam = searchParams.get('maxPlayers');
 
     const filters: RaidFilters = {};
-    if (difficultyParam === 'normal' || difficultyParam === 'master') {
+    if (difficultyParam === 'normal' || difficultyParam === 'master' || difficultyParam === 'epic') {
         filters.difficulty = difficultyParam;
     }
     if (exactPlayersParam) {

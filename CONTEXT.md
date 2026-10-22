@@ -57,6 +57,20 @@ Destiny's six-player endgame activity, and the only activity type the leaderboar
 active-sessions list cover. Other activities are observed but never displayed.
 _Avoid_: activity (too broad), instance
 
+**Difficulty**:
+Which version of a Raid was played: Normal, Master or Epic. A Raid's versions are one Raid, not
+several, so they share its leaderboard card and its active-sessions section; Difficulty only ever
+narrows what is shown, never splits it. Every version Bungie labels neither Master nor Epic —
+Standard, Contest, Legend, Challenge Mode and the rest — is Normal. Epic exists for The Desert
+Perpetual alone, which has no Master.
+_Avoid_: tier, difficulty tier, mode, hard mode
+
+**Feats**:
+Optional modifiers a fireteam opts into in newer raids and the Pantheons. Not a Difficulty: a run
+with Feats on is still a Normal, Master or Epic run of its Raid, and Bungie's own
+`activityDifficultyTier` field records Feats, not Difficulty, despite its name.
+_Avoid_: difficulty, difficulty tier
+
 **Full Clear**:
 A raid that began at the first encounter, as opposed to at a checkpoint, and reached the final
 boss. Both halves are required, and each has its own signal: only Bungie's own report that the

@@ -118,17 +118,25 @@ test.describe('the Difficulty dropdown', () => {
         await expect(cardHeadings(page)).toHaveText([DIFFICULTY_DP.name]);
     });
 
-    test('a value stored before Epic existed still loads', async ({ page }) => {
-        // 'master' is what a visitor kept from before #41's dropdown came back.
-        await page.addInitScript((key) => localStorage.setItem(key, 'master'), DIFFICULTY_FILTER_KEY);
+    // 'normal' and 'master' are what a visitor kept from before #41's dropdown came back. Each
+    // case also checks the board the stored value asked for, not only the dropdown's value.
+    for (const stored of ['normal', 'master'] as const) {
+        test(`a stored '${stored}' from before Epic existed still loads`, async ({ page }) => {
+            await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [DIFFICULTY_FILTER_KEY, stored]);
 
-        const request = page.waitForRequest((r) => isLeaderboardRequest(r, 'master'));
-        await page.goto('/leaderboard');
-        await request;
+            const request = page.waitForRequest((r) => isLeaderboardRequest(r, stored));
+            await page.goto('/leaderboard');
+            await request;
 
-        await expect(difficultySelect(page)).toHaveValue('master');
-        await expect(raidCard(page, RAID_WITHOUT_MASTER)).toHaveCount(0);
-    });
+            await expect(difficultySelect(page)).toHaveValue(stored);
+            const other = stored === 'normal' ? 'master' : 'normal';
+            const vog = raidCard(page, DIFFICULTY_VOG.name);
+            await expect(vog.getByRole('link', { name: difficultyPlayerName(stored) })).toBeVisible();
+            await expect(vog.getByRole('link', { name: difficultyPlayerName(other) })).toHaveCount(0);
+            // Deep Stone Crypt has a Normal version and no Master one.
+            await expect(raidCard(page, RAID_WITHOUT_MASTER)).toHaveCount(stored === 'normal' ? 1 : 0);
+        });
+    }
 
     test('an unreadable stored value reads as All', async ({ page }) => {
         await page.addInitScript((key) => localStorage.setItem(key, 'legendary'), DIFFICULTY_FILTER_KEY);

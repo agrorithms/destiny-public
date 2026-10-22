@@ -2358,7 +2358,10 @@ existing leaderboard, Fastest Clears and player-name specs passed unchanged with
 4. **Epic on Fastest Clears** sends `board=fastest&difficulty=epic`. The Desert Perpetual is the
    only card, with India on it.
 5. **The choice survives a reload**: `epic` is selected again and the reload's request carries it.
-6. **A value stored before Epic existed (`master`) loads**: it is selected and sent.
+6. **A value stored before Epic existed loads**, for `normal` and for `master` (two tests): it is
+   selected and sent, Vault of Glass shows that Difficulty's player and not the other's, and Deep
+   Stone Crypt has a card under `normal` only. The `normal` case was added in #41's review (P2)
+   and passed on its first run: it covers a path that already worked, so it has no red run.
 7. **An unreadable stored value reads as All**: nothing is sent and every card shows.
 8. **Phone (360×780):** after choosing Master, `expectNoOverflow(page)` passes.
 

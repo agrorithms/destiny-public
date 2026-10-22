@@ -46,7 +46,7 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
 - [x] S1 `tests/db/raid-stats.test.ts`: "difficulty=master counts Master-hash instances…" seeds the Feats run on DP Normal
 - [x] S2 `tests/db/leaderboard.test.ts`: "difficulty + exactPlayers compose correctly" gives each run its own player and asserts the row's membershipId
 - [x] S3 `tests/db/raid-stats.test.ts`: "filters compose: difficulty + maxPlayers" moves the Feats run to DP Normal and asserts the raid
-- [ ] P2 `e2e/leaderboard-difficulty.spec.ts`: a stored `normal` still loads, beside `master`
+- [x] P2 `e2e/leaderboard-difficulty.spec.ts`: a stored `normal` still loads, beside `master`
 - [x] S4 `src/lib/cache/leaderboard-cache.ts`: `emptyBody(request)` for the no-version early return
 - [x] S5 `src/app/leaderboard/page.tsx`: the Difficulty options mapped from `DIFFICULTIES`
 - [x] S6 `Difficulty` imported from `difficulty.ts` everywhere; the re-export in `manifest.ts` dropped
@@ -61,6 +61,9 @@ other 56 tests in the two files were skipped by `-t`.
 - S3: `expected [ [ 'the_desert_perpetual', { Warlock: 1 } ] ]` against `[ [ 'vault_of_glass', { Warlock: 1 } ] ]`
 
 With the clause restored, both files pass (59/59).
+
+**P2** passed on its first run (both stored-value cases, in a full `npm run e2e` of 168/168). It
+covers a path that already worked, so it has no red run.
 
 ## Surviving mutants
 

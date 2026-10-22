@@ -20,9 +20,9 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
 ## Chunks
 
 1. The table and its lookups
-   - [ ] `src/lib/bungie/manifest.ts`: `hashes` tagged with a Difficulty; `getDifficultyFromHash`, `getRaidKeysWithDifficulty`, `getHashesWithDifficulty`
-   - [ ] `src/lib/bungie/manifest.test.ts` (new)
-   - [ ] `scripts/cleanup/debug-sessions.ts`: reads the new `hashes` shape
+   - [x] `src/lib/bungie/manifest.ts`: `hashes` tagged with a Difficulty; `getDifficultyFromHash`, `getRaidKeysWithDifficulty`, `getHashesWithDifficulty`
+   - [x] `src/lib/bungie/manifest.test.ts` (new)
+   - [x] `scripts/cleanup/debug-sessions.ts`: reads the new `hashes` shape. Gitignored (`scripts/cleanup/*`), so the edit is local only and no commit carries it
 2. Server: the clause, the routes, the omitted boards
    - [ ] `src/lib/db/queries.ts`: `buildRaidFilterClause` on `activity_hash`, accepts `epic`
    - [ ] `src/lib/cache/leaderboard-cache.ts`: boards narrowed to raids with a version at the Difficulty

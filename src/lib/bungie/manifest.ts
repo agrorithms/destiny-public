@@ -11,7 +11,12 @@ export type Difficulty = 'normal' | 'master' | 'epic';
 export interface RaidDefinition {
     name: string;
     slug: string;
-    hashes: number[];
+    /**
+     * Every activity hash of the raid, each tagged with its Difficulty. Labels come from
+     * `data/manifest-cache.json`: a hash Bungie labels neither Master nor Epic is Normal
+     * (Standard, Contest, Legend, Expert, Challenge Mode, unlabelled, the Pantheons' Customize).
+     */
+    hashes: Record<number, Difficulty>;
 }
 
 // Known raid activity hashes — fallback/starter values
@@ -20,78 +25,81 @@ const RAID_DEFINITIONS: Record<string, RaidDefinition> = {
     pantheon_insurrection_prime_revolutionary: {
         name: "Pantheon: Insurrection Prime Revolutionary",
         slug: 'pantheon-insurrection-prime-revolutionary',
-        hashes: [747671496],
+        hashes: { 747671496: 'normal' },
     },
     pantheon_calus_resplendent: {
         name: "Pantheon: Calus Resplendent",
         slug: 'pantheon-calus-resplendent',
-        hashes: [1516551982],
+        hashes: { 1516551982: 'normal' },
     },
     the_desert_perpetual: {
         name: "The Desert Perpetual",
         slug: 'the-desert-perpetual',
-        hashes: [2586252122, 1044919065, 3896382790, 3817322389],
+        hashes: { 2586252122: 'epic', 1044919065: 'normal', 3896382790: 'normal', 3817322389: 'epic' },
     },
     salvations_edge: {
         name: "Salvation's Edge",
         slug: 'salvations-edge',
-        hashes: [2192826039, 940375169, 1541433876, 4129614942],
+        hashes: { 2192826039: 'normal', 940375169: 'normal', 1541433876: 'normal', 4129614942: 'master' },
     },
     crotas_end: {
         name: "Crota's End",
         slug: 'crotas-end',
-        hashes: [1566480315, 1507509200, 4179289725, 107319834, 156253568],
+        hashes: { 1566480315: 'normal', 1507509200: 'master', 4179289725: 'normal', 107319834: 'normal', 156253568: 'normal' },
     },
     root_of_nightmares: {
         name: 'Root of Nightmares',
         slug: 'root-of-nightmares',
-        hashes: [2381413764, 2918919505],
+        hashes: { 2381413764: 'normal', 2918919505: 'master' },
     },
     kings_fall: {
         name: "King's Fall",
         slug: 'kings-fall',
-        hashes: [1374392663, 2964135793, 3257594522, 1063970578, 2897223272],
+        hashes: { 1374392663: 'normal', 2964135793: 'master', 3257594522: 'master', 1063970578: 'normal', 2897223272: 'normal' },
     },
     vow_of_the_disciple: {
         name: 'Vow of the Disciple',
         slug: 'vow-of-the-disciple',
-        hashes: [2906950631, 4156879541, 4217492330, 1441982566, 3889634515],
+        hashes: { 2906950631: 'normal', 4156879541: 'normal', 4217492330: 'master', 1441982566: 'normal', 3889634515: 'master' },
     },
     vault_of_glass: {
         name: 'Vault of Glass',
         slug: 'vault-of-glass',
-        hashes: [3881495763, 1681562271, 3022541210, 1485585878, 3711931140],
+        hashes: { 3881495763: 'normal', 1681562271: 'master', 3022541210: 'master', 1485585878: 'normal', 3711931140: 'normal' },
     },
     deep_stone_crypt: {
         name: 'Deep Stone Crypt',
         slug: 'deep-stone-crypt',
-        hashes: [910380154, 3976949817],
+        hashes: { 910380154: 'normal', 3976949817: 'normal' },
     },
     garden_of_salvation: {
         name: 'Garden of Salvation',
         slug: 'garden-of-salvation',
-        hashes: [2659723068, 3458480158, 1042180643, 2497200493, 3845997235],
+        hashes: { 2659723068: 'normal', 3458480158: 'normal', 1042180643: 'normal', 2497200493: 'normal', 3845997235: 'normal' },
     },
     last_wish: {
         name: 'Last Wish',
         slug: 'last-wish',
-        hashes: [2122313384, 1661734046, 2214608157, 2214608156],
+        hashes: { 2122313384: 'normal', 1661734046: 'normal', 2214608157: 'normal', 2214608156: 'normal' },
     },
     pantheon_morgeth_surpassing: {
         name: "Pantheon: Morgeth Surpassing",
         slug: 'pantheon-morgeth-surpassing',
-        hashes: [2530656885],
+        hashes: { 2530656885: 'normal' },
     },
 };
 
 const raidDefinitions: Record<string, RaidDefinition> = RAID_DEFINITIONS;
 const hashToRaidMap: Map<number, string> = new Map();
+const hashToDifficultyMap: Map<number, Difficulty> = new Map();
 
 function buildHashMap() {
     hashToRaidMap.clear();
+    hashToDifficultyMap.clear();
     for (const [key, raid] of Object.entries(raidDefinitions)) {
-        for (const hash of raid.hashes) {
-            hashToRaidMap.set(hash, key);
+        for (const [hash, difficulty] of Object.entries(raid.hashes)) {
+            hashToRaidMap.set(Number(hash), key);
+            hashToDifficultyMap.set(Number(hash), difficulty);
         }
     }
 }
@@ -115,16 +123,24 @@ export function getAllRaidDefinitions(): Record<string, RaidDefinition> {
     return { ...raidDefinitions };
 }
 
-export function getDifficultyFromHash(_hash: number): Difficulty | undefined {
-    throw new Error('not implemented');
+/** Undefined for a hash in no raid definition. */
+export function getDifficultyFromHash(hash: number): Difficulty | undefined {
+    return hashToDifficultyMap.get(hash);
 }
 
-export function getHashesWithDifficulty(_difficulty: Difficulty): number[] {
-    throw new Error('not implemented');
+/** Every raid hash tagged with `difficulty`, across all raids. */
+export function getHashesWithDifficulty(difficulty: Difficulty): number[] {
+    return [...hashToDifficultyMap].filter(([, d]) => d === difficulty).map(([hash]) => hash);
 }
 
-export function getRaidKeysWithDifficulty(_difficulty: Difficulty): string[] {
-    throw new Error('not implemented');
+/**
+ * The raids that have a version at `difficulty`, in table order. Known ahead of time, so a raid
+ * with no Master version is told apart from one with no Master clears in the window (#41).
+ */
+export function getRaidKeysWithDifficulty(difficulty: Difficulty): string[] {
+    return Object.entries(raidDefinitions)
+        .filter(([, raid]) => Object.values(raid.hashes).includes(difficulty))
+        .map(([key]) => key);
 }
 
 export function getRaidNameFromHash(hash: number): string {

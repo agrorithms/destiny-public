@@ -5,6 +5,9 @@ import type { DestinyActivityDefinition } from './types';
 
 const MANIFEST_CACHE_PATH = path.join(process.cwd(), 'data', 'manifest-cache.json');
 
+/** Which version of a Raid was played (CONTEXT.md). Every hash has exactly one. */
+export type Difficulty = 'normal' | 'master' | 'epic';
+
 export interface RaidDefinition {
     name: string;
     slug: string;
@@ -110,6 +113,18 @@ export function getRaidDefinition(key: string): RaidDefinition | undefined {
 
 export function getAllRaidDefinitions(): Record<string, RaidDefinition> {
     return { ...raidDefinitions };
+}
+
+export function getDifficultyFromHash(_hash: number): Difficulty | undefined {
+    throw new Error('not implemented');
+}
+
+export function getHashesWithDifficulty(_difficulty: Difficulty): number[] {
+    throw new Error('not implemented');
+}
+
+export function getRaidKeysWithDifficulty(_difficulty: Difficulty): string[] {
+    throw new Error('not implemented');
 }
 
 export function getRaidNameFromHash(hash: number): string {

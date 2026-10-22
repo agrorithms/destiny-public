@@ -22,11 +22,6 @@ beforeEach(async () => {
     manifest = await import('./manifest');
 });
 
-const getAllRaidDefinitions: Manifest['getAllRaidDefinitions'] = () => manifest.getAllRaidDefinitions();
-const getDifficultyFromHash: Manifest['getDifficultyFromHash'] = (hash) => manifest.getDifficultyFromHash(hash);
-const getHashesWithDifficulty: Manifest['getHashesWithDifficulty'] = (d) => manifest.getHashesWithDifficulty(d);
-const getRaidKeysWithDifficulty: Manifest['getRaidKeysWithDifficulty'] = (d) => manifest.getRaidKeysWithDifficulty(d);
-
 /** Every hash Bungie labels "Master". */
 const MASTER_HASHES = [
     4129614942, // Salvation's Edge: Master
@@ -60,7 +55,7 @@ const DOUBTFUL_NORMAL_HASHES = [
 ];
 
 function allTableHashes(): number[] {
-    return Object.values(getAllRaidDefinitions()).flatMap((raid) => Object.keys(raid.hashes).map(Number));
+    return Object.values(manifest.getAllRaidDefinitions()).flatMap((raid) => Object.keys(raid.hashes).map(Number));
 }
 
 function sorted<T>(values: T[]): T[] {
@@ -69,19 +64,19 @@ function sorted<T>(values: T[]): T[] {
 
 describe('the Difficulty of an activity hash', () => {
     it.each(MASTER_HASHES)('%i is Master', (hash) => {
-        expect(getDifficultyFromHash(hash)).toBe('master');
+        expect(manifest.getDifficultyFromHash(hash)).toBe('master');
     });
 
     it.each(EPIC_HASHES)('%i is Epic', (hash) => {
-        expect(getDifficultyFromHash(hash)).toBe('epic');
+        expect(manifest.getDifficultyFromHash(hash)).toBe('epic');
     });
 
     it.each(DOUBTFUL_NORMAL_HASHES)('%i, labelled neither Master nor Epic, is Normal', (hash) => {
-        expect(getDifficultyFromHash(hash)).toBe('normal');
+        expect(manifest.getDifficultyFromHash(hash)).toBe('normal');
     });
 
     it('a hash in no raid definition has no Difficulty', () => {
-        expect(getDifficultyFromHash(1)).toBeUndefined();
+        expect(manifest.getDifficultyFromHash(1)).toBeUndefined();
     });
 
     it('every hash in the table appears once, under one raid, with one Difficulty', () => {
@@ -89,16 +84,16 @@ describe('the Difficulty of an activity hash', () => {
 
         expect(new Set(hashes).size).toBe(hashes.length);
         for (const hash of hashes) {
-            expect(['normal', 'master', 'epic']).toContain(getDifficultyFromHash(hash));
+            expect(['normal', 'master', 'epic']).toContain(manifest.getDifficultyFromHash(hash));
         }
     });
 
     it('the Master and Epic hashes are exactly the labelled ones, and every other hash is Normal', () => {
-        expect(sorted(getHashesWithDifficulty('master'))).toEqual(sorted(MASTER_HASHES));
-        expect(sorted(getHashesWithDifficulty('epic'))).toEqual(sorted(EPIC_HASHES));
+        expect(sorted(manifest.getHashesWithDifficulty('master'))).toEqual(sorted(MASTER_HASHES));
+        expect(sorted(manifest.getHashesWithDifficulty('epic'))).toEqual(sorted(EPIC_HASHES));
 
         const tagged = new Set([...MASTER_HASHES, ...EPIC_HASHES]);
-        expect(sorted(getHashesWithDifficulty('normal'))).toEqual(sorted(allTableHashes().filter((h) => !tagged.has(h))));
+        expect(sorted(manifest.getHashesWithDifficulty('normal'))).toEqual(sorted(allTableHashes().filter((h) => !tagged.has(h))));
     });
 });
 
@@ -108,7 +103,7 @@ describe('the raid of an activity hash', () => {
         // one card (decision 5).
         expect(manifest.getRaidKeyFromHash(1681562271)).toBe('vault_of_glass');
         expect(manifest.getRaidKeyFromHash(3817322389)).toBe('the_desert_perpetual');
-        for (const [key, raid] of Object.entries(getAllRaidDefinitions())) {
+        for (const [key, raid] of Object.entries(manifest.getAllRaidDefinitions())) {
             for (const hash of Object.keys(raid.hashes).map(Number)) {
                 expect(manifest.getRaidKeyFromHash(hash)).toBe(key);
             }
@@ -118,7 +113,7 @@ describe('the raid of an activity hash', () => {
 
 describe('which raids have a version at a Difficulty', () => {
     it('Master leaves out DSC, Garden, Last Wish, the Pantheons and The Desert Perpetual', () => {
-        expect(sorted(getRaidKeysWithDifficulty('master'))).toEqual(sorted([
+        expect(sorted(manifest.getRaidKeysWithDifficulty('master'))).toEqual(sorted([
             'salvations_edge',
             'crotas_end',
             'root_of_nightmares',
@@ -129,10 +124,10 @@ describe('which raids have a version at a Difficulty', () => {
     });
 
     it('Epic is The Desert Perpetual alone', () => {
-        expect(getRaidKeysWithDifficulty('epic')).toEqual(['the_desert_perpetual']);
+        expect(manifest.getRaidKeysWithDifficulty('epic')).toEqual(['the_desert_perpetual']);
     });
 
     it('every raid has a Normal version', () => {
-        expect(sorted(getRaidKeysWithDifficulty('normal'))).toEqual(sorted(Object.keys(getAllRaidDefinitions())));
+        expect(sorted(manifest.getRaidKeysWithDifficulty('normal'))).toEqual(sorted(Object.keys(manifest.getAllRaidDefinitions())));
     });
 });

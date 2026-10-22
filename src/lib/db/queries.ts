@@ -1,6 +1,7 @@
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
-import { getHashesWithDifficulty, type Difficulty } from '../bungie/manifest';
+import { getHashesWithDifficulty } from '../bungie/manifest';
+import type { Difficulty } from '../bungie/difficulty';
 
 /**
  * Instance-level: the run reached the end, having been started from the beginning.

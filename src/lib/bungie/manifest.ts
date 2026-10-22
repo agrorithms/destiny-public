@@ -4,8 +4,6 @@ import { getBungieClient } from './client';
 import type { DestinyActivityDefinition } from './types';
 import type { Difficulty } from './difficulty';
 
-export type { Difficulty };
-
 const MANIFEST_CACHE_PATH = path.join(process.cwd(), 'data', 'manifest-cache.json');
 
 export interface RaidDefinition {

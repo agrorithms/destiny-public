@@ -49,8 +49,8 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
 - [ ] P2 `e2e/leaderboard-difficulty.spec.ts`: a stored `normal` still loads, beside `master`
 - [x] S4 `src/lib/cache/leaderboard-cache.ts`: `emptyBody(request)` for the no-version early return
 - [x] S5 `src/app/leaderboard/page.tsx`: the Difficulty options mapped from `DIFFICULTIES`
-- [ ] S6 `Difficulty` imported from `difficulty.ts` everywhere; the re-export in `manifest.ts` dropped
-- [ ] S7 `src/lib/bungie/manifest.test.ts`: the forwarding wrappers gone
+- [x] S6 `Difficulty` imported from `difficulty.ts` everywhere; the re-export in `manifest.ts` dropped
+- [x] S7 `src/lib/bungie/manifest.test.ts`: the forwarding wrappers gone
 
 **S1–S3 red run against the old clause** (`AND p.difficulty_tier > 0` put back for `master` in
 `buildRaidFilterClause`, not committed), at 5a50d5a plus the test edits: all three failed, and the

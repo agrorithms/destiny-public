@@ -95,7 +95,6 @@ const hashToDifficultyMap: Map<number, Difficulty> = new Map();
 
 function buildHashMap() {
     hashToRaidMap.clear();
-    hashToDifficultyMap.clear();
     for (const [key, raid] of Object.entries(raidDefinitions)) {
         for (const [hash, difficulty] of Object.entries(raid.hashes)) {
             hashToRaidMap.set(Number(hash), key);

@@ -49,10 +49,14 @@ beforeEach(() => {
     __resetSwrCacheForTests();
 });
 
-async function get(query: Record<string, string>): Promise<Body> {
+async function respond(query: Record<string, string>): Promise<Response> {
     const response = await GET(new NextRequest(`http://localhost:3100/api/leaderboard?${new URLSearchParams(query)}`));
     expect(response.status).toBe(200);
-    return response.json();
+    return response;
+}
+
+async function get(query: Record<string, string>): Promise<Body> {
+    return (await respond(query)).json();
 }
 
 /** The per-raid request for a board: Full Clears' Per Raid view, or Fastest Clears. */
@@ -130,11 +134,13 @@ describe.each<Board>(['fullClears', 'fastest'])('which boards the %s response ho
         expect(body.raidKeys).toEqual(['the_desert_perpetual']);
     });
 
-    it('a selected raid with no version at the Difficulty has no board', async () => {
-        const body = await get(perRaid(board, { difficulty: 'master', raids: 'deep_stone_crypt' }));
+    it('a selected raid with no version at the Difficulty has no board, and nothing is cached for it', async () => {
+        const response = await respond(perRaid(board, { difficulty: 'master', raids: 'deep_stone_crypt' }));
+        const body: Body = await response.json();
 
         expect(body.leaderboards).toEqual({});
         expect(body.raidKeys).toEqual([]);
+        expect(response.headers.get('X-Cache')).toBe('BYPASS');
     });
 
     it('a selection keeps only its raids with a version at the Difficulty', async () => {

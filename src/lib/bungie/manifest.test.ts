@@ -1,10 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import {
-    getAllRaidDefinitions,
-    getDifficultyFromHash,
-    getHashesWithDifficulty,
-    getRaidKeysWithDifficulty,
-} from './manifest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+type Manifest = typeof import('./manifest');
 
 /**
  * Difficulty is a property of the activity hash (#41): each version of a raid has its own hash,
@@ -13,7 +9,23 @@ import {
  *
  * Expected values are written out by hand from those labels rather than read back from the table,
  * so a test can disagree with the table.
+ *
+ * The module is imported afresh before every test, not once at the top. The table and the
+ * hash→Difficulty map are built while the module loads, so a test that only calls the lookups
+ * on an already-loaded module can never see a mistagged hash; mutation testing proved it (a tag
+ * blanked to "" survived every test). Loading it inside each test is what lets a wrong tag fail.
  */
+let manifest: Manifest;
+
+beforeEach(async () => {
+    vi.resetModules();
+    manifest = await import('./manifest');
+});
+
+const getAllRaidDefinitions: Manifest['getAllRaidDefinitions'] = () => manifest.getAllRaidDefinitions();
+const getDifficultyFromHash: Manifest['getDifficultyFromHash'] = (hash) => manifest.getDifficultyFromHash(hash);
+const getHashesWithDifficulty: Manifest['getHashesWithDifficulty'] = (d) => manifest.getHashesWithDifficulty(d);
+const getRaidKeysWithDifficulty: Manifest['getRaidKeysWithDifficulty'] = (d) => manifest.getRaidKeysWithDifficulty(d);
 
 /** Every hash Bungie labels "Master". */
 const MASTER_HASHES = [

@@ -10,6 +10,10 @@ import { useViewMode, useTimeRange, useLeaderboardSize, useDifficultyFilter, use
 import type { FastestClearEntry, IndividualLeaderboard, LeaderboardResponseEntry } from '@/lib/cache/leaderboard-cache';
 import { parseLeaderboardBoard } from './leaderboard-board';
 import { LeaderboardTabs } from './LeaderboardTabs';
+import { DIFFICULTIES, type Difficulty } from '@/lib/bungie/difficulty';
+
+/** The Difficulty dropdown's option labels, in `DIFFICULTIES` order after All. */
+const DIFFICULTY_LABELS: Record<Difficulty, string> = { normal: 'Normal', master: 'Master', epic: 'Epic' };
 
 interface RaidOption {
     key: string;
@@ -352,9 +356,7 @@ export default function LeaderboardPage({
                             className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 ui-toggle-idle"
                         >
                             <option value="">All</option>
-                            <option value="normal">Normal</option>
-                            <option value="master">Master</option>
-                            <option value="epic">Epic</option>
+                            {DIFFICULTIES.map((d) => <option key={d} value={d}>{DIFFICULTY_LABELS[d]}</option>)}
                         </select>
                     </div>
 

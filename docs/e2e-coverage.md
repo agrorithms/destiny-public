@@ -2362,9 +2362,10 @@ existing leaderboard, Fastest Clears and player-name specs passed unchanged with
 7. **An unreadable stored value reads as All**: nothing is sent and every card shows.
 8. **Phone (360×780):** after choosing Master, `expectNoOverflow(page)` passes.
 
-**Bite:** the red run, at `03ff690` before the dropdown came back. All nine specs failed (the
-select wasn't there: `toHaveText`/`toHaveValue` failed on 1 and 7, `selectOption` or
-`waitForRequest` timed out on the rest). In the same run the existing leaderboard (5), Fastest
+**Bite:** the red run, at `03ff690` before the dropdown came back. All nine specs failed. 1 failed on
+`toHaveText`, 7 on `toHaveValue` and 8 on `toBeVisible`, because there was no select. 2–5 timed out
+in `selectOption`. 6 timed out waiting for a `difficulty=master` request, because the page never
+read the stored value. In the same run the existing leaderboard (5), Fastest
 Clears (6) and player-name (6) specs passed with the new seed. No deliberate break beyond it.
 
 ### Still NOT covered

@@ -7,6 +7,10 @@ import { getRaidStats } from '../../src/lib/db/queries';
 beforeEach(() => { resetTestDb(); });
 
 const SALVATIONS_EDGE_HASH = 2192826039;
+const VOG_NORMAL = 3881495763;
+const VOG_MASTER = 1681562271;
+const DP_NORMAL = 1044919065;
+const DP_EPIC = 3817322389;
 
 describe('getRaidStats', () => {
     it('returns per-raid fastest clear and DNF rate', () => {
@@ -79,24 +83,34 @@ describe('getRaidStats', () => {
         expect(stats[0].allAttempts.sampleSize).toBe(6);
     });
 
-    it('difficulty=master filters to master-only instances', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 4 });
-        seedRun({ instanceId: '2', completedBy: ['p2'], difficultyTier: -1 });
-        seedRun({ instanceId: '3', completedBy: ['p3'] }); // no tier = normal
+    // Difficulty comes from the activity hash (#41); difficulty_tier records Feats, so each
+    // test crosses the two and a filter that still read it would fail.
+    it('difficulty=master counts Master-hash instances, not a Normal one with Feats on', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, difficultyTier: 0 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: VOG_NORMAL, difficultyTier: 4 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: DP_EPIC });
 
         const stats = getRaidStats(24, { difficulty: 'master' });
-        expect(stats).toHaveLength(1);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 1 });
+        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['vault_of_glass', 1]]);
     });
 
-    it('difficulty=normal includes NULL and non-master tiers', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 4 });
-        seedRun({ instanceId: '2', completedBy: ['p2'], difficultyTier: -1 });
-        seedRun({ instanceId: '3', completedBy: ['p3'] }); // NULL tier
+    it('difficulty=normal counts Normal-hash instances, Feats on or not', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, difficultyTier: 0 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: VOG_NORMAL, difficultyTier: 4 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: VOG_NORMAL }); // NULL tier
+        seedRun({ instanceId: '4', completedBy: ['p4'], activityHash: DP_EPIC });
 
         const stats = getRaidStats(24, { difficulty: 'normal' });
-        expect(stats).toHaveLength(1);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 2 });
+        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['vault_of_glass', 2]]);
+    });
+
+    it('difficulty=epic counts only Epic-hash instances', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: DP_EPIC });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: DP_NORMAL, difficultyTier: 2 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: VOG_MASTER });
+
+        const stats = getRaidStats(24, { difficulty: 'epic' });
+        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['the_desert_perpetual', 1]]);
     });
 
     it('exactPlayers filters to exact unique_player_count match', () => {
@@ -121,9 +135,9 @@ describe('getRaidStats', () => {
     });
 
     it('filters compose: difficulty + maxPlayers', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 4, uniquePlayerCount: 1 });
-        seedRun({ instanceId: '2', completedBy: ['p2'], difficultyTier: 4, uniquePlayerCount: 4 });
-        seedRun({ instanceId: '3', completedBy: ['p3'], difficultyTier: -1, uniquePlayerCount: 1 });
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 1 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: VOG_MASTER, uniquePlayerCount: 4 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: VOG_NORMAL, difficultyTier: 4, uniquePlayerCount: 1 });
 
         const stats = getRaidStats(24, { difficulty: 'master', maxPlayers: 3 });
         expect(stats).toHaveLength(1);

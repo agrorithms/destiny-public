@@ -16,6 +16,10 @@ import { hoursAgo, seedPlayer, seedRun } from '../helpers/seed';
  */
 const RAID = 'salvations_edge';
 const CROTAS_END = 1566480315;
+const VOG_NORMAL = 3881495763;
+const VOG_MASTER = 1681562271;
+const DP_NORMAL = 1044919065;
+const DP_EPIC = 3817322389;
 const HOURS_BACK = 24;
 
 beforeEach(() => {
@@ -234,6 +238,27 @@ describe('filters', () => {
         const rows = runFastestClearRows(HOURS_BACK, RAID, 10, { exactPlayers: 1 });
 
         expect(rows.map((r) => [r.membershipId, r.clearTimeSeconds])).toEqual([['p1', 2400]]);
+    });
+
+    // Difficulty comes from the activity hash (#41), never from difficulty_tier (Feats).
+    it('master keeps only Master-hash runs, so a faster Normal run with Feats on does not count', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, difficultyTier: 0, activityDurationSeconds: 2400 });
+        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: VOG_NORMAL, difficultyTier: 2, activityDurationSeconds: 1200 });
+
+        const rows = runFastestClearRows(HOURS_BACK, 'vault_of_glass', 10, { difficulty: 'master' });
+
+        expect(rows.map((r) => [r.membershipId, r.clearTimeSeconds])).toEqual([['p1', 2400]]);
+    });
+
+    it('normal counts a Normal run with Feats on, and epic only the Epic run', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: DP_NORMAL, difficultyTier: 2, activityDurationSeconds: 2000 });
+        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: DP_EPIC, activityDurationSeconds: 1000 });
+
+        const time = (difficulty: 'normal' | 'epic') =>
+            runFastestClearRows(HOURS_BACK, 'the_desert_perpetual', 10, { difficulty }).map((r) => r.clearTimeSeconds);
+
+        expect(time('normal')).toEqual([2000]);
+        expect(time('epic')).toEqual([1000]);
     });
 
     it('maxPlayers (lowman) keeps solos, duos and trios and drops bigger fireteams', () => {

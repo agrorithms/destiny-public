@@ -1,5 +1,6 @@
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
+import type { Difficulty } from '../bungie/manifest';
 
 /**
  * Instance-level: the run reached the end, having been started from the beginning.
@@ -844,7 +845,7 @@ export function getPlayerRaidPerformanceStats(
 }
 
 export interface RaidFilters {
-    difficulty?: 'normal' | 'master';
+    difficulty?: Difficulty;
     exactPlayers?: number;
     maxPlayers?: number;
 }

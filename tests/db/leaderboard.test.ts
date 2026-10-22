@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { runLeaderboardRows } from '@/lib/cache/leaderboard-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedPlayer, seedRun } from '../helpers/seed';
+import { NON_RAID_HASH } from '../helpers/pgcr-builder';
 
 /**
  * The leaderboard is the product. A crash here would be noticed within minutes;
@@ -12,6 +13,12 @@ import { seedPlayer, seedRun } from '../helpers/seed';
  */
 const SALVATIONS_EDGE = 2192826039;
 const CROTAS_END = 1566480315;
+const SALVATIONS_EDGE_MASTER = 4129614942;
+const CROTAS_END_MASTER = 1507509200;
+const VOG_NORMAL = 3881495763; // "Vault of Glass: Standard"
+const VOG_MASTER = 1681562271; // "Vault of Glass: Master"
+const DP_NORMAL = 1044919065; // "The Desert Perpetual: Standard"
+const DP_EPIC = 3817322389; // "The Desert Perpetual (Epic): Standard"
 
 const DURATION = 1800;
 const HOURS_BACK = 24;
@@ -230,38 +237,72 @@ describe('display names', () => {
     });
 });
 
+/**
+ * Difficulty comes from the activity hash (#41): each version of a raid has its own hash, tagged
+ * in RAID_DEFINITIONS. `difficulty_tier` records Feats, not Difficulty, so no filter reads it;
+ * each test below crosses the two so a filter that still read it would fail.
+ */
 describe('difficulty filtering', () => {
-    it('master filter returns only runs with difficulty_tier > 0', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 2 });
-        seedRun({ instanceId: '2', completedBy: ['p1'], difficultyTier: 0 });
-        seedRun({ instanceId: '3', completedBy: ['p1'], difficultyTier: -1 });
+    it('master counts a Master-hash run whatever difficulty_tier says, and not a Normal run with Feats on', () => {
+        seedRun({ instanceId: '1', completedBy: ['master'], activityHash: VOG_MASTER, difficultyTier: 0 });
+        seedRun({ instanceId: '2', completedBy: ['feats'], activityHash: VOG_NORMAL, difficultyTier: 2 });
 
         const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'master' });
 
-        expect(rows).toHaveLength(1);
-        expect(rows[0].completions).toBe(1);
+        expect(rows.map((r) => [r.membershipId, r.completions])).toEqual([['master', 1]]);
     });
 
-    it('normal filter includes difficulty_tier <= 0 and NULL', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 2 });
-        seedRun({ instanceId: '2', completedBy: ['p1'], difficultyTier: 0 });
-        seedRun({ instanceId: '3', completedBy: ['p1'], difficultyTier: -1 });
-        seedRun({ instanceId: '4', completedBy: ['p1'] });
+    it('normal counts a Normal-hash run with Feats on (difficulty_tier > 0), and no Master or Epic run', () => {
+        seedRun({ instanceId: '1', completedBy: ['feats'], activityHash: DP_NORMAL, difficultyTier: 2 });
+        seedRun({ instanceId: '2', completedBy: ['master'], activityHash: VOG_MASTER, difficultyTier: 0 });
+        seedRun({ instanceId: '3', completedBy: ['epic'], activityHash: DP_EPIC });
 
         const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'normal' });
 
-        expect(rows).toHaveLength(1);
-        expect(rows[0].completions).toBe(3);
+        expect(rows.map((r) => [r.membershipId, r.completions])).toEqual([['feats', 1]]);
     });
 
-    it('no filter includes all regardless of difficulty_tier', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 2 });
-        seedRun({ instanceId: '2', completedBy: ['p1'], difficultyTier: 0 });
-        seedRun({ instanceId: '3', completedBy: ['p1'] });
+    it('normal counts a run on a hash in no raid definition, which is labelled neither Master nor Epic', () => {
+        // Only the Total Clears board can see one: it is the only board not keyed by raid_key.
+        seedRun({ instanceId: '1', completedBy: ['unknown'], activityHash: NON_RAID_HASH });
+        seedRun({ instanceId: '2', completedBy: ['master'], activityHash: VOG_MASTER });
 
-        const rows = runLeaderboardRows(HOURS_BACK, [], 10);
+        const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'normal' });
 
-        expect(rows[0].completions).toBe(3);
+        expect(rows.map((r) => r.membershipId)).toEqual(['unknown']);
+    });
+
+    it('epic counts only Epic-hash runs', () => {
+        seedRun({ instanceId: '1', completedBy: ['epic'], activityHash: DP_EPIC, difficultyTier: 0 });
+        seedRun({ instanceId: '2', completedBy: ['feats'], activityHash: DP_NORMAL, difficultyTier: 2 });
+        seedRun({ instanceId: '3', completedBy: ['master'], activityHash: VOG_MASTER });
+
+        const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'epic' });
+
+        expect(rows.map((r) => [r.membershipId, r.completions])).toEqual([['epic', 1]]);
+    });
+
+    it('with no filter, a raid\'s Normal and Master runs count on its one board', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_NORMAL });
+        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: VOG_MASTER });
+
+        const rows = runLeaderboardRows(HOURS_BACK, ['vault_of_glass'], 10);
+
+        expect(rows.map((r) => [r.membershipId, r.completions])).toEqual([['p1', 2]]);
+    });
+
+    it('All is Normal + Master + Epic: every run has exactly one Difficulty', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_NORMAL });
+        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: VOG_MASTER });
+        seedRun({ instanceId: '3', completedBy: ['p1'], activityHash: DP_EPIC });
+        seedRun({ instanceId: '4', completedBy: ['p1'], activityHash: DP_NORMAL, difficultyTier: 2 });
+        seedRun({ instanceId: '5', completedBy: ['p1'], activityHash: NON_RAID_HASH });
+
+        const count = (filters?: Parameters<typeof runLeaderboardRows>[3]) =>
+            runLeaderboardRows(HOURS_BACK, [], 10, filters)[0]?.completions ?? 0;
+
+        expect([count({ difficulty: 'normal' }), count({ difficulty: 'master' }), count({ difficulty: 'epic' })]).toEqual([3, 1, 1]);
+        expect(count()).toBe(5);
     });
 });
 
@@ -329,10 +370,10 @@ describe('maxPlayers filtering (lowman)', () => {
 
 describe('combined filters', () => {
     it('difficulty + exactPlayers compose correctly', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 2 });
-        seedRun({ instanceId: '2', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 6 });
-        seedRun({ instanceId: '3', completedBy: ['p1'], difficultyTier: 0, uniquePlayerCount: 2 });
-        seedRun({ instanceId: '4', completedBy: ['p1'], difficultyTier: 0, uniquePlayerCount: 6 });
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 2 });
+        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 6 });
+        seedRun({ instanceId: '3', completedBy: ['p1'], activityHash: VOG_NORMAL, difficultyTier: 2, uniquePlayerCount: 2 });
+        seedRun({ instanceId: '4', completedBy: ['p1'], activityHash: VOG_NORMAL, uniquePlayerCount: 6 });
 
         const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'master', exactPlayers: 2 });
 
@@ -340,10 +381,10 @@ describe('combined filters', () => {
     });
 
     it('difficulty + maxPlayers (lowman) compose correctly', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 1 });
-        seedRun({ instanceId: '2', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 3 });
-        seedRun({ instanceId: '3', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 6 });
-        seedRun({ instanceId: '4', completedBy: ['p1'], difficultyTier: 0, uniquePlayerCount: 2 });
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 1 });
+        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 3 });
+        seedRun({ instanceId: '3', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 6 });
+        seedRun({ instanceId: '4', completedBy: ['p1'], activityHash: VOG_NORMAL, difficultyTier: 2, uniquePlayerCount: 2 });
 
         const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'master', maxPlayers: 3 });
 
@@ -351,8 +392,8 @@ describe('combined filters', () => {
     });
 
     it('difficulty + exactPlayers + raid filter compose correctly', () => {
-        seedRun({ instanceId: '1', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 2, activityHash: SALVATIONS_EDGE });
-        seedRun({ instanceId: '2', completedBy: ['p1'], difficultyTier: 2, uniquePlayerCount: 2, activityHash: CROTAS_END });
+        seedRun({ instanceId: '1', completedBy: ['p1'], uniquePlayerCount: 2, activityHash: SALVATIONS_EDGE_MASTER });
+        seedRun({ instanceId: '2', completedBy: ['p1'], uniquePlayerCount: 2, activityHash: CROTAS_END_MASTER });
 
         const rows = runLeaderboardRows(HOURS_BACK, ['salvations_edge'], 10, { difficulty: 'master', exactPlayers: 2 });
 

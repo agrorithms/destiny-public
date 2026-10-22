@@ -35,6 +35,6 @@ only the install, one WIP commit per chunk.
 
 ## Verification
 
-- [ ] `npm run lint`
-- [ ] `npm run build`
-- [ ] `npm test`
+- [x] `npm run lint`: exit 0, 0 errors, 29 warnings (all pre-existing)
+- [x] `npm run build`: exit 0
+- [x] `npm test`: 48 files, 583 tests, all passed (at `59eb215`)

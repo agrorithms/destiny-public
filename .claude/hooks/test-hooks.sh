@@ -362,6 +362,146 @@ check "closed stdin: no hang" "ok" "$r"
 echo "  SKIP  real-tty branch (no /dev/tty available here)"
 
 echo
+echo "=== I. commit gate (guard-commit.sh) ==="
+# The real checks take ~25s and depend on whatever the tree holds, so a stub
+# runner records which checks would have run and fails the ones named in
+# FAKE_FAIL. Under test is the gate's decision, not lint or vitest.
+GATE_REPO="$(mktemp -d)"
+git -C "$GATE_REPO" init -q
+git -C "$GATE_REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+export GATE_LOG="$GATE_REPO.log"
+cat > "$GATE_REPO.runner" <<'RUNNER'
+#!/usr/bin/env bash
+echo "$1" >> "$GATE_LOG"
+case ",${FAKE_FAIL:-}," in *",$1,"*) echo "stub: $1 failed"; exit 1 ;; esac
+exit 0
+RUNNER
+chmod +x "$GATE_REPO.runner"
+export COMMIT_GATE_RUNNER="$GATE_REPO.runner"
+gate() { # gate <command> -> allow | deny; the checks it ran are in $GATE_LOG
+  : > "$GATE_LOG"
+  local out
+  out=$(jq -nc --arg c "$1" --arg d "$GATE_REPO" \
+    '{session_id:"sessGATE",cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh)
+  [ -z "$out" ] && { echo allow; return; }
+  jq -r '.hookSpecificOutput.permissionDecision // "malformed"' <<<"$out"
+}
+ran() { paste -sd, "$GATE_LOG"; }
+ALL='lint,tsc (app),tsc (scripts),vitest'
+
+echo x > "$GATE_REPO/a.ts"
+check "not a commit -> allow" "allow" "$(gate 'git status')"
+check "not a commit -> nothing runs" "" "$(ran)"
+check "quoted mention -> allow" "allow" "$(gate 'echo "git commit"')"
+check "quoted mention -> nothing runs" "" "$(ran)"
+check "green commit -> allow" "allow" "$(gate 'git commit -m "WIP #1: x"')"
+check "green commit -> all four checks" "$ALL" "$(ran)"
+gate 'git add a.ts && git commit -m x' >/dev/null
+check "add && commit -> all four checks" "$ALL" "$(ran)"
+gate 'git -C . commit -m x' >/dev/null
+check "git -C <dir> commit -> all four checks" "$ALL" "$(ran)"
+gate 'git commit --amend --no-edit' >/dev/null
+check "--amend -> all four checks" "$ALL" "$(ran)"
+check "heredoc message -> gated" "allow" "$(gate "git commit -F - <<'EOF'
+WIP #1: x
+EOF")"
+
+export FAKE_FAIL=vitest
+check "vitest red -> deny" "deny" "$(gate 'git commit -m "WIP #1: x"')"
+out=$(jq -nc --arg c 'git commit -m x' --arg d "$GATE_REPO" '{cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh)
+check "deny names the red check" "yes" \
+  "$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$out" | grep -q 'vitest is red' && echo yes || echo no)"
+check "red-first commit -> allow" "allow" "$(gate 'git commit -m "WIP #1: red — size specs"')"
+check "red-first commit -> vitest skipped" "lint,tsc (app),tsc (scripts)" "$(ran)"
+check "red marker with a hyphen -> allow" "allow" "$(gate 'git commit -m "WIP #1: red - size specs"')"
+check "'red' elsewhere in the message is no marker" "deny" "$(gate 'git commit -m "WIP #1: the red border"')"
+export FAKE_FAIL="tsc (app)"
+check "red-first commit, tsc red -> deny" "deny" "$(gate 'git commit -m "WIP #1: red — size specs"')"
+check "the first red check stops the run" "lint,tsc (app)" "$(ran)"
+unset FAKE_FAIL
+
+COMMIT_GATE_RUNNER=/nonexistent/runner
+check "a check that crashes -> deny (fails closed)" "deny" "$(gate 'git commit -m x')"
+export COMMIT_GATE_RUNNER="$GATE_REPO.runner"
+
+rm "$GATE_REPO/a.ts"; echo notes > "$GATE_REPO/notes.md"
+check ".md-only tree -> allow" "allow" "$(gate 'git commit -m "WIP #1: progress tick"')"
+check ".md-only tree -> nothing runs" "" "$(ran)"
+echo x > "$GATE_REPO/b.ts"
+gate 'git add notes.md && git commit -m x' >/dev/null
+check ".md staged but code changed elsewhere -> all four" "$ALL" "$(ran)"
+rm "$GATE_REPO/b.ts" "$GATE_REPO/notes.md"
+check "nothing changed (message-only amend) -> allow" "allow" "$(gate 'git commit --amend -m y')"
+check "nothing changed -> nothing runs" "" "$(ran)"
+unset COMMIT_GATE_RUNNER GATE_LOG
+rm -rf "$GATE_REPO" "$GATE_REPO.log" "$GATE_REPO.runner"
+
+echo
+echo "=== J. ship-ticket state check (stop-ship-state.sh, report.sh) ==="
+# A throwaway repo on a feat/999-* branch, with a state file the cases rewrite.
+SHIP_REPO="$(mktemp -d)"
+sg() { git -C "$SHIP_REPO" -c user.name=t -c user.email=t@t "$@"; }
+sg init -q
+sg symbolic-ref HEAD refs/heads/main   # this git predates init -b
+echo 'docs/handoffs/' > "$SHIP_REPO/.gitignore"
+sg add .gitignore && sg commit -q -m base
+BASE=$(sg rev-parse HEAD)
+sg switch -q -c feat/999-test
+echo a > "$SHIP_REPO/a.ts" && sg add a.ts && sg commit -q -m "WIP #999: a"
+C1=$(sg rev-parse HEAD)
+sg switch -q -c elsewhere main
+echo b > "$SHIP_REPO/b.ts" && sg add b.ts && sg commit -q -m "elsewhere"
+OFF=$(sg rev-parse HEAD)
+sg switch -q feat/999-test
+mkdir -p "$SHIP_REPO/docs/handoffs"
+STATE_FILE="$SHIP_REPO/docs/handoffs/999-state.json"
+state() { # state <pass_status> <commit-sha>
+  jq -n --arg b "$BASE" --arg c "$2" --arg s "$1" '{schema:1,ticket:999,title:"t",
+    branch:"feat/999-test",base:{ref:"main",sha:$b},models:{implementer:"inherit"},
+    pass:"implement",pass_status:$s,head:$c,
+    passes:{implement:{status:$s,commits:[$c]}},checks:{},findings:[],out_of_scope:[]}' > "$STATE_FILE"
+}
+stop() { # stop [stop_hook_active] -> the hook's raw output
+  jq -nc --arg d "$SHIP_REPO" --argjson a "${1:-false}" \
+    '{session_id:"sessSHIP",cwd:$d,stop_hook_active:$a}' | $H/stop-ship-state.sh
+}
+verdict() { # verdict <raw-output> -> silent | block | message
+  [ -z "$1" ] && { echo silent; return; }
+  jq -r 'if .decision == "block" then "block" elif .systemMessage then "message" else "malformed" end' <<<"$1"
+}
+
+state committed "$C1"
+check "consistent, committed, clean -> silent" "silent" "$(verdict "$(stop)")"
+check "report.sh: consistent -> exit 0" "0" "$(cd "$SHIP_REPO" && $H/../skills/ship-ticket/report.sh 999 >/dev/null; echo $?)"
+check "report.sh: says State OK" "yes" \
+  "$(cd "$SHIP_REPO" && $H/../skills/ship-ticket/report.sh 999 | grep -q '^State OK' && echo yes || echo no)"
+
+state committed 0123456789012345678901234567890123456789
+check "missing SHA -> block" "block" "$(verdict "$(stop)")"
+check "missing SHA, second stop -> message, not a loop" "message" "$(verdict "$(stop true)")"
+check "report.sh: missing SHA -> exit 3" "3" "$(cd "$SHIP_REPO" && $H/../skills/ship-ticket/report.sh 999 >/dev/null; echo $?)"
+
+state committed "$OFF"
+check "SHA outside HEAD's history -> block" "block" "$(verdict "$(stop)")"
+
+state committed "$C1"
+echo dirty > "$SHIP_REPO/c.ts"
+check "committed but tree dirty -> block" "block" "$(verdict "$(stop)")"
+state in_progress "$C1"
+check "in progress and tree dirty -> silent" "silent" "$(verdict "$(stop)")"
+rm "$SHIP_REPO/c.ts"
+
+echo '{not json' > "$STATE_FILE"
+check "unreadable state file -> block" "block" "$(verdict "$(stop)")"
+
+sg switch -q main
+check "not a feat/NNN-* branch -> silent" "silent" "$(verdict "$(stop)")"
+sg switch -q feat/999-test
+rm "$STATE_FILE"
+check "feat branch, no state file -> silent" "silent" "$(verdict "$(stop)")"
+rm -rf "$SHIP_REPO"
+
+echo
 echo "================================"
 echo "PASS: $pass   FAIL: $fail"
 [ "$fail" -eq 0 ] || exit 1

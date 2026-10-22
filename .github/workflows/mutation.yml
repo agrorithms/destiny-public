@@ -1,9 +1,9 @@
 name: mutation
 
 # The mutation score of a PR's changed logic (`npm run mutate:diff`), reported and
-# never enforced. The step is continue-on-error, so neither a FAIL verdict nor a
-# Stryker crash turns the PR red. The score goes to this run's job summary and to a
-# notice on the PR's Checks tab. The threshold and the rules for survivors are in
+# never enforced. The step is continue-on-error, so a FAIL verdict or a Stryker crash
+# marks it failed-and-continued but never turns the PR red. The score goes to this run's
+# job summary and to a notice on the PR's Checks tab. The threshold and the rules for survivors are in
 # CLAUDE.md's "Bite proofs are automated."
 #
 # Only PRs that touch `.ts` under src/: the script mutates nothing else, and the
@@ -38,6 +38,9 @@ jobs:
       # checker, mutants that would not compile are counted as killed or survived.
       - name: mutate:diff
         continue-on-error: true
+        # Named so it runs with pipefail: with no `shell`, GitHub runs `bash -e` without
+        # it, the step takes tee's exit code, and a FAIL or a crash shows as a pass.
+        shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
         run: npm run mutate:diff -- "origin/${BASE_REF}...HEAD" --typecheck 2>&1 | tee mutate.log
@@ -57,6 +60,12 @@ jobs:
               echo 'No score: the run failed before scoring. See the mutate:diff step log.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-          score=$(grep -m1 '^mutation score:' mutate.log | sed 's/^mutation score: //' || true)
-          verdict=$(grep -m1 '^threshold:' mutate.log | sed 's/^threshold: //' || true)
-          echo "::notice title=Mutation score::${score:-no score}; threshold ${verdict:-not reached}"
+          if grep -q '^mutation score:' mutate.log; then
+            score=$(grep -m1 '^mutation score:' mutate.log | sed 's/^mutation score: //')
+            verdict=$(grep -m1 '^threshold:' mutate.log | sed 's/^threshold: //')
+            echo "::notice title=Mutation score::${score}; threshold ${verdict}"
+          elif grep -q '^No changed logic' mutate.log; then
+            echo "::notice title=Mutation score::nothing to mutate"
+          else
+            echo "::notice title=Mutation score::no score: the run failed before scoring"
+          fi

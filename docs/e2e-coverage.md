@@ -2345,3 +2345,9 @@ against the seed world, so #160's copy bubble — clipped only after a click, on
 26-wide-glyph name on an end row — would not have been caught here. A spec that creates a state
 calls `expectNoOverflow(page)` itself. `/admin/stats` (basic auth) is skipped; the player page
 is FixtureAlpha#4242's.
+
+Known gap, kept by the user's ruling (2026-10-22): an absolutely positioned element is checked
+only against ancestors from its `offsetParent` up, and a fixed one against none. A `transform`ed
+ancestor becomes the real containing block for both; if Chromium's `offsetParent` passes over it,
+an ancestor that clips the popup is never checked, and a #160-style clipped popup inside a
+transformed element would pass.

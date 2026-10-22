@@ -85,6 +85,17 @@ Docs and landing:
     `--typecheck`, never blocking (`continue-on-error`). The score goes to the job summary and
     a notice annotation on the PR's Checks tab.
 
+## Decisions (code-review rulings, 2026-10-22)
+
+18. **Overflow rule for positioned elements stays** (the user): an absolute element is checked
+    from its `offsetParent` up, a fixed one against no ancestor. A `transform`ed ancestor that
+    `offsetParent` passes over can clip a popup unseen; that is recorded as a known gap here
+    and in `docs/e2e-coverage.md`, not fixed.
+19. **CI step shows failed-and-continued** (the user): `shell: bash` on the mutate:diff step,
+    so pipefail applies and a FAIL or a crash marks the step, still `continue-on-error`, still
+    never blocking.
+20. The review's fix list 1–7f approved as a set (the user).
+
 ## Files
 
 - [x] `package.json` / `package-lock.json` — Stryker deps, `mutate:diff`, `visual:check`
@@ -114,7 +125,34 @@ Docs and landing:
 - [x] threshold in `scripts/mutate-diff.ts`, CLAUDE.md, `tests/README.md`, the config comment (15)
 - [x] `npm run e2e` unchanged by the `chromium` project's `testIgnore`: 158 passed, no visual test under `chromium`
 
+## Review fixes (code-review of main...a12d011, 2026-10-22)
+
+The user approved a fix list from the two-axis review. Numbers follow the review.
+
+- [x] 1 `scripts/mutate-diff.ts` — clear `reports/mutation/` before every run; no report → "no report" + non-zero, never an old summary; no stack trace for a past range
+- [x] 3 `scripts/mutate-diff.ts` — worktree removed if setup fails partway, and on Ctrl+C (exit 130); Stryker now waited for with async `spawn` (see Found while building)
+- [x] 7c `scripts/mutate-diff.ts` — one rule sorts changed `src/` files into mutated / browser-only
+- [x] 7e `scripts/mutate-diff.ts` — static-skip count: no sturdier signal in the JSON report, so the reason-text match stays, with a comment saying why
+- [x] 7d `scripts/lib/git-range.ts` + `tests/scripts/git-range.test.ts` — the diff parser tested, one break seen red
+- [x] 6 `tests/README.md` — score formula counts timeouts; `tests/scripts/` in the layout
+- [x] 2, 5 `.github/workflows/mutation.yml` — `shell: bash`; "nothing to mutate" notice
+- [x] 7b `e2e/support/visual-check-dir.ts` — the folder name defined once; `scripts/visual-check.ts`, `e2e/visual.spec.ts` import it; `stryker.config.mjs`, `.gitignore` point at it
+- [x] 7a, 7f `stryker.config.mjs` — "keep in step with .gitignore"; no file count
+- [x] Q1 known gap — this file and `docs/e2e-coverage.md`
+- [x] 4 re-measurement after a12d011 and after these fixes — recorded below
+- [x] lint, build, test; `mutate:diff` #172 `--typecheck`; fix 1 shown; `visual:check` 48/48
+
 ## Found while building
+
+- *(Review fixes, 3.)* Under `npm run`, tsx runs the script as its child. On Ctrl+C it forwards
+  the signal, waits ~30ms for the child to acknowledge it, re-sends, waits again, then
+  SIGKILLs the child (tsx `relaySignals`). A script blocked in `spawnSync` can't acknowledge, so
+  it was killed ~60ms in, and whether the worktree's `finally` had finished was luck. Stryker
+  is now waited for with async `spawn`; the SIGINT listener only notes the interrupt.
+- *(Review fixes, new, for the user.)* A Stryker run that crashes at the checked-out commit
+  leaves its sandbox in `.stryker-tmp/`. ESLint doesn't ignore that folder, so `npm run lint`
+  then fails with ~30 `@ts-nocheck` errors in sandbox copies of e2e specs. Seen once here and
+  cleaned up by hand. Not fixed: not on the approved list.
 
 - *(Moot since decision 9 removed route selection.)* Route selection: the root layout's StatsBar fetches `/api/live-stats`, which imports the
   fireteam dedupe and most of `queries.ts`. Following API edges from the layout made every
@@ -151,6 +189,39 @@ to ~130s: over the 90s line, so decision 1 lands on `--typecheck` opt-in. Undete
   change. `OVERFLOW_EXEMPT` stays empty; the overflow rules were not tuned (decision 8 still open
   for whatever a later run turns up).
 - After the fix: 48/48 pass, **52s** after the build → decision 9: every page, every time.
+
+**Re-measured after the /simplify pass (a12d011)**, by the session that made it:
+
+- #172 `--typecheck`: 128 mutants, 31 compile error, 3 static skipped, **67.0%** overall /
+  74.1% covered, PASS, 123s — same as the baseline, so moving the checker from the config to
+  the flag changed nothing.
+- `--incremental` on a past range: a 12s full run, then a 5s rerun that reused 125 of 128.
+- `visual:check`: 50 passed (2 canaries + 48), 54.9s.
+
+**After the review fixes** (2026-10-22, final code):
+
+- `mutate:diff -- fefda5f...e12eb45 --typecheck`: 128 mutants, 31 compile error, 3 static
+  skipped, **67.0%** overall / 74.1% covered, PASS, exit 0, 160s (slower than 123–139s; other
+  sessions were running). `git worktree list` afterwards: the main checkout only.
+- Fix 1, past range, `vitest.configFile` broken in `stryker.config.mjs` (reverted): `no
+  report: Stryker failed before scoring (exit 1)`, exit 1, no score or threshold line, the
+  previous `reports/mutation/` gone, no worktree left.
+- Fix 1, at the checked-out commit: a probe line in `src/lib/http/cache.ts` (reverted) gave a
+  real report first (5 mutants, `threshold: not applied`); then the broken config: `no report`,
+  exit 1, and that report was not summarised.
+- Fix 3, Ctrl+C sent to the run's process group 40s into a past-range `npm run mutate:diff`:
+  exit 130, one `interrupted: no score` line, no worktree, no `/tmp/dff-mutate-*`, no stray
+  process. Under the earlier `spawnSync` version the same test exited 130 three times with the
+  worktree removed, but printed the message only some of the time; that is what found the tsx
+  SIGKILL above.
+- 7d bite proof: the parser's missing-`,count` default changed from 1 to 0 in
+  `scripts/lib/git-range.ts`: 3 of 7 failed (`expected [ [ 11, 12 ] ] to deeply equal [ [ 3,
+  3 ], [ 11, 12 ], [ 20, 20 ] ]`, and the single-line and rename cases). Reverted: 7/7.
+- `visual:check`: 50 passed (2 canaries + 48), 1.1m, 48 screenshots in `visual-check/`.
+- `npm run lint` 0 errors (29 warnings, all in `gos10k/`); `npm run build` exit 0; `npm test`
+  48 files, 583 tests passed; `tsc` clean on both `tsconfig.json` and `tsconfig.scripts.json`.
+- `.github/workflows/mutation.yml` has not run: it triggers only on a PR. `shell: bash` and the
+  notice text are unverified until one opens.
 - Bite proof (the spec was never red on overflow): `min-w-[480px]` on the nav brand link in
   `src/app/layout.tsx`, one build. 16 failed, exactly 8 pages × 360px × 2 themes; 768 and
   1280 passed. The message named the link (136px past the right edge), the search input and

@@ -48,6 +48,10 @@ Chromium **is** installed (Playwright). If a change affects client-side request 
 
 Port and build-lock hygiene is enforced by hooks in `.claude/hooks/` — a dev server or build already running will be reported to you rather than silently collided with. When you do stop a dev server, kill the actual `next dev`/`next-server` PID, not just the `npm` wrapper. Never kill a server you did not start without asking. `lsof` cannot see network sockets under WSL2 — use `ss` or `fuser` for port checks.
 
+Every `git commit` you make passes a gate (`.claude/hooks/guard-commit.sh`, about 30s): lint, tsc for the app and for `scripts/`, and vitest. A red-first TDD commit is spelled `WIP #NNN: red — <what>` and skips vitest only. A tree whose only changes are `*.md` skips the gate. It does not build: `npm run build` belongs to whoever needs `.next`, because `e2e:nobuild` reuses it.
+
+**Worktrees (not in use yet).** `.claude/` is committed and every hook resolves paths from the checkout it runs in, so the config works in any worktree. Two things don't carry over: `docs/handoffs/` is gitignored, so a ticket's `/ship-ticket` state file exists only in the worktree that started it (resume it there); and `npm run e2e` always serves on port 3100, so run it in one worktree at a time. Vitest is already safe in parallel: every test file gets its own temp database.
+
 ## Commands
 
 `package.json` has the full list. The non-obvious ones:
@@ -118,6 +122,10 @@ Vitest. **`tests/README.md` is the how-to** — read it before writing or changi
 Application code was not changed to make anything testable — if a test seems to require that, question it first.
 
 ## Agent skills
+
+### Shipping a ticket
+
+`/ship-ticket #NNN [implementer=<model>] [reviewer=<model>] [fixer=<model>]` delivers one `ready-for-agent` issue (implement → simplify → review → fix → handoff) with decision stops, checkpointed in `docs/handoffs/NNN-state.json`. Run it again after a usage limit or `/clear` to resume. `.claude/skills/ship-ticket/SKILL.md` is the protocol.
 
 ### Issue tracker
 

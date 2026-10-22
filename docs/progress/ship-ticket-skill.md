@@ -30,7 +30,7 @@ only the install, one WIP commit per chunk.
 
 ## 3. CLAUDE.md
 
-- [ ] `CLAUDE.md`: the commit gate and worktree paragraphs under **Environment**, and
+- [x] `CLAUDE.md`: the commit gate and worktree paragraphs under **Environment**, and
       `### Shipping a ticket` under **Agent skills**
 
 ## Verification

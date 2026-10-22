@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { parseArgs } from 'util';
+import { VISUAL_CHECK_DIR } from '../e2e/support/visual-check-dir';
 
 /**
  * `npm run visual:check -- [--nobuild]`
@@ -24,7 +25,7 @@ import { parseArgs } from 'util';
 
 const REPO = process.cwd();
 /** Where e2e/visual.spec.ts writes the screenshots. */
-const VISUAL_DIR = path.join(REPO, 'visual-check');
+const VISUAL_DIR = path.join(REPO, VISUAL_CHECK_DIR);
 
 function main(): void {
     const { values } = parseArgs({ options: { nobuild: { type: 'boolean', default: false } } });

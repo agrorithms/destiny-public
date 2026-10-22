@@ -12,7 +12,9 @@
 
 # testing
 /coverage
-# mutate:diff reports and Stryker's sandbox; visual:check screenshots (for review, never committed)
+# mutate:diff reports and Stryker's sandbox; visual:check screenshots (for review, never committed).
+# /visual-check/ is VISUAL_CHECK_DIR in e2e/support/visual-check-dir.ts. A large folder added
+# here also belongs in stryker.config.mjs's ignorePatterns.
 /reports/
 /.stryker-tmp/
 /visual-check/

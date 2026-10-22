@@ -16,7 +16,7 @@ const config = {
     testRunner: 'vitest',
     vitest: { configFile: 'vitest.config.ts' },
 
-    // Run only the tests that execute each mutant, not all 47 files per mutant. The
+    // Run only the tests that execute each mutant, not every test file per mutant. The
     // vitest runner supports per-test coverage, which is what makes a diff-sized run
     // take a minute rather than an hour.
     coverageAnalysis: 'perTest',
@@ -48,7 +48,9 @@ const config = {
     // Stryker copies the project into a sandbox per run, skipping only a short built-in list
     // (node_modules, .git, .next) and this one: it does not read .gitignore. So every large or generated
     // directory is named here; a sandbox that copied data/ (several GB of SQLite) would
-    // fill the disk before anything ran.
+    // fill the disk before anything ran. Keep it in step with .gitignore by hand: a large
+    // folder added there and not here is copied into every run. 'visual-check' is
+    // VISUAL_CHECK_DIR in e2e/support/visual-check-dir.ts.
     ignorePatterns: [
         'data',
         '.next',

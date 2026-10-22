@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Page, Request } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { LEADERBOARD_PLAYERS } from './support/seed-world';
+import { VISUAL_CHECK_DIR } from './support/visual-check-dir';
 import { expectNoOverflow } from './support/viewport';
 
 /**
@@ -20,7 +21,7 @@ import { expectNoOverflow } from './support/viewport';
  */
 
 const APP = path.join('src', 'app');
-const VISUAL_DIR = path.join(process.cwd(), 'visual-check');
+const VISUAL_DIR = path.join(process.cwd(), VISUAL_CHECK_DIR);
 
 /** Where a dynamic route points in the e2e seed world. */
 const DYNAMIC_ROUTE_FIXTURES: Record<string, string> = {

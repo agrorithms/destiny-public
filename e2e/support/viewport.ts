@@ -71,3 +71,160 @@ export async function expectInsideViewport(element: Locator, what: string): Prom
     expect(box.x, `${what} starts inside the viewport`).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, `${what} ends inside the viewport`).toBeLessThanOrEqual(viewport.width);
 }
+
+/**
+ * Elements {@link expectNoOverflow} does not measure, each with the reason it may overflow.
+ * Matched with `closest()`, so an entry covers its descendants too.
+ *
+ * Here and not as a `data-` attribute on the element because application code is not
+ * changed to make it testable (CLAUDE.md). Every entry is a decision someone made about a
+ * specific element; a broad selector added to quiet a failure defeats the gate.
+ */
+export const OVERFLOW_EXEMPT: ReadonlyArray<{ selector: string; reason: string }> = [];
+
+/**
+ * "Nothing on this page is cut off or pushed past the edge" — the hard gate of the
+ * viewport matrix (`npm run visual:check`), and the check a spec runs after an interaction
+ * that adds something to the page: a row opened, a tooltip shown, a copy confirmed.
+ *
+ * Every visible element is measured twice:
+ *
+ * - **Viewport**: its box sits inside the viewport left to right, unless it is inside a
+ *   container that scrolls sideways — then the container is what gets measured, because
+ *   the reader can scroll to the rest. Not top to bottom: pages scroll down.
+ * - **Clipping**: its box sits inside its nearest clipping ancestor (`overflow: hidden` or
+ *   `clip`) on whichever axis that ancestor clips, top and bottom included. This is the
+ *   failure {@link expectNoHorizontalPageOverflow} and {@link expectNoElementOverflow}
+ *   cannot see: #160's copy bubble was clipped by the list's `overflow-hidden`, so nothing
+ *   scrolled and nothing reported it.
+ *
+ * Not measured: SVG internals (charts draw where they like inside their own `<svg>`),
+ * zero-size elements, anything `checkVisibility()` says is hidden or transparent, text
+ * hidden for screen readers (`clip` / `clip-path`), and children of an ancestor that clips
+ * with an ellipsis or a line clamp — that clipping is the design. Absolutely positioned
+ * popups are measured: the bubble was one. A fixed element is measured against the
+ * viewport only, and an absolute one only against ancestors at or above its containing
+ * block, because those are the only boxes that can clip it.
+ *
+ * Children of an element already reported are not reported again, so one wide row reads
+ * as one failure rather than forty.
+ */
+export async function expectNoOverflow(page: Page): Promise<void> {
+    const offenders = await page.evaluate(auditOverflow, OVERFLOW_EXEMPT.map((entry) => entry.selector));
+    expect(offenders, 'elements overflow the viewport or are clipped by an ancestor').toEqual([]);
+}
+
+/**
+ * Runs in the page (via `page.evaluate`), so it must be self-contained: no imports, no
+ * references to anything outside its own body.
+ */
+function auditOverflow(exempt: string[]): string[] {
+    // Sub-pixel layout rounds differently per element; a real overflow is whole pixels.
+    const TOLERANCE = 1;
+    const styles = new Map<Element, CSSStyleDeclaration>();
+    const style = (el: Element) => {
+        let cs = styles.get(el);
+        if (!cs) styles.set(el, (cs = getComputedStyle(el)));
+        return cs;
+    };
+    const clips = (value: string) => value === 'hidden' || value === 'clip';
+    const scrolls = (value: string) => value === 'auto' || value === 'scroll';
+
+    const describe = (el: Element) => {
+        const id = el.id ? `#${el.id}` : '';
+        const cls = typeof el.className === 'string' && el.className
+            ? `.${el.className.trim().split(/\s+/).slice(0, 3).join('.')}`
+            : '';
+        const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        return `<${el.tagName.toLowerCase()}${id}${cls}>${text ? ` "${text}"` : ''}`;
+    };
+
+    const root = document.documentElement;
+    const viewportWidth = root.clientWidth;
+    const offenders: string[] = [];
+    const reported = new Set<Element>();
+
+    if (root.scrollWidth > viewportWidth + TOLERANCE) {
+        offenders.push(`the page scrolls sideways by ${root.scrollWidth - viewportWidth}px`);
+    }
+
+    for (const el of Array.from(document.body.querySelectorAll('*'))) {
+        if (el instanceof SVGElement && !(el instanceof SVGSVGElement)) continue;
+        if (exempt.some((selector) => el.closest(selector))) continue;
+        if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) continue;
+
+        const box = el.getBoundingClientRect();
+        if (box.width <= 1 || box.height <= 1) continue;
+
+        // Visually hidden text (Tailwind's sr-only) and anything inside a clip-path.
+        let hidden = false;
+        for (let a: Element | null = el; a && a !== root; a = a.parentElement) {
+            const cs = style(a);
+            if (cs.clipPath !== 'none' || (cs.clip && cs.clip !== 'auto')) { hidden = true; break; }
+        }
+        if (hidden) continue;
+
+        // Children of a reported element overflow by the same pixels; say it once.
+        let parentReported = false;
+        for (let a = el.parentElement; a; a = a.parentElement) {
+            if (reported.has(a)) { parentReported = true; break; }
+        }
+        if (parentReported) continue;
+
+        const position = style(el).position;
+        // Only ancestors at or above the containing block can clip a positioned element.
+        let ancestor: Element | null =
+            position === 'fixed' ? null
+            : position === 'absolute' ? (el as HTMLElement).offsetParent
+            : el.parentElement;
+
+        const problems: string[] = [];
+        let insideSideScroller = false;
+        let nearestChecked = false;
+
+        for (; ancestor && ancestor !== root && ancestor !== document.body; ancestor = ancestor.parentElement) {
+            const cs = style(ancestor);
+            if (scrolls(cs.overflowX)) insideSideScroller = true;
+            if (nearestChecked) continue;
+            if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+
+            // The nearest ancestor that does anything with overflow decides; one further
+            // out can only clip this element by also clipping that one, which is then
+            // reported on its own.
+            nearestChecked = true;
+            if (cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none')) continue;
+
+            const outer = ancestor.getBoundingClientRect();
+            // The clip edge is the padding box: inside the borders.
+            const left = outer.left + ancestor.clientLeft;
+            const top = outer.top + ancestor.clientTop;
+            const right = left + ancestor.clientWidth;
+            const bottom = top + ancestor.clientHeight;
+            // A container clipped to nothing is a collapsed section, not a clipped child.
+            if (ancestor.clientWidth === 0 || ancestor.clientHeight === 0) continue;
+
+            if (clips(cs.overflowX)) {
+                if (box.left < left - TOLERANCE) problems.push(`clipped ${(left - box.left).toFixed(1)}px on the left`);
+                if (box.right > right + TOLERANCE) problems.push(`clipped ${(box.right - right).toFixed(1)}px on the right`);
+            }
+            if (clips(cs.overflowY)) {
+                if (box.top < top - TOLERANCE) problems.push(`clipped ${(top - box.top).toFixed(1)}px at the top`);
+                if (box.bottom > bottom + TOLERANCE) problems.push(`clipped ${(box.bottom - bottom).toFixed(1)}px at the bottom`);
+            }
+            if (problems.length > 0) problems.push(`by ${describe(ancestor)}`);
+        }
+
+        if (!insideSideScroller) {
+            if (box.left < -TOLERANCE) problems.push(`${(-box.left).toFixed(1)}px past the viewport's left edge`);
+            if (box.right > viewportWidth + TOLERANCE) {
+                problems.push(`${(box.right - viewportWidth).toFixed(1)}px past the viewport's right edge`);
+            }
+        }
+
+        if (problems.length > 0) {
+            reported.add(el);
+            offenders.push(`${describe(el)}: ${problems.join(', ')}`);
+        }
+    }
+    return offenders;
+}

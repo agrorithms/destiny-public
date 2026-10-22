@@ -22,7 +22,8 @@ overflow gate for the browser side. Branch `fix/update-verification-automation`.
   ancestor on both axes. Exempt: `text-overflow: ellipsis` clipping, visually-hidden text,
   SVG internals, zero-size elements, and a named exemption list in the test with reasons.
   Absolutely positioned popups are *not* exempt — the #160 copy bubble was one.
-- `visual:check` (named `visual:diff` until decision 6) maps the diff to routes through each `page.tsx`'s import graph; layout,
+- *(Superseded by decision 9: the whole matrix took 52s, so every page, every time.)*
+  `visual:check` (named `visual:diff` until decision 6) maps the diff to routes through each `page.tsx`'s import graph; layout,
   `globals.css` → all routes; `--all` forces every route. `/admin/stats` skipped.
 - Playwright bite proofs: dropped where the spec was written red-first; otherwise one break
   per new spec, batched into one build.
@@ -82,7 +83,7 @@ Docs and landing:
 - [x] `scripts/mutate-diff.ts`
 - [x] `scripts/visual-check.ts`
 - [x] rename `visual:diff` → `visual:check` across script, folder, config and docs (6)
-- [ ] `scripts/visual-check.ts` — 3-minute rule applied (9)
+- [x] `scripts/visual-check.ts` — 3-minute rule applied (9): 52s, so page selection and the import-graph code are gone
 - [x] `playwright.config.ts` — six viewport projects, only when `visual:check` asks
 - [x] `e2e/support/viewport.ts` — `expectNoOverflow`
 - [x] `e2e/visual.spec.ts`
@@ -91,13 +92,14 @@ Docs and landing:
 - [x] `tests/README.md` — how to read and act on a mutation report
 - [x] `docs/e2e-coverage.md` — the visual matrix entry
 - [x] `CLAUDE.md` / `tests/README.md` — full-run score, overall vs covered (4, 11)
-- [ ] `docs/agents/domain.md` — the user's own ADR-list fix; rides in the docs commit
-- [ ] first `visual:check -- --all` run; overflow rulings applied (8, 10)
-- [ ] `npm run e2e` unchanged by the `chromium` project's `testIgnore`
+- [x] `docs/agents/domain.md` — the user's own ADR-list fix; went in with commit 1
+- [x] first `visual:check -- --all` run; overflow rulings applied (8, 10)
+- [x] `e2e/visual.spec.ts` — response-based settle wait instead of `networkidle` (user's ruling)
+- [x] `npm run e2e` unchanged by the `chromium` project's `testIgnore`: 158 passed, no visual test under `chromium`
 
 ## Found while building
 
-- Route selection: the root layout's StatsBar fetches `/api/live-stats`, which imports the
+- *(Moot since decision 9 removed route selection.)* Route selection: the root layout's StatsBar fetches `/api/live-stats`, which imports the
   fireteam dedupe and most of `queries.ts`. Following API edges from the layout made every
   `src/lib` change pick all eight pages. The layout counts by import only, and is not one of
   a page's own roots; pages still follow their own API edges. `queries.ts` is still a hub:
@@ -122,4 +124,17 @@ to ~130s: over the 90s line, so decision 1 lands on `--typecheck` opt-in. Undete
 `roster.ts` 57, 62, 108, 153, 158–167 (survived) and `dedupe.ts:41–43` (no coverage).
 `reports/mutation/` holds this run. The `#179 --files` cost comparison was not finished.
 
-**Viewport matrix:** (after the first `visual:check -- --all`)
+**Viewport matrix** (2026-10-22, 8 pages × 360/768/1280 × light/dark = 48 tests, build 22s):
+
+- First run: no overflow failures. The player page timed out at all six sizes on
+  `waitUntil: 'networkidle'`: `queueCrawlOnce` (`PlayerProfileClient.tsx:190`) is a
+  fire-and-forget POST whose body nobody reads, so Chromium never counts it finished, though
+  its 202 arrives in ~20ms. Checked and ruled out: polling, a SQLite lock, the e2e fixture's
+  routing. Ruling (user): wait until no request has awaited its *response* for 500ms; no app
+  change. `OVERFLOW_EXEMPT` stays empty; the overflow rules were not tuned (decision 8 still open
+  for whatever a later run turns up).
+- After the fix: 48/48 pass, **52s** after the build → decision 9: every page, every time.
+- Bite proof (the spec was never red on overflow): `min-w-[480px]` on the nav brand link in
+  `src/app/layout.tsx`, one build. 16 failed, exactly 8 pages × 360px × 2 themes; 768 and
+  1280 passed. The message named the link (136px past the right edge), the search input and
+  button it pushed out, and "the page scrolls sideways by 226px". Reverted, rebuilt, green.

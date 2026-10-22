@@ -42,6 +42,7 @@ Chromium **is** installed (Playwright). If a change affects client-side request 
 - Three kill-and-rerun loops at most (`--incremental` on reruns). Whatever survives the third goes to me as a decision. The score reported at the end comes from a full run, not an incremental one, with `--typecheck` on.
 - The mutation score is reported as a number. The threshold applies to the **overall** score, where no-coverage mutants count against it; the covered-code score is reported next to it and never in its place. I set the threshold, and none is chosen yet.
 - Playwright: a spec seen red before its fix needs no further bite proof; record the red run. Otherwise one deliberate break per new spec, all batched into one build.
+- UI tickets run `npm run visual:check`. Its overflow gate must pass; the screenshots are for my review. Overflow that only appears after an interaction (a row opened, a tooltip, a copy confirmation) is that spec's job: call `expectNoOverflow(page)` from `e2e/support/viewport.ts` once the interaction has happened.
 
 **Environment.**
 
@@ -57,6 +58,7 @@ Port and build-lock hygiene is enforced by hooks in `.claude/hooks/` — a dev s
 - `npm run setup-manifest` — writes `data/manifest-cache.json` for a human to read. Changes nothing about runtime behaviour; see the raid-detection convention below.
 - `npm run e2e` — Playwright browser tests. Builds, then serves the app on **port 3100** against **two** throwaway databases: a seeded Tracker and a fixture Archive built from the committed seed. Each is proved through the running server by its own canary before any spec runs. Not in `npm test`; runs in CI via its own `e2e.yml` on `pull_request` + `workflow_dispatch`, never on `push`. The script pins a dummy `NEXT_PUBLIC_BUNGIE_PUBLIC_API_KEY` into the build — Next inlines `NEXT_PUBLIC_*` at build time, and the client-write specs throw on a missing key before the Bungie stub can fire. `npm run e2e:nobuild` skips the build for fast iteration, is wrong if `.next` is stale, and inherits whatever key the last build baked in.
 - `npm run mutate:diff -- [range]` — Stryker over the changed lines of `.ts` under `src/` (default `main...HEAD`; a past PR is `<merge>^1...<merge>^2`, run in a temporary worktree at its head with that commit's tests). `.tsx` and `src/hooks/` are listed, not mutated: Vitest has no DOM, so those mutants could only ever report "no coverage". Flags are in the script's header; `tests/README.md` covers reading the report.
+- `npm run visual:check` — builds, then screenshots every page at 360/768/1280px × light/dark into `visual-check/<route>/<route>--<width>--<theme>.png`, failing on any clipped or off-screen element. About a minute after the build. `--nobuild` reuses `.next`, with the same staleness caveat as `e2e:nobuild`. Not part of `npm run e2e` or CI.
 - `npm run e2e:maintenance` — slow, spawns real crawler/scanner processes against a mock Bungie server. Deliberately outside `npm test` and CI. Unrelated to `npm run e2e` despite the name.
 
 Scripts run via `tsx` using `tsconfig.scripts.json`. Next.js app and scripts compile separately.

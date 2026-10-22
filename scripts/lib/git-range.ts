@@ -2,9 +2,9 @@ import { execFileSync } from 'child_process';
 import { readFileSync } from 'fs';
 
 /**
- * What a git range changed, for the two diff-scoped verification scripts
- * (`mutate:diff`, `visual:check`). Both take the same optional range argument and must
- * agree on what it means, so it is parsed once, here.
+ * What a git range changed, for `mutate:diff`. A module of its own because it is the
+ * part of that script with rules worth reading on their own: what a range means, and
+ * how hunks become line ranges.
  *
  * A range is `A...B` (B's changes since it left A — the default, `main...HEAD`, is "this
  * branch"), or `A..B` (B against A exactly). To re-run a merged PR, give its merge

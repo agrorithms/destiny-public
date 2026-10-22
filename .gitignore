@@ -12,9 +12,10 @@
 
 # testing
 /coverage
-# mutate:diff reports and Stryker's sandbox (never committed)
+# mutate:diff reports and Stryker's sandbox; visual:check screenshots (for review, never committed)
 /reports/
 /.stryker-tmp/
+/visual-check/
 
 # next.js
 /.next/

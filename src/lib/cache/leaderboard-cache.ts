@@ -354,6 +354,13 @@ export function fastestBody(
     return { board: 'fastest', mode: 'individual', hours, raidKeys, leaderboards };
 }
 
+/** The envelope the request's board and mode ask for, with no raids and no rows. */
+function emptyBody(request: LeaderboardRequest): unknown {
+    if (request.board === 'fastest') return fastestBody(request.hours, [], {});
+    if (request.mode === 'individual') return individualBody(request.hours, [], {});
+    return aggregateBody(request.hours, [], []);
+}
+
 function sliceBoards<E>(
     boards: Record<string, IndividualLeaderboard<E>>,
     limit: number,
@@ -401,9 +408,7 @@ export async function getLeaderboardResponse(request: LeaderboardRequest): Promi
     const raidKeys = request.raidKeys.filter((key) => allKeys.includes(key));
     if (request.raidKeys.length > 0 && raidKeys.length === 0) {
         // Every selected raid lacks the version, which an empty selection would read as "all".
-        if (request.board === 'fastest') return { body: fastestBody(request.hours, [], {}), state: 'bypass', band };
-        if (request.mode === 'individual') return { body: individualBody(request.hours, [], {}), state: 'bypass', band };
-        return { body: aggregateBody(request.hours, [], []), state: 'bypass', band };
+        return { body: emptyBody(request), state: 'bypass', band };
     }
     const req = { ...request, raidKeys };
 

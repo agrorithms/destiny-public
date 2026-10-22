@@ -440,6 +440,8 @@ echo
 echo "=== J. ship-ticket state check (stop-ship-state.sh, report.sh) ==="
 # A throwaway repo on a feat/999-* branch, with a state file the cases rewrite.
 SHIP_REPO="$(mktemp -d)"
+# Absolute: the report.sh cases cd into SHIP_REPO, where a relative $H no longer resolves.
+REPORT="$PWD/$H/../skills/ship-ticket/report.sh"
 sg() { git -C "$SHIP_REPO" -c user.name=t -c user.email=t@t "$@"; }
 sg init -q
 sg symbolic-ref HEAD refs/heads/main   # this git predates init -b
@@ -472,14 +474,14 @@ verdict() { # verdict <raw-output> -> silent | block | message
 
 state committed "$C1"
 check "consistent, committed, clean -> silent" "silent" "$(verdict "$(stop)")"
-check "report.sh: consistent -> exit 0" "0" "$(cd "$SHIP_REPO" && $H/../skills/ship-ticket/report.sh 999 >/dev/null; echo $?)"
+check "report.sh: consistent -> exit 0" "0" "$(cd "$SHIP_REPO" && "$REPORT" 999 >/dev/null; echo $?)"
 check "report.sh: says State OK" "yes" \
-  "$(cd "$SHIP_REPO" && $H/../skills/ship-ticket/report.sh 999 | grep -q '^State OK' && echo yes || echo no)"
+  "$(cd "$SHIP_REPO" && "$REPORT" 999 | grep -q '^State OK' && echo yes || echo no)"
 
 state committed 0123456789012345678901234567890123456789
 check "missing SHA -> block" "block" "$(verdict "$(stop)")"
 check "missing SHA, second stop -> message, not a loop" "message" "$(verdict "$(stop true)")"
-check "report.sh: missing SHA -> exit 3" "3" "$(cd "$SHIP_REPO" && $H/../skills/ship-ticket/report.sh 999 >/dev/null; echo $?)"
+check "report.sh: missing SHA -> exit 3" "3" "$(cd "$SHIP_REPO" && "$REPORT" 999 >/dev/null; echo $?)"
 
 state committed "$OFF"
 check "SHA outside HEAD's history -> block" "block" "$(verdict "$(stop)")"

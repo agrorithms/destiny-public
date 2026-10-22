@@ -16,14 +16,17 @@ only the install, one WIP commit per chunk.
 
 ## 2. The skill and its three agents
 
-- [ ] `.claude/skills/ship-ticket/SKILL.md`
-- [ ] `.claude/skills/ship-ticket/state.md`
-- [ ] `.claude/skills/ship-ticket/agent-contract.md`
-- [ ] `.claude/skills/ship-ticket/report.sh` (755)
-- [ ] `.claude/agents/ship-implementer.md`
-- [ ] `.claude/agents/ship-reviewer.md`
-- [ ] `.claude/agents/ship-fixer.md`
-- [ ] `bash .claude/hooks/test-hooks.sh` rerun (§J calls `report.sh` from its skill path)
+- [x] `.claude/skills/ship-ticket/SKILL.md`
+- [x] `.claude/skills/ship-ticket/state.md`
+- [x] `.claude/skills/ship-ticket/agent-contract.md`
+- [x] `.claude/skills/ship-ticket/report.sh` (755)
+- [x] `.claude/agents/ship-implementer.md`
+- [x] `.claude/agents/ship-reviewer.md`
+- [x] `.claude/agents/ship-fixer.md`
+- [x] `.claude/hooks/test-hooks.sh`: §J's three `report.sh` cases called a relative `$H` after
+      `cd "$SHIP_REPO"` (exit 127; the sandbox had an absolute `H`). Now an absolute `$REPORT`,
+      fixed in §J only
+- [x] `bash .claude/hooks/test-hooks.sh` rerun → `PASS: 131 FAIL: 0`
 
 ## 3. CLAUDE.md
 

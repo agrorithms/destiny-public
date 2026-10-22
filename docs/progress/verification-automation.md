@@ -152,7 +152,7 @@ The user approved a fix list from the two-axis review. Numbers follow the review
 - *(Review fixes, new, for the user.)* A Stryker run that crashes at the checked-out commit
   leaves its sandbox in `.stryker-tmp/`. ESLint doesn't ignore that folder, so `npm run lint`
   then fails with ~30 `@ts-nocheck` errors in sandbox copies of e2e specs. Seen once here and
-  cleaned up by hand. Not fixed: not on the approved list.
+  cleaned up by hand. Fixed after the user approved it: `.stryker-tmp/**` in `eslint.config.mjs`'s ignores; a probe file there no longer fails lint.
 
 - *(Moot since decision 9 removed route selection.)* Route selection: the root layout's StatsBar fetches `/api/live-stats`, which imports the
   fireteam dedupe and most of `queries.ts`. Following API edges from the layout made every

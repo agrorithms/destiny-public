@@ -22,6 +22,9 @@ const eslintConfig = defineConfig([
     "test-results/**",
     "playwright-report/**",
     "blob-report/**",
+    // Stryker's sandbox: a copy of the whole project, left behind when a mutate:diff run
+    // crashes. Linting it reports the project's own files a second time, out of context.
+    ".stryker-tmp/**",
   ]),
 ]);
 

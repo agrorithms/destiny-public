@@ -85,7 +85,9 @@ statuses mean:
 The script prints two scores. The **overall** score is killed ÷ (killed + survived + no coverage):
 a line no test runs counts against it. That is the number a threshold applies to. The
 **covered-code** score leaves no-coverage out, so it says how sharp the tests that exist are, not
-whether the changed code has tests at all. A score worth reporting comes from a full run with
+whether the changed code has tests at all. The threshold is 62.5% overall (5 of 8), applied only
+when at least 8 mutants were scored: on fewer, one survivor moves the score by 15 points or more.
+The script prints `threshold: PASS`, `FAIL` (and exits non-zero) or `not applied`. A score worth reporting comes from a full run with
 `--typecheck`: without the checker, a mutant that wouldn't compile still runs and is counted as
 killed or survived for reasons that mean nothing. The checker is off by default only because it
 multiplies the wall time. `--incremental` reuses old results and is for the kill-and-rerun loops

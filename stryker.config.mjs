@@ -38,7 +38,8 @@ const config = {
 
     reporters: ['clear-text', 'progress', 'html', 'json'],
 
-    // No `break` threshold on purpose: the baseline comes first, the number after.
+    // No `break`: the pass mark (62.5% overall, from 8 scored mutants up) needs a minimum
+    // count Stryker can't express, so mutate:diff applies it. high/low only colour the report.
     thresholds: { high: 80, low: 60, break: null },
 
     // Each worker is a Vitest process; the dev box has 8 cores and ~5 GB of RAM.

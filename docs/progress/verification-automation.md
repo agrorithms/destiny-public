@@ -70,6 +70,11 @@ Docs and landing:
     no coverage).
 13. Before/after screenshots (also screenshot `main`, show the pair): this line only, no issue.
 14. WIP commits on this branch; no push and no PR until the user has reviewed the diffs.
+15. **Threshold (the user, after the baseline): 62.5% overall** (5 of 8), applied only from
+    **8 scored mutants** up (killed + timeout + survived + no coverage; compile errors and
+    static skips are never scored). Below 8, the per-survivor rule is the only bar.
+    `mutate:diff` prints PASS / FAIL / not applied and exits non-zero on FAIL. #172 passes at
+    67.0% (63 of 94), one mutant above the line.
 
 ## Files
 
@@ -95,6 +100,7 @@ Docs and landing:
 - [x] `docs/agents/domain.md` — the user's own ADR-list fix; went in with commit 1
 - [x] first `visual:check -- --all` run; overflow rulings applied (8, 10)
 - [x] `e2e/visual.spec.ts` — response-based settle wait instead of `networkidle` (user's ruling)
+- [x] threshold in `scripts/mutate-diff.ts`, CLAUDE.md, `tests/README.md`, the config comment (15)
 - [x] `npm run e2e` unchanged by the `chromium` project's `testIgnore`: 158 passed, no visual test under `chromium`
 
 ## Found while building

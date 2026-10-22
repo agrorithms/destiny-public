@@ -38,6 +38,14 @@ const REPORT_DIR = path.join(REPO, 'reports', 'mutation');
 /** stryker.config.mjs's `tsconfigFile`. */
 const CHECKER_TSCONFIG = 'tsconfig.stryker.json';
 
+/**
+ * The pass mark, on the overall score (no-coverage counts against it): 5 of 8. Applied
+ * only from THRESHOLD_MIN_SCORED scored mutants up; below that the per-survivor rule in
+ * CLAUDE.md is the only bar. Chosen by the user on 2026-10-22, after the #172 baseline.
+ */
+const THRESHOLD = 0.625;
+const THRESHOLD_MIN_SCORED = 8;
+
 /** Changed `.ts` that a Vitest test could reach. */
 function isMutable(file: string): boolean {
     return file.startsWith('src/')
@@ -98,8 +106,11 @@ interface Report {
     files: Record<string, { mutants: ReportMutant[] }>;
 }
 
-/** The score as Stryker defines it, and the share of mutants each status took. */
-function summarise(report: Report): void {
+/**
+ * The score as Stryker defines it, the share of mutants each status took, and the
+ * threshold's verdict. Returns false only when the threshold applies and is missed.
+ */
+function summarise(report: Report): boolean {
     const all = Object.entries(report.files).flatMap(([file, { mutants }]) => mutants.map((m) => ({ file, ...m })));
     const count = (status: string) => all.filter((m) => m.status === status).length;
     const killed = count('Killed');
@@ -122,6 +133,17 @@ function summarise(report: Report): void {
     // covered score leaves no-coverage out, so it measures only the tests that exist.
     console.log(`mutation score: ${pct(detected, valid)} overall (covered code: ${pct(detected, detected + survived)})`);
 
+    let passed = true;
+    if (valid < THRESHOLD_MIN_SCORED) {
+        // On a handful of mutants one survivor swings the score by 15+ points, so the
+        // percentage says more about luck than about the tests.
+        console.log(`threshold: not applied (${valid} scored mutant(s), fewer than ${THRESHOLD_MIN_SCORED}); `
+            + 'every survivor is still killed or justified');
+    } else {
+        passed = detected >= THRESHOLD * valid;
+        console.log(`threshold: ${passed ? 'PASS' : 'FAIL'} (${pct(detected, valid)} overall against ${THRESHOLD * 100}%)`);
+    }
+
     const left = all.filter((m) => m.status === 'Survived' || m.status === 'NoCoverage');
     if (left.length > 0) {
         console.log('\nNot detected:');
@@ -130,6 +152,7 @@ function summarise(report: Report): void {
             console.log(`  ${m.file}:${m.location.start.line}  ${m.status.padEnd(10)} ${m.mutatorName} → ${replacement}`);
         }
     }
+    return passed;
 }
 
 function main(): void {
@@ -169,9 +192,12 @@ function main(): void {
         const seconds = ((Date.now() - started) / 1000).toFixed(0);
 
         const reportFile = path.join(REPORT_DIR, 'mutation.json');
-        if (fs.existsSync(reportFile)) summarise(JSON.parse(fs.readFileSync(reportFile, 'utf8')) as Report);
+        const passed = fs.existsSync(reportFile)
+            ? summarise(JSON.parse(fs.readFileSync(reportFile, 'utf8')) as Report)
+            : true;
         console.log(`\nwall time: ${seconds}s · report: ${path.relative(REPO, path.join(REPORT_DIR, 'mutation.html'))}`);
         if (status !== 0) process.exitCode = status ?? 1;
+        else if (!passed) process.exitCode = 1;
     }
 
     if (browserOnly.length > 0) {

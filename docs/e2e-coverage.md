@@ -2323,6 +2323,58 @@ Shown biting, then restored and green. Each break was its own build:
   branch: exactly 14 ("Expected: \"true\", Received: \"false\"") and 10 ("Expected: visible")
   failed. Neither was among the twelve breaks above.
 
+## 2026-10-22 — #41 the leaderboard's Difficulty dropdown
+
+`e2e/leaderboard-difficulty.spec.ts`, **new**, nine specs; `e2e/support/seed-world.ts` changed.
+The suite is now **twenty-seven flows, 167 tests including the two canary setups**.
+
+The Difficulty dropdown (All / Normal / Master / Epic) is back on `/leaderboard`, on both tabs,
+after 8ea7ae8 hid it. Difficulty now comes from the run's activity hash, tagged in
+`RAID_DEFINITIONS`; `difficulty_tier` records Feats and no filter reads it. The choice is kept in
+localStorage (`destiny-farm-finder-difficulty-filter`, unchanged; `'epic'` is new and the old
+`'normal'`/`'master'` still load). Under a Difficulty the API leaves out the board of every raid
+with no version at it, and a raid that has the version but no clears in the window keeps its empty
+card. The label is now tied to its `<select>` (`htmlFor`), which is how the spec finds it by name;
+the Players and Rows labels still aren't.
+
+What the runs count, and which boards the API leaves out on every path (all raids, one raid, a
+subset, Total Clears), are pinned in Vitest: `src/lib/bungie/manifest.test.ts`,
+`tests/db/{leaderboard,fastest-clears,raid-stats}.test.ts` and the new
+`tests/routes/{leaderboard,raid-stats}.test.ts`.
+
+**Seed world:** `DIFFICULTY_PLAYERS`, one run each, on raids no other spec gives PGCRs:
+FixtureGolf#5555 on Vault of Glass: Standard with Feats on (`difficulty_tier` 2, the run the old
+filter called Master), FixtureHotel#6666 on Vault of Glass: Master, FixtureIndia#7777 on The Desert
+Perpetual (Epic): Standard. One clear each keeps them below FixtureAlpha on Total Clears, and the
+existing leaderboard, Fastest Clears and player-name specs passed unchanged with them seeded.
+
+1. **The dropdown offers All, Normal, Master, Epic, with All selected**, on `/leaderboard` and on
+   `/leaderboard?board=fastest` (two tests).
+2. **Master** sends `difficulty=master`. Vault of Glass shows Hotel and not Golf. Deep Stone Crypt
+   and The Desert Perpetual have no card. Root of Nightmares, which has a Master version and no
+   clears, shows "No completions found".
+3. **Normal** shows Golf and not Hotel on Vault of Glass. Back on **All**, both are on the one
+   Vault of Glass card and Deep Stone Crypt's card is back.
+4. **Epic on Fastest Clears** sends `board=fastest&difficulty=epic`. The Desert Perpetual is the
+   only card, with India on it.
+5. **The choice survives a reload**: `epic` is selected again and the reload's request carries it.
+6. **A value stored before Epic existed (`master`) loads**: it is selected and sent.
+7. **An unreadable stored value reads as All**: nothing is sent and every card shows.
+8. **Phone (360×780):** after choosing Master, `expectNoOverflow(page)` passes.
+
+**Bite:** the red run, at `03ff690` before the dropdown came back. All nine specs failed (the
+select wasn't there: `toHaveText`/`toHaveValue` failed on 1 and 7, `selectOption` or
+`waitForRequest` timed out on the rest). In the same run the existing leaderboard (5), Fastest
+Clears (6) and player-name (6) specs passed with the new seed. No deliberate break beyond it.
+
+### Still NOT covered
+
+- `/active-sessions` has no Difficulty filter (#183).
+- The maintenance snapshot ignores every filter, Difficulty included (#185); the e2e world has no
+  maintenance state.
+- Master with only no-Master raids selected leaves zero boards. Full Clears shows "No leaderboards
+  found" and Fastest shows "No Completions match these filters". Not asserted.
+
 ## 2026-10-21 — the viewport matrix (`npm run visual:check`)
 
 Not one of the flows above, and not run by `npm run e2e` or CI. `e2e/visual.spec.ts` runs under

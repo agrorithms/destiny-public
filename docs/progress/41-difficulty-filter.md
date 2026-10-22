@@ -34,13 +34,38 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
    - [x] `tests/routes/leaderboard.test.ts` (new)
    - [x] `tests/routes/raid-stats.test.ts` (new)
 3. UI, e2e and bookkeeping
-   - [ ] `src/hooks/useLeaderboardPrefs.ts`: `DifficultyFilter` accepts `epic`
-   - [ ] `src/app/leaderboard/page.tsx`: the Difficulty dropdown, back on both tabs
-   - [ ] `e2e/support/seed-world.ts`: VoG Normal/Master and DP Epic runs
-   - [ ] `e2e/leaderboard-difficulty.spec.ts` (new)
-   - [ ] `docs/e2e-coverage.md`: flow list and journal entry
-   - [ ] `docs/progress/41-difficulty-filter.md` (this file)
+   - [x] `src/hooks/useLeaderboardPrefs.ts`: `DifficultyFilter` accepts `epic`
+   - [x] `src/app/leaderboard/page.tsx`: the Difficulty dropdown, back on both tabs
+   - [x] `e2e/support/seed-world.ts`: VoG Normal/Master and DP Epic runs
+   - [x] `e2e/leaderboard-difficulty.spec.ts` (new)
+   - [x] `docs/e2e-coverage.md`: flow list and journal entry
+   - [x] `docs/progress/41-difficulty-filter.md` (this file)
 
 ## Surviving mutants
 
+None. No `Stryker disable` comments.
+
 ## Notes
+
+- **Mutation, three loops.** Loop 1 (full): 59.1% (88/149), FAIL. Sixty survivors were the table's
+  tags and `buildHashMap`'s calls: they run while `manifest.ts` loads, and the test imported the
+  module once at the top, so no mutant was ever live in it. `manifest.test.ts` now does
+  `vi.resetModules()` + `await import('./manifest')` in `beforeEach`, as
+  `tests/scanner/scanner-position.test.ts` does. The new `hashToDifficultyMap.clear()` was
+  redundant (it's built once, at import) and is gone. One more survivor was `state: 'bypass'` on
+  the no-board path; the route test now asserts `X-Cache: BYPASS`. Loop 2 (incremental) left
+  `hashToRaidMap.set` (a changed line), killed by "every version of a raid still resolves to that
+  raid". Its summary also reused stale results for `src/lib/active-session/*` from an earlier
+  ticket's incremental file, which isn't in this diff. Loop 3, the full run with `--typecheck` at
+  `561e299`: 100% overall (63/63), 100% covered, PASS; 85 compile errors discarded (a tag blanked to
+  `""` isn't a `Difficulty`).
+- **Not every test was red first.** In `tests/db/`, the rewritten composition tests (e.g.
+  "difficulty + exactPlayers compose correctly") passed against the old tier-based clause too,
+  because their seeds happen to agree on both readings. The tests that cross hash and tier are the
+  ones that failed; mutation testing covers the rest.
+- **e2e red run** at `03ff690`: the nine new specs failed and the 17 existing leaderboard,
+  Fastest Clears and player-name specs passed with the new seed.
+- `scripts/cleanup/debug-sessions.ts` is gitignored, so its one-line update to the new `hashes`
+  shape is local to this checkout.
+- `useLeaderboardPrefs.ts` takes `Difficulty` as a type-only import from `manifest.ts`, which
+  imports `fs`. It is erased at build, so the client bundle doesn't pull the module in.

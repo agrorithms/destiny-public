@@ -26,9 +26,9 @@ const config = {
     // killed or survived for reasons that mean nothing. The checker discards those as
     // CompileError instead. tsconfig.stryker.json narrows the check to src/ and tests/:
     // the project tsconfig.json includes every **/*.ts, scripts/, e2e/ and gos10k/ too.
-    // Even narrowed it multiplies the wall time, so mutate:diff turns it off unless given
-    // --typecheck, which the score reported at the end of a ticket uses.
-    checkers: ['typescript'],
+    // Even narrowed it multiplies the wall time, so it is off here and mutate:diff turns it
+    // on with --typecheck, which the score reported at the end of a ticket uses.
+    checkers: [],
     tsconfigFile: 'tsconfig.stryker.json',
 
     // A static mutant is one that runs only while a module loads (a top-level constant, a
@@ -45,16 +45,21 @@ const config = {
     // Each worker is a Vitest process; the dev box has 8 cores and ~5 GB of RAM.
     concurrency: 4,
 
-    // Stryker copies the project into a sandbox per run. It already skips git-ignored
-    // files; this is the explicit list of the large ones, because a sandbox that copied
-    // data/ (several GB of SQLite) would fill the disk before anything ran.
+    // Stryker copies the project into a sandbox per run, skipping only a short built-in list
+    // (node_modules, .git, .next) and this one: it does not read .gitignore. So every large or generated
+    // directory is named here; a sandbox that copied data/ (several GB of SQLite) would
+    // fill the disk before anything ran.
     ignorePatterns: [
         'data',
         '.next',
         'tmp',
         'dist',
-        'gos10k/*.db',
+        'gos10k/*.db*',
+        'coverage',
         'test-results',
+        'playwright-report',
+        'blob-report',
+        'maintenance-snapshots',
         'visual-check',
         'reports',
     ],

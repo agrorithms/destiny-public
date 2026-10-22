@@ -1,12 +1,14 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import type { Page, Request } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
+import { LEADERBOARD_PLAYERS } from './support/seed-world';
 import { expectNoOverflow } from './support/viewport';
 
 /**
- * The viewport matrix: every route `npm run visual:check` lists, at 360 / 768 / 1280px in
- * light and dark. Runs only under the six `visual-*` projects, which playwright.config.ts
- * defines only when VISUAL_ROUTES is set — so `npm run e2e` never sees this file.
+ * The viewport matrix: every page under src/app, at 360 / 768 / 1280px in light and dark.
+ * Runs only under the six `visual-*` projects, which playwright.config.ts defines only when
+ * VISUAL_CHECK is set (`npm run visual:check` sets it) — so `npm run e2e` never sees this file.
  *
  * Two outputs with different jobs. The screenshot is for a human to review and asserts
  * nothing. The overflow check is the gate: a page with something clipped or pushed past
@@ -17,14 +19,42 @@ import { expectNoOverflow } from './support/viewport';
  * expectNoOverflow() itself.
  */
 
-interface VisualRoute {
+const APP = path.join('src', 'app');
+const VISUAL_DIR = path.join(process.cwd(), 'visual-check');
+
+/** Where a dynamic route points in the e2e seed world. */
+const DYNAMIC_ROUTE_FIXTURES: Record<string, string> = {
+    // membershipType 3 is what the fixture seeds. The top of the leaderboard, so the page
+    // has clears to show.
+    '/player/[membershipType]/[membershipId]': `/player/3/${LEADERBOARD_PLAYERS[0].membershipId}`,
+};
+
+/** Behind basic auth, which the e2e server sets no credentials for. */
+const SKIPPED_ROUTES = new Set(['/admin/stats']);
+
+interface Route {
     /** Folder- and filename-safe name: `home`, `active-sessions`, `player`. */
     slug: string;
     path: string;
 }
 
-const routes: VisualRoute[] = JSON.parse(process.env.VISUAL_ROUTES ?? '[]');
-const VISUAL_DIR = path.join(process.cwd(), 'visual-check');
+function allRoutes(): Route[] {
+    const pages = fs.readdirSync(APP, { recursive: true }).map(String).filter((f) => path.basename(f) === 'page.tsx');
+    const routes: Route[] = [];
+    for (const page of pages) {
+        const pattern = '/' + path.dirname(page).split(path.sep).filter((s) => s && s !== '.').join('/');
+        if (SKIPPED_ROUTES.has(pattern)) continue;
+
+        let url = pattern;
+        if (pattern.includes('[')) {
+            url = DYNAMIC_ROUTE_FIXTURES[pattern];
+            if (!url) throw new Error(`No fixture URL for ${pattern}; add one to DYNAMIC_ROUTE_FIXTURES.`);
+        }
+        const slug = pattern === '/' ? 'home' : pattern.split('/').filter((s) => s && !s.startsWith('[')).join('-');
+        routes.push({ slug, path: url });
+    }
+    return routes.sort((a, b) => a.slug.localeCompare(b.slug));
+}
 
 /** How long no request may be awaiting its response before the page counts as drawn. */
 const QUIET_MS = 500;
@@ -55,7 +85,7 @@ async function gotoAndSettle(page: Page, url: string): Promise<void> {
     }
 }
 
-for (const route of routes) {
+for (const route of allRoutes()) {
     test(`${route.slug} (${route.path})`, async ({ page }, testInfo) => {
         const width = page.viewportSize()?.width;
         const theme = testInfo.project.use.colorScheme === 'dark' ? 'dark' : 'light';

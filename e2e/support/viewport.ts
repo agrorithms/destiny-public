@@ -194,14 +194,15 @@ function auditOverflow(exempt: string[]): string[] {
             nearestChecked = true;
             if (cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none')) continue;
 
+            // A container clipped to nothing is a collapsed section, not a clipped child.
+            if (ancestor.clientWidth === 0 || ancestor.clientHeight === 0) continue;
+
             const outer = ancestor.getBoundingClientRect();
             // The clip edge is the padding box: inside the borders.
             const left = outer.left + ancestor.clientLeft;
             const top = outer.top + ancestor.clientTop;
             const right = left + ancestor.clientWidth;
             const bottom = top + ancestor.clientHeight;
-            // A container clipped to nothing is a collapsed section, not a clipped child.
-            if (ancestor.clientWidth === 0 || ancestor.clientHeight === 0) continue;
 
             if (clips(cs.overflowX)) {
                 if (box.left < left - TOLERANCE) problems.push(`clipped ${(left - box.left).toFixed(1)}px on the left`);

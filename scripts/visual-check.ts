@@ -1,6 +1,7 @@
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { parseArgs } from 'util';
 
 /**
  * `npm run visual:check -- [--nobuild]`
@@ -12,86 +13,27 @@ import path from 'path';
  *
  * Every page, every time: the whole matrix runs in about a minute after the build, so
  * picking pages from a diff's import graph saved too little to be worth being wrong about.
+ * e2e/visual.spec.ts finds the pages and says which are skipped and why.
  *
  * Flags:
  *   --nobuild   reuse .next instead of building (wrong if .next is stale, as e2e:nobuild)
  *
- * Runs against the e2e suite's seeded fixture databases, never the dev database.
- * /admin/stats is skipped: it sits behind basic auth.
+ * Runs through `npm run e2e` / `e2e:nobuild`, so it gets that build (with its dummy public
+ * key) and the e2e suite's seeded fixture databases, never the dev database.
  */
 
 const REPO = process.cwd();
-const APP = path.join('src', 'app');
+/** Where e2e/visual.spec.ts writes the screenshots. */
 const VISUAL_DIR = path.join(REPO, 'visual-check');
 
-/** Where a dynamic route points in the e2e seed world (e2e/support/seed-world.ts). */
-const DYNAMIC_ROUTE_FIXTURES: Record<string, string> = {
-    // FixtureAlpha#4242 in LEADERBOARD_PLAYERS: seeded with clears, so the page has content.
-    '/player/[membershipType]/[membershipId]': '/player/3/4611686018400010001',
-};
-
-const SKIPPED_ROUTES = new Set(['/admin/stats']);
-
-interface Route {
-    /** Folder- and filename-safe name: `home`, `active-sessions`, `player`. */
-    slug: string;
-    path: string;
-}
-
-function findPages(dir: string, found: string[] = []): string[] {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) findPages(full, found);
-        else if (entry.name === 'page.tsx') found.push(full);
-    }
-    return found;
-}
-
-function allRoutes(): Route[] {
-    const routes: Route[] = [];
-    for (const page of findPages(APP)) {
-        const pattern = '/' + path.relative(APP, path.dirname(page)).split(path.sep).filter(Boolean).join('/');
-        if (pattern.startsWith('/api') || SKIPPED_ROUTES.has(pattern)) continue;
-
-        let url = pattern;
-        if (pattern.includes('[')) {
-            url = DYNAMIC_ROUTE_FIXTURES[pattern];
-            if (!url) throw new Error(`No fixture URL for ${pattern}; add one to DYNAMIC_ROUTE_FIXTURES.`);
-        }
-        const slug = pattern === '/' ? 'home' : pattern.split('/').filter((s) => s && !s.startsWith('[')).join('-');
-        routes.push({ slug, path: url });
-    }
-    return routes.sort((a, b) => a.slug.localeCompare(b.slug));
-}
-
-function parseArgs(argv: string[]) {
-    const known = new Set(['--nobuild']);
-    for (const arg of argv) {
-        if (!known.has(arg)) throw new Error(`Unknown argument ${arg}. Known: ${[...known].join(', ')}`);
-    }
-    return { build: !argv.includes('--nobuild') };
-}
-
 function main(): void {
-    const args = parseArgs(process.argv.slice(2));
-    const routes = allRoutes();
-    console.log(`pages:\n  ${routes.map((r) => r.path).join('\n  ')}`);
-
-    if (args.build) {
-        // The same dummy public key `npm run e2e` pins: Next inlines NEXT_PUBLIC_* at build
-        // time, and client code throws on a missing key before the Bungie stub can answer.
-        const build = spawnSync('npm', ['run', 'next-build'], {
-            stdio: 'inherit',
-            env: { ...process.env, NEXT_PUBLIC_BUNGIE_PUBLIC_API_KEY: 'e2e-not-a-real-bungie-key' },
-        });
-        if (build.status !== 0) process.exit(build.status ?? 1);
-    }
+    const { values } = parseArgs({ options: { nobuild: { type: 'boolean', default: false } } });
 
     fs.rmSync(VISUAL_DIR, { recursive: true, force: true });
-    const projects = [360, 768, 1280].flatMap((w) => [`--project=visual-${w}-light`, `--project=visual-${w}-dark`]);
-    const run = spawnSync('npx', ['playwright', 'test', ...projects], {
+    // VISUAL_CHECK makes playwright.config.ts define the six visual-* projects.
+    const run = spawnSync('npm', ['run', values.nobuild ? 'e2e:nobuild' : 'e2e', '--', '--project=visual-*'], {
         stdio: 'inherit',
-        env: { ...process.env, VISUAL_ROUTES: JSON.stringify(routes) },
+        env: { ...process.env, VISUAL_CHECK: '1' },
     });
 
     const shots = fs.existsSync(VISUAL_DIR)

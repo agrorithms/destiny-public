@@ -41,8 +41,8 @@ for (const key of FIXTURE_DB_ENV_KEYS) {
 /**
  * The viewport matrix for `npm run visual:check`: 360 / 768 / 1280px, light and dark, each
  * running only e2e/visual.spec.ts. Defined only when scripts/visual-check.ts sets
- * VISUAL_ROUTES, so `npm run e2e` and CI (`npx playwright test`) never run them — six more
- * projects over every spec would be six times the suite on a serial, single-worker run.
+ * VISUAL_CHECK, so `npm run e2e` and CI (`npx playwright test`) never run the matrix: it
+ * adds 48 screenshots to a serial, single-worker run, and its screenshots are for a human.
  *
  * The dark theme comes from `colorScheme`, i.e. the OS preference a first-time visitor
  * brings; the stored-preference path is theme.spec.ts's. Heights are a phone, a tablet
@@ -50,7 +50,7 @@ for (const key of FIXTURE_DB_ENV_KEYS) {
  * fold.
  */
 function visualProjects() {
-    if (!process.env.VISUAL_ROUTES) return [];
+    if (!process.env.VISUAL_CHECK) return [];
     const sizes = [
         { width: 360, height: 780 },
         { width: 768, height: 1024 },

@@ -2327,7 +2327,7 @@ Shown biting, then restored and green. Each break was its own build:
 
 Not one of the flows above, and not run by `npm run e2e` or CI. `e2e/visual.spec.ts` runs under
 six projects (`visual-360-light` … `visual-1280-dark`) that `playwright.config.ts` defines only
-when `scripts/visual-check.ts` sets `VISUAL_ROUTES`; the `chromium` project ignores the file. It
+when `scripts/visual-check.ts` sets `VISUAL_CHECK`; the `chromium` project ignores the file. It
 uses the same fixture databases and canary as the suite.
 
 For every page (`/admin/stats` aside, behind basic auth), at each width and theme:

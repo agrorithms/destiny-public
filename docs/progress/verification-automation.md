@@ -93,7 +93,7 @@ Docs and landing:
 - [x] `tsconfig.stryker.json` — checker-only, `src/` + `tests/` (1)
 - [x] `scripts/mutate-diff.ts` — static-skipped count, overall vs covered wording, checker
       tsconfig copied into past-range worktrees, 90s rule applied (1, 2, 4)
-- [x] `scripts/lib/git-range.ts` — shared range parsing for both scripts
+- [x] `scripts/lib/git-range.ts` — range parsing (shared with visual:check until decision 9; mutate:diff only now)
 - [x] `scripts/mutate-diff.ts`
 - [x] `scripts/visual-check.ts`
 - [x] rename `visual:diff` → `visual:check` across script, folder, config and docs (6)

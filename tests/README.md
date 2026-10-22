@@ -77,7 +77,7 @@ statuses mean:
 |---|---|---|
 | Killed | A test failed on the mutant | Nothing |
 | Timeout | The mutant made a test hang (e.g. a loop that never ends) | Nothing — counts as killed |
-| Survived | Tests ran it and all passed | A test asserting the behaviour that changed, or a one-line equivalence note |
+| Survived | Tests ran it and all passed | A test asserting the behaviour that changed, or, if it is equivalent, a disable comment (below) |
 | No coverage | No test executes that line at all | The same — usually a missing test, not a weak one |
 | Compile error | The TypeScript checker rejected the mutant (`--typecheck` only) | Nothing — it is discarded, not scored |
 | Ignored | A static mutant: it runs only while a module loads (a top-level constant), so no test can be picked for it. Skipped by `ignoreStatic` | Nothing — not scored; the script prints how many |

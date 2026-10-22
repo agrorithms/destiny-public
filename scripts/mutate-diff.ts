@@ -2,6 +2,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { parseArgs as parseCliArgs } from 'util';
 import { changedFiles, DEFAULT_RANGE, resolveRange, type ResolvedRange } from './lib/git-range';
 
 /**
@@ -35,6 +36,8 @@ const REPO = process.cwd();
 const CONFIG = path.join(REPO, 'stryker.config.mjs');
 const STRYKER = path.join(REPO, 'node_modules', '.bin', 'stryker');
 const REPORT_DIR = path.join(REPO, 'reports', 'mutation');
+/** Stryker's default incremental file, kept in this checkout so a past range's worktree can reuse it. */
+const INCREMENTAL_FILE = path.join(REPO, 'reports', 'stryker-incremental.json');
 /** stryker.config.mjs's `tsconfigFile`. */
 const CHECKER_TSCONFIG = 'tsconfig.stryker.json';
 
@@ -61,18 +64,21 @@ function isBrowserOnly(file: string): boolean {
 }
 
 function parseArgs(argv: string[]) {
-    const flags = new Set(argv.filter((a) => a.startsWith('--')));
-    const known = new Set(['--files', '--incremental', '--typecheck']);
-    for (const flag of flags) {
-        if (!known.has(flag)) throw new Error(`Unknown flag ${flag}. Known: ${[...known].join(', ')}`);
-    }
-    const positional = argv.filter((a) => !a.startsWith('--'));
-    if (positional.length > 1) throw new Error(`One range at most, got: ${positional.join(' ')}`);
+    const { values, positionals } = parseCliArgs({
+        args: argv,
+        options: {
+            files: { type: 'boolean', default: false },
+            incremental: { type: 'boolean', default: false },
+            typecheck: { type: 'boolean', default: false },
+        },
+        allowPositionals: true,
+    });
+    if (positionals.length > 1) throw new Error(`One range at most, got: ${positionals.join(' ')}`);
     return {
-        range: positional[0] ?? DEFAULT_RANGE,
-        wholeFiles: flags.has('--files'),
-        incremental: flags.has('--incremental'),
-        typecheck: flags.has('--typecheck'),
+        range: positionals[0] ?? DEFAULT_RANGE,
+        wholeFiles: values.files,
+        incremental: values.incremental,
+        typecheck: values.typecheck,
     };
 }
 
@@ -121,6 +127,8 @@ function summarise(report: Report): boolean {
     const valid = detected + survived + noCoverage;
     const pct = (n: number, d: number) => (d === 0 ? 'n/a' : `${((100 * n) / d).toFixed(1)}%`);
 
+    // .github/workflows/mutation.yml reads this block back out of the log: the header, and
+    // the lines starting `mutation score:` and `threshold:`. Reword them together.
     console.log('\n── mutate:diff summary ──');
     console.log(`mutants: ${all.length} — killed ${killed}, timeout ${timeout}, survived ${survived}, `
         + `no coverage ${noCoverage}, compile error ${count('CompileError')}, runtime error ${count('RuntimeError')}, `
@@ -163,8 +171,9 @@ function main(): void {
     const targets = changed.filter((f) => isMutable(f.path) && f.ranges.length > 0);
     const browserOnly = changed.filter((f) => isBrowserOnly(f.path)).map((f) => f.path);
 
-    console.log(`range ${range.spec}: ${range.base.slice(0, 8)} → ${range.atHead ? 'working tree' : range.head.slice(0, 8)}`);
+    console.log(`range ${args.range}: ${range.base.slice(0, 8)} → ${range.atHead ? 'working tree' : range.head.slice(0, 8)}`);
     if (targets.length === 0) {
+        // Matched by .github/workflows/mutation.yml, like the summary block.
         console.log('No changed logic under src/ to mutate.');
     } else {
         const mutate = targets.flatMap((f) =>
@@ -177,12 +186,14 @@ function main(): void {
         let status: number | null;
         try {
             const strykerArgs = ['run', CONFIG, '--mutate', mutate.join(',')];
-            if (args.incremental) strykerArgs.push('--incremental');
-            if (!args.typecheck) strykerArgs.push('--checkers', '');
+            // Named explicitly so a past range's worktree, deleted below, reads and writes
+            // the incremental file in this checkout rather than its own throwaway copy.
+            if (args.incremental) strykerArgs.push('--incremental', '--incrementalFile', INCREMENTAL_FILE);
+            if (args.typecheck) strykerArgs.push('--checkers', 'typescript');
             status = spawnSync(STRYKER, strykerArgs, { cwd: dir, stdio: 'inherit' }).status;
 
             // Reports land in the run's cwd; a worktree is about to be deleted.
-            if (dir !== REPO) {
+            if (!range.atHead) {
                 fs.rmSync(REPORT_DIR, { recursive: true, force: true });
                 fs.cpSync(path.join(dir, 'reports', 'mutation'), REPORT_DIR, { recursive: true });
             }

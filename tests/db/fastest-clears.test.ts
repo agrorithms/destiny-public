@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { runFastestClearRows } from '@/lib/cache/leaderboard-cache';
+import type { Difficulty } from '@/lib/bungie/difficulty';
 import { resetTestDb } from '../helpers/db';
 import { hoursAgo, seedPlayer, seedRun } from '../helpers/seed';
+import { DP_EPIC, DP_NORMAL, VOG_MASTER, VOG_NORMAL } from '../helpers/pgcr-builder';
 
 /**
  * The Fastest Clears board (#130, #132): one row per player per raid, holding that
@@ -16,10 +18,6 @@ import { hoursAgo, seedPlayer, seedRun } from '../helpers/seed';
  */
 const RAID = 'salvations_edge';
 const CROTAS_END = 1566480315;
-const VOG_NORMAL = 3881495763;
-const VOG_MASTER = 1681562271;
-const DP_NORMAL = 1044919065;
-const DP_EPIC = 3817322389;
 const HOURS_BACK = 24;
 
 beforeEach(() => {
@@ -254,7 +252,7 @@ describe('filters', () => {
         seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: DP_NORMAL, difficultyTier: 2, activityDurationSeconds: 2000 });
         seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: DP_EPIC, activityDurationSeconds: 1000 });
 
-        const time = (difficulty: 'normal' | 'epic') =>
+        const time = (difficulty: Difficulty) =>
             runFastestClearRows(HOURS_BACK, 'the_desert_perpetual', 10, { difficulty }).map((r) => r.clearTimeSeconds);
 
         expect(time('normal')).toEqual([2000]);

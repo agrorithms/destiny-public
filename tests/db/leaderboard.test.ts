@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { runLeaderboardRows } from '@/lib/cache/leaderboard-cache';
+import type { RaidFilters } from '@/lib/db/queries';
 import { resetTestDb } from '../helpers/db';
 import { seedPlayer, seedRun } from '../helpers/seed';
-import { NON_RAID_HASH } from '../helpers/pgcr-builder';
+import { DP_EPIC, DP_NORMAL, NON_RAID_HASH, VOG_MASTER, VOG_NORMAL } from '../helpers/pgcr-builder';
 
 /**
  * The leaderboard is the product. A crash here would be noticed within minutes;
@@ -15,10 +16,6 @@ const SALVATIONS_EDGE = 2192826039;
 const CROTAS_END = 1566480315;
 const SALVATIONS_EDGE_MASTER = 4129614942;
 const CROTAS_END_MASTER = 1507509200;
-const VOG_NORMAL = 3881495763; // "Vault of Glass: Standard"
-const VOG_MASTER = 1681562271; // "Vault of Glass: Master"
-const DP_NORMAL = 1044919065; // "The Desert Perpetual: Standard"
-const DP_EPIC = 3817322389; // "The Desert Perpetual (Epic): Standard"
 
 const DURATION = 1800;
 const HOURS_BACK = 24;
@@ -298,7 +295,7 @@ describe('difficulty filtering', () => {
         seedRun({ instanceId: '4', completedBy: ['p1'], activityHash: DP_NORMAL, difficultyTier: 2 });
         seedRun({ instanceId: '5', completedBy: ['p1'], activityHash: NON_RAID_HASH });
 
-        const count = (filters?: Parameters<typeof runLeaderboardRows>[3]) =>
+        const count = (filters?: RaidFilters) =>
             runLeaderboardRows(HOURS_BACK, [], 10, filters)[0]?.completions ?? 0;
 
         expect([count({ difficulty: 'normal' }), count({ difficulty: 'master' }), count({ difficulty: 'epic' })]).toEqual([3, 1, 1]);

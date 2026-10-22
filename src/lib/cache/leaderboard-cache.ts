@@ -395,18 +395,17 @@ export async function getLeaderboardResponse(request: LeaderboardRequest): Promi
     // Under a Difficulty, a raid with no version at it has no board at all (#41, decision 6),
     // and the response's raidKeys say so. A raid with the version but no clears in the window
     // keeps its empty board: the two are different answers.
-    const difficulty = request.filters?.difficulty;
-    const allKeys = difficulty ? getRaidKeysWithDifficulty(difficulty) : Object.keys(allRaids);
-    const req = { ...request, raidKeys: request.raidKeys.filter((key) => allKeys.includes(key)) };
-    if (request.raidKeys.length > 0 && req.raidKeys.length === 0) {
+    const allKeys = request.filters?.difficulty
+        ? getRaidKeysWithDifficulty(request.filters.difficulty)
+        : Object.keys(allRaids);
+    const raidKeys = request.raidKeys.filter((key) => allKeys.includes(key));
+    if (request.raidKeys.length > 0 && raidKeys.length === 0) {
         // Every selected raid lacks the version, which an empty selection would read as "all".
-        const body = req.board === 'fastest'
-            ? fastestBody(req.hours, [], {})
-            : req.mode === 'individual'
-                ? individualBody(req.hours, [], {})
-                : aggregateBody(req.hours, [], []);
-        return { body, state: 'bypass', band };
+        if (request.board === 'fastest') return { body: fastestBody(request.hours, [], {}), state: 'bypass', band };
+        if (request.mode === 'individual') return { body: individualBody(request.hours, [], {}), state: 'bypass', band };
+        return { body: aggregateBody(request.hours, [], []), state: 'bypass', band };
     }
+    const req = { ...request, raidKeys };
 
     const sortedSelected = [...req.raidKeys].sort();
     const isAll = sortedSelected.length === 0 || isFullSet(sortedSelected, allKeys);

@@ -1,5 +1,6 @@
 import { deleteActiveSessionForPlayer, upsertActiveSession } from '../../src/lib/db/queries';
 import { hoursAgo, seedPlayer, seedRun } from '../../tests/helpers/seed';
+import { DP_EPIC, VOG_MASTER, VOG_NORMAL } from '../../tests/helpers/pgcr-builder';
 import { fixtureRunId } from './fixture-db';
 
 /**
@@ -249,11 +250,11 @@ export const DIFFICULTY_DP = { key: 'the_desert_perpetual', name: 'The Desert Pe
 
 export const DIFFICULTY_PLAYERS = {
     /** Vault of Glass: Standard, with Feats on. Normal. */
-    normal: { membershipId: '4611686018400010021', name: 'FixtureGolf', code: 5555, hash: 3881495763, difficultyTier: 2 },
+    normal: { membershipId: '4611686018400010021', name: 'FixtureGolf', code: 5555, hash: VOG_NORMAL, difficultyTier: 2 },
     /** Vault of Glass: Master. */
-    master: { membershipId: '4611686018400010022', name: 'FixtureHotel', code: 6666, hash: 1681562271, difficultyTier: 0 },
+    master: { membershipId: '4611686018400010022', name: 'FixtureHotel', code: 6666, hash: VOG_MASTER, difficultyTier: 0 },
     /** The Desert Perpetual (Epic): Standard. */
-    epic: { membershipId: '4611686018400010023', name: 'FixtureIndia', code: 7777, hash: 3817322389, difficultyTier: 0 },
+    epic: { membershipId: '4611686018400010023', name: 'FixtureIndia', code: 7777, hash: DP_EPIC, difficultyTier: 0 },
 } as const;
 
 export function difficultyPlayerName(player: keyof typeof DIFFICULTY_PLAYERS): string {

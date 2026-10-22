@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
+import { isDifficulty } from '@/lib/bungie/difficulty';
 import { envSeconds } from '@/lib/env';
 import { getRaidStats, type RaidFilters } from '@/lib/db/queries';
 import { getOrCompute } from '@/lib/cache/swr-cache';
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
     const maxPlayersParam = searchParams.get('maxPlayers');
 
     const filters: RaidFilters = {};
-    if (difficultyParam === 'normal' || difficultyParam === 'master' || difficultyParam === 'epic') {
+    if (isDifficulty(difficultyParam)) {
         filters.difficulty = difficultyParam;
     }
     if (exactPlayersParam) {

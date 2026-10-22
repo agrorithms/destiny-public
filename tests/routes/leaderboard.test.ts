@@ -4,7 +4,7 @@ import { GET } from '@/app/api/leaderboard/route';
 import { __resetSwrCacheForTests } from '@/lib/cache/swr-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
-import { NON_RAID_HASH } from '../helpers/pgcr-builder';
+import { DP_EPIC, DP_NORMAL, NON_RAID_HASH, VOG_MASTER, VOG_NORMAL } from '../helpers/pgcr-builder';
 
 /**
  * `GET /api/leaderboard?difficulty=` (#41), driven through the route handler against the test
@@ -16,11 +16,6 @@ import { NON_RAID_HASH } from '../helpers/pgcr-builder';
  * requested Difficulty has no board at all, while one that has a version but no clears keeps an
  * empty board (decision 6). The SWR cache is per process, so it is emptied before every test.
  */
-
-const VOG_NORMAL = 3881495763; // "Vault of Glass: Standard"
-const VOG_MASTER = 1681562271; // "Vault of Glass: Master"
-const DP_NORMAL = 1044919065; // "The Desert Perpetual: Standard"
-const DP_EPIC = 3817322389; // "The Desert Perpetual (Epic): Standard"
 
 /** Every raid with a Master version, written out from the manifest labels. */
 const RAIDS_WITH_MASTER = [

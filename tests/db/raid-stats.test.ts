@@ -1,16 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { resetTestDb } from '../helpers/db';
 import { seedRun, seedFromFixture, hoursAgo } from '../helpers/seed';
-import { buildPGCR } from '../helpers/pgcr-builder';
+import { buildPGCR, DP_EPIC, DP_NORMAL, VOG_MASTER, VOG_NORMAL } from '../helpers/pgcr-builder';
 import { getRaidStats } from '../../src/lib/db/queries';
 
 beforeEach(() => { resetTestDb(); });
 
 const SALVATIONS_EDGE_HASH = 2192826039;
-const VOG_NORMAL = 3881495763;
-const VOG_MASTER = 1681562271;
-const DP_NORMAL = 1044919065;
-const DP_EPIC = 3817322389;
 
 describe('getRaidStats', () => {
     it('returns per-raid fastest clear and DNF rate', () => {

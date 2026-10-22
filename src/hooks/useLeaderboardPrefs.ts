@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { DEFAULT_TIME_RANGE_HOURS, isTimeRangePreset } from '@/components/TimeSlider';
-import type { Difficulty } from '@/lib/bungie/manifest';
+import { DIFFICULTIES, type Difficulty } from '@/lib/bungie/difficulty';
 
 const VIEW_MODE_KEY = 'destiny-farm-finder-view-mode';
 const TIME_RANGE_KEY = 'destiny-farm-finder-time-range';
@@ -15,7 +15,7 @@ const LEADERBOARD_SIZE_OPTIONS = [6, 12, 25, 50, 75, 100] as const;
 /** '' is All. A value stored before Epic existed ('normal', 'master') is still one of these. */
 export type DifficultyFilter = '' | Difficulty;
 export type PlayersFilter = '' | '1' | '2' | '3' | 'lowman';
-const VALID_DIFFICULTY: DifficultyFilter[] = ['', 'normal', 'master', 'epic'];
+const VALID_DIFFICULTY: DifficultyFilter[] = ['', ...DIFFICULTIES];
 const VALID_PLAYERS: PlayersFilter[] = ['', '1', '2', '3', 'lowman'];
 export const PROFILE_COMPLETIONS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 

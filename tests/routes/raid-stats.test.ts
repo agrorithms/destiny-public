@@ -4,6 +4,7 @@ import { GET } from '@/app/api/analytics/raid-stats/route';
 import { __resetSwrCacheForTests } from '@/lib/cache/swr-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
+import { DP_EPIC, DP_NORMAL, VOG_MASTER } from '../helpers/pgcr-builder';
 
 /**
  * `GET /api/analytics/raid-stats?difficulty=` (#41). The query takes the leaderboard's shared
@@ -11,10 +12,6 @@ import { seedRun } from '../helpers/seed';
  * which `difficulty` values it accepts. Difficulty comes from the activity hash, so the seeds
  * cross it with `difficulty_tier` (Feats).
  */
-
-const VOG_MASTER = 1681562271; // "Vault of Glass: Master"
-const DP_NORMAL = 1044919065; // "The Desert Perpetual: Standard"
-const DP_EPIC = 3817322389; // "The Desert Perpetual (Epic): Standard"
 
 interface Body {
     raids: { raidKey: string; instanceCount: number }[];

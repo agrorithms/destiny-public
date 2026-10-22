@@ -2,11 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { getBungieClient } from './client';
 import type { DestinyActivityDefinition } from './types';
+import type { Difficulty } from './difficulty';
+
+export type { Difficulty };
 
 const MANIFEST_CACHE_PATH = path.join(process.cwd(), 'data', 'manifest-cache.json');
-
-/** Which version of a Raid was played (CONTEXT.md). Every hash has exactly one. */
-export type Difficulty = 'normal' | 'master' | 'epic';
 
 export interface RaidDefinition {
     name: string;
@@ -94,7 +94,6 @@ const hashToRaidMap: Map<number, string> = new Map();
 const hashToDifficultyMap: Map<number, Difficulty> = new Map();
 
 function buildHashMap() {
-    hashToRaidMap.clear();
     for (const [key, raid] of Object.entries(raidDefinitions)) {
         for (const [hash, difficulty] of Object.entries(raid.hashes)) {
             hashToRaidMap.set(Number(hash), key);

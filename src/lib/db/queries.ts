@@ -858,10 +858,9 @@ export function buildRaidFilterClause(filters?: RaidFilters): { clause: string; 
     // records Feats. Normal is every hash tagged neither Master nor Epic, a hash in no raid
     // definition included, so All = Normal + Master + Epic holds over every stored run.
     if (filters?.difficulty) {
-        const tagged = filters.difficulty === 'normal'
-            ? [...getHashesWithDifficulty('master'), ...getHashesWithDifficulty('epic')]
-            : getHashesWithDifficulty(filters.difficulty);
-        const operator = filters.difficulty === 'normal' ? 'NOT IN' : 'IN';
+        const [operator, tagged] = filters.difficulty === 'normal'
+            ? ['NOT IN', [...getHashesWithDifficulty('master'), ...getHashesWithDifficulty('epic')]]
+            : ['IN', getHashesWithDifficulty(filters.difficulty)];
         clause += ` AND p.activity_hash ${operator} (${tagged.map(() => '?').join(', ')})`;
         params.push(...tagged);
     }

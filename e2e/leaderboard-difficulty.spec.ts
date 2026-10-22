@@ -2,6 +2,7 @@ import type { Locator, Page, Request } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { DIFFICULTY_DP, DIFFICULTY_VOG, difficultyPlayerName } from './support/seed-world';
 import { expectNoOverflow } from './support/viewport';
+import type { Difficulty } from '../src/lib/bungie/difficulty';
 
 /**
  * The leaderboard's Difficulty dropdown (#41) — what only a browser can see.
@@ -44,7 +45,7 @@ function isLeaderboardRequest(request: Request, difficulty: string | null): bool
 }
 
 /** Selects a Difficulty and waits for the request it must send. */
-async function chooseDifficulty(page: Page, value: '' | 'normal' | 'master' | 'epic'): Promise<Request> {
+async function chooseDifficulty(page: Page, value: '' | Difficulty): Promise<Request> {
     // Armed before the change: the request is what proves the server was asked, rather than
     // the page hiding rows it had already fetched.
     const request = page.waitForRequest((r) => isLeaderboardRequest(r, value || null));

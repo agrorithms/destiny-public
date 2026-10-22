@@ -41,6 +41,27 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
    - [x] `docs/e2e-coverage.md`: flow list and journal entry
    - [x] `docs/progress/41-difficulty-filter.md` (this file)
 
+## Review fixes
+
+- [x] S1 `tests/db/raid-stats.test.ts`: "difficulty=master counts Master-hash instances…" seeds the Feats run on DP Normal
+- [x] S2 `tests/db/leaderboard.test.ts`: "difficulty + exactPlayers compose correctly" gives each run its own player and asserts the row's membershipId
+- [x] S3 `tests/db/raid-stats.test.ts`: "filters compose: difficulty + maxPlayers" moves the Feats run to DP Normal and asserts the raid
+- [ ] P2 `e2e/leaderboard-difficulty.spec.ts`: a stored `normal` still loads, beside `master`
+- [ ] S4 `src/lib/cache/leaderboard-cache.ts`: `emptyBody(request)` for the no-version early return
+- [ ] S5 `src/app/leaderboard/page.tsx`: the Difficulty options mapped from `DIFFICULTIES`
+- [ ] S6 `Difficulty` imported from `difficulty.ts` everywhere; the re-export in `manifest.ts` dropped
+- [ ] S7 `src/lib/bungie/manifest.test.ts`: the forwarding wrappers gone
+
+**S1–S3 red run against the old clause** (`AND p.difficulty_tier > 0` put back for `master` in
+`buildRaidFilterClause`, not committed), at 5a50d5a plus the test edits: all three failed, and the
+other 56 tests in the two files were skipped by `-t`.
+
+- S2: `expected [ [ 'p3', 1 ] ] to deeply equal [ [ 'p1', 1 ] ]`
+- S1: `expected [ [ 'the_desert_perpetual', 1 ] ] to deeply equal [ [ 'vault_of_glass', 1 ] ]`
+- S3: `expected [ [ 'the_desert_perpetual', { Warlock: 1 } ] ]` against `[ [ 'vault_of_glass', { Warlock: 1 } ] ]`
+
+With the clause restored, both files pass (59/59).
+
 ## Surviving mutants
 
 None. No `Stryker disable` comments.

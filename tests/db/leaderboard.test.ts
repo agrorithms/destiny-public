@@ -367,14 +367,16 @@ describe('maxPlayers filtering (lowman)', () => {
 
 describe('combined filters', () => {
     it('difficulty + exactPlayers compose correctly', () => {
+        // One player per run, so the row says which run passed both filters: run 3 has Feats on
+        // (tier 2) and would be the one a tier-based filter picked.
         seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 2 });
-        seedRun({ instanceId: '2', completedBy: ['p1'], activityHash: VOG_MASTER, uniquePlayerCount: 6 });
-        seedRun({ instanceId: '3', completedBy: ['p1'], activityHash: VOG_NORMAL, difficultyTier: 2, uniquePlayerCount: 2 });
-        seedRun({ instanceId: '4', completedBy: ['p1'], activityHash: VOG_NORMAL, uniquePlayerCount: 6 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: VOG_MASTER, uniquePlayerCount: 6 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: VOG_NORMAL, difficultyTier: 2, uniquePlayerCount: 2 });
+        seedRun({ instanceId: '4', completedBy: ['p4'], activityHash: VOG_NORMAL, uniquePlayerCount: 6 });
 
         const rows = runLeaderboardRows(HOURS_BACK, [], 10, { difficulty: 'master', exactPlayers: 2 });
 
-        expect(rows[0].completions).toBe(1);
+        expect(rows.map((r) => [r.membershipId, r.completions])).toEqual([['p1', 1]]);
     });
 
     it('difficulty + maxPlayers (lowman) compose correctly', () => {

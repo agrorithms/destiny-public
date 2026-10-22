@@ -95,12 +95,27 @@ in between.
 
 An **equivalent** mutant changes the code without changing what it does — `i < n` to `i <= n`
 where the last index is never reached, a regex anchor on input that is already anchored. No test
-can kill it, and writing one that tries means asserting on implementation. Those get one line in
-the progress file instead.
+can kill it, and writing one that tries means asserting on implementation. Often it marks
+redundant code: a check that a later one already makes. Remove that first. What is still
+equivalent gets a comment on the line above, which Stryker reads:
+
+```ts
+// Stryker disable next-line ConditionalExpression: ids are unique, so every() below gives the same answer
+if (subset.length > superset.length) return false;
+```
+
+The mutant is then reported as Ignored with that reason and leaves both scores. `next-line` only,
+the mutator named (never `all`), and each one is the user's decision (CLAUDE.md). `grep -rn
+"Stryker disable" src/` lists them all.
 
 Only `.ts` under `src/` is mutated: Vitest runs with no DOM (above), so a `.tsx` component or a
 `src/hooks/` hook can't be reached and every mutant in it would read "no coverage". The script
 lists those files instead, and Playwright is what covers them.
+
+On a PR that touches `.ts` under `src/`, CI's `mutation` workflow runs the same thing with
+`--typecheck` and puts the summary in the run's job summary, with the score and verdict as a
+notice on the PR's Checks tab. It reports and never blocks: a FAIL there is information for
+review, not a red check.
 
 Stryker copies the project into `.stryker-tmp/` and runs its own Vitest processes there. Each
 test file still mints its own temp database (`tests/setup/test-db-path.ts`), so parallel workers

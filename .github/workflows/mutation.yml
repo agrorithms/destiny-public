@@ -1,0 +1,62 @@
+name: mutation
+
+# The mutation score of a PR's changed logic (`npm run mutate:diff`), reported and
+# never enforced. The step is continue-on-error, so neither a FAIL verdict nor a
+# Stryker crash turns the PR red. The score goes to this run's job summary and to a
+# notice on the PR's Checks tab. The threshold and the rules for survivors are in
+# CLAUDE.md's "Bite proofs are automated."
+#
+# Only PRs that touch `.ts` under src/: the script mutates nothing else, and the
+# run costs a couple of minutes with the type checker on.
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The range needs the base branch's history to find the merge base.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # --typecheck because this is the score that gets reported (CLAUDE.md): without the
+      # checker, mutants that would not compile are counted as killed or survived.
+      - name: mutate:diff
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npm run mutate:diff -- "origin/${BASE_REF}...HEAD" --typecheck 2>&1 | tee mutate.log
+
+      - name: Report the score
+        if: always()
+        run: |
+          {
+            echo '## Mutation score'
+            if grep -q '^mutation score:' mutate.log; then
+              echo '```'
+              sed -n '/── mutate:diff summary ──/,$p' mutate.log
+              echo '```'
+            elif grep -q '^No changed logic' mutate.log; then
+              echo 'No changed logic under `src/` to mutate.'
+            else
+              echo 'No score: the run failed before scoring. See the mutate:diff step log.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          score=$(grep -m1 '^mutation score:' mutate.log | sed 's/^mutation score: //' || true)
+          verdict=$(grep -m1 '^threshold:' mutate.log | sed 's/^threshold: //' || true)
+          echo "::notice title=Mutation score::${score:-no score}; threshold ${verdict:-not reached}"

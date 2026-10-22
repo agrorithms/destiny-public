@@ -27,8 +27,8 @@ overflow gate for the browser side. Branch `fix/update-verification-automation`.
   `globals.css` → all routes; `--all` forces every route. `/admin/stats` skipped.
 - Playwright bite proofs: dropped where the spec was written red-first; otherwise one break
   per new spec, batched into one build.
-- Equivalent-mutant justifications: this kind of progress file, `## Surviving mutants`.
-- Local only, no CI, no threshold yet.
+- Equivalent-mutant justifications: this kind of progress file, `## Surviving mutants`. *(Superseded by decision 16.)*
+- Local only, no CI, no threshold yet. *(Superseded by decisions 15 and 17.)*
 
 ## Decisions (grilling rounds 2–3, 2026-10-22)
 
@@ -75,6 +75,15 @@ Docs and landing:
     static skips are never scored). Below 8, the per-survivor rule is the only bar.
     `mutate:diff` prints PASS / FAIL / not applied and exits non-zero on FAIL. #172 passes at
     67.0% (63 of 94), one mutant above the line.
+16. **Equivalent mutants** (the user, adopting the orchestrator's recommendation): simplify
+    first, since an equivalent mutant often marks redundant code; then
+    `// Stryker disable next-line <Mutator>: <reason>`. `next-line` only, the mutator named,
+    each one the user's decision. The comment is the record; `## Surviving mutants` lists only
+    its `file:line`. Disabled mutants are Ignored and leave both scores. #172's case
+    (`haveSameMembers` is redundant with `isSubset`; `roster.ts:167`'s guard) goes to #181.
+17. **CI** (the user): `.github/workflows/mutation.yml` on `pull_request` touching `src/**/*.ts`,
+    `--typecheck`, never blocking (`continue-on-error`). The score goes to the job summary and
+    a notice annotation on the PR's Checks tab.
 
 ## Files
 
@@ -100,6 +109,8 @@ Docs and landing:
 - [x] `docs/agents/domain.md` — the user's own ADR-list fix; went in with commit 1
 - [x] first `visual:check -- --all` run; overflow rulings applied (8, 10)
 - [x] `e2e/visual.spec.ts` — response-based settle wait instead of `networkidle` (user's ruling)
+- [x] disable-comment rules in CLAUDE.md, `tests/README.md` (16)
+- [x] `.github/workflows/mutation.yml` + doc mentions (17)
 - [x] threshold in `scripts/mutate-diff.ts`, CLAUDE.md, `tests/README.md`, the config comment (15)
 - [x] `npm run e2e` unchanged by the `chromium` project's `testIgnore`: 158 passed, no visual test under `chromium`
 

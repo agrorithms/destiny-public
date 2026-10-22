@@ -24,9 +24,17 @@ const config = {
     // Vitest strips types without checking them, so a mutant that would not compile
     // (e.g. `return ''` where a number is declared) would still run, and be counted as
     // killed or survived for reasons that mean nothing. The checker discards those as
-    // CompileError instead. Costs a whole-project type check at startup.
+    // CompileError instead. tsconfig.stryker.json narrows the check to src/ and tests/:
+    // the project tsconfig.json includes every **/*.ts, scripts/, e2e/ and gos10k/ too.
+    // Even narrowed it multiplies the wall time, so mutate:diff turns it off unless given
+    // --typecheck, which the score reported at the end of a ticket uses.
     checkers: ['typescript'],
-    tsconfigFile: 'tsconfig.json',
+    tsconfigFile: 'tsconfig.stryker.json',
+
+    // A static mutant is one that runs only while a module loads (a top-level constant, a
+    // literal table), so per-test coverage can't say which tests reach it and Stryker would
+    // rerun every test for each. Those are skipped as Ignored; mutate:diff reports how many.
+    ignoreStatic: true,
 
     reporters: ['clear-text', 'progress', 'html', 'json'],
 

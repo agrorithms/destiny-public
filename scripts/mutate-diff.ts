@@ -5,7 +5,7 @@ import path from 'path';
 import { changedFiles, DEFAULT_RANGE, resolveRange, type ResolvedRange } from './lib/git-range';
 
 /**
- * `npm run mutate:diff -- [range] [--files] [--incremental] [--no-typecheck]`
+ * `npm run mutate:diff -- [range] [--files] [--incremental] [--typecheck]`
  *
  * Mutation-tests the logic a git range changed (default `main...HEAD`): Stryker breaks
  * each changed line in small ways and reports every break no Vitest test noticed. This
@@ -20,8 +20,11 @@ import { changedFiles, DEFAULT_RANGE, resolveRange, type ResolvedRange } from '.
  *   --files         mutate whole changed files, not just the changed lines
  *   --incremental   reuse results from the last run for code and tests that did not
  *                   change (reports/stryker-incremental.json) — for kill-and-rerun loops
- *   --no-typecheck  skip the TypeScript checker (faster; un-compilable mutants then
- *                   count as killed or survived instead of being discarded)
+ *   --typecheck     run the TypeScript checker, so a mutant that would not compile is
+ *                   discarded as CompileError instead of counted as killed or survived.
+ *                   Off by default because it multiplies the wall time (#172's changed
+ *                   lines: about 130s with it, 13s without); a score reported at the end
+ *                   of a ticket comes from a full run with it on.
  *
  * When the range ends somewhere other than the checked-out commit (a past PR), the
  * changed lines only make sense in that commit's files, so the run happens in a
@@ -32,6 +35,8 @@ const REPO = process.cwd();
 const CONFIG = path.join(REPO, 'stryker.config.mjs');
 const STRYKER = path.join(REPO, 'node_modules', '.bin', 'stryker');
 const REPORT_DIR = path.join(REPO, 'reports', 'mutation');
+/** stryker.config.mjs's `tsconfigFile`. */
+const CHECKER_TSCONFIG = 'tsconfig.stryker.json';
 
 /** Changed `.ts` that a Vitest test could reach. */
 function isMutable(file: string): boolean {
@@ -49,7 +54,7 @@ function isBrowserOnly(file: string): boolean {
 
 function parseArgs(argv: string[]) {
     const flags = new Set(argv.filter((a) => a.startsWith('--')));
-    const known = new Set(['--files', '--incremental', '--no-typecheck']);
+    const known = new Set(['--files', '--incremental', '--typecheck']);
     for (const flag of flags) {
         if (!known.has(flag)) throw new Error(`Unknown flag ${flag}. Known: ${[...known].join(', ')}`);
     }
@@ -59,7 +64,7 @@ function parseArgs(argv: string[]) {
         range: positional[0] ?? DEFAULT_RANGE,
         wholeFiles: flags.has('--files'),
         incremental: flags.has('--incremental'),
-        typecheck: !flags.has('--no-typecheck'),
+        typecheck: flags.has('--typecheck'),
     };
 }
 
@@ -73,6 +78,9 @@ function workdirFor(range: ResolvedRange): { dir: string; cleanup: () => void } 
     execFileSync('git', ['worktree', 'add', '--detach', dir, range.head], { stdio: 'ignore' });
     // The worktree gets this checkout's installed packages rather than a fresh install.
     fs.symlinkSync(path.join(REPO, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
+    // The checker's tsconfig may postdate the range's head. Its paths are relative, so the
+    // copy checks the worktree's src/ and tests/, not this checkout's.
+    fs.copyFileSync(path.join(REPO, CHECKER_TSCONFIG), path.join(dir, CHECKER_TSCONFIG));
     return {
         dir,
         cleanup: () => execFileSync('git', ['worktree', 'remove', '--force', dir], { stdio: 'ignore' }),
@@ -83,6 +91,7 @@ interface ReportMutant {
     mutatorName: string;
     replacement?: string;
     status: string;
+    statusReason?: string;
     location: { start: { line: number; column: number } };
 }
 interface Report {
@@ -105,7 +114,13 @@ function summarise(report: Report): void {
     console.log(`mutants: ${all.length} — killed ${killed}, timeout ${timeout}, survived ${survived}, `
         + `no coverage ${noCoverage}, compile error ${count('CompileError')}, runtime error ${count('RuntimeError')}, `
         + `ignored ${count('Ignored')}`);
-    console.log(`mutation score: ${pct(detected, valid)} (of covered code: ${pct(detected, detected + survived)})`);
+    // ignoreStatic (stryker.config.mjs) skips these unscored; say so, so the score's
+    // denominator is never quietly smaller than the mutant count.
+    const skippedStatic = all.filter((m) => m.status === 'Ignored' && m.statusReason?.startsWith('Static mutant')).length;
+    console.log(`static mutants skipped (ignoreStatic): ${skippedStatic}`);
+    // The overall score is the threshold number: no-coverage counts against it. The
+    // covered score leaves no-coverage out, so it measures only the tests that exist.
+    console.log(`mutation score: ${pct(detected, valid)} overall (covered code: ${pct(detected, detected + survived)})`);
 
     const left = all.filter((m) => m.status === 'Survived' || m.status === 'NoCoverage');
     if (left.length > 0) {

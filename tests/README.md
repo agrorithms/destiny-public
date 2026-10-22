@@ -66,6 +66,7 @@ npm run mutate:diff                                  # this branch's changed lin
 npm run mutate:diff -- f83d344^1...f83d344^2         # a merged PR: its merge commit's parents
 npm run mutate:diff -- --files                       # whole changed files, not just changed lines
 npm run mutate:diff -- --incremental                 # reuse the last run's results where nothing changed
+npm run mutate:diff -- --typecheck                   # discard mutants that wouldn't compile (slower)
 ```
 
 The report is `reports/mutation/mutation.html` (git-ignored): each file with every mutant inline,
@@ -78,7 +79,17 @@ statuses mean:
 | Timeout | The mutant made a test hang (e.g. a loop that never ends) | Nothing — counts as killed |
 | Survived | Tests ran it and all passed | A test asserting the behaviour that changed, or a one-line equivalence note |
 | No coverage | No test executes that line at all | The same — usually a missing test, not a weak one |
-| Compile error | The TypeScript checker rejected the mutant | Nothing — it is discarded, not scored |
+| Compile error | The TypeScript checker rejected the mutant (`--typecheck` only) | Nothing — it is discarded, not scored |
+| Ignored | A static mutant: it runs only while a module loads (a top-level constant), so no test can be picked for it. Skipped by `ignoreStatic` | Nothing — not scored; the script prints how many |
+
+The script prints two scores. The **overall** score is killed ÷ (killed + survived + no coverage):
+a line no test runs counts against it. That is the number a threshold applies to. The
+**covered-code** score leaves no-coverage out, so it says how sharp the tests that exist are, not
+whether the changed code has tests at all. A score worth reporting comes from a full run with
+`--typecheck`: without the checker, a mutant that wouldn't compile still runs and is counted as
+killed or survived for reasons that mean nothing. The checker is off by default only because it
+multiplies the wall time. `--incremental` reuses old results and is for the kill-and-rerun loops
+in between.
 
 An **equivalent** mutant changes the code without changing what it does — `i < n` to `i <= n`
 where the last index is never reached, a regex anchor on input that is already anchored. No test

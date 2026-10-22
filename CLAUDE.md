@@ -39,8 +39,8 @@ Chromium **is** installed (Playwright). If a change affects client-side request 
 
 - Logic Vitest reaches: `npm run mutate:diff` is the bite proof. Every survivor ends one of two ways: a new test kills it, or it is equivalent and gets one line (`file:line`, mutator, why no test can tell it apart) under `## Surviving mutants` in the ticket's progress file.
 - A test written to kill a mutant asserts observable behaviour: return values, rows written, HTTP responses, what the page shows. Internal call counts, private structure and exact wording stay out of its assertions, unless the wording is the spec.
-- Three kill-and-rerun loops at most (`--incremental` on reruns). Whatever survives the third goes to me as a decision.
-- The mutation score is reported as a number; I set the threshold, and none is chosen yet.
+- Three kill-and-rerun loops at most (`--incremental` on reruns). Whatever survives the third goes to me as a decision. The score reported at the end comes from a full run, not an incremental one, with `--typecheck` on.
+- The mutation score is reported as a number. The threshold applies to the **overall** score, where no-coverage mutants count against it; the covered-code score is reported next to it and never in its place. I set the threshold, and none is chosen yet.
 - Playwright: a spec seen red before its fix needs no further bite proof; record the red run. Otherwise one deliberate break per new spec, all batched into one build.
 
 **Environment.**

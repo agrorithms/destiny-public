@@ -21,7 +21,10 @@ Single-context repo:
 │   ├── 0002-session-count-reports-true-total.md
 │   ├── 0003-tests-run-against-a-real-sqlite-file.md
 │   ├── 0004-mock-only-at-the-network-boundary.md
-│   └── 0005-active-session-loop-resilience.md
+│   ├── 0005-active-session-loop-resilience.md
+│   ├── 0006-population-kda-quartiles-and-dual-scope.md
+│   ├── 0007-the-archive-is-a-second-read-only-database.md
+│   └── 0008-derived-analytics-are-computed-at-archive-build-time.md
 └── src/
 ```
 

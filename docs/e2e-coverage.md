@@ -2322,3 +2322,32 @@ Shown biting, then restored and green. Each break was its own build:
 - The `filtersRef` sync effect removed, together with the "Select at least one fireteam size"
   branch: exactly 14 ("Expected: \"true\", Received: \"false\"") and 10 ("Expected: visible")
   failed. Neither was among the twelve breaks above.
+
+## 2026-10-21 — the viewport matrix (`npm run visual:check`)
+
+Not one of the flows above, and not run by `npm run e2e` or CI. `e2e/visual.spec.ts` runs under
+six projects (`visual-360-light` … `visual-1280-dark`) that `playwright.config.ts` defines only
+when `scripts/visual-check.ts` sets `VISUAL_CHECK`; the `chromium` project ignores the file. It
+uses the same fixture databases and canary as the suite.
+
+For every page (`/admin/stats` aside, behind basic auth), at each width and theme:
+
+- a full-page screenshot to `visual-check/<route>/<route>--<width>--<theme>.png` — for review,
+  asserts nothing;
+- the `.dark` class on `<html>` matching the theme, so a dark screenshot can't silently be light;
+- `expectNoOverflow` (`e2e/support/viewport.ts`) — **the gate**: no element past the viewport's
+  side edges (unless inside a sideways scroller, which is measured instead) and none clipped by
+  its nearest `overflow: hidden`/`clip` ancestor, top and bottom included. `OVERFLOW_EXEMPT` in
+  the same file holds named exceptions with reasons; it starts empty.
+
+What it does **not** cover: anything after an interaction. It measures pages as they load
+against the seed world, so #160's copy bubble — clipped only after a click, only with a
+26-wide-glyph name on an end row — would not have been caught here. A spec that creates a state
+calls `expectNoOverflow(page)` itself. `/admin/stats` (basic auth) is skipped; the player page
+is FixtureAlpha#4242's.
+
+Known gap, kept by the user's ruling (2026-10-22): an absolutely positioned element is checked
+only against ancestors from its `offsetParent` up, and a fixed one against none. A `transform`ed
+ancestor becomes the real containing block for both; if Chromium's `offsetParent` passes over it,
+an ancestor that clips the popup is never checked, and a #160-style clipped popup inside a
+transformed element would pass.

@@ -51,6 +51,7 @@ Normal is `activity_hash NOT IN (Master ∪ Epic)`, so a hash outside `RAID_DEFI
 - [x] S5 `src/app/leaderboard/page.tsx`: the Difficulty options mapped from `DIFFICULTIES`
 - [x] S6 `Difficulty` imported from `difficulty.ts` everywhere; the re-export in `manifest.ts` dropped
 - [x] S7 `src/lib/bungie/manifest.test.ts`: the forwarding wrappers gone
+- [x] S10 `e2e/leaderboard-difficulty.spec.ts`: a deliberate break for the stored-`normal` case, recorded below
 
 **S1–S3 red run against the old clause** (`AND p.difficulty_tier > 0` put back for `master` in
 `buildRaidFilterClause`, not committed), at 5a50d5a plus the test edits: all three failed, and the
@@ -64,6 +65,19 @@ With the clause restored, both files pass (59/59).
 
 **P2** passed on its first run (both stored-value cases, in a full `npm run e2e` of 168/168). It
 covers a path that already worked, so it has no red run.
+
+**S10, P2's deliberate break.** At 6465fac, with `'normal'` dropped from `VALID_DIFFICULTY` in
+`src/hooks/useLeaderboardPrefs.ts` (`['', ...DIFFICULTIES.filter((d) => d !== 'normal')]`, not
+committed), `npm run e2e -- e2e/leaderboard-difficulty.spec.ts`: 1 failed, 11 passed. The failure
+was the stored-`normal` case, and it read:
+
+    Test timeout of 30000ms exceeded.
+    Error: page.waitForRequest: Test timeout of 30000ms exceeded.
+    > 127 |             const request = page.waitForRequest((r) => isLeaderboardRequest(r, stored));
+
+The page read the stored value as All, so it never sent `difficulty=normal`. The stored-`master`
+case and the other nine passed. Once the break was reverted, the spec was green again in the full
+`npm run e2e`.
 
 ## Surviving mutants
 

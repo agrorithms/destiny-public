@@ -2361,7 +2361,8 @@ existing leaderboard, Fastest Clears and player-name specs passed unchanged with
 6. **A value stored before Epic existed loads**, for `normal` and for `master` (two tests): it is
    selected and sent, Vault of Glass shows that Difficulty's player and not the other's, and Deep
    Stone Crypt has a card under `normal` only. The `normal` case was added in #41's review (P2)
-   and passed on its first run: it covers a path that already worked, so it has no red run.
+   and passed on its first run: it covers a path that already worked, so its bite is the
+   deliberate break below.
 7. **An unreadable stored value reads as All**: nothing is sent and every card shows.
 8. **Phone (360×780):** after choosing Master, `expectNoOverflow(page)` passes.
 
@@ -2369,7 +2370,14 @@ existing leaderboard, Fastest Clears and player-name specs passed unchanged with
 `toHaveText`, 7 on `toHaveValue` and 8 on `toBeVisible`, because there was no select. 2–5 timed out
 in `selectOption`. 6 timed out waiting for a `difficulty=master` request, because the page never
 read the stored value. In the same run the existing leaderboard (5), Fastest
-Clears (6) and player-name (6) specs passed with the new seed. No deliberate break beyond it.
+Clears (6) and player-name (6) specs passed with the new seed.
+
+**Deliberate break** for 6's `normal` case, added after the red run (#41 review, S10). At 6465fac,
+with `'normal'` dropped from `VALID_DIFFICULTY` in `src/hooks/useLeaderboardPrefs.ts`, the spec
+file ran 1 failed, 11 passed (the two canaries included). Only the stored-`normal` case failed:
+"Test timeout of 30000ms exceeded. Error: page.waitForRequest: Test timeout of 30000ms exceeded.",
+at the wait for a `difficulty=normal` request, because the page read the stored value as All. The
+stored-`master` case passed. Once the break was reverted, it was green again.
 
 ### Still NOT covered
 

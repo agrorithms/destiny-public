@@ -34,6 +34,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "mutate:diff": "npx tsx scripts/mutate-diff.ts",
     "e2e": "NEXT_PUBLIC_BUNGIE_PUBLIC_API_KEY=e2e-not-a-real-bungie-key npm run next-build && playwright test",
     "e2e:nobuild": "playwright test",
     "e2e:maintenance": "npx tsx scripts/test-maintenance-cycle.ts",
@@ -50,6 +51,9 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/typescript-checker": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",

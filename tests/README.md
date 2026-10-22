@@ -53,6 +53,46 @@ expect test.describe() to be called here` — rather than like a misplaced file.
 not being ported or absorbed into Vitest. It was only renamed, from `test-maintenance-cycle` to
 `e2e:maintenance`, so that `npm test` unambiguously means "fast, hermetic, no network".
 
+## Mutation testing (`npm run mutate:diff`)
+
+Stryker breaks the code a branch changed in small ways — `<` to `<=`, a condition to `true`, a
+string to `""` — and runs the Vitest tests that execute each break (a *mutant*). A mutant some
+test fails on is *killed*; one every test passes on *survived*, which means no test would notice
+that bug. It is the old hand-made bite proof, done for every changed line. The rules for acting
+on survivors are in CLAUDE.md's Verification section.
+
+```bash
+npm run mutate:diff                                  # this branch's changed lines (main...HEAD)
+npm run mutate:diff -- f83d344^1...f83d344^2         # a merged PR: its merge commit's parents
+npm run mutate:diff -- --files                       # whole changed files, not just changed lines
+npm run mutate:diff -- --incremental                 # reuse the last run's results where nothing changed
+```
+
+The report is `reports/mutation/mutation.html` (git-ignored): each file with every mutant inline,
+and which tests killed it. The script also prints the undetected ones with `file:line`. What the
+statuses mean:
+
+| Status | Meaning | What to do |
+|---|---|---|
+| Killed | A test failed on the mutant | Nothing |
+| Timeout | The mutant made a test hang (e.g. a loop that never ends) | Nothing — counts as killed |
+| Survived | Tests ran it and all passed | A test asserting the behaviour that changed, or a one-line equivalence note |
+| No coverage | No test executes that line at all | The same — usually a missing test, not a weak one |
+| Compile error | The TypeScript checker rejected the mutant | Nothing — it is discarded, not scored |
+
+An **equivalent** mutant changes the code without changing what it does — `i < n` to `i <= n`
+where the last index is never reached, a regex anchor on input that is already anchored. No test
+can kill it, and writing one that tries means asserting on implementation. Those get one line in
+the progress file instead.
+
+Only `.ts` under `src/` is mutated: Vitest runs with no DOM (above), so a `.tsx` component or a
+`src/hooks/` hook can't be reached and every mutant in it would read "no coverage". The script
+lists those files instead, and Playwright is what covers them.
+
+Stryker copies the project into `.stryker-tmp/` and runs its own Vitest processes there. Each
+test file still mints its own temp database (`tests/setup/test-db-path.ts`), so parallel workers
+never share one.
+
 ## Layout
 
 ```

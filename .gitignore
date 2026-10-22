@@ -12,6 +12,9 @@
 
 # testing
 /coverage
+# mutate:diff reports and Stryker's sandbox (never committed)
+/reports/
+/.stryker-tmp/
 
 # next.js
 /.next/

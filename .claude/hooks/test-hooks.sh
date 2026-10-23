@@ -368,7 +368,15 @@ echo "=== I. commit gate (guard-commit.sh) ==="
 # FAKE_FAIL. Under test is the gate's decision, not lint or vitest.
 GATE_REPO="$(mktemp -d)"
 git -C "$GATE_REPO" init -q
-git -C "$GATE_REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+# The gate writes its log inside the repo it gates; ignored here as in the real
+# .gitignore, or the log would read as a changed non-.md path from then on.
+echo '.claude/hooks/logs/' > "$GATE_REPO/.gitignore"
+git -C "$GATE_REPO" add .gitignore
+git -C "$GATE_REPO" -c user.name=t -c user.email=t@t commit -q -m init
+GATE_FILE="$GATE_REPO/.claude/hooks/logs/commit-gate.log"
+logged() { # logged <ERE> -> yes | no: does the gate log's last line match?
+  tail -n 1 "$GATE_FILE" 2>/dev/null | grep -qE "$1" && echo yes || echo no
+}
 export GATE_LOG="$GATE_REPO.log"
 cat > "$GATE_REPO.runner" <<'RUNNER'
 #!/usr/bin/env bash
@@ -378,13 +386,16 @@ exit 0
 RUNNER
 chmod +x "$GATE_REPO.runner"
 export COMMIT_GATE_RUNNER="$GATE_REPO.runner"
-gate() { # gate <command> -> allow | deny; the checks it ran are in $GATE_LOG
+gate_raw() { # gate_raw <command> -> the hook's raw output; the checks it ran are in $GATE_LOG
   : > "$GATE_LOG"
+  jq -nc --arg c "$1" --arg d "$GATE_REPO" \
+    '{session_id:"sessGATE",cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh
+}
+gate() { # gate <command> -> allow | deny. A pass prints only a systemMessage, which allows.
   local out
-  out=$(jq -nc --arg c "$1" --arg d "$GATE_REPO" \
-    '{session_id:"sessGATE",cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh)
+  out="$(gate_raw "$1")"
   [ -z "$out" ] && { echo allow; return; }
-  jq -r '.hookSpecificOutput.permissionDecision // "malformed"' <<<"$out"
+  jq -r '.hookSpecificOutput.permissionDecision // (if .systemMessage then "allow" else "malformed" end)' <<<"$out"
 }
 ran() { paste -sd, "$GATE_LOG"; }
 ALL='lint,tsc (app),tsc (scripts),vitest'
@@ -406,13 +417,32 @@ check "heredoc message -> gated" "allow" "$(gate "git commit -F - <<'EOF'
 WIP #1: x
 EOF")"
 
+# Every gated commit leaves a log line, so "did the gate run?" has an answer
+# from inside a session; a pass also says so in a systemMessage.
+check "pass -> systemMessage with the time taken" "yes" \
+  "$(jq -r '.systemMessage' <<<"$(gate_raw 'git commit -m x')" | grep -qE '^commit gate: pass in [0-9]+s$' && echo yes || echo no)"
+check "pass -> logged with branch, result, time and checks" "yes" \
+  "$(logged '^[0-9]{4}-[0-9-]{5}T[0-9:]{8}Z [^ ]+@[0-9a-f]+ pass [0-9]+s lint,tsc \(app\),tsc \(scripts\),vitest$')"
+LINES=$(wc -l < "$GATE_FILE")
+gate 'git status' >/dev/null
+check "not a commit -> nothing logged" "$LINES" "$(wc -l < "$GATE_FILE")"
+check "the real repo ignores the gate log" "ignored" \
+  "$(git check-ignore -q .claude/hooks/logs/commit-gate.log && echo ignored || echo tracked)"
+mv "$GATE_REPO/.claude/hooks/logs" "$GATE_REPO/logs.bak" && touch "$GATE_REPO/.claude/hooks/logs"
+check "a log that can't be written -> still allow" "allow" "$(gate 'git commit -m x')"
+rm "$GATE_REPO/.claude/hooks/logs" && mv "$GATE_REPO/logs.bak" "$GATE_REPO/.claude/hooks/logs"
+
 export FAKE_FAIL=vitest
 check "vitest red -> deny" "deny" "$(gate 'git commit -m "WIP #1: x"')"
+check "deny -> logged as blocked by that check" "yes" \
+  "$(logged ' blocked by vitest [0-9]+s lint,tsc \(app\),tsc \(scripts\),vitest$')"
 out=$(jq -nc --arg c 'git commit -m x' --arg d "$GATE_REPO" '{cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh)
 check "deny names the red check" "yes" \
   "$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$out" | grep -q 'vitest is red' && echo yes || echo no)"
 check "red-first commit -> allow" "allow" "$(gate 'git commit -m "WIP #1: red — size specs"')"
 check "red-first commit -> vitest skipped" "lint,tsc (app),tsc (scripts)" "$(ran)"
+check "red-first commit -> logged as such" "yes" \
+  "$(logged ' pass \(red-first: vitest skipped\) [0-9]+s lint,tsc \(app\),tsc \(scripts\)$')"
 check "red marker with a hyphen -> allow" "allow" "$(gate 'git commit -m "WIP #1: red - size specs"')"
 check "'red' elsewhere in the message is no marker" "deny" "$(gate 'git commit -m "WIP #1: the red border"')"
 export FAKE_FAIL="tsc (app)"
@@ -427,12 +457,14 @@ export COMMIT_GATE_RUNNER="$GATE_REPO.runner"
 rm "$GATE_REPO/a.ts"; echo notes > "$GATE_REPO/notes.md"
 check ".md-only tree -> allow" "allow" "$(gate 'git commit -m "WIP #1: progress tick"')"
 check ".md-only tree -> nothing runs" "" "$(ran)"
+check ".md-only tree -> logged as skipped" "yes" "$(logged ' skipped \(only \*\.md changed\) [0-9]+s none$')"
 echo x > "$GATE_REPO/b.ts"
 gate 'git add notes.md && git commit -m x' >/dev/null
 check ".md staged but code changed elsewhere -> all four" "$ALL" "$(ran)"
 rm "$GATE_REPO/b.ts" "$GATE_REPO/notes.md"
 check "nothing changed (message-only amend) -> allow" "allow" "$(gate 'git commit --amend -m y')"
 check "nothing changed -> nothing runs" "" "$(ran)"
+check "nothing changed -> logged as skipped" "yes" "$(logged ' skipped \(nothing changed\) [0-9]+s none$')"
 unset COMMIT_GATE_RUNNER GATE_LOG
 rm -rf "$GATE_REPO" "$GATE_REPO.log" "$GATE_REPO.runner"
 
@@ -486,6 +518,16 @@ check "report.sh: missing SHA -> exit 3" "3" "$(cd "$SHIP_REPO" && "$REPORT" 999
 state committed "$OFF"
 check "SHA outside HEAD's history -> block" "block" "$(verdict "$(stop)")"
 
+# pre_run: commits already on the branch when /ship-ticket started. Recorded
+# SHAs like any other, so a rebase that drops one is caught.
+state_set() { # state_set <jq args...> -> rewrites the state file through jq
+  jq "$@" "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+}
+state committed "$C1"; state_set --arg c "$C1" '.pre_run = [$c]'
+check "pre_run SHA in HEAD's history -> silent" "silent" "$(verdict "$(stop)")"
+state_set --arg o "$OFF" '.pre_run = [$o]'
+check "pre_run SHA outside HEAD's history -> block" "block" "$(verdict "$(stop)")"
+
 state committed "$C1"
 echo dirty > "$SHIP_REPO/c.ts"
 check "committed but tree dirty -> block" "block" "$(verdict "$(stop)")"
@@ -501,6 +543,19 @@ check "not a feat/NNN-* branch -> silent" "silent" "$(verdict "$(stop)")"
 sg switch -q feat/999-test
 rm "$STATE_FILE"
 check "feat branch, no state file -> silent" "silent" "$(verdict "$(stop)")"
+
+echo
+echo "=== J2. the code-changed check (ship_code_unchanged_since) ==="
+# One definition shared by report.sh's STALE label and the skill's reuse of a
+# suite run, so the two can't disagree about what a docs-only range is.
+source "$H/ship-state.sh"
+mkdir -p "$SHIP_REPO/docs/progress" "$SHIP_REPO/src"
+echo n > "$SHIP_REPO/docs/progress/999.md" && sg add docs/progress && sg commit -q -m "WIP #999: progress"
+check "docs-only commits since <sha> -> unchanged" "0" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
+echo x > "$SHIP_REPO/src/x.ts" && sg add src && sg commit -q -m "WIP #999: src"
+check "a src/ commit since <sha> -> changed" "1" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
+check "an unknown <sha> -> not unchanged" "no" \
+  "$(ship_code_unchanged_since "$SHIP_REPO" 0123456789012345678901234567890123456789 && echo yes || echo no)"
 rm -rf "$SHIP_REPO"
 
 echo

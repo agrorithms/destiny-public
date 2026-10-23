@@ -28,6 +28,14 @@
 #
 # Known gap: the checks run against the working tree, not the staged snapshot,
 # so a partial `git add` can commit a state that was never checked.
+#
+# Every gated commit appends one line to .claude/hooks/logs/commit-gate.log
+# (gitignored) in the checkout it ran in: pass, blocked or skipped, and how
+# long it took. A PreToolUse hook's ~30s is invisible from inside a session
+# (`time git commit` shows 0s), so the log is how anyone, an orchestrator
+# included, answers "did the gate run on that commit?". A pass also emits a
+# systemMessage; whether that reaches the model is unverified, so nothing
+# relies on it. A log that can't be written never blocks a commit.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -37,11 +45,21 @@ invokes "$CMD" 'git([[:space:]]+-C[[:space:]]+[^[:space:]]+)*[[:space:]]+commit'
 CWD="$(hook_field '.cwd')"
 ROOT="$(git -C "${CWD:-${CLAUDE_PROJECT_DIR:-.}}" rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
+START=$SECONDS
+RAN=""
+log_gate() { # log_gate <result>
+  local where
+  where="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || echo detached)@$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+  { mkdir -p "$ROOT/.claude/hooks/logs" &&
+    printf '%s %s %s %ss %s\n' "$(date -u +%FT%TZ)" "$where" "$1" "$((SECONDS - START))" "${RAN:-none}" \
+      >> "$ROOT/.claude/hooks/logs/commit-gate.log"; } 2>/dev/null || true
+}
+
 # Porcelain v1 is "XY path" or "XY old -> new"; keep the path that will exist.
 CHANGED="$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //')"
 # Nothing changed at all (a message-only --amend, or nothing to commit): no code to check.
-[ -z "$CHANGED" ] && exit 0
-grep -qvE '\.md$' <<<"$CHANGED" || exit 0
+[ -z "$CHANGED" ] && { log_gate "skipped (nothing changed)"; exit 0; }
+grep -qvE '\.md$' <<<"$CHANGED" || { log_gate "skipped (only *.md changed)"; exit 0; }
 
 RED=0
 grep -qE 'WIP #[0-9]+: red [—-] ' <<<"$CMD" && RED=1
@@ -54,12 +72,14 @@ RUNNER="${COMMIT_GATE_RUNNER:-}"
 run_check() { # run_check <label> <command...>
   local label="$1" out rc
   shift
+  RAN="${RAN:+$RAN,}$label"
   if [ -n "$RUNNER" ]; then
     out="$("$RUNNER" "$label" "$@" 2>&1)"; rc=$?
   else
     out="$(cd "$ROOT" && "$@" 2>&1)"; rc=$?
   fi
   [ "$rc" -eq 0 ] && return 0
+  log_gate "blocked by $label"
   deny "Commit blocked: $label is red ($* exited $rc). Fix it, then commit again.
 A red-first TDD commit is spelled 'WIP #NNN: red — <what>'; that skips vitest only.
 
@@ -71,4 +91,6 @@ run_check lint npm run lint
 run_check "tsc (app)" npx tsc --noEmit
 run_check "tsc (scripts)" npx tsc -p tsconfig.scripts.json --noEmit
 [ "$RED" -eq 1 ] || run_check vitest npm test
+log_gate "pass$([ "$RED" -eq 1 ] && echo ' (red-first: vitest skipped)')"
+jq -nc --arg m "commit gate: pass in $((SECONDS - START))s" '{systemMessage: $m}'
 exit 0

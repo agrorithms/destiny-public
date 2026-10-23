@@ -24,9 +24,10 @@ ship_ticket_for_branch() {
 #
 # Checks only what git can confirm or contradict:
 #   - the branch the state names is the one checked out;
-#   - every recorded SHA exists and is an ancestor of HEAD. HEAD may have moved
-#     on since (later commits are normal); a SHA that left HEAD's history means
-#     a rebase, reset or force-push the state knows nothing about;
+#   - every recorded SHA (base, head, pre_run, each pass's commits) exists and
+#     is an ancestor of HEAD. HEAD may have moved on since (later commits are
+#     normal); a SHA that left HEAD's history means a rebase, reset or
+#     force-push the state knows nothing about;
 #   - a pass recorded as `committed` leaves a clean tree. A dirty tree while a
 #     pass is in progress is normal, and not reported.
 ship_state_problems() {
@@ -47,7 +48,7 @@ ship_state_problems() {
     elif ! git -C "$root" merge-base --is-ancestor "$sha" HEAD; then
       echo "recorded commit $sha is not in HEAD's history (rebased, reset or force-pushed?)"
     fi
-  done < <(jq -r '[.base.sha, .head, (.passes // {} | .[] | .commits // [] | .[])] | .[] | select(. != null and . != "")' "$state")
+  done < <(jq -r '[.base.sha, .head, (.pre_run // [] | .[]), (.passes // {} | .[] | .commits // [] | .[])] | .[] | select(. != null and . != "")' "$state")
 
   status="$(jq -r '.pass_status // ""' "$state")"
   if [ "$status" = "committed" ]; then
@@ -57,4 +58,20 @@ ship_state_problems() {
       head -n 10 <<<"$dirty" | sed 's/^/    /'
     fi
   fi
+}
+
+# ship_code_unchanged_since <root> <sha> -> exit 0 when no code path differs
+# between <sha> and HEAD; non-zero when one does, or when <sha> is unknown.
+#
+# "Code" is what the suite and mutate:diff can see. A range that touches only
+# docs, the progress file or CLAUDE.md leaves a suite run at <sha> as good as
+# one at HEAD. Two callers rely on that, and must not each define it:
+# report.sh, which prints such a run as "current" rather than STALE, and the
+# skill's Review step 1, which reads that word to reuse `checks` instead of
+# rerunning a ~5 minute suite on an identical tree (#41 ran it four times).
+#
+# Committed changes only: the working tree isn't compared. Add .claude/hooks
+# to the list if a ticket ever changes the hooks.
+ship_code_unchanged_since() {
+  git -C "$1" diff --quiet "$2" HEAD -- src e2e tests scripts package.json package-lock.json 2>/dev/null
 }

@@ -6,11 +6,11 @@ Implements decisions Q1–Q19 from the `ship-skill-fixes` grilling session (2026
 
 ## 1. Hooks
 
-- [ ] `.claude/hooks/ship-state.sh`: the "code changed" check (Q9); `pre_run` SHAs checked (Q6)
-- [ ] `.claude/hooks/guard-commit.sh`: a log line and a `systemMessage` per gated commit (Q13)
-- [ ] `.claude/hooks/test-hooks.sh`: cases for the above and for chunk 2's `report.sh`
-- [ ] `.gitignore`: `.claude/hooks/logs/` (proposed in the grilling, not explicitly confirmed)
-- [ ] `bash .claude/hooks/test-hooks.sh`
+- [x] `.claude/hooks/ship-state.sh`: the "code changed" check (Q9); `pre_run` SHAs checked (Q6)
+- [x] `.claude/hooks/guard-commit.sh`: a log line and a `systemMessage` per gated commit (Q13)
+- [x] `.claude/hooks/test-hooks.sh`: cases for the above and for chunk 2's `report.sh`
+- [x] `.gitignore`: `.claude/hooks/logs/` (proposed in the grilling, not explicitly confirmed)
+- [x] `bash .claude/hooks/test-hooks.sh` → `PASS: 145 FAIL: 0` (14 new: 9 in §I, 2 in §J, 3 in a new §J2)
 
 ## 2. `report.sh` and the state schema
 

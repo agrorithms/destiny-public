@@ -105,5 +105,6 @@ None. No `Stryker disable` comments.
   Fastest Clears and player-name specs passed with the new seed.
 - `scripts/cleanup/debug-sessions.ts` is gitignored, so its one-line update to the new `hashes`
   shape is local to this checkout.
-- `useLeaderboardPrefs.ts` takes `Difficulty` as a type-only import from `manifest.ts`, which
-  imports `fs`. It is erased at build, so the client bundle doesn't pull the module in.
+- `useLeaderboardPrefs.ts` and `page.tsx` import `DIFFICULTIES` and `Difficulty` from
+  `src/lib/bungie/difficulty.ts`, which imports nothing (since `5a50d5a`). `manifest.ts` imports
+  `fs`, so client code must not import it.

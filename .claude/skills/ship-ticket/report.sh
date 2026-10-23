@@ -30,8 +30,8 @@ BASE_SHA="$(j '.base.sha')"
 BRANCH="$(j '.branch')"
 
 # How far a recorded SHA is behind HEAD, as words. "current" means no code
-# changed since (ship_code_unchanged_since); the skill reuses a suite run that
-# reads HEAD or current, so this wording is load-bearing.
+# changed since: ship_code_unchanged_since, the same check the skill's Review
+# step 1 calls to reuse a suite run, so the label and the reuse agree.
 age() {
   [ -z "$1" ] || [ "$1" = "null" ] && { echo "never run"; return; }
   [ "$(git rev-parse "$1" 2>/dev/null)" = "$HEAD_SHA" ] && { echo "HEAD"; return; }

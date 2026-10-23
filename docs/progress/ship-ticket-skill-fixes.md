@@ -43,9 +43,9 @@ From a two-axis review of `main...wf/ship-skill-fixes` at `a328722`. The user ag
 - [x] A `follow-up` finding status: set by Review step 5 and Fix step 3, drafted at Handoff, shown by
       `report.sh` (Q4)
 - [x] `passes.*.model` records the model that ran, never `inherit` (Q15)
-- [ ] `agent-contract.md`: the contract and the definition both win over a prompt (S9)
-- [ ] Review step 1 calls `ship_code_unchanged_since` against `checks.sha` (S5)
-- [ ] "Start writes no state" once in SKILL.md; the `decisions_made` append rule only in state.md (S4)
+- [x] `agent-contract.md`: the contract and the definition both win over a prompt (S9)
+- [x] Review step 1 calls `ship_code_unchanged_since` against `checks.sha` (S5)
+- [x] "Start writes no state" once in SKILL.md; the `decisions_made` append rule only in state.md (S4)
 - [ ] §J2's exit-code style; a comment on the 36-commit case (S8)
 - [ ] `guard-commit.sh:37` comment: "the orchestrator doesn't rely on it" (S6)
 

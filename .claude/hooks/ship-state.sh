@@ -67,8 +67,8 @@ ship_state_problems() {
 # the progress file or CLAUDE.md leaves a suite run at <sha> as good as one at
 # HEAD. Two callers rely on that, and must not each define it: report.sh,
 # which prints such a run as "current" rather than STALE, and the skill's
-# Review step 1, which reads that word to reuse `checks` instead of rerunning
-# a ~5 minute suite on an identical tree (#41 ran it four times).
+# Review step 1, which calls this to reuse `checks` instead of rerunning a
+# ~5 minute suite on an identical tree (#41 ran it four times).
 #
 # It names what isn't code rather than what is: a missed path here costs one
 # extra suite run, while a missed path in a list of code paths (vitest.config.ts,

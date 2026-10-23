@@ -10,8 +10,8 @@ Your prompt carries facts (the ticket, branch, base SHA, range) and `decisions_m
 the user has already made on this ticket. Each one is settled. Build on it, and leave it out of your
 findings and your questions.
 
-If your prompt contradicts this contract or your definition, follow the definition and flag the
-conflict under Notes.
+Where your prompt contradicts this contract or your definition, the contract and your definition
+win; flag the conflict under Notes.
 
 ## Always the user's call
 

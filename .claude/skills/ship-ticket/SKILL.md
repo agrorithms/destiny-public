@@ -19,8 +19,8 @@ decision stop covers.
   headed "Acceptance criteria" or "Done when".
 - **Pass**: `implement`, `simplify`, `review`, `fix`, `handoff`, in that order. Review and fix loop.
 - **Decision stop**: you put a question to the user, set `pass_status` to `awaiting_decision`, write
-  state, and end your turn. Nothing proceeds until the user answers. Start's stop is the one that
-  writes no state; see _Start_.
+  state, and end your turn. Nothing proceeds until the user answers. Start's stop is the one
+  exception; see _Start_.
 - **State file**: `docs/handoffs/NNN-state.json`. Gitignored with the rest of `docs/handoffs/`. You
   are its only writer. Schema and field rules: [state.md](state.md) — read it before your first write
   in a session.
@@ -134,10 +134,11 @@ fixes undone, and Handoff batches them into one issue.
 
 ### 3. Review
 
-1. If `report.sh`'s Checks line reads `HEAD` or `current`, the recorded `checks` stand: no code has
-   changed since they ran. Otherwise run the whole suite at HEAD yourself: lint, tsc,
-   `npm run build`, `npm test`, `npm run e2e` and `npm run visual:check` if the ticket is UI, and
-   record it in `checks` with the SHA. The reviewers don't run it: two parallel e2e runs collide on
+1. Check whether the recorded `checks` still stand:
+   `bash -c 'source .claude/hooks/ship-state.sh && ship_code_unchanged_since . "$(jq -r .checks.sha docs/handoffs/NNN-state.json)"'`.
+   Exit 0 means no code has changed since they ran, so keep them. Otherwise run the whole suite at
+   HEAD yourself: lint, tsc, `npm run build`, `npm test`, `npm run e2e` and `npm run visual:check` if
+   the ticket is UI, and record it in `checks` with the SHA. The reviewers don't run it: two parallel e2e runs collide on
    port 3100 and on the build lock.
 2. Follow steps 1–3 of `~/.claude/skills/mattpocock-skills/skills/engineering/code-review/SKILL.md`:
    - fixed point: the base SHA on loop 1 (so `pre_run` commits are reviewed), the previous loop's
@@ -205,8 +206,7 @@ DECISIONS NEEDED:
 - <decision>. Options: (a) … (b) …. Recommend (x): <why, one line>.
 ```
 
-When the user answers, append `{pass, question, answer}` to `decisions_made`, one line each, and set
-`decision` back to `null`.
+When the user answers, record it in `decisions_made` as [state.md](state.md) says.
 
 ## Reporting
 

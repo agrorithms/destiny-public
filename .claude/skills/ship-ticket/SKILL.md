@@ -154,8 +154,8 @@ fixes undone, and Handoff batches them into one issue.
 5. **Decision stop**: which findings to fix, which to leave for a follow-up issue, which to decline.
    Pre-tick every blocking finding and your recommended non-blocking ones to fix. From loop 2, a new
    non-blocking finding is pre-ticked as a follow-up instead, so a nit can't spend the last fix loop.
-   A blocking finding the user unticks needs a reason, recorded in its `note`. A follow-up stays
-   `open` until Handoff drafts its issue. With nothing picked to fix, skip Fix and go to Handoff.
+   A blocking finding the user unticks needs a reason, recorded in its `note`. A finding left for a
+   follow-up gets status `follow-up`. With nothing picked to fix, skip Fix and go to Handoff.
 
 ### 4. Fix
 
@@ -164,8 +164,8 @@ fixes undone, and Handoff batches them into one issue.
    with `loop + 1`, covering the fix commits' range only.
 3. At most two fix loops. After the second re-review, if any picked finding is still open or the
    re-review raised new findings, that is a **decision stop** listing each one, with options: (a) one
-   more fix loop, (b) a follow-up issue, (c) decline. A fix loop the user grants goes into
-   `decisions_made`.
+   more fix loop, (b) a follow-up issue (status `follow-up`), (c) decline. A fix loop the user grants
+   goes into `decisions_made`.
 
 ### 5. Handoff
 
@@ -180,11 +180,11 @@ fixes undone, and Handoff batches them into one issue.
    deploying to prod, so give steps they can run first); the files edited; the verified suite at its
    SHA; **For the next orchestrator**; Suggested skills. It is untracked. Never stage it.
 3. Give every `out_of_scope` item already fixed on the branch `issue: "fixed"`, then draft
-   follow-up issues from the open non-blocking findings and from the `out_of_scope` items whose
-   `issue` is `null`. Every `source: "simplify"` item goes into one cleanup issue that lists them all;
-   every other item gets its own. First check `gh issue list` for one that already covers each item;
-   propose a comment there instead. **Decision stop**: the whole batch at once. Open only what the
-   user approves, labelled `needs-triage`, and record each number.
+   follow-up issues from the `follow-up` findings, the open non-blocking ones, and the `out_of_scope`
+   items whose `issue` is `null`. Every `source: "simplify"` item goes into one cleanup issue that
+   lists them all; every other item gets its own. First check `gh issue list` for one that already
+   covers each item; propose a comment there instead. **Decision stop**: the whole batch at once.
+   Open only what the user approves, labelled `needs-triage`, and record each number.
 4. **Decision stop**: push and open the PR. One yes covers `git push -u origin <branch>` and
    `gh pr create --base <base ref>`. Draft the body in the session scratchpad. Merging is the user's.
    If the user pushes it themselves, record `pr: "user"`.

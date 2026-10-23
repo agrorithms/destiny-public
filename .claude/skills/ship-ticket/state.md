@@ -26,7 +26,7 @@ It is gitignored, as is all of `docs/handoffs/`. Committing it would change the 
 
   "passes": {
     "implement": { "status": "committed", "model": "sonnet", "agent_id": "a7f3…", "commits": ["3b4c…", "5d6e…"], "mutation_loops": 2 },
-    "simplify":  { "status": "committed", "model": "inherit", "agent_id": "b2c9…", "commits": ["7f80…"] },
+    "simplify":  { "status": "committed", "model": "opus", "agent_id": "b2c9…", "commits": ["7f80…"] },
     "review":    { "status": "awaiting_decision", "loop": 1, "range": "61954b0f…..7f80…" },
     "fix":       { "status": "pending", "loop": 0, "commits": [] },
     "handoff":   { "status": "pending", "doc": null, "issues": [], "pr": null }
@@ -85,15 +85,16 @@ It is gitignored, as is all of `docs/handoffs/`. Committing it would change the 
   is `file:line` strings.
 - **Finding ids**: `P<n>` for the Spec axis, `S<n>` for Standards, `O<n>` for your own diff reads,
   with `axis` set to `spec`, `standards` or `orchestrator`; `report.sh` groups by `axis`. Numbering
-  continues across review loops, so an id is never reused. `status`: `open`, `picked`, `fixed`,
-  `declined` (with the user's reason in `note`), `issue #NNN`.
+  continues across review loops, so an id is never reused. `status`: `open`, `picked`, `follow-up`
+  (left for an issue that Handoff drafts), `fixed`, `declined` (with the user's reason in `note`),
+  `issue #NNN`.
 - `out_of_scope.source`: `implement`, `simplify`, `review` or `orchestrator`. `issue` is the number
   once one is opened or commented on, or `"fixed"` for an item fixed in place.
 - **`decisions_made`** gets one entry per answered decision stop, `{pass, question, answer}`, each a
   line. Append it when the user answers, then set `decision` back to `null`. Every agent prompt
   carries the whole list.
 - `decision` is `null` unless `pass_status` is `awaiting_decision`.
-- `models` values are role defaults: `inherit` unless an argument set one. `passes.*.model` is the
-  value the pass actually ran with.
+- `models` values are role defaults: `inherit` unless an argument set one. `passes.*.model` names
+  the model the pass ran on; for `inherit`, that's the session's model.
 - `passes.handoff.pr` is the PR's URL, `"user"` when the user pushes it themselves, or `null` before
   the push stop.

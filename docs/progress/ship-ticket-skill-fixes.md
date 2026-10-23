@@ -40,9 +40,9 @@ From a two-axis review of `main...wf/ship-skill-fixes` at `a328722`. The user ag
 - [x] `.claude/agents/ship-simplifier.md` step 3: a changed Playwright spec gets a deliberate break,
       as CLAUDE.md says (Q16)
 - [x] `.claude/skills/ship-ticket/SKILL.md` Handoff step 3: when `issue: "fixed"` is set (Q8)
-- [ ] A `follow-up` finding status: set by Review step 5 and Fix step 3, drafted at Handoff, shown by
+- [x] A `follow-up` finding status: set by Review step 5 and Fix step 3, drafted at Handoff, shown by
       `report.sh` (Q4)
-- [ ] `passes.*.model` records the model that ran, never `inherit` (Q15)
+- [x] `passes.*.model` records the model that ran, never `inherit` (Q15)
 - [ ] `agent-contract.md`: the contract and the definition both win over a prompt (S9)
 - [ ] Review step 1 calls `ship_code_unchanged_since` against `checks.sha` (S5)
 - [ ] "Start writes no state" once in SKILL.md; the `decisions_made` append rule only in state.md (S4)

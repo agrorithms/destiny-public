@@ -606,16 +606,19 @@ check "pre_run commit listed under 'before the run'" "yes" \
 check "pre_run commit not repeated in the run's list" "1" "$(rep | grep -cE ' WIP #999: a$')"
 state_set '.pre_run = []'
 
-# Findings grouped by axis; picked counts as open; fixed ones are gone.
+# Findings grouped by axis; picked and follow-up are listed with open; fixed ones are gone.
 state_set '.findings = [
   {id:"S1",axis:"standards",severity:"blocking",status:"open",where:"a.ts:1",summary:"s"},
+  {id:"S2",axis:"standards",severity:"blocking",status:"follow-up",where:"a.ts:6",summary:"s2"},
   {id:"P1",axis:"spec",severity:"non-blocking",status:"open",where:"a.ts:2",summary:"p"},
   {id:"P2",axis:"spec",severity:"blocking",status:"fixed",where:"a.ts:3",summary:"p2"},
   {id:"O1",axis:"orchestrator",severity:"non-blocking",status:"picked",where:"a.ts:4",summary:"o"},
   {id:"X1",severity:"non-blocking",status:"open",where:"a.ts:5",summary:"x"}]'
 check "findings grouped Spec, Standards, Orchestrator, then no axis" \
-  "Findings,Spec,P1,Standards,S1,Orchestrator,O1,No,X1,Out" \
+  "Findings,Spec,P1,Standards,S1,S2,Orchestrator,O1,No,X1,Out" \
   "$(rep | sed -n '/^Findings/,/^Out of scope/p' | awk '{print $1}' | paste -sd,)"
+# A blocking finding left for a follow-up issue stays in view until Handoff drafts it.
+check "a follow-up finding is counted" "yes" "$(says '^Findings open, picked or follow-up: 5$')"
 
 state_set '.out_of_scope = [{summary:"a",issue:null},{summary:"b",issue:12},{summary:"c",issue:"fixed"}]'
 check "an item fixed in place isn't counted as an issue" "yes" \

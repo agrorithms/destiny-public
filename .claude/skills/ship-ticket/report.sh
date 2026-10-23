@@ -102,11 +102,11 @@ else
 fi
 
 echo
-OPEN="$(j '[.findings // [] | .[] | select(.status == "open" or .status == "picked")] | length')"
-echo "Findings open or picked: $OPEN"
+OPEN="$(j '[.findings // [] | .[] | select(.status | IN("open", "picked", "follow-up"))] | length')"
+echo "Findings open, picked or follow-up: $OPEN"
 # By axis, as the pick stop presents them. A finding with no known axis is
 # listed last rather than dropped.
-j '[.findings // [] | .[] | select(.status == "open" or .status == "picked")] as $f
+j '[.findings // [] | .[] | select(.status | IN("open", "picked", "follow-up"))] as $f
   | (["spec","Spec"], ["standards","Standards"], ["orchestrator","Orchestrator"], [null,"No axis recorded"])
   | . as [$axis, $title]
   | [$f[] | select(if $axis then .axis == $axis else (.axis | IN("spec","standards","orchestrator") | not) end)]

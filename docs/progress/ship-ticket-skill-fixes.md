@@ -36,7 +36,14 @@ Implements decisions Q1–Q19 from the `ship-skill-fixes` grilling session (2026
 
 ## Verification
 
-- [ ] `bash .claude/hooks/test-hooks.sh` (131/131 before this branch)
-- [ ] `npm run lint`
-- [ ] `npm run build`
-- [ ] `npm test`
+All at `242d5ba`.
+
+- [x] `bash .claude/hooks/test-hooks.sh` → `PASS: 157 FAIL: 0` (131 before this branch)
+- [x] `npm run lint`: exit 0, 0 errors, 58 warnings. All are `no-explicit-any` in
+      `gos10k/bungie-fetch.ts` and `gos10k/gos_10k_pgcr.smoke.ts`, counted twice because ESLint also
+      reads the leftover probe worktree under `.claude/worktrees/`; 29 per copy, as at install
+- [x] `npm run build`: exit 0
+- [x] `npm test`: 48 files, 583 tests, all passed
+
+No app code changed, so `mutate:diff`, e2e and `visual:check` don't apply. The gate's real path ran on
+each code commit and logged it (`pass 37s`, `pass 36s`), and logged the `.md`-only commit as skipped.

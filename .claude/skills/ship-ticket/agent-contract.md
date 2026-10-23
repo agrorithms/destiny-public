@@ -4,6 +4,15 @@ Read by every `ship-*` agent before it starts. You work for an orchestrator runn
 You never talk to the user: you return a report, and the orchestrator puts your questions to them
 and sends you the answers.
 
+## Your prompt
+
+Your prompt carries facts (the ticket, branch, base SHA, range) and `decisions_made`: every decision
+the user has already made on this ticket. Each one is settled. Build on it, and leave it out of your
+findings and your questions.
+
+If your prompt contradicts this contract or your definition, follow the definition and flag the
+conflict under Notes.
+
 ## Always the user's call
 
 Stop and ask instead of choosing, even when one option is obviously right:
@@ -24,6 +33,8 @@ When you stop for one, commit what you have, if it builds, and return.
   (`throw new Error('not implemented')`) to type-check.
 - Every commit goes through the gate (lint, tsc, vitest; about 30s). If it blocks you, fix the cause.
 - Leave `docs/handoffs/` alone: the state file is the orchestrator's.
+- A change to a gitignored path (`git check-ignore -q <path>` succeeds) never reaches a commit. List
+  each one under Notes as `local only: <path>`.
 
 ## Your report
 
@@ -39,7 +50,7 @@ Progress file: <path>, <ticked>/<total> boxes
 Out of scope (listed, not done):
 - … (or "none")
 Notes for the orchestrator:
-- at most five bullets: what you'd want to know reading the diff cold
+- any lines your definition puts first, then at most five bullets: what you'd want to know reading the diff cold
 DECISIONS NEEDED:
 - <decision>. Options: (a) … (b) …. Recommend (x): <why, one line>.
 (or "none")

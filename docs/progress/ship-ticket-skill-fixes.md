@@ -24,15 +24,15 @@ Implements decisions Q1–Q19 from the `ship-skill-fixes` grilling session (2026
 
 ## 3. The skill, the contract and the simplifier
 
-- [ ] `.claude/skills/ship-ticket/SKILL.md`
-- [ ] `.claude/skills/ship-ticket/agent-contract.md`
-- [ ] `.claude/agents/ship-simplifier.md` (new)
+- [x] `.claude/skills/ship-ticket/SKILL.md`
+- [x] `.claude/skills/ship-ticket/agent-contract.md`
+- [x] `.claude/agents/ship-simplifier.md` (new)
 
 ## Outside the commits
 
-- [ ] `docs/handoffs/261022-ship-ticket-skill-design.md`: Q20 and Q29 amendments appended
+- [x] `docs/handoffs/261022-ship-ticket-skill-design.md`: Q20 and Q29 amendments appended
       (untracked, never staged)
-- [ ] `CLAUDE.md` `### Shipping a ticket`: `simplifier=<model>` proposed to the user, not edited
+- [x] `CLAUDE.md` `### Shipping a ticket`: `simplifier=<model>` proposed to the user, not edited (awaiting their wording call)
 
 ## Verification
 

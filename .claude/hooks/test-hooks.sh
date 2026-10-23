@@ -556,6 +556,67 @@ echo x > "$SHIP_REPO/src/x.ts" && sg add src && sg commit -q -m "WIP #999: src"
 check "a src/ commit since <sha> -> changed" "1" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
 check "an unknown <sha> -> not unchanged" "no" \
   "$(ship_code_unchanged_since "$SHIP_REPO" 0123456789012345678901234567890123456789 && echo yes || echo no)"
+SRC=$(sg rev-parse HEAD)
+
+echo
+echo "=== J3. report.sh's lines ==="
+rep() { (cd "$SHIP_REPO" && "$REPORT" 999); }
+says() { # says <ERE> -> yes | no: does some line of the report match?
+  rep | grep -qE -- "$1" && echo yes || echo no
+}
+state committed "$SRC"
+
+# Checks and mutation: STALE only when code changed since the run.
+state_set --arg c "$C1" '.checks = {sha: $c, lint: "pass"}'
+check "checks behind a src/ change -> STALE" "yes" "$(says '^Checks +@ [0-9a-f]+ \(STALE, 2 commit\(s\) behind HEAD\)')"
+state_set --arg c "$SRC" '.checks = {sha: $c, lint: "pass"}'
+check "checks at HEAD -> HEAD" "yes" "$(says '^Checks +@ [0-9a-f]+ \(HEAD\)')"
+echo m > "$SHIP_REPO/docs/progress/999.md" && sg commit -q -am "WIP #999: progress tick"
+state committed "$(sg rev-parse HEAD)"; state_set --arg c "$SRC" '.checks = {sha: $c, lint: "pass"}'
+check "checks behind a docs-only commit -> current" "yes" \
+  "$(says '^Checks +@ [0-9a-f]+ \(current, 1 commit\(s\) behind HEAD, none touching code\)')"
+
+# The mutation line says which pass ran it; only Handoff's is the reported score.
+mut() { state_set --arg c "$SRC" --arg p "$1" --argjson f "$2" \
+  '.mutation = {sha: $c, pass: $p, full: $f, overall: 100, covered: 100, killed: 8, scored: 8, verdict: "PASS", survivors: []}'; }
+mut implement true
+check "implementer's full run -> not the reported score" "yes" \
+  "$(says '; full --typecheck run, implement pass, not the reported score\): 100% overall')"
+mut fix false
+check "fixer's partial run -> says so" "yes" "$(says '; not a full --typecheck run, fix pass, not the reported score\)')"
+mut handoff true
+check "handoff's full run -> the reported score" "yes" "$(says '; full --typecheck run, the reported score\)')"
+
+# Commits made before the run are listed apart, once.
+state_set --arg c "$C1" '.pre_run = [$c]'
+check "pre_run commit listed under 'before the run'" "yes" \
+  "$(rep | grep -A1 '^  before the run:$' | tail -n 1 | grep -qE '^    [0-9a-f]+ WIP #999: a$' && echo yes || echo no)"
+check "pre_run commit not repeated in the run's list" "1" "$(rep | grep -cE ' WIP #999: a$')"
+state_set '.pre_run = []'
+
+# Findings grouped by axis; picked counts as open; fixed ones are gone.
+state_set '.findings = [
+  {id:"S1",axis:"standards",severity:"blocking",status:"open",where:"a.ts:1",summary:"s"},
+  {id:"P1",axis:"spec",severity:"non-blocking",status:"open",where:"a.ts:2",summary:"p"},
+  {id:"P2",axis:"spec",severity:"blocking",status:"fixed",where:"a.ts:3",summary:"p2"},
+  {id:"O1",axis:"orchestrator",severity:"non-blocking",status:"picked",where:"a.ts:4",summary:"o"},
+  {id:"X1",severity:"non-blocking",status:"open",where:"a.ts:5",summary:"x"}]'
+check "findings grouped Spec, Standards, Orchestrator, then no axis" \
+  "Findings,Spec,P1,Standards,S1,Orchestrator,O1,No,X1,Out" \
+  "$(rep | sed -n '/^Findings/,/^Out of scope/p' | awk '{print $1}' | paste -sd,)"
+
+state_set '.out_of_scope = [{summary:"a",issue:null},{summary:"b",issue:12},{summary:"c",issue:"fixed"}]'
+check "an item fixed in place isn't counted as an issue" "yes" \
+  "$(says '^Out of scope: 3 listed, 1 with an issue, 1 fixed in place$')"
+state_set '.passes.handoff = {status:"committed",issues:[],pr:"user"}'
+check "pr: user -> the user pushes" "yes" "$(says '^PR: none, the user pushes$')"
+
+# Past 30 commits, the oldest are counted rather than silently cut.
+for i in $(seq 1 32); do sg commit -q --allow-empty -m "WIP #999: e$i"; done
+state committed "$(sg rev-parse HEAD)"
+check "36 commits -> '… 6 more', then the newest 30" "… 6 more|30|WIP #999: e32" \
+  "$(rep | sed -n '/^Commits/,/^$/p' | sed '1d;$d' | { read -r more; mapfile -t rest;
+     echo "$(sed 's/^ *//' <<<"$more")|${#rest[@]}|${rest[-1]#*[0-9a-f] }"; })"
 rm -rf "$SHIP_REPO"
 
 echo

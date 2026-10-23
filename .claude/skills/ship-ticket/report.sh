@@ -29,12 +29,18 @@ HEAD_SHA="$(git rev-parse HEAD)"
 BASE_SHA="$(j '.base.sha')"
 BRANCH="$(j '.branch')"
 
-# How far a recorded SHA is behind HEAD, as words.
+# How far a recorded SHA is behind HEAD, as words. "current" means no code
+# changed since (ship_code_unchanged_since); the skill reuses a suite run that
+# reads HEAD or current, so this wording is load-bearing.
 age() {
   [ -z "$1" ] || [ "$1" = "null" ] && { echo "never run"; return; }
   [ "$(git rev-parse "$1" 2>/dev/null)" = "$HEAD_SHA" ] && { echo "HEAD"; return; }
   local n; n="$(git rev-list --count "$1..HEAD" 2>/dev/null)" || { echo "unknown commit"; return; }
-  echo "STALE, $n commit(s) behind HEAD"
+  if ship_code_unchanged_since "$ROOT" "$1"; then
+    echo "current, $n commit(s) behind HEAD, none touching code"
+  else
+    echo "STALE, $n commit(s) behind HEAD"
+  fi
 }
 
 if [ -z "$(git status --porcelain)" ]; then TREE="tree clean"; else TREE="tree DIRTY ($(git status --porcelain | wc -l) paths)"; fi
@@ -61,14 +67,35 @@ echo "$line"
 
 echo
 echo "Commits ($(short "$BASE_SHA")..HEAD)"
-git log --format='  %h %s' --reverse "$BASE_SHA..HEAD" 2>/dev/null | tail -n 20
+# pre_run commits were on the branch before /ship-ticket started: no pass made
+# them, but they ship in the PR. The newest LIMIT of the rest are listed.
+PRE_RUN=" $(j '.pre_run // [] | join(" ")') "
+LIMIT=30
+BEFORE=(); RUN=()
+while read -r full rest; do
+  [ -z "$full" ] && continue
+  case "$PRE_RUN" in
+    *" $full "*) BEFORE+=("    $rest") ;;
+    *) RUN+=("  $rest") ;;
+  esac
+done < <(git log --format='%H %h %s' --reverse "$BASE_SHA..HEAD" 2>/dev/null)
+if [ "${#BEFORE[@]}" -gt 0 ]; then
+  echo "  before the run:"
+  printf '%s\n' "${BEFORE[@]}"
+fi
+if [ "${#RUN[@]}" -gt "$LIMIT" ]; then
+  echo "  … $(( ${#RUN[@]} - LIMIT )) more"
+  RUN=("${RUN[@]: -$LIMIT}")
+fi
+[ "${#RUN[@]}" -gt 0 ] && printf '%s\n' "${RUN[@]}"
 
 echo
 CS="$(j '.checks.sha // empty')"
 echo "Checks   @ $(short "$CS") ($(age "$CS")): lint $(j '.checks.lint // "—"') · tsc $(j '.checks.tsc // "—"') · build $(j '.checks.build // "—"') · vitest $(j '.checks.vitest // "—"') · e2e $(j '.checks.e2e // "—"') · visual $(j '.checks.visual // "—"')"
 MS="$(j '.mutation.sha // empty')"
 if [ -n "$MS" ]; then
-  kind="$(j 'if .mutation.full then "full --typecheck run" else "incremental, not the reported score" end')"
+  kind="$(j '.mutation | (if .full then "full --typecheck run" else "not a full --typecheck run" end) + ", " +
+    (if .pass == "handoff" then "the reported score" else "\(.pass // "unrecorded") pass, not the reported score" end)')"
   echo "Mutation @ $(short "$MS") ($(age "$MS"); $kind): $(j '.mutation.overall')% overall ($(j '.mutation.killed')/$(j '.mutation.scored')), $(j '.mutation.covered')% covered — $(j '.mutation.verdict'); survivors: $(j '.mutation.survivors | if length == 0 then "none" else join(", ") end')"
 else
   echo "Mutation not run"
@@ -77,12 +104,20 @@ fi
 echo
 OPEN="$(j '[.findings // [] | .[] | select(.status == "open" or .status == "picked")] | length')"
 echo "Findings open or picked: $OPEN"
-j '.findings // [] | .[] | select(.status == "open" or .status == "picked") | "  \(.id) \(.severity) \(.status) \(.where) — \(.summary)"'
-echo "Out of scope: $(j '.out_of_scope // [] | length') listed, $(j '[.out_of_scope // [] | .[] | select(.issue != null)] | length') with an issue"
+# By axis, as the pick stop presents them. A finding with no known axis is
+# listed last rather than dropped.
+j '[.findings // [] | .[] | select(.status == "open" or .status == "picked")] as $f
+  | (["spec","Spec"], ["standards","Standards"], ["orchestrator","Orchestrator"], [null,"No axis recorded"])
+  | . as [$axis, $title]
+  | [$f[] | select(if $axis then .axis == $axis else (.axis | IN("spec","standards","orchestrator") | not) end)]
+  | select(length > 0)
+  | "  \($title)", (.[] | "    \(.id) \(.severity) \(.status) \(.where) — \(.summary)")'
+echo "Out of scope: $(j '.out_of_scope // [] | length') listed, $(j '[.out_of_scope // [] | .[] | select(.issue != null and .issue != "fixed")] | length') with an issue, $(j '[.out_of_scope // [] | .[] | select(.issue == "fixed")] | length') fixed in place"
 ISSUES="$(j '.passes.handoff.issues // [] | map("#\(.)") | join(" ")')"
 [ -n "$ISSUES" ] && echo "Issues opened: $ISSUES"
 PR="$(j '.passes.handoff.pr // empty')"
-[ -n "$PR" ] && echo "PR: $PR"
+if [ "$PR" = "user" ]; then echo "PR: none, the user pushes"
+elif [ -n "$PR" ]; then echo "PR: $PR"; fi
 
 echo
 if [ -n "$PROBLEMS" ]; then

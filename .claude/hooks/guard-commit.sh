@@ -34,8 +34,8 @@
 # long it took. A PreToolUse hook's ~30s is invisible from inside a session
 # (`time git commit` shows 0s), so the log is how anyone, an orchestrator
 # included, answers "did the gate run on that commit?". A pass also emits a
-# systemMessage; whether that reaches the model is unverified, so nothing
-# relies on it. A log that can't be written never blocks a commit.
+# systemMessage; whether that reaches the model is unverified, so the
+# orchestrator doesn't rely on it. A log that can't be written never blocks a commit.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 

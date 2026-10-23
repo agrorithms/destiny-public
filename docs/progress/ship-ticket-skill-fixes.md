@@ -46,8 +46,14 @@ From a two-axis review of `main...wf/ship-skill-fixes` at `a328722`. The user ag
 - [x] `agent-contract.md`: the contract and the definition both win over a prompt (S9)
 - [x] Review step 1 calls `ship_code_unchanged_since` against `checks.sha` (S5)
 - [x] "Start writes no state" once in SKILL.md; the `decisions_made` append rule only in state.md (S4)
-- [ ] §J2's exit-code style; a comment on the 36-commit case (S8)
-- [ ] `guard-commit.sh:37` comment: "the orchestrator doesn't rely on it" (S6)
+- [x] §J2's exit-code style; a comment on the 36-commit case (S8)
+- [x] `guard-commit.sh:37` comment: "the orchestrator doesn't rely on it" (S6)
+
+- [x] `bash .claude/hooks/test-hooks.sh` → `PASS: 161 FAIL: 0` (4 new; each fails against the code
+      it tests: the old path list, the old `report.sh`)
+- [x] `npm run lint`: exit 0, 0 errors, 58 warnings, the same 29 per copy as above
+- [x] `npm run build`: exit 0
+- [x] `npm test`: 48 files, 583 tests, all passed
 
 Not changed:
 

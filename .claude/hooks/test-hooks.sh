@@ -551,7 +551,8 @@ echo "=== J2. the code-changed check (ship_code_unchanged_since) ==="
 source "$H/ship-state.sh"
 mkdir -p "$SHIP_REPO/docs/progress" "$SHIP_REPO/src"
 echo n > "$SHIP_REPO/docs/progress/999.md" && sg add docs/progress && sg commit -q -m "WIP #999: progress"
-check "docs-only commits since <sha> -> unchanged" "0" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
+check "docs-only commits since <sha> -> unchanged" "yes" \
+  "$(ship_code_unchanged_since "$SHIP_REPO" "$C1" && echo yes || echo no)"
 # Root files, on a scratch branch so J3's commit counts from C1 stay as they are.
 # vitest.config.ts and middleware.ts were missed by the old list of code paths.
 J2_BRANCH=$(sg branch --show-current) && sg switch -q -c j2-scratch
@@ -565,7 +566,8 @@ check "a vitest.config.ts commit -> changed" "no" "$(since_commit vitest.config.
 check "a middleware.ts commit -> changed" "no" "$(since_commit middleware.ts)"
 sg switch -q "$J2_BRANCH" && sg branch -q -D j2-scratch
 echo x > "$SHIP_REPO/src/x.ts" && sg add src && sg commit -q -m "WIP #999: src"
-check "a src/ commit since <sha> -> changed" "1" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
+check "a src/ commit since <sha> -> changed" "no" \
+  "$(ship_code_unchanged_since "$SHIP_REPO" "$C1" && echo yes || echo no)"
 check "an unknown <sha> -> not unchanged" "no" \
   "$(ship_code_unchanged_since "$SHIP_REPO" 0123456789012345678901234567890123456789 && echo yes || echo no)"
 SRC=$(sg rev-parse HEAD)
@@ -629,6 +631,7 @@ check "pr: user -> the user pushes" "yes" "$(says '^PR: none, the user pushes$')
 # Past 30 commits, the oldest are counted rather than silently cut.
 for i in $(seq 1 32); do sg commit -q --allow-empty -m "WIP #999: e$i"; done
 state committed "$(sg rev-parse HEAD)"
+# Reads the Commits block as its "… N more" line, how many lines follow it, and the last one's subject.
 check "36 commits -> '… 6 more', then the newest 30" "… 6 more|30|WIP #999: e32" \
   "$(rep | sed -n '/^Commits/,/^$/p' | sed '1d;$d' | { read -r more; mapfile -t rest;
      echo "$(sed 's/^ *//' <<<"$more")|${#rest[@]}|${rest[-1]#*[0-9a-f] }"; })"

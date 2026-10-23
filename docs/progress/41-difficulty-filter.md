@@ -76,7 +76,7 @@ was the stored-`normal` case, and it read:
     > 127 |             const request = page.waitForRequest((r) => isLeaderboardRequest(r, stored));
 
 The page read the stored value as All, so it never sent `difficulty=normal`. The stored-`master`
-case and the other nine passed. Once the break was reverted, the spec was green again in the full
+case, the other eight spec cases and the two canaries passed. Once the break was reverted, the spec was green again in the full
 `npm run e2e`.
 
 ## Surviving mutants

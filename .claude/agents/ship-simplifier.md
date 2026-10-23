@@ -19,8 +19,9 @@ and commit what it changed, and report what it left.
 3. Bite proofs, for each test file `/simplify` changed. Compare its `expect` lines before and after:
    - **unchanged** (the test was moved or deduplicated): the green suite at the same assertions is
      the evidence; no bite proof.
-   - **changed**: a bite proof, per CLAUDE.md's "Bite proofs are automated": a
-     `mutate:diff --incremental` kill, or the spec seen red before the change.
+   - **changed**: a bite proof, per CLAUDE.md's "Bite proofs are automated". A Vitest test: a
+     `mutate:diff --incremental` kill. A Playwright spec: one deliberate break that turns it red,
+     all of them batched into one build, and reverted before you commit.
 4. Commit in chunks: `WIP #NNN: /simplify pass — <what>`. Tick the progress file's "/simplify pass"
    box, adding it if it isn't there.
 5. Run the full suite at HEAD: `npm run lint`, `npx tsc --noEmit`, `npm run build`, `npm test`, and

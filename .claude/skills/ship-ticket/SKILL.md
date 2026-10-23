@@ -179,7 +179,8 @@ fixes undone, and Handoff batches them into one issue.
    the behaviour decisions (decision / why / decided by); **local check steps** (the user tests by
    deploying to prod, so give steps they can run first); the files edited; the verified suite at its
    SHA; **For the next orchestrator**; Suggested skills. It is untracked. Never stage it.
-3. Draft follow-up issues from the open non-blocking findings and from the `out_of_scope` items whose
+3. Give every `out_of_scope` item already fixed on the branch `issue: "fixed"`, then draft
+   follow-up issues from the open non-blocking findings and from the `out_of_scope` items whose
    `issue` is `null`. Every `source: "simplify"` item goes into one cleanup issue that lists them all;
    every other item gets its own. First check `gh issue list` for one that already covers each item;
    propose a comment there instead. **Decision stop**: the whole batch at once. Open only what the

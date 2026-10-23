@@ -552,6 +552,18 @@ source "$H/ship-state.sh"
 mkdir -p "$SHIP_REPO/docs/progress" "$SHIP_REPO/src"
 echo n > "$SHIP_REPO/docs/progress/999.md" && sg add docs/progress && sg commit -q -m "WIP #999: progress"
 check "docs-only commits since <sha> -> unchanged" "0" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
+# Root files, on a scratch branch so J3's commit counts from C1 stay as they are.
+# vitest.config.ts and middleware.ts were missed by the old list of code paths.
+J2_BRANCH=$(sg branch --show-current) && sg switch -q -c j2-scratch
+since_commit() { # since_commit <path> -> yes | no: is the tree unchanged since the commit before <path>?
+  local b; b=$(sg rev-parse HEAD)
+  echo y > "$SHIP_REPO/$1" && sg add "$1" && sg commit -q -m "scratch: $1"
+  ship_code_unchanged_since "$SHIP_REPO" "$b" && echo yes || echo no
+}
+check "a root CLAUDE.md commit -> unchanged" "yes" "$(since_commit CLAUDE.md)"
+check "a vitest.config.ts commit -> changed" "no" "$(since_commit vitest.config.ts)"
+check "a middleware.ts commit -> changed" "no" "$(since_commit middleware.ts)"
+sg switch -q "$J2_BRANCH" && sg branch -q -D j2-scratch
 echo x > "$SHIP_REPO/src/x.ts" && sg add src && sg commit -q -m "WIP #999: src"
 check "a src/ commit since <sha> -> changed" "1" "$(ship_code_unchanged_since "$SHIP_REPO" "$C1"; echo $?)"
 check "an unknown <sha> -> not unchanged" "no" \

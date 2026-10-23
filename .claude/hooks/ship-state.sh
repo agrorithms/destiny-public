@@ -63,15 +63,18 @@ ship_state_problems() {
 # ship_code_unchanged_since <root> <sha> -> exit 0 when no code path differs
 # between <sha> and HEAD; non-zero when one does, or when <sha> is unknown.
 #
-# "Code" is what the suite and mutate:diff can see. A range that touches only
-# docs, the progress file or CLAUDE.md leaves a suite run at <sha> as good as
-# one at HEAD. Two callers rely on that, and must not each define it:
-# report.sh, which prints such a run as "current" rather than STALE, and the
-# skill's Review step 1, which reads that word to reuse `checks` instead of
-# rerunning a ~5 minute suite on an identical tree (#41 ran it four times).
+# "Code" is everything but docs/ and Markdown. A range that touches only docs,
+# the progress file or CLAUDE.md leaves a suite run at <sha> as good as one at
+# HEAD. Two callers rely on that, and must not each define it: report.sh,
+# which prints such a run as "current" rather than STALE, and the skill's
+# Review step 1, which reads that word to reuse `checks` instead of rerunning
+# a ~5 minute suite on an identical tree (#41 ran it four times).
 #
-# Committed changes only: the working tree isn't compared. Add .claude/hooks
-# to the list if a ticket ever changes the hooks.
+# It names what isn't code rather than what is: a missed path here costs one
+# extra suite run, while a missed path in a list of code paths (vitest.config.ts,
+# middleware.ts, a tsconfig) would reuse stale checks.
+#
+# Committed changes only: the working tree isn't compared.
 ship_code_unchanged_since() {
-  git -C "$1" diff --quiet "$2" HEAD -- src e2e tests scripts package.json package-lock.json 2>/dev/null
+  git -C "$1" diff --quiet "$2" HEAD -- . ':(exclude)docs' ':(exclude)*.md' 2>/dev/null
 }

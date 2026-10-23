@@ -125,7 +125,7 @@ Application code was not changed to make anything testable — if a test seems t
 
 ### Shipping a ticket
 
-`/ship-ticket #NNN [implementer=<model>] [reviewer=<model>] [fixer=<model>]` delivers one `ready-for-agent` issue (implement → simplify → review → fix → handoff) with decision stops, checkpointed in `docs/handoffs/NNN-state.json`. Run it again after a usage limit or `/clear` to resume. `.claude/skills/ship-ticket/SKILL.md` is the protocol.
+`/ship-ticket #NNN [implementer=<model>] [simplifier=<model>] [reviewer=<model>] [fixer=<model>]` delivers one `ready-for-agent` issue (implement → simplify → review → fix → handoff) with decision stops, checkpointed in `docs/handoffs/NNN-state.json`. Run it again after a usage limit or `/clear` to resume. `.claude/skills/ship-ticket/SKILL.md` is the protocol.
 
 ### Issue tracker
 

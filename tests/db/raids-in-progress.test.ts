@@ -510,6 +510,26 @@ describe('the Provisional estimate', () => {
         expect(series.provisionalUntil).toBe(clock(10));
     });
 
+    it('ends the estimate at the first step with no share, rather than skipping over it', () => {
+        // Shares are per hour of the day, so a middle step can have none while a later one
+        // has some. Here every training run from 09:00 lasts until 11:45, 105 minutes past
+        // the 09:00 step's end: hour 9 reports nothing by 90 minutes. Hour 10 reports a
+        // third of its time by 30 minutes (a 10:00-10:30 run). At 11:30 the 09:00 step has
+        // no estimate, so the 10:00 step after it is not drawn either: the dashed line is
+        // one unbroken run, and the shade starts where it stops.
+        seedTrainingWeek([
+            [9, 0, 165 * MINUTE],
+            [10, 0, 30 * MINUTE],
+        ]);
+        seedRaid(clock(10), 30 * MINUTE);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(series.points.some((point) => point.provisional)).toBe(false);
+        expect(series.points.at(-1)?.end).toBe(clock(9));
+        expect(series.provisionalUntil).toBe(clock(9));
+    });
+
     it('estimates nothing when there is no history to learn from', () => {
         // An empty week has no curve. The series is the counted one, ending where it did
         // before #196, and the cutoff sits at the counted boundary.

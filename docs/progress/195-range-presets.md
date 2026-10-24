@@ -26,7 +26,7 @@ added to visual:check, and a dated ADR 0009 Consequences line.
 6. The browser suite, red then green
    - [x] `e2e/support/seed-world.ts` — B1 (the oldest PGCR, 20 days back) and B2 (two 20-minute runs 6 h back)
    - [x] `e2e/activity.spec.ts` — presets set `?range=` and redraw, reload, nonsense, JS off, 360px
-   - [ ] `e2e/visual.spec.ts` — `/activity?range=24h` and `/activity?range=30d`
+   - [x] `e2e/visual.spec.ts` — `/activity?range=24h` and `/activity?range=30d`
 7. Bookkeeping
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated Consequences line
    - [ ] `docs/e2e-coverage.md` — flow list, seed count, journal entry with every deliberate break

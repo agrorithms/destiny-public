@@ -1811,9 +1811,10 @@ export function getCompletenessCurve(options: { now: number; stepSeconds: number
 
 /**
  * `[period, ended_at]` of every raid that ended after `endedAfter` and by `now`, and started
- * before `startedBefore` (all unix seconds, named so no two can be swapped): the runs Raid Activity counts ({@link getRaidsInProgress}) and the
- * ones its completeness curve learns from ({@link getCompletenessCurve}), read one way for
- * both so the estimate scales up the same population it was learned from. Raids only,
+ * before `startedBefore` (all unix seconds, named so no two can be swapped): the runs Raid
+ * Activity counts ({@link getRaidsInProgress}) and the ones its completeness curve learns
+ * from ({@link getCompletenessCurve}), read one way for both so the estimate scales up the
+ * same population it was learned from. Raids only,
  * through the covering `idx_pgcrs_ended_period_raid`. A run that has not ended by `now` is
  * not a report yet.
  */

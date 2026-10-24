@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy, `91` = active-sessions-size; `92` is the seed world's own activity runs, for `/activity`) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1473,7 +1473,7 @@ strip's) — the client wrapper reads it to tell the halves apart, and the specs
 rule. Next's `<Link>` prefetches (`?_rsc=`) for the page's other links land in the same window
 and cannot be told apart from a fetch the timeline might make without depending on timing. The
 rule is kept by construction instead: `TimelineHover.tsx` has no fetch and receives its strings as
-props.
+props (moved to src/components/chart/ChartHover.tsx by #193).
 
 **Tried and dropped (review round):** a touch tap in the 4px gap between the two SVGs, meant to
 prove it dismisses. Chromium's touch adjustment retargets a finger tap there onto the nearer SVG
@@ -2351,3 +2351,51 @@ only against ancestors from its `offsetParent` up, and a fixed one against none.
 ancestor becomes the real containing block for both; if Chromium's `offsetParent` passes over it,
 an ancestor that clips the popup is never checked, and a #160-style clipped popup inside a
 transformed element would pass.
+
+## 2026-10-23 — #194 the Raid Activity page (`/activity`)
+
+`e2e/activity.spec.ts`, **new**, four specs. The suite is now **twenty-seven flows, 162 tests
+including the two canary setups**.
+
+**Seed world:** `seedActivityRuns` in `e2e/support/seed-world.ts` adds ten PGCRs on Salvation's
+Edge, all well inside the chart's 7-day window: three runs covering exactly one clock hour two
+days back (the peak, `ACTIVITY_PEAK_RAIDS` = 3), one run of two and a half hours four days back,
+and one hour-long run a day for the six days before. Every leaderboard run starts an hour ago,
+inside the two hours the chart leaves uncounted, so without these the chart was a flat line. They
+are Checkpoint Runs nobody finished, by `92`-prefixed members with no `players` row, so no
+leaderboard, Fastest Clears board, player page or player search sees them. The canary is
+untouched.
+
+1. **The nav links to it.** From `/leaderboard`, the nav shows Leaderboard and Active Sessions, and
+   its Activity link goes to `/activity`, headed "Raid Activity".
+2. **The total line is drawn from the seeded Tracker.** The SVG's accessible name says it peaks at
+   3 raids in progress; the line's path has a vertex for every counted hour (at least 165); the
+   caption reads "Busiest hour: 3 raids in progress, <Day> <date> <Mon>, HH:00–HH:00 UTC."; the
+   not-yet-counted shade starts past 98.2% of the width and ends at 100%; at least six UTC day
+   labels sit under the axis. No console errors. The hour itself is not pinned: it is two days
+   before the seed ran, and the spec's clock may have crossed an hour since.
+3. **With JavaScript off** (`javaScriptEnabled: false`), the same checks pass, and the copy says
+   "Times are UTC."
+4. **Phone (360×780):** the Activity link and the chart sit inside the viewport, the chart passes
+   the same checks, and `expectNoOverflow(page)` finds nothing.
+
+**Bite proof — one deliberate break per spec, batched into one build** (then restored and green):
+- The nav link pointing at `/leaderboard`: only 1 failed ("Expected pattern: /\/activity$/,
+  Received string: http://localhost:3100/leaderboard").
+- The line drawn only after mount, by a client component that renders `d=""` on the server: only 3
+  failed ("the line has a starting point"). 2 and 4, with JavaScript on, passed.
+- The chart's figure at `min-w-[420px]`: only 4 failed ("the chart ends inside the viewport",
+  436 against 360).
+- Against that same build, `seedActivityRuns()` left out of the seed world (no rebuild needed:
+  the seed is the runner's): 2 failed, its chart no longer named a peak of 3.
+
+### What is still NOT covered
+
+- Anything later tickets add: range presets (#195), the Provisional estimate (#196), hover and tap
+  tooltips in local time (#197), the per-raid panel (#198, #199).
+- The maintenance message ("Raid Activity is temporarily unavailable"). The e2e server can't be put
+  into database maintenance, and stubbing our own page is not an exception ADR 0004 allows.
+- The 300-second cache: every spec reads the series the first request computed. Nothing asserts
+  that a later request within the window reuses it, or that one after it recomputes.
+- The values themselves beyond the peak. Step averaging is pinned in
+  `tests/db/raids-in-progress.test.ts`, the geometry in `src/app/activity/activity-geometry.test.ts`.

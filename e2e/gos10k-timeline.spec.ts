@@ -166,7 +166,7 @@ test.describe('the timeline', () => {
     });
 });
 
-/** The main chart's line or bars: the SVG ./TimelineHover.tsx explains. */
+/** The main chart's line or bars: the SVG src/components/chart/ChartHover.tsx explains. */
 function chartPart(page: Page, part: TimelinePart): Locator {
     return page.getByTestId('archive-timeline').locator(`[data-timeline-part="${part}"]`);
 }

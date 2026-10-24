@@ -24,7 +24,8 @@ Single-context repo:
 │   ├── 0005-active-session-loop-resilience.md
 │   ├── 0006-population-kda-quartiles-and-dual-scope.md
 │   ├── 0007-the-archive-is-a-second-read-only-database.md
-│   └── 0008-derived-analytics-are-computed-at-archive-build-time.md
+│   ├── 0008-derived-analytics-are-computed-at-archive-build-time.md
+│   └── 0009-raid-activity-is-reconstructed-from-pgcrs.md
 └── src/
 ```
 

@@ -49,6 +49,12 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] S5 `src/lib/db/queries.ts` — `endedRaidRuns` takes one named object
    - [x] S6 why comments on the tests that had none
 
+10. Fix loop 2 (review findings S6, P4+S7, O3, and the `tooRecent` doc)
+   - [x] S6 `src/app/activity/activity-geometry.test.ts` — a why line on "draws no dashed line when nothing is estimated" (`5e3fe96`)
+   - [x] P4+S7 `src/app/activity/activity-geometry.test.ts` — the P3 test renamed to what it asserts, its comment made true, the implied `toBeLessThanOrEqual` dropped (`5e3fe96`); still red with each vertex drawn past its step (last x 1031.25) and with the last Provisional step dropped (656.25)
+   - [x] O3 `src/lib/db/queries.ts` — `endedRaidRuns`'s comment rewrapped (`72dcb9c`)
+   - [x] `src/app/activity/activity-geometry.ts` — `tooRecent`'s doc: the shade starts at the last estimated step's end, half a step right of the line's last vertex (`8291dc0`)
+
 ## Surviving mutants
 
 None. No `Stryker disable` comments.
@@ -67,6 +73,8 @@ None. No `Stryker disable` comments.
 - Run 3 (`b85d9e5`, full, `--typecheck`): **100.0% overall (142/142), 100.0% covered**, PASS.
   140 killed, 2 timed out, 0 survived, 36 compile errors discarded.
 - Fix loop 1 (`4c506da`, full, `--typecheck`): **100.0% overall (141/141), 100.0% covered**, PASS.
+  140 killed, 1 timed out, 0 survived, 39 compile errors discarded.
+- Fix loop 2 (`8291dc0`, full, `--typecheck`): **100.0% overall (141/141), 100.0% covered**, PASS.
   140 killed, 1 timed out, 0 survived, 39 compile errors discarded.
 
 ## Bite proofs

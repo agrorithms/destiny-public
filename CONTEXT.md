@@ -40,16 +40,16 @@ _Avoid_: session history, active session count, population
 **Raids in Progress**:
 How many raid instances were under way at a given moment, reconstructed from their PGCRs once
 those raids have ended. The measure of raid activity over time. Unlike a Session Snapshot it does
-not depend on who was polled, but a moment is counted only from two hours old, when nearly all of
-its raids have ended and the rest are added as their PGCRs arrive; anything more recent is
+not depend on who was polled, but a step is counted only once its end is two hours old, when nearly
+all of its raids have ended and the rest are added as their PGCRs arrive; anything more recent is
 Provisional, down to 15 minutes old; nothing is shown for a newer moment.
 _Avoid_: concurrent raids, active raids, population, active sessions
 
 **Provisional**:
 A Raids in Progress figure for a moment so recent that some of its raids have not ended yet, so it
-is an estimate scaled up from the raids that have, not a count. Stops being provisional at two
-hours old, by which time nearly all of those raids are over. Nothing is shown for a moment under
-15 minutes old.
+is an estimate scaled up from the raids that have, not a count. Runs from where counted steps end,
+two to three hours back on a 1-hour step, down to 15 minutes old; nothing is shown for a newer
+moment. Stops being provisional once its step is counted.
 _Avoid_: live, real-time, projected
 
 **Roster**:

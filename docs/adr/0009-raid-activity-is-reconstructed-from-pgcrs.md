@@ -39,13 +39,14 @@ instance on Bungie. They are fetched soon after the instance ends: **p50 0 min, 
 - Raid activity over time is **Raids in Progress, counted from PGCRs**. Every raid instance counts
   (All Attempts): Fresh Runs and Checkpoint Runs, finished or not.
 - A moment's count is complete only once every raid running at that moment has ended. On prod a
-  moment 1 hour old is ~79% complete and one 2 hours old is ~93%. For moments between **15 minutes
-  and 2 hours** old the figure is **Provisional**: the count from raids that have already ended,
-  divided by the share of raids that have usually ended by that age. That share is a completeness
-  curve learned from the last 7 days of moments old enough to be complete, separately for each
-  hour of the day. Nothing is reported for moments under 15 minutes old. From 2 hours old the
-  figure is drawn as counted: ~93% of its raids have ended by then, and the rest are added as
-  their PGCRs arrive.
+  moment 1 hour old is ~79% complete and one 2 hours old is ~93%. A step is drawn as counted once
+  its end is 2 hours old: ~93% of its raids have ended by then, and the rest are added as their
+  PGCRs arrive. Counted data therefore ends at a step boundary, between 2 hours and 2 hours plus
+  one step back. Everything from that boundary down to **15 minutes** old is **Provisional**: the
+  count from raids that have already ended, divided by the share of raids that have usually ended
+  by that age. That share is a completeness curve learned from the last 7 days of moments old
+  enough to be complete, separately for each hour of the day. Nothing is reported for moments
+  under 15 minutes old.
 - **Session Snapshots keep being recorded.** They are cheap, and they are the only record of what
   `/active-sessions` listed at a given moment. Nothing should read them as a measure of activity.
 
@@ -80,7 +81,8 @@ error of the hour-of-day curves.
 
 ## Consequences
 
-- **The trailing two hours are an estimate, and the chart has to say so.** The Provisional segment
+- **The trailing two hours or more (up to one step beyond) are an estimate, and the chart has to
+  say so.** The Provisional segment
   is drawn dashed on the chart and its tooltip calls it an estimate. Launch weekends and other
   sudden shifts in run length aren't special-cased.
 - **The chart moves only when raiding does.** Retuning the crawler's poll budget changes Session

@@ -65,10 +65,9 @@ export function dayTicks(from: number, to: number): ActivityTick[] {
     const ticks: ActivityTick[] = [];
     for (let midnight = Math.ceil(from / SECONDS_PER_DAY) * SECONDS_PER_DAY; midnight <= to; midnight += SECONDS_PER_DAY) {
         const percent = xPercent(midnight, from, to);
-        const date = new Date(midnight * 1000);
         ticks.push({
             percent,
-            label: percent <= LAST_LABELLED_TICK_PERCENT ? `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()}` : null,
+            label: percent <= LAST_LABELLED_TICK_PERCENT ? dayLabel(midnight) : null,
             phone: ticks.length % 2 === 0,
         });
     }
@@ -144,13 +143,18 @@ export function busiestStep(points: RaidsInProgressPoint[]): RaidsInProgressPoin
 
 /** A step's window as a reader would say it: `Sat 17 Oct, 20:00–21:00 UTC`. */
 export function formatStepWindow(start: number, end: number): string {
-    const date = new Date(start * 1000);
-    return `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}, ${clock(start)}–${clock(end)} UTC`;
+    return `${dayLabel(start)} ${MONTHS[new Date(start * 1000).getUTCMonth()]}, ${clock(start)}–${clock(end)} UTC`;
 }
 
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */
 export function formatRaidCount(value: number): string {
     return Math.round(value).toLocaleString('en-GB');
+}
+
+/** The UTC weekday and day of the month an instant falls on: `Sat 17`. */
+function dayLabel(at: number): string {
+    const date = new Date(at * 1000);
+    return `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()}`;
 }
 
 /** `HH:MM` in UTC. */

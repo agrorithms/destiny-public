@@ -11,6 +11,10 @@ import {
     valueAxis,
 } from './activity-geometry';
 
+/** The not-yet-counted shade's fill, shared by the shaded span and its key in the caption. */
+const SHADE_FILL = 'var(--ui-text-muted)';
+const SHADE_OPACITY = 0.35;
+
 /**
  * The Raid Activity chart (#194): one line of total Raids in Progress, one point per step,
  * with the span too recent to count shaded at the right-hand edge.
@@ -62,18 +66,21 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                         }
                         className="block h-48 w-full sm:h-64"
                     >
-                        {axis.ticks.map((tick) => (
-                            <line
-                                key={`y${tick.value}`}
-                                x1={0}
-                                x2={CHART_WIDTH}
-                                y1={CHART_HEIGHT * (1 - tick.percent / 100)}
-                                y2={CHART_HEIGHT * (1 - tick.percent / 100)}
-                                stroke="var(--ui-border-subtle)"
-                                strokeWidth={1}
-                                vectorEffect="non-scaling-stroke"
-                            />
-                        ))}
+                        {axis.ticks.map((tick) => {
+                            const y = CHART_HEIGHT * (1 - tick.percent / 100);
+                            return (
+                                <line
+                                    key={`y${tick.value}`}
+                                    x1={0}
+                                    x2={CHART_WIDTH}
+                                    y1={y}
+                                    y2={y}
+                                    stroke="var(--ui-border-subtle)"
+                                    strokeWidth={1}
+                                    vectorEffect="non-scaling-stroke"
+                                />
+                            );
+                        })}
                         {ticks.map((tick) => (
                             <line
                                 key={`x${tick.percent}`}
@@ -94,8 +101,8 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                             y={0}
                             width={`${shade.endPercent - shade.startPercent}%`}
                             height={CHART_HEIGHT}
-                            fill="var(--ui-text-muted)"
-                            fillOpacity={0.35}
+                            fill={SHADE_FILL}
+                            fillOpacity={SHADE_OPACITY}
                         />
                         {/* `vector-effect` because the non-uniform stretch would otherwise draw
                             the stroke as a wedge, thin where the chart is wide. */}
@@ -134,7 +141,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                     <span
                         aria-hidden
                         className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm"
-                        style={{ background: 'var(--ui-text-muted)', opacity: 0.35 }}
+                        style={{ background: SHADE_FILL, opacity: SHADE_OPACITY }}
                     />
                     <span>
                         Shaded: the last 2 hours, not yet counted. A raid still running has no

@@ -1693,30 +1693,32 @@ export interface RaidsInProgressOptions {
  *
  * **Steps sit on the step grid** — whole multiples of `stepSeconds` since the epoch, so a
  * 1-hour step is a UTC clock hour — from the first boundary at or after `now -
- * rangeSeconds`. A step is returned only once its end is {@link COUNTED_AGE_SECONDS} old;
- * the newer ones are absent rather than low. A maintenance window is a true zero.
+ * rangeSeconds`. A step is counted once its end is {@link COUNTED_AGE_SECONDS} old; newer
+ * steps are Provisional down to {@link PROVISIONAL_MIN_AGE_SECONDS} old (below), and the
+ * ones younger still are absent rather than low. A maintenance window is a true zero.
  *
  * **The window doesn't start before the data** (#195). Steps start no earlier than
  * {@link DATA_START_MARGIN_SECONDS} after the oldest stored PGCR began, because cleanup
  * has deleted the runs that started before it and some of them were still going then. The
  * bound is read from the data rather than from `CRAWLER_CLEANUP_MAX_AGE_HOURS`: the web
  * process doesn't see the crawler's env, and on prod the data reaches further back than
- * that setting says (ADR 0009). Steps before it are absent, like the ones too new to count.
+ * that setting says (ADR 0009). Steps before it are absent, like the ones too new to estimate.
  *
  * **Steps too recent to count are estimated, not left out** (#196, ADR 0009). Each step
  * ending between {@link COUNTED_AGE_SECONDS} and {@link PROVISIONAL_MIN_AGE_SECONDS} ago is
  * returned with `provisional: true`: the raid time of runs already ended, over the share a
  * step's raid time is usually known at that age, for its hour of the day
- * ({@link getCompletenessCurve}). Younger steps are absent. With no history to learn from
- * there is no curve and no estimate. A run that has not ended by `now` is not read, in
+ * ({@link getCompletenessCurve}). Younger steps are absent. The estimate stops at the first
+ * step whose hour has no share to divide by, so it is one unbroken run. With no history to
+ * learn from there is no curve and no estimate. A run that has not ended by `now` is not read, in
  * either case: the estimate is of what the counted version will say, from what has ended.
  *
- * **One sweep, not one query per step.** The PGCRs overlapping the window are read once,
- * through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step start`), and
- * each adds its overlap in O(1): the partial first and last steps it touches directly, and
- * the whole steps between them through a running difference array. So the cost is rows +
- * steps, never rows × steps — a run lasting days adds two array writes, not one per hour it
- * spans.
+ * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
+ * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step
+ * start`), and each adds its overlap in O(1): the partial first and last steps it touches
+ * directly, and the whole steps between them through a running difference array. So the
+ * cost is rows + steps, never rows × steps — a run lasting days adds two array writes, not
+ * one per hour it spans. The curve is a second pass, over its own training week.
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;

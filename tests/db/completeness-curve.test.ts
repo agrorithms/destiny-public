@@ -96,6 +96,7 @@ describe('which runs it learns from', () => {
     });
 
     it('does not learn from a PGCR that is not a raid', () => {
+        // The estimate scales up raids only, so the curve must be learned from raids only.
         seedDaily(3 * HOUR + 45 * MINUTE, HOUR);
         const before = learn();
 

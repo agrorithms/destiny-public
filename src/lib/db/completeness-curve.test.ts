@@ -56,6 +56,8 @@ describe('the training window', () => {
     });
 
     it('sits on the 3-hour grid at the 30-day range', () => {
+        // Training steps must be whole steps of the range's own size, or the curve learns
+        // part-steps the estimate never divides by.
         const now = 20100 * DAY + 5 * HOUR;
 
         const { from, until } = trainingWindow(now, 3 * HOUR);
@@ -75,6 +77,8 @@ describe('which hour a step belongs to', () => {
     });
 
     it('wraps at midnight rather than reaching hour 24', () => {
+        // The curve has 24 hourly slots: an hour 24 would read past them and quietly take the
+        // all-hours curve instead of that hour's own.
         expect(hourOfStep(20000 * DAY + 23 * HOUR, HOUR)).toBe(23);
         expect(hourOfStep(20000 * DAY + 22 * HOUR, 3 * HOUR)).toBe(23);
     });
@@ -209,6 +213,7 @@ describe('reading a share at an age', () => {
     });
 
     it('holds the last share past the curve\'s longest age, and the first before age 0', () => {
+        // A step read outside the curve's 0-2 hour points must still get a share, not NaN.
         const curve = curveOf([[S, S + HOUR]]);
 
         expect(shareAt(curve, 3, CURVE_MAX_AGE_SECONDS + HOUR)).toBe(1);
@@ -235,11 +240,13 @@ describe('reading a share at an age', () => {
 
 describe('estimating a total', () => {
     it('divides the partial count by the share', () => {
+        // The estimate itself: what the partial count stands for once the rest is reported.
         expect(estimateTotal(2, 0.8)).toBeCloseTo(2.5, 10);
         expect(estimateTotal(0, 0.5)).toBe(0);
     });
 
     it('estimates nothing from a share of nothing', () => {
+        // Dividing by 0 would draw the step at infinity; no estimate is the honest answer.
         expect(estimateTotal(2, 0)).toBeNull();
     });
 });

@@ -197,6 +197,7 @@ describe('the solid and the dashed line', () => {
     });
 
     it('draws nothing for a series with no points', () => {
+        // An empty database: the page still renders, with no line and no dashed segment.
         expect(linePaths([], from, to, 4)).toEqual({ solid: '', dashed: null });
     });
 });

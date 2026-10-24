@@ -11,8 +11,9 @@
  * intro line ({@link describeTimeZone}).
  *
  * Pure, and free of anything that touches a database or Node, so the client steps that
- * rewrite labels (./ActivityLocal.tsx) can import it. The pieces are exported for the tick
- * labels in ./activity-geometry.ts.
+ * rewrite labels (./ActivityLocal.tsx) can import it. The pieces (`dayLabel`, `clock`,
+ * `localSeconds`) are exported for the tick labels in ./activity-geometry.ts, and `dateLabel`
+ * for its own test.
  */
 
 /** Minutes east of UTC at an instant (unix seconds), or null for UTC. */
@@ -62,8 +63,10 @@ function suffix(offsetOf: OffsetOf): string {
  * not, since it still belongs wholly to the day it began.
  */
 export function formatStepWindow(start: number, end: number, offsetOf: OffsetOf = null): string {
-    const endsNextDay = dayLabel(end, offsetOf) !== dayLabel(start, offsetOf) && clock(end, offsetOf) !== '00:00';
-    const until = endsNextDay ? `${dayLabel(end, offsetOf).slice(0, 3)} ${clock(end, offsetOf)}` : clock(end, offsetOf);
+    const endDay = dayLabel(end, offsetOf);
+    const endClock = clock(end, offsetOf);
+    const endsNextDay = endDay !== dayLabel(start, offsetOf) && endClock !== '00:00';
+    const until = endsNextDay ? `${endDay.slice(0, 3)} ${endClock}` : endClock;
     return `${dateLabel(start, offsetOf)}, ${clock(start, offsetOf)}–${until}${suffix(offsetOf)}`;
 }
 

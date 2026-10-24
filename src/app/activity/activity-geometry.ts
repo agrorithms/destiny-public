@@ -74,6 +74,9 @@ export interface DayTickOptions {
     phoneEvery: number;
 }
 
+/** The 7-day range's day ticks: every midnight, every other label kept on a phone. */
+const DAILY_TICKS: DayTickOptions = { everyDays: 1, phoneEvery: 2 };
+
 /**
  * One tick per midnight (the zone's, or UTC) inside the window, labelled with the weekday
  * and day of the month it begins (`Sat 17`). A 7-day window has seven; a label past
@@ -84,7 +87,7 @@ export interface DayTickOptions {
 export function dayTicks(
     from: number,
     to: number,
-    options: DayTickOptions = { everyDays: 1, phoneEvery: 2 },
+    options: DayTickOptions = DAILY_TICKS,
     offsetOf: OffsetOf = null
 ): ActivityTick[] {
     return ticksEvery(
@@ -93,7 +96,7 @@ export function dayTicks(
         options.everyDays * DAY,
         offsetOf,
         (at) => dayLabel(at, offsetOf),
-        (_, index) => index % options.phoneEvery === 0
+        (index) => index % options.phoneEvery === 0
     );
 }
 
@@ -114,7 +117,7 @@ export function hourTicks(from: number, to: number, offsetOf: OffsetOf = null): 
         HOUR_TICK_SECONDS,
         offsetOf,
         (at, local) => (local % DAY === 0 ? dayLabel(at, offsetOf) : clock(at, offsetOf)),
-        (_, __, local) => local % PHONE_HOUR_TICK_SECONDS === 0
+        (_, local) => local % PHONE_HOUR_TICK_SECONDS === 0
     );
 }
 
@@ -129,8 +132,8 @@ const TICK_SCAN_SECONDS = 15 * MINUTE;
  * by looking at each quarter hour and asking the zone what time it reads there — so a clock
  * change in the window moves the ticks after it, rather than one offset being assumed for
  * all of them. Labelled by `label` unless it starts past {@link LAST_LABELLED_TICK_PERCENT},
- * and kept on a phone where `phone` says so. Both are given the instant, the zone's seconds
- * at it, and (for `phone`) the tick's place from the first.
+ * and kept on a phone where `phone` says so. `label` is given the instant and the zone's
+ * seconds at it; `phone`, the tick's place from the first and the zone's seconds.
  */
 function ticksEvery(
     from: number,
@@ -138,7 +141,7 @@ function ticksEvery(
     every: number,
     offsetOf: OffsetOf,
     label: (at: number, local: number) => string,
-    phone: (at: number, index: number, local: number) => boolean
+    phone: (index: number, local: number) => boolean
 ): ActivityTick[] {
     const ticks: ActivityTick[] = [];
     for (let at = Math.ceil(from / TICK_SCAN_SECONDS) * TICK_SCAN_SECONDS; at <= to; at += TICK_SCAN_SECONDS) {
@@ -148,7 +151,7 @@ function ticksEvery(
         ticks.push({
             percent,
             label: percent <= LAST_LABELLED_TICK_PERCENT ? label(at, local) : null,
-            phone: phone(at, ticks.length, local),
+            phone: phone(ticks.length, local),
         });
     }
     return ticks;
@@ -163,7 +166,7 @@ function ticksEvery(
 export function axisTicks(from: number, to: number, range: ActivityRange, offsetOf: OffsetOf = null): ActivityTick[] {
     if (range.id === '24h') return hourTicks(from, to, offsetOf);
     if (range.id === '30d') return dayTicks(from, to, { everyDays: 2, phoneEvery: 3 }, offsetOf);
-    return dayTicks(from, to, undefined, offsetOf);
+    return dayTicks(from, to, DAILY_TICKS, offsetOf);
 }
 
 /**
@@ -304,27 +307,31 @@ export function provisionalLegend(stepSeconds: number): string {
 }
 
 /**
- * The sentence naming the busiest step, for the caption and the chart's accessible name,
- * worded for the range: "Busiest 10 minutes" over the last 24 hours, "Busiest hour" over 7
- * days, "Busiest 3 hours" over 30. A step that rounds to one raid says "1 raid". The caption
- * names the window on the reader's clock; the accessible name is always UTC.
+ * The sentence naming the busiest step under the chart, worded for the range: "Busiest 10
+ * minutes" over the last 24 hours, "Busiest hour" over 7 days, "Busiest 3 hours" over 30. A
+ * step that rounds to one raid says "1 raid". The window is on the reader's clock, or UTC
+ * with no offset.
  */
-export function describePeak(
-    busiest: RaidsInProgressPoint | null,
-    range: ActivityRange,
-    offsetOf: OffsetOf = null
-): { caption: string; ariaLabel: string } {
+export function peakCaption(busiest: RaidsInProgressPoint | null, range: ActivityRange, offsetOf: OffsetOf = null): string {
+    if (busiest === null) return `No raids counted in the last ${range.span} yet.`;
+    return `Busiest ${range.step}: ${peakRaids(busiest)}, ${formatStepWindow(busiest.start, busiest.end, offsetOf)}.`;
+}
+
+/**
+ * The chart's accessible name: what it measures and, as in {@link peakCaption}, its busiest
+ * step. Always UTC: the name is read before any script runs, and must not change under a
+ * screen reader.
+ */
+export function peakAriaLabel(busiest: RaidsInProgressPoint | null, range: ActivityRange): string {
     const measure = `Raids in progress per ${range.step} over the last ${range.span}`;
-    if (busiest === null) {
-        return { caption: `No raids counted in the last ${range.span} yet.`, ariaLabel: `${measure}: none counted yet` };
-    }
+    if (busiest === null) return `${measure}: none counted yet`;
+    return `${measure}, peaking at ${peakRaids(busiest)}, ${formatStepWindow(busiest.start, busiest.end)}`;
+}
+
+/** `1,828 raids in progress`: the busiest step's average, rounded. */
+function peakRaids(busiest: RaidsInProgressPoint): string {
     const count = formatRaidCount(busiest.total);
-    const raids = `${count} ${raidNoun(count)} in progress`;
-    return {
-        caption: `Busiest ${range.step}: ${raids}, ${formatStepWindow(busiest.start, busiest.end, offsetOf)}.`,
-        // Always UTC: the name is read before any script runs, and must not change under a screen reader.
-        ariaLabel: `${measure}, peaking at ${raids}, ${formatStepWindow(busiest.start, busiest.end, null)}`,
-    };
+    return `${count} ${raidNoun(count)} in progress`;
 }
 
 /**

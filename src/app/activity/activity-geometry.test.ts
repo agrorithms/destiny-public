@@ -12,10 +12,11 @@ import {
     busiestStep,
     dayTicks,
     describeBeforeData,
-    describePeak,
     hourTicks,
     linePath,
     linePaths,
+    peakAriaLabel,
+    peakCaption,
     provisionalLegend,
     tallestStep,
     tooRecent,
@@ -409,35 +410,39 @@ describe('the peak sentence', () => {
 
     it('names the busiest hour over the last 7 days', () => {
         // #194's caption and label, unchanged for the default range.
-        expect(describePeak({ start: midnight, end: midnight + HOUR, total: 1828, provisional: false }, range('7d'))).toEqual({
-            caption: 'Busiest hour: 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC.',
-            ariaLabel: 'Raids in progress per hour over the last 7 days, peaking at 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC',
-        });
+        const busiest = { start: midnight, end: midnight + HOUR, total: 1828, provisional: false };
+
+        expect(peakCaption(busiest, range('7d'))).toBe('Busiest hour: 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC.');
+        expect(peakAriaLabel(busiest, range('7d'))).toBe(
+            'Raids in progress per hour over the last 7 days, peaking at 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC'
+        );
     });
 
     it('names the busiest 10 minutes over the last 24 hours', () => {
-        expect(describePeak({ start: midnight, end: midnight + 600, total: 2, provisional: false }, range('24h'))).toEqual({
-            caption: 'Busiest 10 minutes: 2 raids in progress, Sat 17 Oct, 00:00–00:10 UTC.',
-            ariaLabel: 'Raids in progress per 10 minutes over the last 24 hours, peaking at 2 raids in progress, Sat 17 Oct, 00:00–00:10 UTC',
-        });
+        const busiest = { start: midnight, end: midnight + 600, total: 2, provisional: false };
+
+        expect(peakCaption(busiest, range('24h'))).toBe('Busiest 10 minutes: 2 raids in progress, Sat 17 Oct, 00:00–00:10 UTC.');
+        expect(peakAriaLabel(busiest, range('24h'))).toBe(
+            'Raids in progress per 10 minutes over the last 24 hours, peaking at 2 raids in progress, Sat 17 Oct, 00:00–00:10 UTC'
+        );
     });
 
     it('names the busiest 3 hours over the last 30 days, and says "raid" for one', () => {
         // An average of 1 — or anything that rounds to it — is one raid, not "1 raids".
-        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 1, provisional: false }, range('30d'))).toEqual({
-            caption: 'Busiest 3 hours: 1 raid in progress, Sat 17 Oct, 00:00–03:00 UTC.',
-            ariaLabel: 'Raids in progress per 3 hours over the last 30 days, peaking at 1 raid in progress, Sat 17 Oct, 00:00–03:00 UTC',
-        });
-        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 0.6, provisional: false }, range('30d')).caption).toMatch(/^Busiest 3 hours: 1 raid in progress,/);
-        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 1.5, provisional: false }, range('30d')).caption).toMatch(/^Busiest 3 hours: 2 raids in progress,/);
+        const busiest = { start: midnight, end: midnight + 3 * HOUR, total: 1, provisional: false };
+
+        expect(peakCaption(busiest, range('30d'))).toBe('Busiest 3 hours: 1 raid in progress, Sat 17 Oct, 00:00–03:00 UTC.');
+        expect(peakAriaLabel(busiest, range('30d'))).toBe(
+            'Raids in progress per 3 hours over the last 30 days, peaking at 1 raid in progress, Sat 17 Oct, 00:00–03:00 UTC'
+        );
+        expect(peakCaption({ ...busiest, total: 0.6 }, range('30d'))).toMatch(/^Busiest 3 hours: 1 raid in progress,/);
+        expect(peakCaption({ ...busiest, total: 1.5 }, range('30d'))).toMatch(/^Busiest 3 hours: 2 raids in progress,/);
     });
 
     it('says nothing was counted when there is no busiest step', () => {
-        expect(describePeak(null, range('30d'))).toEqual({
-            caption: 'No raids counted in the last 30 days yet.',
-            ariaLabel: 'Raids in progress per 3 hours over the last 30 days: none counted yet',
-        });
-        expect(describePeak(null, range('24h')).caption).toBe('No raids counted in the last 24 hours yet.');
+        expect(peakCaption(null, range('30d'))).toBe('No raids counted in the last 30 days yet.');
+        expect(peakAriaLabel(null, range('30d'))).toBe('Raids in progress per 3 hours over the last 30 days: none counted yet');
+        expect(peakCaption(null, range('24h'))).toBe('No raids counted in the last 24 hours yet.');
     });
 });
 
@@ -568,10 +573,10 @@ describe('the sentences in a reader\'s time zone', () => {
     it('names the peak\'s window on the reader\'s clock, and keeps the accessible name in UTC', () => {
         // 00:00–01:00 UTC on Sat 17 Oct is 05:45–06:45 in Kathmandu. The SVG's accessible name
         // is read before any script runs and must not change under a screen reader.
-        const peak = describePeak({ start: 1792195200, end: 1792195200 + HOUR, total: 1828, provisional: false }, range('7d'), KATHMANDU);
+        const busiest = { start: 1792195200, end: 1792195200 + HOUR, total: 1828, provisional: false };
 
-        expect(peak.caption).toBe('Busiest hour: 1,828 raids in progress, Sat 17 Oct, 05:45–06:45.');
-        expect(peak.ariaLabel).toBe(
+        expect(peakCaption(busiest, range('7d'), KATHMANDU)).toBe('Busiest hour: 1,828 raids in progress, Sat 17 Oct, 05:45–06:45.');
+        expect(peakAriaLabel(busiest, range('7d'))).toBe(
             'Raids in progress per hour over the last 7 days, peaking at 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC'
         );
     });

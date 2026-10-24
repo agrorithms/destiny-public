@@ -7,7 +7,7 @@ import {
     CHART_HEIGHT,
     axisTicks,
     describeBeforeData,
-    describePeak,
+    peakCaption,
 } from './activity-geometry';
 import type { ActivityRange } from './activity-range';
 import { describeTimeZone, type OffsetOf } from './activity-time';
@@ -66,7 +66,7 @@ export function LocalZoneNote() {
 
 /** The busiest-step sentence under the chart. */
 export function LocalPeak({ busiest, range }: { busiest: RaidsInProgressPoint | null; range: ActivityRange }) {
-    return <>{describePeak(busiest, range, useOffsetOf()).caption}</>;
+    return <>{peakCaption(busiest, range, useOffsetOf())}</>;
 }
 
 /** The legend sentence for the shade where the data starts. */

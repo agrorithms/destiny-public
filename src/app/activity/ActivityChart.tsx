@@ -5,8 +5,8 @@ import {
     CHART_WIDTH,
     beforeData,
     busiestStep,
-    describePeak,
     linePaths,
+    peakAriaLabel,
     provisionalLegend,
     tallestStep,
     tooRecent,
@@ -72,7 +72,6 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     const { solid, dashed } = linePaths(points, from, to, axis.max);
     const shade = tooRecent(series);
     const missing = beforeData(series);
-    const peak = describePeak(busiest, range);
 
     return (
         <figure data-testid="activity-chart" data-window-from={from} data-window-to={to} className="ui-card space-y-3 p-4">
@@ -97,7 +96,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
                             preserveAspectRatio="none"
                             role="img"
-                            aria-label={peak.ariaLabel}
+                            aria-label={peakAriaLabel(busiest, range)}
                             className="block h-48 w-full sm:h-64"
                         >
                             {axis.ticks.map((tick) => (

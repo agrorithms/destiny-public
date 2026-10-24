@@ -26,9 +26,9 @@ import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft } from '@/lib/c
  * imported here is shipped to the browser, so this file imports only the pointer helpers.
  *
  * **Which half of the chart the pointer is over** is read off a `data-timeline-part`
- * attribute the server puts on each SVG — for /gos10k `line` or `bar` — and **which bucket** from the
- * pointer's fraction of the way across, by slot ({@link slotAt}). One answer for both
- * halves, so the line and the bar beneath it always name the same bucket.
+ * attribute the server puts on each SVG — for /gos10k `line` or `bar` — and **which
+ * bucket** from the pointer's fraction of the way across, by slot ({@link slotAt}). One
+ * answer for both halves, so the line and the bar beneath it always name the same bucket.
  *
  * **Touch (and pen):** a tap shows the tooltip, and a tap anywhere that is neither half
  * of the chart dismisses it. A tap on the chart only

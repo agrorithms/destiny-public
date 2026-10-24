@@ -19,8 +19,8 @@ import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
  * ({@link dragSlots}, {@link dragDates}, {@link isDrag}), so it is part of the page's one
  * client bundle. The generic pointer helpers the hover tooltip and the drag share — which
  * pointer is a mouse, which slot a pointer is over, where a tooltip's box goes — moved to
- * `@/lib/chart/pointer` in #193, so another page can use them without this module. Nothing here, or in what it imports, may reach the
- * database: `@/lib/db/archive/queries` opens better-sqlite3, so anything on this module's
+ * `@/lib/chart/pointer` in #193, so another page can use them without this module.
+ * Nothing here, or in what it imports, may reach the database: `@/lib/db/archive/queries` opens better-sqlite3, so anything on this module's
  * import path — ./range-copy.ts included — takes only types from it.
  *
  * **The month list is assumed contiguous** — every calendar month from the Archive's
@@ -220,8 +220,9 @@ function labelBoundaries(
 /**
  * The values of the `data-timeline-part` attribute on the main chart's two SVGs (#114):
  * the server component sets them, the hover wrapper (told which values to expect through
- * its `parts`) reads them, and the browser spec finds each half by them. Stated once so a misspelling on either side fails `tsc`
- * rather than silently leaving one half without a tooltip.
+ * its `parts`) reads them, and the browser spec finds each half by them. Stated once so a
+ * misspelling on either side fails `tsc` rather than silently leaving one half without a
+ * tooltip.
  */
 export const TIMELINE_PARTS = ['line', 'bar'] as const;
 export type TimelinePart = (typeof TIMELINE_PARTS)[number];

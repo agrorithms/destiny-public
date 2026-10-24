@@ -57,9 +57,9 @@ import { wholeArchiveTooltips, zoomedTooltips, type TimelineTooltip } from './ti
  * polylines is a decision for the user, not a default.
  *
  * **Still a server component under #114's hover tooltips.** The main chart's line and
- * bars are wrapped in src/components/chart/ChartHover.tsx, a client component that takes them as
- * `children` — so they are still rendered here, and with JavaScript off the page draws
- * them exactly as before. What each tooltip says is worked out here too
+ * bars are wrapped in src/components/chart/ChartHover.tsx, a client component that takes
+ * them as `children` — so they are still rendered here, and with JavaScript off the page
+ * draws them exactly as before. What each tooltip says is worked out here too
  * (./timeline-tooltips.ts) and handed down as strings. The overview strip is not wrapped:
  * tooltips belong to the main chart.
  *
@@ -313,7 +313,8 @@ function TimelineSection({ heading, children }: { heading: string; children: Rea
  * role="img" with a label rather than an unlabelled graphic: the shape is the content
  * here, and the figures a screen reader needs are in the captions either side of it.
  *
- * Always the main chart's, so always marked as the `line` half for src/components/chart/ChartHover.tsx.
+ * Always the main chart's, so always marked as the `line` half for
+ * src/components/chart/ChartHover.tsx.
  */
 function Climb({ buckets, from, label }: { buckets: ChartBucket[]; from: number; label: string }) {
     const top = buckets.length === 0 ? from : buckets[buckets.length - 1].cumulativeClears;
@@ -365,9 +366,9 @@ function Bars({
     label: string;
     band?: TimelineBand | null;
     /**
-     * `main`: the main chart's bars, which src/components/chart/ChartHover.tsx explains. `overview`: the
-     * strip — the same bars at half the height, so it reads as context, and never
-     * hoverable (#114).
+     * `main`: the main chart's bars, which src/components/chart/ChartHover.tsx explains.
+     * `overview`: the strip — the same bars at half the height, so it reads as context,
+     * and never hoverable (#114).
      */
     variant: 'main' | 'overview';
 }) {

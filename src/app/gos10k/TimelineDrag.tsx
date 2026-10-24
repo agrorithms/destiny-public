@@ -12,9 +12,9 @@ import { dragDates, dragSlots, isDrag, type DragSlots } from './timeline-geometr
  * Drag across the timeline to set the page's range (#115), on the main chart and on the
  * overview strip alike.
  *
- * **A wrapper, like `ChartHover` (src/components/chart/ChartHover.tsx).** The bars are still drawn by the server
- * component ./ArchiveTimeline.tsx and arrive as `children`, so with JavaScript off the
- * page renders exactly the chart it rendered before. On the main chart this wraps the
+ * **A wrapper, like `ChartHover` (src/components/chart/ChartHover.tsx).** The bars are
+ * still drawn by the server component ./ArchiveTimeline.tsx and arrive as `children`, so
+ * with JavaScript off the page renders exactly the chart it rendered before. On the main chart this wraps the
  * hover wrapper; on the strip, which has no tooltips, it wraps the bars alone. The two
  * concerns share nothing but a CSS hook: while a drag is under way this element carries
  * `data-dragging`, and the tooltip hides itself under it.

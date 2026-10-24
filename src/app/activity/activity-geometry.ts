@@ -195,20 +195,6 @@ export interface ShadedSpan {
 }
 
 /**
- * The span shaded as not yet counted: from where counted data ends (`countedUntil`, the
- * end of the last counted step) to "now" at the right-hand edge, so it meets the line's
- * last step with no gap. Two hours plus up to one step wide ({@link notYetCountedLegend}).
- * #196 fills it with a Provisional estimate.
- */
-export function notYetCounted(
-    series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>
-): ShadedSpan {
-    const startPercent = xPercent(series.countedUntil, series.from, series.to);
-    const endPercent = 100;
-    return { startPercent, endPercent, widthPercent: endPercent - startPercent };
-}
-
-/**
  * The line as two SVG paths: the counted steps solid, and the estimated ones dashed. The
  * dashed path starts on the last counted point, so the two meet and only the style changes
  * at the boundary; with nothing counted it starts at its own first point. It is null when no
@@ -261,9 +247,9 @@ export function describeBeforeData(countedFrom: number): string {
 }
 
 /**
- * How old a step's end must be before it is counted: the query's `COUNTED_AGE_SECONDS`,
- * copied because importing a value from `@/lib/db/queries` would put better-sqlite3 on
- * this module's import path. A test holds the two equal.
+ * How old a step's end must be before it is counted, and so where the dashed line starts:
+ * the query's `COUNTED_AGE_SECONDS`, copied because importing a value from `@/lib/db/queries`
+ * would put better-sqlite3 on this module's import path. A test holds the two equal.
  */
 export const NOT_YET_COUNTED_AGE_SECONDS = 2 * HOUR;
 
@@ -288,20 +274,6 @@ export function tooRecentLegend(stepSeconds: number): string {
  */
 export function provisionalLegend(stepSeconds: number): string {
     return `Dashed: an estimate, from ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, NOT_YET_COUNTED_AGE_SECONDS + stepSeconds)} ago up to the shaded stretch.`;
-}
-
-/**
- * The not-yet-counted shade's legend: how wide it can be at this step. Counting ends at
- * the last whole step 2 hours old, so the shade is 2 hours plus up to one step wide — 2 to
- * 3 hours at 1-hour steps, 2 hours to 2 hours 10 minutes at 10-minute steps.
- */
-export function notYetCountedLegend(stepSeconds: number): string {
-    const shortest = NOT_YET_COUNTED_AGE_SECONDS;
-    const longest = shortest + stepSeconds;
-    const span = longest % HOUR === 0
-        ? `${shortest / HOUR} to ${formatDuration(longest)}`
-        : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
-    return `Shaded: the last ${span}, not yet counted.`;
 }
 
 /**

@@ -11,10 +11,10 @@ import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activit
  * 24 hours, 7 days or 30 days (`?range=`, #195), one point per step, rebuilt from PGCRs. Not
  * from Session Snapshots, which don't measure activity (ADR 0009).
  *
- * Built up along #51's chain: #194's tracer bullet (the total line, UTC labels, the span
- * after the last counted step shaded), #195's range presets, then #196's Provisional
- * estimate, #197's tooltips in local time and #198–#199's per-raid panel — each through the
- * query's options and the geometry module, not a new read.
+ * Built up along #51's chain: #194's tracer bullet (the total line, UTC labels), #195's
+ * range presets, #196's Provisional estimate (the steps too recent to count, dashed, and
+ * the last 15 minutes shaded), then #197's tooltips in local time and #198–#199's per-raid
+ * panel — each through the query's options and the geometry module, not a new read.
  *
  * **Server-rendered, with no new endpoint**: the page calls the Tracker query module
  * directly, and the chart is hand-made SVG with no client JavaScript.
@@ -25,7 +25,9 @@ import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activit
  * endpoints. Next's `revalidate` export can't do this: it must be a literal, so it can't
  * read the env knob, and it would prerender the page at build time against whatever
  * database the build machine has. The series carries its own "now", so a cached one
- * still shades the right span. One cache key per range: an uncached 30-day series costs
+ * still shades the right span. The Provisional estimate is learned inside the same compute
+ * (a second pass over the PGCRs, ~230 ms on the prod backup on x86), so it is rebuilt on
+ * each cache refresh, per range, and costs a visitor nothing once the cache is warm. One cache key per range: an uncached 30-day series costs
  * ~1 s on x86 (~2 s on the ARM box), nearly the whole PGCR table, and that was accepted
  * behind the cache rather than built around (#195).
  *

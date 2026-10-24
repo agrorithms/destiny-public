@@ -20,14 +20,12 @@ import {
     tallestStep,
     tooRecent,
     tooRecentLegend,
-    notYetCounted,
-    notYetCountedLegend,
     valueAxis,
 } from './activity-geometry';
 
 /**
- * Where things sit on the Raid Activity chart (#194): the day ticks and their UTC
- * labels, the y-axis, the line's path and the shaded "not yet counted" span.
+ * Where things sit on the Raid Activity chart (#194–#196): the day ticks and their UTC
+ * labels, the y-axis, the line's solid and dashed paths, the too-recent span and the legends.
  *
  * Pure and colocated, because this is the half of the chart that can be wrong rather
  * than merely missing: a tick a few hours off, or a shade covering the wrong stretch,
@@ -150,21 +148,6 @@ describe('the line', () => {
     it('draws nothing for a series with no points', () => {
         // A range whose steps are all newer than two hours has no counted value at all.
         expect(linePath([], FROM, NOW, 1)).toBe('');
-    });
-});
-
-describe('the not-yet-counted span', () => {
-    it('shades from where the last counted step ends to the right-hand edge', () => {
-        // "Now" is 20:33:16, so the moment two hours ago is 18:33:16 and the last counted
-        // step ends at 18:00 — 9,196 s before "now", which is where the query reports that
-        // counting ends. The shade starts there, (604,800 − 9,196) / 604,800 = 98.4795% of
-        // the way across, and meets the line's last step rather than leaving a gap after it.
-        // It runs to the right-hand edge, so it is 9,196 / 604,800 = 1.5205% wide.
-        const span = notYetCounted({ from: FROM, to: NOW, countedUntil: NOW - 9196 });
-
-        expect(span.startPercent).toBeCloseTo(98.4795, 3);
-        expect(span.endPercent).toBe(100);
-        expect(span.widthPercent).toBeCloseTo(1.5205, 3);
     });
 });
 
@@ -431,22 +414,6 @@ describe('the peak sentence', () => {
     });
 });
 
-describe('the not-yet-counted legend', () => {
-    it('states how wide the shade can be at each range\'s step', () => {
-        // Counting ends at the last whole step 2 hours old, so the shade is 2 hours wide
-        // plus up to one step: the legend must say so per range, not the 7-day figure.
-        expect(notYetCountedLegend(HOUR)).toBe('Shaded: the last 2 to 3 hours, not yet counted.');
-        expect(notYetCountedLegend(600)).toBe('Shaded: the last 2 hours to 2 hours 10 minutes, not yet counted.');
-        expect(notYetCountedLegend(3 * HOUR)).toBe('Shaded: the last 2 to 5 hours, not yet counted.');
-    });
-
-    it('starts from the query\'s own counted age', () => {
-        // This module can't import the query's value (it would put better-sqlite3 on the
-        // client path #197 adds), so it keeps a copy, and this is what stops them drifting.
-        expect(NOT_YET_COUNTED_AGE_SECONDS).toBe(COUNTED_AGE_SECONDS);
-    });
-});
-
 describe('the legends for the estimate and the shade', () => {
     it('says how wide the shade can be at each range\'s step', () => {
         // The line ends at the last whole step 15 minutes old, so the shade is 15 minutes
@@ -461,6 +428,12 @@ describe('the legends for the estimate and the shade', () => {
         expect(provisionalLegend(HOUR)).toBe('Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.');
         expect(provisionalLegend(600)).toBe('Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.');
         expect(provisionalLegend(3 * HOUR)).toBe('Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.');
+    });
+
+    it('keeps a copy of the query\'s counted age', () => {
+        // This module can't import the query's value (it would put better-sqlite3 on the
+        // client path #197 adds), so it keeps a copy, and this is what stops them drifting.
+        expect(NOT_YET_COUNTED_AGE_SECONDS).toBe(COUNTED_AGE_SECONDS);
     });
 
     it('keeps a copy of the query\'s 15-minute cutoff', () => {

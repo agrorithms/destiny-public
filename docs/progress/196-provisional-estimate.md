@@ -17,13 +17,13 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] `tests/db/raids-in-progress.test.ts` — `provisional` flag, partial ÷ share, the 15-minute cutoff, counted at 2 h, three step sizes, `ended_at <= now`
    - [x] `src/lib/db/queries.ts` — `provisional`, `provisionalUntil`, `PROVISIONAL_MIN_AGE_SECONDS`, the extended sweep
 4. Geometry, red then green (S4)
-   - [ ] `src/app/activity/activity-geometry.test.ts` — dashed path, too-recent span, legends, axis fits estimates, counted-only peak, the 15-minute mirror
-   - [ ] `src/app/activity/activity-geometry.ts`
+   - [x] `src/app/activity/activity-geometry.test.ts` — dashed path, too-recent span, legends, axis fits estimates, counted-only peak, the 15-minute mirror
+   - [x] `src/app/activity/activity-geometry.ts`
 5. The page and the browser suite, red then green (S5)
-   - [ ] `e2e/support/seed-world.ts` — one 20-minute run 90 minutes before the seed's clock hour
-   - [ ] `e2e/activity.spec.ts` — dashed segment, joins, cutoff, legends; the red run is the bite proof
-   - [ ] `src/app/activity/ActivityChart.tsx` — dashed path, too-recent shade, both legends
-   - [ ] `src/app/activity/page.tsx` — header comment only (cache key per range unchanged)
+   - [x] `e2e/support/seed-world.ts` — one 20-minute run that ended 40 minutes before the seed ran (from the clock, not the clock hour, so it stays estimated for 80 minutes)
+   - [x] `e2e/activity.spec.ts` — dashed segment, joins, cutoff, legends; the red run is the bite proof
+   - [x] `src/app/activity/ActivityChart.tsx` — dashed path, too-recent shade, both legends
+   - [x] `src/app/activity/page.tsx` — header comment only (cache key per range unchanged)
    - [ ] `e2e/visual.spec.ts` — no change expected; checked
 6. Bookkeeping
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated in-place amendment

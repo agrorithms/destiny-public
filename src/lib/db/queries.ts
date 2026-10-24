@@ -1588,7 +1588,7 @@ export function deleteSessionsContainingPlayer(membershipId: string): void {
  * still running has no PGCR yet, so a newer moment would read low; on prod a moment two
  * hours old is ~93% complete. A step is counted once its *end* is this old.
  */
-export const COUNTED_AGE_SECONDS = 2 * 60 * 60;
+export const COUNTED_AGE_SECONDS = 7200; // two hours
 
 /** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
 export interface RaidsInProgressPoint {
@@ -1648,7 +1648,9 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
-    const partialSeconds = new Float64Array(steps);
+    // One slot past the last step in each, for a run ending exactly at `lastEnd`: its
+    // last piece lands there, and is zero seconds long.
+    const partialSeconds = new Float64Array(steps + 1);
     const wholeStepsDelta = new Float64Array(steps + 1);
 
     const rows = getDb().prepare(`
@@ -1664,12 +1666,12 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         const end = Math.min(endedAt, lastEnd);
         const first = Math.floor((start - firstStart) / stepSeconds);
         const last = Math.floor((end - firstStart) / stepSeconds);
-        if (first === last) {
-            partialSeconds[first] += end - start;
-            continue;
-        }
+        // The run's piece of its first step, its piece of its last, and +1 for every whole
+        // step between them. A run inside a single step takes the same path: its two
+        // pieces then overlap and add up to one step more than the run, and the -1 at
+        // `last` (which is `first`) takes that step back.
         partialSeconds[first] += firstStart + (first + 1) * stepSeconds - start;
-        if (last < steps) partialSeconds[last] += end - (firstStart + last * stepSeconds);
+        partialSeconds[last] += end - (firstStart + last * stepSeconds);
         wholeStepsDelta[first + 1] += 1;
         wholeStepsDelta[last] -= 1;
     }

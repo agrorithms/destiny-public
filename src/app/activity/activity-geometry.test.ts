@@ -59,7 +59,29 @@ describe('day ticks', () => {
     });
 });
 
+describe('day ticks at the edges', () => {
+    it('draws a gridline on each edge of a window from midnight to midnight, and labels the cut-off itself', () => {
+        // 25 days from a midnight: a tick every 4%, both edges included, and the 22nd day
+        // falls exactly on the 88% cut-off — kept, since only a label starting *past* it
+        // would run off the chart. The 23rd, at 92%, is a gridline without a label.
+        const midnight = 1792195200;
+        const ticks = dayTicks(midnight, midnight + 25 * DAY);
+
+        expect(ticks).toHaveLength(26);
+        expect(ticks[0].percent).toBe(0);
+        expect(ticks.at(-1)?.percent).toBe(100);
+        expect(ticks[22]).toMatchObject({ percent: 88, label: 'Sun 8' });
+        expect(ticks[23].label).toBeNull();
+    });
+});
+
 describe('value axis', () => {
+    it('uses a round step exactly when it covers the busiest step in four', () => {
+        // 2,000 is four steps of 500 exactly, so 500 is the step — not the next round step
+        // up, which would leave the axis with three gridlines where it has room for five.
+        expect(valueAxis(2000).ticks.map((tick) => tick.value)).toEqual([0, 500, 1000, 1500, 2000]);
+    });
+
     it('rounds the busiest step up to a whole number of round steps', () => {
         // Prod's 7-day peak was ~1,828: four steps of 500 cover it, so the axis tops out at
         // 2,000 and is labelled every 500, from the bottom of the chart up.

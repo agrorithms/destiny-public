@@ -134,10 +134,13 @@ export function notYetCounted(
     return { startPercent: xPercent(series.countedUntil, series.from, series.to), endPercent: 100 };
 }
 
-/** The step with the most raids in progress, the earliest on a tie, or null with none. */
+/**
+ * The step with the most raids in progress, the earliest on a tie, or null when no step
+ * has any: a week of zeros has no busiest hour to name.
+ */
 export function busiestStep(points: RaidsInProgressPoint[]): RaidsInProgressPoint | null {
     return points.reduce<RaidsInProgressPoint | null>(
-        (best, point) => (best === null || point.total > best.total ? point : best),
+        (best, point) => (point.total > (best?.total ?? 0) ? point : best),
         null
     );
 }

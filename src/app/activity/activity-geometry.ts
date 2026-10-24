@@ -1,4 +1,5 @@
 import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queries';
+import type { ActivityRange } from './activity-range';
 
 /**
  * Where things sit on the Raid Activity chart (#194): the day ticks and their labels, the
@@ -179,3 +180,12 @@ function clock(at: number): string {
 function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
+
+// Stubs for #195's red commit.
+export const NOT_YET_COUNTED_AGE_SECONDS = 0;
+export function hourTicks(from: number, to: number): ActivityTick[] { void from; void to; throw new Error('not implemented'); }
+export function axisTicks(from: number, to: number, range: ActivityRange): ActivityTick[] { void from; void to; void range; throw new Error('not implemented'); }
+export function beforeData(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'stepSeconds' | 'countedFrom'>): { startPercent: number; endPercent: number; widthPercent: number } | null { void series; throw new Error('not implemented'); }
+export function describeBeforeData(countedFrom: number): string { void countedFrom; throw new Error('not implemented'); }
+export function describePeak(busiest: RaidsInProgressPoint | null, range: ActivityRange): { caption: string; ariaLabel: string } { void busiest; void range; throw new Error('not implemented'); }
+export function notYetCountedLegend(stepSeconds: number): string { void stepSeconds; throw new Error('not implemented'); }

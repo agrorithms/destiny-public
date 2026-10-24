@@ -135,7 +135,20 @@ describe('which steps come back', () => {
         const series = getRaidsInProgress({ ...SEVEN_DAYS, now });
 
         expect(series.points.at(-1)).toEqual({ start: hoursBeforeNow(3), end: hoursBeforeNow(2), total: 1 });
-        expect(series.countedUntil).toBe(now - 2 * HOUR);
+    });
+
+    it('reports counting as ending where the last counted step ends, not at "now" minus 2 hours', () => {
+        // At 59 minutes past, the moment 2 hours ago is 0:59 into a step that is not yet
+        // whole, so the last counted step ends 2 h 59 min before "now". The chart shades
+        // from `countedUntil`: reported as "now" minus 2 hours, it would leave the 59
+        // minutes between the line's end and the shade with neither, and #196's Provisional
+        // estimate fills from exactly this boundary.
+        const now = NOW + 59 * 60;
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now });
+
+        expect(series.points.at(-1)?.end).toBe(hoursBeforeNow(2));
+        expect(series.countedUntil).toBe(hoursBeforeNow(2));
     });
 
     it('starts at the first whole step inside the window when "now" is mid-step', () => {

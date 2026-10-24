@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
+import { ACTIVITY_RANGES } from '../src/app/activity/activity-range';
 import { ACTIVITY_PEAK_RAIDS, ACTIVITY_RECENT_PEAK_RAIDS } from './support/seed-world';
 import { expectInsideViewport, expectNoOverflow } from './support/viewport';
 
@@ -66,9 +67,14 @@ const RANGES = {
 
 type RangeId = keyof typeof RANGES;
 
-/** The range control's link to a preset. */
+/**
+ * The range control's link to a preset, found by the label the control shows for it. The
+ * label equals the id today, but only by choice: a renamed label should fail here because
+ * the control changed, not because the spec guessed the text.
+ */
 function rangeLink(page: Page, id: RangeId) {
-    return page.getByTestId('activity-range').getByRole('link', { name: id, exact: true });
+    const { label } = ACTIVITY_RANGES.find((range) => range.id === id)!;
+    return page.getByTestId('activity-range').getByRole('link', { name: label, exact: true });
 }
 
 /**

@@ -84,11 +84,12 @@ describe('learning the curve from PGCRs', () => {
 describe('which runs it learns from', () => {
     it('learns only from steps between 8 days and 24 hours old', () => {
         // Runs in the last 24 hours (not yet complete) and before the week (too old to be
-        // this week's) must not move the curve, even with a long tail that would.
+        // this week's) must not move the curve, even with a long tail that would. The recent
+        // one has already ended, so only the 24-hour bound keeps it out, not `ended_at <= now`.
         seedDaily(3 * HOUR + 45 * MINUTE, HOUR);
         const before = learn();
 
-        seedRaid(NOW - 5 * HOUR, 10 * HOUR);
+        seedRaid(NOW - 20 * HOUR, 10 * HOUR);
         seedRaid(NOW - 8 * DAY - 6 * HOUR, 5 * HOUR);
 
         expect(learn()).toEqual(before);

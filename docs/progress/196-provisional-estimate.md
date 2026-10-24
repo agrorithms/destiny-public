@@ -42,7 +42,7 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] P1 `tests/db/raids-in-progress.test.ts` — the per-hour test compares two hours at the same end age (30 minutes); red with `shareAt` reading only the all-hours curve
    - [ ] P2 `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — why the backtest's form changed, against #51's figures
    - [ ] P3 `src/app/activity/activity-geometry.test.ts` — the dashed line ends at or before the shade
-   - [ ] S1 `tests/db/completeness-curve.test.ts` — a run already ended inside the last 24 hours, red with the bound removed
+   - [x] S1 `tests/db/completeness-curve.test.ts` — a run already ended inside the last 24 hours, red with the bound removed (the old run, ending after now, passed with it removed)
    - [ ] S2 `src/lib/db/queries.ts` — `getRaidsInProgress`'s doc comment
    - [ ] S3 `src/lib/db/queries.ts` — the estimate stops at the first step with no share; test; ADR wording
    - [ ] S4 `src/app/activity/activity-geometry.ts` — `formatDuration`'s comment

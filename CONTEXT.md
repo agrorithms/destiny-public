@@ -30,15 +30,19 @@ the raid ended, or when the observation goes stale.
 _Avoid_: live session, current activity, in-progress raid
 
 **Session Snapshot**:
-A count of the Active Sessions, in fireteams, per Raid, at one moment, recorded each time the
-crawler polls for them. Non-raid activity is not counted in it. Only as wide as that poll: it
-counts the fireteams of the players polled that cycle, not every fireteam raiding.
+A count of the fireteams one Active Session poll found, per Raid, at one moment, recorded each
+time the crawler polls. Fireteams the poll found in a non-raid activity are counted too, in one
+unlabelled `unknown` bucket, so its total is not a raid count; only the per-Raid figures are. Only
+as wide as that poll: it counts the fireteams of the players polled that cycle, not every fireteam
+raiding.
 _Avoid_: session history, active session count, population
 
 **Raids in Progress**:
 How many raid instances were under way at a given moment, reconstructed from their PGCRs once
 those raids have ended. The measure of raid activity over time. Unlike a Session Snapshot it does
-not depend on who was polled, but it can only be counted for moments whose raids have finished.
+not depend on who was polled, but a moment is counted only from two hours old, when nearly all of
+its raids have ended and the rest are added as their PGCRs arrive; anything more recent is
+Provisional.
 _Avoid_: concurrent raids, active raids, population, active sessions
 
 **Provisional**:

@@ -2452,9 +2452,18 @@ HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at
   `ACTIVITY_RANGES`, not its id, so renaming a label breaks no spec by itself. One deliberate
   break, the control rendering `label.toUpperCase()`: 8 of the spec's 11 tests failed on
   `rangeLink` finding no link (every test that touches the control); the 3 that never look at it
-  passed. Restored and green. Since review fix S2 the chart reads its wording off the series
-  itself, so the one-cache-key break above would no longer show a series under another range's
-  wording; that record is of the code at the time.
+  passed. Restored and green.
+- Review fixes S2 and S5 (2026-10-24): the chart (S2) and then the intro (S5) read their step
+  and span off the series itself, so the one-cache-key break above no longer shows a series
+  under another range's wording: the record above is of the code at the time. Rerun against
+  `693ae4a`: the same 4 of the 11 failed (1, 2, 4 and 5 of the new specs), now on the chart's
+  name — `expectRangeDrawn`'s marked-preset check passed, then "per 10 minutes over the last 24
+  hours" was not found. The page at `?range=30d` read "averaged over every hour of the last 7
+  days" in the intro and "Busiest hour" in the caption, with 30d still marked in the control.
+  Restored and green. So the specs catch a series that isn't the URL's range, through the chart
+  and the marked preset, which follows the URL on purpose (it is navigation). No spec reads the
+  intro's step or span — only its "Times are UTC." — so an intro that disagreed with the chart
+  drawn under it would pass; S5 removed the way they could disagree rather than adding a check.
 
 ### What is still NOT covered
 
@@ -2464,5 +2473,7 @@ HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at
 - The 30-day axis's label density is a human's call from the `activity-30d` screenshots; no spec
   asserts labels don't touch.
 - The per-range cache's lifetime, as for #194.
+- The intro sentence's step and span: no spec reads them. Since S5 they come off the same
+  series as the chart's name, which `expectRangeDrawn` does check.
 - Later tickets: the Provisional estimate (#196), tooltips in local time (#197), the per-raid
   panel (#198, #199).

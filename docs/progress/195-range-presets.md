@@ -43,6 +43,11 @@ Loop 1 (the user picked O1, S2, S3, S4; S1 is a follow-up issue, O3 declined).
 - [x] O1 — the intro reads "averaged over every 10 minutes / hour / 3 hours of the last …"
 - [x] S4 — `e2e/activity.spec.ts`'s `rangeLink` finds a preset's link by its label from `ACTIVITY_RANGES`
 
+Loop 2 (the user picked S5 and S6; the last loop).
+
+- [x] S5 — `page.tsx`'s intro names the step and span off `rangeOfSeries(series)`, the URL's range only when maintenance leaves no series; the range control stays on the URL's range (navigation)
+- [x] S6 — `docs/e2e-coverage.md`'s #195 entry says what the one-cache-key break shows after S2 and S5, from a rerun, and that no spec reads the intro's step or span
+
 ## Surviving mutants
 
 None. Loop 1 (`b1c2855`) killed or removed all six from the first run: two hour-tick boundaries
@@ -56,6 +61,10 @@ initialiser no test could switch). No `Stryker disable` comments.
   (the refusal's message emptied) killed by a test that the refusal names the span and step.
   S4: one deliberate break, the control rendering `label.toUpperCase()`, turned 8 of the spec's
   11 tests red on `rangeLink`; reverted.
+  S5: `.tsx` only (one `rangeOfSeries` call, already pinned by its own tests), so nothing for
+  mutate:diff to reach. No Playwright spec reads the intro's step or span, so none was shown to
+  bite on it. Rerun of the one-cache-key break against `693ae4a`: 4 of 11 red on the chart's name,
+  with the intro reading the 7-day series' wording under `?range=30d`; reverted (S6 records it).
 
 - Vitest: `npm run mutate:diff -- c9ef7f2...HEAD`, see the report.
 - Playwright: the red run at `2be05d1` and one deliberate break (one cache key for every range);

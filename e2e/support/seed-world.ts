@@ -249,7 +249,9 @@ export const FASTEST_CLEARS = {
  * All of them are Checkpoint Runs nobody finished, by members no `players` row names, so
  * no leaderboard, Fastest Clears board, player page or player search can see them: the
  * chart counts every raid instance (All Attempts), and nothing else on the site counts
- * these. Their member ids carry the `91` namespace so they collide with no spec's players.
+ * these. Their member ids and instance ids carry the `92` namespace, which no spec file
+ * claims (`81`–`91` belong to the files that seed active sessions; docs/e2e-coverage.md
+ * lists them), so they collide with no spec's players or runs.
  */
 export const ACTIVITY_PEAK_RAIDS = 3;
 
@@ -264,10 +266,10 @@ function seedActivityRuns(): void {
 
     runs.forEach((run, index) => {
         seedRun({
-            instanceId: `9100${index + 1}`,
+            instanceId: `9200${index + 1}`,
             activityHash: RAID_A.hash,
             raidKey: RAID_A.key,
-            incompleteBy: [`91000000000000${String(index + 1).padStart(2, '0')}`],
+            incompleteBy: [`92000000000000${String(index + 1).padStart(2, '0')}`],
             startedFromBeginning: false,
             period: run.start,
             activityDurationSeconds: run.seconds,

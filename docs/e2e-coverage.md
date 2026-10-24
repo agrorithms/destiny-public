@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy, `91` = active-sessions-size; `92` is the seed world's own activity runs, for `/activity`) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -2362,7 +2362,7 @@ Edge, all well inside the chart's 7-day window: three runs covering exactly one 
 days back (the peak, `ACTIVITY_PEAK_RAIDS` = 3), one run of two and a half hours four days back,
 and one hour-long run a day for the six days before. Every leaderboard run starts an hour ago,
 inside the two hours the chart leaves uncounted, so without these the chart was a flat line. They
-are Checkpoint Runs nobody finished, by `91`-prefixed members with no `players` row, so no
+are Checkpoint Runs nobody finished, by `92`-prefixed members with no `players` row, so no
 leaderboard, Fastest Clears board, player page or player search sees them. The canary is
 untouched.
 

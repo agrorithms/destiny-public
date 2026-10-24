@@ -148,6 +148,15 @@ shipped-code replay rest on 2, 2 and 7 steps (20, 37 and 79 in the fetched run):
   line runs from the last counted point to the last step 15 minutes old; the 15 minutes after it
   (plus up to one step) are shaded "too recent to estimate". Launch weekends and other
   sudden shifts in run length aren't special-cased.
+  *2026-10-24 (#197):* the tooltip on a dashed step reads `<n> average raids in progress, <window>
+  · estimate, still arriving`; a counted step's has no tail, and the shaded spans have none at
+  all.
+- **Times are in the reader's time zone, or UTC and said so.** *2026-10-24 (#197):* the server
+  renders every label in UTC and a small client step moves the gridlines, tick labels, tooltips
+  and the sentences that name a time onto the browser's clock after hydration. The shapes — the
+  line, the dashed line, the shades — are positions in the UTC window and do not move; the
+  gridlines do, to the reader's midnights and 3-hour marks. With JavaScript off the page stays
+  UTC and says so. The SVG's accessible name is UTC in both.
 - **The chart moves only when raiding does.** Retuning the crawler's poll budget changes Session
   Snapshots and leaves Raids in Progress alone.
 - **The range is bounded by PGCR retention** (`CRAWLER_CLEANUP_MAX_AGE_HOURS`, 720 h on prod). The

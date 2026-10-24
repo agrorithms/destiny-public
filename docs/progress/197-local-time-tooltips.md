@@ -34,10 +34,15 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] `src/app/activity/ActivityLocal.tsx` (new) — offset hook, hover wrapper, local ticks, localised sentences
    - [x] `src/app/activity/ActivityChart.tsx`, `src/app/activity/page.tsx` — wired
 6. Bookkeeping (S7)
-   - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated line
-   - [ ] `docs/e2e-coverage.md` — flow entry and journal
-   - [ ] `docs/progress/197-local-time-tooltips.md` (this file)
+   - [x] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated line
+   - [x] `docs/e2e-coverage.md` — flow entry and journal
+   - [x] `docs/progress/197-local-time-tooltips.md` (this file)
 7. Bite proofs
-   - [ ] `npm run mutate:diff -- 9307ce8...HEAD --typecheck`
-   - [ ] `npm run visual:check`
+   - [x] `npm run mutate:diff -- 9307ce8...HEAD --typecheck` — 100.0% overall (93/93 scored), loops 0, no survivors
+   - [x] `npm run visual:check` — 68 passed
    - [ ] lint, build, test, e2e at HEAD
+
+## Notes
+
+- Red run: `db312cd`, 18 of 23 activity specs failed. Deliberate breaks in one build, plus the dismissal break alone: `docs/e2e-coverage.md`.
+- Chromium names the zone `Asia/Katmandu`; the spec accepts both spellings.

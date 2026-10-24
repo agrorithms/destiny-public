@@ -322,8 +322,9 @@ function formatInstant(at: number): string {
 }
 
 /**
- * `15 minutes`, `1 hour 15 minutes`, `2 hours`, `2 hours 10 minutes`. Steps are whole
- * multiples of 10 minutes, so a leftover minute count is never 1.
+ * `15 minutes`, `1 hour 15 minutes`, `2 hours`, `2 hours 10 minutes`. The ages it is given
+ * (15 minutes, 2 hours) and the steps added to them are whole multiples of 5 minutes, so a
+ * leftover minute count is never 1.
  */
 function formatDuration(seconds: number): string {
     const hours = Math.floor(seconds / HOUR);

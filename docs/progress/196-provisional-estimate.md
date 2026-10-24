@@ -45,7 +45,7 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] S1 `tests/db/completeness-curve.test.ts` — a run already ended inside the last 24 hours, red with the bound removed (the old run, ending after now, passed with it removed)
    - [x] S2 `src/lib/db/queries.ts` — `getRaidsInProgress`'s doc comment
    - [x] S3 `src/lib/db/queries.ts` — the estimate stops at the first step with no share; test; ADR wording (red at `4a24713`)
-   - [ ] S4 `src/app/activity/activity-geometry.ts` — `formatDuration`'s comment
+   - [x] S4 `src/app/activity/activity-geometry.ts` — `formatDuration`'s comment
    - [x] S5 `src/lib/db/queries.ts` — `endedRaidRuns` takes one named object
    - [ ] S6 why comments on the tests that had none
 

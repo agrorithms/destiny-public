@@ -1710,8 +1710,9 @@ export interface RaidsInProgressOptions {
  * step's raid time is usually known at that age, for its hour of the day
  * ({@link getCompletenessCurve}). Younger steps are absent. The estimate stops at the first
  * step whose hour has no share to divide by, so it is one unbroken run. With no history to
- * learn from there is no curve and no estimate. A run that has not ended by `now` is not read, in
- * either case: the estimate is of what the counted version will say, from what has ended.
+ * learn from there is no curve and no estimate. A run that has not ended by `now` is not
+ * read, in either case: the estimate is of what the counted version will say, from what
+ * has ended.
  *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
  * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step

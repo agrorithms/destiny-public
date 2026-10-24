@@ -12,7 +12,6 @@ import {
     dayTicks,
     describeBeforeData,
     describePeak,
-    formatStepWindow,
     hourTicks,
     linePath,
     linePaths,
@@ -254,7 +253,7 @@ describe('the tallest step', () => {
 });
 
 describe('the busiest step', () => {
-    it('names the busiest step and its window in UTC', () => {
+    it('names the busiest step, the earliest on a tie', () => {
         // The caption under the chart reads it: the hour with the most raids in progress,
         // the earliest one on a tie, and its window spelled out as a reader would say it.
         const points = [
@@ -265,9 +264,6 @@ describe('the busiest step', () => {
 
         expect(busiestStep(points)).toEqual(points[1]);
         expect(busiestStep([])).toBeNull();
-        expect(formatStepWindow(points[1].start, points[1].end)).toBe('Sat 17 Oct, 01:00–02:00 UTC');
-        // Across midnight the window still reads as one evening's hour.
-        expect(formatStepWindow(1792195200 - HOUR, 1792195200)).toBe('Fri 16 Oct, 23:00–00:00 UTC');
     });
 
     it('names no busiest step when nothing was counted', () => {

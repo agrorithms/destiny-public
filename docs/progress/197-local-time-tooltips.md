@@ -16,8 +16,8 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
 - No tooltip over a shaded span.
 
 1. Local-time formatting, red then green (S1)
-   - [ ] `src/app/activity/activity-time.test.ts` (new)
-   - [ ] `src/app/activity/activity-time.ts` (new) — the formatters move out of the geometry module
+   - [x] `src/app/activity/activity-time.test.ts` (new)
+   - [x] `src/app/activity/activity-time.ts` (new) — the formatters move out of the geometry module
    - [ ] `src/app/activity/activity-geometry.ts` / `.test.ts` — take the formatters from it; `describePeak`, `describeBeforeData` take an offset
 2. Tick sets in local time, red then green (S2)
    - [ ] `src/app/activity/activity-geometry.test.ts` — `axisTicks` with an offset

@@ -1,5 +1,6 @@
 import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queries';
 import { DAY, HOUR, MINUTE, type ActivityRange } from './activity-range';
+import { clock, dayLabel, formatInstant, formatStepWindow } from './activity-time';
 
 /**
  * Where things sit on the Raid Activity chart (#194, #195): the time ticks and their
@@ -29,9 +30,6 @@ export const CHART_HEIGHT = 200;
  * later would run off the panel. Its gridline is still drawn.
  */
 export const LAST_LABELLED_TICK_PERCENT = 88;
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** A gridline on the x-axis, and its label, or null where the label would not fit. */
 export interface ActivityTick {
@@ -81,7 +79,7 @@ export interface DayTickOptions {
  * `options` ({@link axisTicks}).
  */
 export function dayTicks(from: number, to: number, options: DayTickOptions = { everyDays: 1, phoneEvery: 2 }): ActivityTick[] {
-    return ticksEvery(from, to, options.everyDays * DAY, dayLabel, (_, index) => index % options.phoneEvery === 0);
+    return ticksEvery(from, to, options.everyDays * DAY, (at) => dayLabel(at, null), (_, index) => index % options.phoneEvery === 0);
 }
 
 /** The 24-hour range's tick spacing, and the spacing of the labels a phone keeps. */
@@ -99,7 +97,7 @@ export function hourTicks(from: number, to: number): ActivityTick[] {
         from,
         to,
         HOUR_TICK_SECONDS,
-        (at) => (at % DAY === 0 ? dayLabel(at) : clock(at)),
+        (at) => (at % DAY === 0 ? dayLabel(at, null) : clock(at, null)),
         (at) => at % PHONE_HOUR_TICK_SECONDS === 0
     );
 }
@@ -312,16 +310,6 @@ export function tallestStep(points: RaidsInProgressPoint[]): number {
     return Math.max(0, ...points.map((point) => point.total));
 }
 
-/** A step's window as a reader would say it: `Sat 17 Oct, 20:00–21:00 UTC`. */
-export function formatStepWindow(start: number, end: number): string {
-    return `${dateLabel(start)}, ${clock(start)}–${clock(end)} UTC`;
-}
-
-/** An instant as a reader would say it: `Sat 26 Sep, 06:00 UTC`. */
-function formatInstant(at: number): string {
-    return `${dateLabel(at)}, ${clock(at)} UTC`;
-}
-
 /**
  * `15 minutes`, `1 hour 15 minutes`, `2 hours`, `2 hours 10 minutes`. The ages it is given
  * (15 minutes, 2 hours) and the steps added to them are whole multiples of 5 minutes, so a
@@ -353,22 +341,6 @@ function ageSpan(shortest: number, stepSeconds: number): string {
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */
 export function formatRaidCount(value: number): string {
     return Math.round(value).toLocaleString('en-GB');
-}
-
-/** The UTC weekday and day of the month an instant falls on: `Sat 17`. */
-function dayLabel(at: number): string {
-    const date = new Date(at * 1000);
-    return `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()}`;
-}
-
-/** The UTC weekday, day and month an instant falls on: `Sat 17 Oct`. */
-function dateLabel(at: number): string {
-    return `${dayLabel(at)} ${MONTHS[new Date(at * 1000).getUTCMonth()]}`;
-}
-
-/** `HH:MM` in UTC. */
-function clock(at: number): string {
-    return new Date(at * 1000).toISOString().slice(11, 16);
 }
 
 function round(value: number): number {

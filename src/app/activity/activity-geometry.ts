@@ -265,7 +265,7 @@ export const TOO_RECENT_AGE_SECONDS = 15 * MINUTE;
  * minutes at 10-minute steps, 15 minutes to 1 hour 15 minutes at 1-hour steps.
  */
 export function tooRecentLegend(stepSeconds: number): string {
-    return `Shaded: the last ${ageSpan(TOO_RECENT_AGE_SECONDS, TOO_RECENT_AGE_SECONDS + stepSeconds)}, too recent to estimate.`;
+    return `Shaded: the last ${ageSpan(TOO_RECENT_AGE_SECONDS, stepSeconds)}, too recent to estimate.`;
 }
 
 /**
@@ -273,7 +273,7 @@ export function tooRecentLegend(stepSeconds: number): string {
  * whole step 2 hours old — 2 hours plus up to one step back.
  */
 export function provisionalLegend(stepSeconds: number): string {
-    return `Dashed: an estimate, from ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, NOT_YET_COUNTED_AGE_SECONDS + stepSeconds)} ago up to the shaded stretch.`;
+    return `Dashed: an estimate, from ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)} ago up to the shaded stretch.`;
 }
 
 /**
@@ -335,10 +335,12 @@ function formatDuration(seconds: number): string {
 }
 
 /**
- * The ages a stretch runs between, said once where both ends share a unit: `2 to 3 hours`,
- * `15 to 25 minutes`; otherwise each in full: `2 hours to 2 hours 10 minutes`.
+ * The ages a shaded or dashed stretch runs between at this step: from `shortest` to one step
+ * more. Said once where both ends share a unit: `2 to 3 hours`, `15 to 25 minutes`; otherwise
+ * each in full: `2 hours to 2 hours 10 minutes`.
  */
-function ageSpan(shortest: number, longest: number): string {
+function ageSpan(shortest: number, stepSeconds: number): string {
+    const longest = shortest + stepSeconds;
     const wholeHours = shortest % HOUR === 0 && longest % HOUR === 0;
     const bothMinutes = longest < HOUR;
     return wholeHours || bothMinutes

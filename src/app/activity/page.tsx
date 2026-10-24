@@ -27,9 +27,10 @@ import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activit
  * database the build machine has. The series carries its own "now", so a cached one
  * still shades the right span. The Provisional estimate is learned inside the same compute
  * (a second pass over the PGCRs, ~230 ms on the prod backup on x86), so it is rebuilt on
- * each cache refresh, per range, and costs a visitor nothing once the cache is warm. One cache key per range: an uncached 30-day series costs
- * ~1 s on x86 (~2 s on the ARM box), nearly the whole PGCR table, and that was accepted
- * behind the cache rather than built around (#195).
+ * each cache refresh, per range, and costs a visitor nothing once the cache is warm. One
+ * cache key per range: an uncached 30-day series costs ~1 s on x86 (~2 s on the ARM box),
+ * nearly the whole PGCR table, and that was accepted behind the cache rather than built
+ * around (#195).
  *
  * **The intro's wording follows the series; the control follows the URL.** With a series in
  * hand, the intro names its step and span off the series ({@link rangeOfSeries}), as the

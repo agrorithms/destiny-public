@@ -24,6 +24,22 @@ import {
 const SHADE_FILL = 'var(--ui-text-muted)';
 const SHADE_OPACITY = 0.35;
 
+/** The line's colour, shared by the counted and estimated paths and the dashed key. */
+const LINE_COLOUR = 'var(--ui-accent)';
+
+/**
+ * The stroke both paths of the line share, so the estimate differs from the count only by its
+ * dash. `vector-effect` because the non-uniform stretch would otherwise draw the stroke as a
+ * wedge, thin where the chart is wide.
+ */
+const LINE_STROKE = {
+    fill: 'none',
+    stroke: LINE_COLOUR,
+    strokeWidth: 2,
+    strokeLinejoin: 'round',
+    vectorEffect: 'non-scaling-stroke',
+} as const;
+
 /**
  * The Raid Activity chart (#194–#196): one line of total Raids in Progress, one point per
  * step of the chosen range. Counted steps are drawn solid; the steps too recent to count
@@ -106,28 +122,9 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                         ))}
                         {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
                         <ShadeRect testId="activity-too-recent" span={shade} />
-                        {/* `vector-effect` because the non-uniform stretch would otherwise draw
-                            the stroke as a wedge, thin where the chart is wide. */}
-                        <path
-                            data-testid="activity-line"
-                            d={solid}
-                            fill="none"
-                            stroke="var(--ui-accent)"
-                            strokeWidth={2}
-                            strokeLinejoin="round"
-                            vectorEffect="non-scaling-stroke"
-                        />
+                        <path data-testid="activity-line" d={solid} {...LINE_STROKE} />
                         {dashed === null ? null : (
-                            <path
-                                data-testid="activity-provisional-line"
-                                d={dashed}
-                                fill="none"
-                                stroke="var(--ui-accent)"
-                                strokeWidth={2}
-                                strokeLinejoin="round"
-                                strokeDasharray="6 4"
-                                vectorEffect="non-scaling-stroke"
-                            />
+                            <path data-testid="activity-provisional-line" d={dashed} {...LINE_STROKE} strokeDasharray="6 4" />
                         )}
                     </svg>
 
@@ -211,7 +208,7 @@ function ShadeKey() {
 function DashKey() {
     return (
         <svg aria-hidden viewBox="0 0 12 12" className="mt-1 h-3 w-3 shrink-0">
-            <line x1={0} x2={12} y1={6} y2={6} stroke="var(--ui-accent)" strokeWidth={2} strokeDasharray="4 2" />
+            <line x1={0} x2={12} y1={6} y2={6} stroke={LINE_COLOUR} strokeWidth={2} strokeDasharray="4 2" />
         </svg>
     );
 }

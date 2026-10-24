@@ -1,3 +1,4 @@
+import type { CompletenessCurve } from './completeness-curve';
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
 import { getHashesWithDifficulty } from '../bungie/manifest';
@@ -1731,6 +1732,14 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     }
 
     return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, points };
+}
+
+/**
+ * The completeness curve for a range's step size, learned from the Tracker's PGCRs (#196).
+ * Stub: the tests come first.
+ */
+export function getCompletenessCurve(_options: { now: number; stepSeconds: number }): CompletenessCurve | null {
+    throw new Error('not implemented');
 }
 
 // =====================

@@ -165,6 +165,17 @@ describe('the busiest step', () => {
         // Across midnight the window still reads as one evening's hour.
         expect(formatStepWindow(1792195200 - HOUR, 1792195200)).toBe('Fri 16 Oct, 23:00–00:00 UTC');
     });
+
+    it('names no busiest step when nothing was counted', () => {
+        // A week of zeros has no busiest hour: naming its first as "0 raids in progress"
+        // would hide the caption's "No raids counted" sentence behind a peak that isn't one.
+        const points = [
+            { start: 1792195200, end: 1792198800, total: 0 },
+            { start: 1792198800, end: 1792202400, total: 0 },
+        ];
+
+        expect(busiestStep(points)).toBeNull();
+    });
 });
 
 /** Two decimal places, the precision the path is written at. */

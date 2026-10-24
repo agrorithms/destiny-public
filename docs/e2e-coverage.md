@@ -1472,8 +1472,8 @@ strip's) — the client wrapper reads it to tell the halves apart, and the specs
 **Tried and dropped:** asserting the hover makes no network request, for #81's no-client-fetch
 rule. Next's `<Link>` prefetches (`?_rsc=`) for the page's other links land in the same window
 and cannot be told apart from a fetch the timeline might make without depending on timing. The
-rule is kept by construction instead: `src/components/chart/ChartHover.tsx` has no fetch and receives its strings as
-props.
+rule is kept by construction instead: `TimelineHover.tsx` has no fetch and receives its strings as
+props (moved to src/components/chart/ChartHover.tsx by #193).
 
 **Tried and dropped (review round):** a touch tap in the 4px gap between the two SVGs, meant to
 prove it dismisses. Chromium's touch adjustment retargets a finger tap there onto the nearer SVG

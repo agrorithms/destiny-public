@@ -280,7 +280,10 @@ export function difficultyPlayerName(player: keyof typeof DIFFICULTY_PLAYERS): s
  * - **the oldest report** (#195): an hour-long run {@link ACTIVITY_OLDEST_DAYS} days back,
  *   the oldest PGCR in the world. The chart starts counting 6 hours after the oldest report
  *   (cleanup deletes by start, so earlier steps would read low), so the 30-day chart shades
- *   its first ten days as having no data, while 24 hours and 7 days are drawn whole.
+ *   its first ten days as having no data, while 24 hours and 7 days are drawn whole;
+ * - **a run too recent to count** (#196): 20 minutes, ended 40 minutes before the seed ran,
+ *   so the Provisional estimate has a raid to scale up (it is the only run of these that is
+ *   not counted, and so the only one the dashed line can show).
  *
  * All of them are Checkpoint Runs nobody finished, by members no `players` row names, so
  * no leaderboard, Fastest Clears board, player page or player search can see them: the
@@ -306,6 +309,11 @@ function seedActivityRuns(): void {
         ...Array.from({ length: 6 }, (_, day) => ({ start: thisHour - ((day + 1) * 24 + 6) * hour, seconds: hour })),
         ...Array.from({ length: ACTIVITY_RECENT_PEAK_RAIDS }, () => ({ start: thisHour - 6 * hour, seconds: hour / 3 })),
         { start: thisHour - ACTIVITY_OLDEST_DAYS * 24 * hour, seconds: hour },
+        // The Provisional estimate (#196): a 20-minute run that ended 40 minutes before the seed
+        // ran, so its steps are too recent to count and only the dashed line can show it. Placed
+        // from the clock rather than the clock hour so it stays under 2 hours old for the 80
+        // minutes after seeding that the suite needs.
+        { start: Math.floor(Date.now() / 1000) - 3600, seconds: hour / 3 },
     ];
 
     runs.forEach((run, index) => {

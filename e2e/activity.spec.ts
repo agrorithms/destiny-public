@@ -1,6 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { ACTIVITY_RANGES } from '../src/app/activity/activity-range';
+import { CHART_HEIGHT } from '../src/app/activity/activity-geometry';
 import { ACTIVITY_PEAK_RAIDS, ACTIVITY_RECENT_PEAK_RAIDS } from './support/seed-world';
 import { expectInsideViewport, expectNoOverflow } from './support/viewport';
 
@@ -20,8 +21,12 @@ import { expectInsideViewport, expectNoOverflow } from './support/viewport';
  * shades. The seed's 24-hour peak and its oldest report (20 days back, so the 30-day chart
  * shades where its data starts) are there for these.
  *
- * Tooltips and the Provisional estimate are later tickets (#196–#197) and are not covered
- * here.
+ * The Provisional estimate (#196) is asserted in {@link expectRangeDrawn} for every range
+ * (the dashed line's presence and size, its legend, the shade for the last 15 minutes) and
+ * in its own test for what the picture means: the dashed line continues the counted one and
+ * stops short of the shade. Its values are not asserted — they depend on the hour of day the
+ * suite runs in, which the unit tests pin — only its structure and, at 24 hours, that the
+ * seeded recent run lifts it off the baseline. Tooltips are a later ticket (#197).
  */
 
 const WEEKDAY = '(Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
@@ -38,9 +43,12 @@ const RANGES = {
         label: /^Raids in progress per 10 minutes over the last 24 hours, peaking at /,
         peak: new RegExp(`^Busiest 10 minutes: ${ACTIVITY_RECENT_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:\\d{2}')}\\.$`),
         vertices: [131, 132],
-        // 2 hours plus up to one 10-minute step, of 24 hours.
-        shadeFrom: 100 - (130 / 1440) * 100,
-        legend: 'Shaded: the last 2 hours to 2 hours 10 minutes, not yet counted.',
+        // The estimates between the counted boundary and the 15-minute cutoff: 10 or 11 ten-minute
+        // steps, and the dashed line also holds the last counted point it starts from.
+        estimateVertices: [11, 12],
+        estimateAlways: true,
+        tooRecentLegend: 'Shaded: the last 15 to 25 minutes, too recent to estimate.',
+        provisionalLegend: 'Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.',
         beforeData: false,
     },
     '7d': {
@@ -48,9 +56,11 @@ const RANGES = {
         label: /^Raids in progress per hour over the last 7 days, peaking at /,
         peak: new RegExp(`^Busiest hour: ${ACTIVITY_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:00')}\\.$`),
         vertices: [165, 166],
-        // 2 hours plus up to one 1-hour step, of 168 hours.
-        shadeFrom: 100 - (3 / 168) * 100,
-        legend: 'Shaded: the last 2 to 3 hours, not yet counted.',
+        // One or two hourly estimates, plus the point it starts from.
+        estimateVertices: [2, 3],
+        estimateAlways: true,
+        tooRecentLegend: 'Shaded: the last 15 minutes to 1 hour 15 minutes, too recent to estimate.',
+        provisionalLegend: 'Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.',
         beforeData: false,
     },
     '30d': {
@@ -58,14 +68,25 @@ const RANGES = {
         label: /^Raids in progress per 3 hours over the last 30 days, peaking at /,
         peak: new RegExp(`^Busiest 3 hours: 1 raid in progress, ${WINDOW('\\d{2}:00')}\\.$`),
         vertices: [150, 160],
-        // 2 hours plus up to one 3-hour step, of 720 hours.
-        shadeFrom: 100 - (5 / 720) * 100,
-        legend: 'Shaded: the last 2 to 5 hours, not yet counted.',
+        // Zero or one 3-hour estimate: the grid can leave no whole step between the counted
+        // boundary and the cutoff. Present, it has the point it starts from and one more.
+        estimateVertices: [2, 2],
+        estimateAlways: false,
+        tooRecentLegend: 'Shaded: the last 15 minutes to 3 hours 15 minutes, too recent to estimate.',
+        provisionalLegend: 'Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.',
         beforeData: true,
     },
 } as const;
 
 type RangeId = keyof typeof RANGES;
+
+/** 15 minutes: nothing is drawn for a step younger than this (the query's cutoff, #196). */
+const TOO_RECENT_SECONDS = 15 * 60;
+
+/** The `x,y` of each vertex of a path the chart wrote (`M50,150L150,50`), in order. */
+function vertices(d: string): string[] {
+    return d.match(/[ML]-?[\d.]+,-?[\d.]+/g)?.map((vertex) => vertex.slice(1)) ?? [];
+}
 
 /**
  * The range control's link to a preset, found by the label the control shows for it. The
@@ -93,20 +114,39 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
     await expect(chart.getByRole('img', { name: range.label })).toBeVisible();
     await expect(page.getByTestId('activity-peak')).toHaveText(range.peak);
 
-    // One "M" and then an "L" per further vertex: the path has a point for every counted step.
+    // One "M" and then an "L" per further vertex: the solid path has a point for every counted step
+    // and none for the estimated ones.
     const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
     expect(d.startsWith('M'), 'the line has a starting point').toBe(true);
-    const vertices = (d.match(/L/g) ?? []).length + 1;
-    expect(vertices, `${id} vertex count`).toBeGreaterThanOrEqual(range.vertices[0]);
-    expect(vertices, `${id} vertex count`).toBeLessThanOrEqual(range.vertices[1]);
+    const solidVertices = (d.match(/L/g) ?? []).length + 1;
+    expect(solidVertices, `${id} vertex count`).toBeGreaterThanOrEqual(range.vertices[0]);
+    expect(solidVertices, `${id} vertex count`).toBeLessThanOrEqual(range.vertices[1]);
 
-    // The not-yet-counted shade starts where the last counted step ends and runs to the
-    // right-hand edge.
-    const shade = page.getByTestId('activity-not-yet-counted');
+    // The too-recent shade runs to the right-hand edge and is 15 minutes plus up to one step
+    // wide: the line stops at the last whole step that is 15 minutes old.
+    const { rangeSeconds, stepSeconds } = ACTIVITY_RANGES.find((preset) => preset.id === id)!;
+    const shade = page.getByTestId('activity-too-recent');
     const x = parseFloat((await shade.getAttribute('x')) ?? '');
-    expect(x).toBeGreaterThan(range.shadeFrom);
-    expect(x + parseFloat((await shade.getAttribute('width')) ?? '')).toBeCloseTo(100, 6);
-    await expect(page.getByTestId('activity-not-yet-counted-legend')).toHaveText(range.legend);
+    const width = parseFloat((await shade.getAttribute('width')) ?? '');
+    expect(x + width).toBeCloseTo(100, 6);
+    expect(width, `${id} shade width`).toBeGreaterThanOrEqual((TOO_RECENT_SECONDS / rangeSeconds) * 100 - 1e-6);
+    expect(width, `${id} shade width`).toBeLessThanOrEqual(((TOO_RECENT_SECONDS + stepSeconds) / rangeSeconds) * 100 + 1e-6);
+    await expect(page.getByTestId('activity-too-recent-legend')).toHaveText(range.tooRecentLegend);
+
+    // The dashed estimate: always there at 24 hours and 7 days; at 30 days the 3-hour grid
+    // may leave no step to estimate, and then neither the line nor its legend is drawn.
+    const dashed = page.getByTestId('activity-provisional-line');
+    const dashedCount = await dashed.count();
+    if (range.estimateAlways) expect(dashedCount, `${id} has an estimate`).toBe(1);
+    else expect(dashedCount, `${id} has at most one estimate line`).toBeLessThanOrEqual(1);
+    if (dashedCount === 1) {
+        const estimateVertices = vertices((await dashed.getAttribute('d')) ?? '').length;
+        expect(estimateVertices, `${id} dashed vertex count`).toBeGreaterThanOrEqual(range.estimateVertices[0]);
+        expect(estimateVertices, `${id} dashed vertex count`).toBeLessThanOrEqual(range.estimateVertices[1]);
+        await expect(page.getByTestId('activity-provisional-legend')).toHaveText(range.provisionalLegend);
+    } else {
+        await expect(page.getByTestId('activity-provisional-legend')).toHaveCount(0);
+    }
 
     // Labels are HTML under the axis, in UTC. Hours over 24 hours, the day named at midnight;
     // days otherwise, at least six (a last midnight too near the right-hand edge is unlabelled).
@@ -197,6 +237,50 @@ test.describe('the Raid Activity page', () => {
             await expectChartDrawn(page);
             await expectNoOverflow(page);
         });
+    });
+});
+
+test.describe('the Provisional estimate', () => {
+    test('the dashed line continues the counted one and stops 15 minutes short of now', async ({ page }) => {
+        // What the estimate means on the picture, at the two ranges that always have one: the
+        // dashed line starts exactly where the solid one ends (so the line is continuous and only
+        // its style changes), it is dashed in the accent colour while the counted line is solid,
+        // and it ends left of the shaded last 15 minutes, which it never enters.
+        for (const id of ['24h', '7d'] as const) {
+            const { rangeSeconds } = ACTIVITY_RANGES.find((preset) => preset.id === id)!;
+            await page.goto(`/activity?range=${id}`);
+            await expectRangeDrawn(page, id);
+
+            const solid = vertices((await page.getByTestId('activity-line').getAttribute('d')) ?? '');
+            const dashed = page.getByTestId('activity-provisional-line');
+            const estimate = vertices((await dashed.getAttribute('d')) ?? '');
+            expect(estimate[0], `${id}: the dashed line starts on the last counted point`).toBe(solid.at(-1));
+
+            await expect(dashed, `${id} dashed`).toHaveAttribute('stroke-dasharray', /\d/);
+            await expect(dashed, `${id} colour`).toHaveAttribute('stroke', 'var(--ui-accent)');
+            await expect(page.getByTestId('activity-line'), `${id} counted line`).not.toHaveAttribute('stroke-dasharray');
+
+            // Positions are in a 1000-wide viewBox; the shade in percent. The last estimate sits
+            // at a step's midpoint, so it is clear of the cutoff by half a step as well.
+            const lastX = parseFloat(estimate.at(-1)!.split(',')[0]) / 10;
+            const shadeX = parseFloat((await page.getByTestId('activity-too-recent').getAttribute('x')) ?? '');
+            expect(lastX, `${id}: the estimate ends before the shade`).toBeLessThan(shadeX);
+            expect(lastX, `${id}: nothing within 15 minutes of now`).toBeLessThanOrEqual(100 - (TOO_RECENT_SECONDS / rangeSeconds) * 100);
+
+            await expectNoOverflow(page);
+        }
+    });
+
+    test('the estimate at 24 hours rises off the baseline for the seeded recent runs', async ({ page }) => {
+        // The world's runs from the last two hours (the leaderboard world's, and the 20-minute run
+        // the activity seed adds) are not counted yet, so the dashed line is the only place they
+        // can show: at least one estimated point sits above the chart's floor (y = 200 in the
+        // 200-high viewBox). A flat estimate would mean it scaled nothing up.
+        await page.goto('/activity?range=24h');
+
+        const d = (await page.getByTestId('activity-provisional-line').getAttribute('d')) ?? '';
+        const heights = vertices(d).map((vertex) => parseFloat(vertex.split(',')[1]));
+        expect(Math.min(...heights), 'an estimated step above zero').toBeLessThan(CHART_HEIGHT);
     });
 });
 

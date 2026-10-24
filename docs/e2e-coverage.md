@@ -2541,3 +2541,64 @@ HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at
   series as the chart's name, which `expectRangeDrawn` does check.
 - Later tickets: the Provisional estimate (#196), tooltips in local time (#197), the per-raid
   panel (#198, #199).
+
+## 2026-10-24 — #196 the Raid Activity Provisional estimate
+
+`e2e/activity.spec.ts`, **two new specs** under "the Provisional estimate", and
+`expectRangeDrawn` now also asserts the estimate for every range, so the JavaScript-off,
+phone-width and preset specs inherit it. The suite is now **thirty flows, 179 tests including
+the two canary setups**.
+
+**Seed world:** `seedActivityRuns` makes **fourteen** PGCRs, one more than #195's thirteen: a
+20-minute run that ended 40 minutes before the seed ran (from the clock, not the clock hour, so
+it stays under 2 hours old, and so estimated, for the 80 minutes the suite needs). It is the only
+run of the activity seed too recent to count, so the dashed line is the only place it can show.
+The curve the estimate divides by needs no seed of its own: the existing runs of the last week
+(outside the last 24 hours) are its training steps, and an hour of the day with none uses the
+all-hours curve.
+
+`expectRangeDrawn` now also checks, per range:
+- the **too-recent shade** (`activity-too-recent`, replacing `activity-not-yet-counted`) ends at
+  100% and is 15 minutes plus up to one step wide, and its legend (`activity-too-recent-legend`)
+  is that range's: "the last 15 to 25 minutes" / "15 minutes to 1 hour 15 minutes" / "15 minutes
+  to 3 hours 15 minutes", "too recent to estimate";
+- the **dashed line** (`activity-provisional-line`) is present at 24h and 7d with 11–12 and 2–3
+  vertices (the estimated steps plus the counted point it starts from), and at 30d is absent or
+  has 2 (the 3-hour grid can leave no whole step between the counted boundary and the cutoff),
+  with its legend (`activity-provisional-legend`, "Dashed: an estimate, from 2 hours to 2 hours
+  10 minutes ago …" per range) present exactly when the line is;
+- the solid line's vertex count is still the counted steps only (131–132, 165–166, 150–160).
+
+1. **The dashed line continues the counted one and stops 15 minutes short of now.** At 24h and 7d:
+   the dashed path's first vertex is the solid path's last; the dashed one has a `stroke-dasharray`
+   and the accent stroke, the solid one none; the dashed one's last vertex is left of the shade
+   and at least 15 minutes of the window short of the right-hand edge; `expectNoOverflow`.
+2. **The 24-hour estimate rises off the baseline.** The runs of the last two hours are not counted,
+   so a flat dashed line would mean the estimate scaled nothing up: at least one vertex is above
+   the chart's floor.
+
+Values are not asserted: they depend on the hour of the day the suite runs in. Those are pinned in
+`tests/db/raids-in-progress.test.ts` (partial count over the share, the hour of the day, the
+cutoffs at all three step sizes), `tests/db/completeness-curve.test.ts` and
+`src/lib/db/completeness-curve.test.ts`.
+
+**Bite proof — the red run.** Specs and seed committed (`aa699fa`) before the chart drew anything
+new; the query already returned the estimated points, and the chart still drew them all into the
+solid line. Of the 13 tests (11 activity specs and the two canary setups), **10 failed and 3
+passed**: the canaries and the nav link spec. The 10: the join-and-cutoff spec (failing in `expectRangeDrawn` on "24h vertex count",
+because the solid line had the estimated steps in it); the 24h estimate spec (timing out waiting
+for `activity-provisional-line`); and eight other `expectRangeDrawn` callers, seven timing out
+waiting for `activity-too-recent` and the JavaScript-off presets spec failing "24h vertex count". Green at the commit that draws the dashed line and the
+shade (`8bc7ed2`): 13 of 13. No separate deliberate break: both new specs and every changed
+assertion were seen failing before the code existed.
+
+### What is still NOT covered
+
+- The estimate's values and its error. The backtest is ADR 0009's, from a prod backup; the unit
+  tests pin the arithmetic.
+- That the estimate is actually higher than the partial count on screen (the seed's step shares
+  are 1 for most hours, because its runs are whole hours); Vitest pins the division.
+- The dashed line at 30d when it exists, and its absence when the grid leaves no step, are both
+  accepted by the spec; neither is forced (the grid depends on the clock).
+- The legend's prose after its first sentence, and the dashed swatch.
+- Later tickets: tooltips in local time (#197), the per-raid panel (#198, #199).

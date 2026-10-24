@@ -195,15 +195,33 @@ export interface ShadedSpan {
 }
 
 /**
- * The span shaded as not yet counted: from where counted data ends (`countedUntil`, the
- * end of the last counted step) to "now" at the right-hand edge, so it meets the line's
- * last step with no gap. Two hours plus up to one step wide ({@link notYetCountedLegend}).
- * #196 fills it with a Provisional estimate.
+ * The line as two SVG paths: the counted steps solid, and the estimated ones dashed. The
+ * dashed path starts on the last counted point, so the two meet and only the style changes
+ * at the boundary; with nothing counted it starts at its own first point. It is null when no
+ * step is estimated, and the solid one is empty when no step is counted.
  */
-export function notYetCounted(
-    series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>
-): ShadedSpan {
-    const startPercent = xPercent(series.countedUntil, series.from, series.to);
+export function linePaths(
+    points: RaidsInProgressPoint[],
+    from: number,
+    to: number,
+    max: number
+): { solid: string; dashed: string | null } {
+    const counted = points.filter((point) => !point.provisional);
+    const estimated = points.filter((point) => point.provisional);
+    return {
+        solid: linePath(counted, from, to, max),
+        dashed: estimated.length === 0 ? null : linePath([...counted.slice(-1), ...estimated], from, to, max),
+    };
+}
+
+/**
+ * The span shaded as too recent to estimate: from the end of the last estimated step
+ * (`provisionalUntil`) to "now" at the right-hand edge. The line's last vertex is that
+ * step's midpoint, so the shade starts half a step right of it. 15 minutes plus up to one
+ * step wide ({@link tooRecentLegend}).
+ */
+export function tooRecent(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'provisionalUntil'>): ShadedSpan {
+    const startPercent = xPercent(series.provisionalUntil, series.from, series.to);
     const endPercent = 100;
     return { startPercent, endPercent, widthPercent: endPercent - startPercent };
 }
@@ -230,24 +248,33 @@ export function describeBeforeData(countedFrom: number): string {
 }
 
 /**
- * How old a step's end must be before it is counted: the query's `COUNTED_AGE_SECONDS`,
- * copied because importing a value from `@/lib/db/queries` would put better-sqlite3 on
- * this module's import path. A test holds the two equal.
+ * How old a step's end must be before it is counted, and so where the dashed line starts:
+ * the query's `COUNTED_AGE_SECONDS`, copied because importing a value from `@/lib/db/queries`
+ * would put better-sqlite3 on this module's import path. A test holds the two equal.
  */
 export const NOT_YET_COUNTED_AGE_SECONDS = 2 * HOUR;
 
 /**
- * The not-yet-counted shade's legend: how wide it can be at this step. Counting ends at
- * the last whole step 2 hours old, so the shade is 2 hours plus up to one step wide — 2 to
- * 3 hours at 1-hour steps, 2 hours to 2 hours 10 minutes at 10-minute steps.
+ * How young a step's end must be to be left out: the query's `PROVISIONAL_MIN_AGE_SECONDS`,
+ * copied for the same reason as {@link NOT_YET_COUNTED_AGE_SECONDS}, and held equal by a test.
  */
-export function notYetCountedLegend(stepSeconds: number): string {
-    const shortest = NOT_YET_COUNTED_AGE_SECONDS;
-    const longest = shortest + stepSeconds;
-    const span = longest % HOUR === 0
-        ? `${shortest / HOUR} to ${formatDuration(longest)}`
-        : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
-    return `Shaded: the last ${span}, not yet counted.`;
+export const TOO_RECENT_AGE_SECONDS = 15 * MINUTE;
+
+/**
+ * The too-recent shade's legend: how wide it can be at this step. The line ends at the last
+ * whole step 15 minutes old, so the shade is 15 minutes plus up to one step wide — 15 to 25
+ * minutes at 10-minute steps, 15 minutes to 1 hour 15 minutes at 1-hour steps.
+ */
+export function tooRecentLegend(stepSeconds: number): string {
+    return `Shaded: the last ${ageSpan(TOO_RECENT_AGE_SECONDS, stepSeconds)}, too recent to estimate.`;
+}
+
+/**
+ * The dashed line's legend: where it starts. It begins where counting ends, at the last
+ * whole step 2 hours old — 2 hours plus up to one step back.
+ */
+export function provisionalLegend(stepSeconds: number): string {
+    return `Dashed: an estimate, from ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)} ago up to the shaded stretch.`;
 }
 
 /**
@@ -269,14 +296,20 @@ export function describePeak(
 }
 
 /**
- * The step with the most raids in progress, the earliest on a tie, or null when no step
- * has any: a week of zeros has no busiest hour to name.
+ * The counted step with the most raids in progress, the earliest on a tie, or null when no
+ * step has any: a week of zeros has no busiest hour to name. Estimates are left out: the
+ * caption states a count, and an estimate above it must not take the title.
  */
 export function busiestStep(points: RaidsInProgressPoint[]): RaidsInProgressPoint | null {
     return points.reduce<RaidsInProgressPoint | null>(
-        (best, point) => (point.total > (best?.total ?? 0) ? point : best),
+        (best, point) => (!point.provisional && point.total > (best?.total ?? 0) ? point : best),
         null
     );
+}
+
+/** The highest total of any step, estimates included, so the axis never clips the dashed line. */
+export function tallestStep(points: RaidsInProgressPoint[]): number {
+    return Math.max(0, ...points.map((point) => point.total));
 }
 
 /** A step's window as a reader would say it: `Sat 17 Oct, 20:00–21:00 UTC`. */
@@ -290,13 +323,31 @@ function formatInstant(at: number): string {
 }
 
 /**
- * `2 hours`, `5 hours`, `2 hours 10 minutes`. Only ever given the not-yet-counted shade's
- * widths, which are never under 2 hours, so it has no singular.
+ * `15 minutes`, `1 hour 15 minutes`, `2 hours`, `2 hours 10 minutes`. The ages it is given
+ * (15 minutes, 2 hours) and the steps added to them are whole multiples of 5 minutes, so a
+ * leftover minute count is never 1.
  */
 function formatDuration(seconds: number): string {
     const hours = Math.floor(seconds / HOUR);
     const minutes = Math.round((seconds % HOUR) / MINUTE);
-    return minutes > 0 ? `${hours} hours ${minutes} minutes` : `${hours} hours`;
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours} ${hours === 1 ? 'hour' : 'hours'}`);
+    if (minutes > 0) parts.push(`${minutes} minutes`);
+    return parts.join(' ');
+}
+
+/**
+ * The ages a shaded or dashed stretch runs between at this step: from `shortest` to one step
+ * more. Said once where both ends share a unit: `2 to 3 hours`, `15 to 25 minutes`; otherwise
+ * each in full: `2 hours to 2 hours 10 minutes`.
+ */
+function ageSpan(shortest: number, stepSeconds: number): string {
+    const longest = shortest + stepSeconds;
+    const wholeHours = shortest % HOUR === 0 && longest % HOUR === 0;
+    const bothMinutes = longest < HOUR;
+    return wholeHours || bothMinutes
+        ? `${shortest / (wholeHours ? HOUR : MINUTE)} to ${formatDuration(longest)}`
+        : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
 }
 
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */

@@ -1,3 +1,13 @@
+import {
+    curveFromTally,
+    estimateTotal,
+    hourOfStep,
+    newTally,
+    shareAt,
+    tallyRun,
+    trainingWindow,
+    type CompletenessCurve,
+} from './completeness-curve';
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
 import { getHashesWithDifficulty } from '../bungie/manifest';
@@ -1598,6 +1608,13 @@ export function deleteSessionsContainingPlayer(membershipId: string): void {
 export const COUNTED_AGE_SECONDS = 7200; // two hours
 
 /**
+ * How old a step's end must be before the Provisional estimate shows it (#196). Nothing is
+ * reported for a newer step: at that age too little of it has been reported to scale up (on
+ * prod the median error is 5% at 15 minutes and grows steeply below).
+ */
+export const PROVISIONAL_MIN_AGE_SECONDS = 900; // fifteen minutes
+
+/**
  * How long after the oldest stored PGCR began a step may start (#195). Cleanup deletes PGCRs
  * by *start* (`period`), so a moment just after the oldest one kept is under-counted by every
  * run that started before it and was still going. On the 2026-10-23 prod backup the runs in
@@ -1613,6 +1630,12 @@ export interface RaidsInProgressPoint {
     end: number;
     /** Raid instances in progress across every raid, averaged over the step. */
     total: number;
+    /**
+     * True when `total` is an estimate (CONTEXT.md, Provisional) rather than a count: the
+     * step's end is under {@link COUNTED_AGE_SECONDS} old. The points run in order, counted
+     * ones first.
+     */
+    provisional: boolean;
 }
 
 export interface RaidsInProgressSeries {
@@ -1631,13 +1654,22 @@ export interface RaidsInProgressSeries {
      */
     countedFrom: number;
     /**
-     * Where counted data ends: the end of the last step returned, on the step grid. That is
+     * Where counted data ends: the end of the last counted step, on the step grid. That is
      * the last step boundary at or before `now - COUNTED_AGE_SECONDS`, so between two and
-     * three hours before `now` at 1-hour steps. The chart's not-yet-counted shade starts
-     * here, and #196's Provisional estimate fills from here, so it must meet the line rather
-     * than sit at `now - COUNTED_AGE_SECONDS` and leave a gap with neither.
+     * three hours before `now` at 1-hour steps. The Provisional steps (#196) start here, and
+     * the chart's dashed line starts from the last counted point, so they meet the line
+     * rather than sit at `now - COUNTED_AGE_SECONDS` and leave a gap with neither.
      */
     countedUntil: number;
+    /**
+     * Where the line ends: the end of the last Provisional step returned, on the step grid
+     * and at least {@link PROVISIONAL_MIN_AGE_SECONDS} before `to` — the grid floor of that
+     * age, unless the curve has no share for an earlier step: the estimate stops at the
+     * first step it can't make. `countedUntil` when no step is Provisional (no history to
+     * learn a curve from, no share for the first step, or no step between the counted
+     * boundary and the cutoff). The chart's too-recent shade starts here.
+     */
+    provisionalUntil: number;
     points: RaidsInProgressPoint[];
 }
 
@@ -1661,28 +1693,40 @@ export interface RaidsInProgressOptions {
  *
  * **Steps sit on the step grid** — whole multiples of `stepSeconds` since the epoch, so a
  * 1-hour step is a UTC clock hour — from the first boundary at or after `now -
- * rangeSeconds`. A step is returned only once its end is {@link COUNTED_AGE_SECONDS} old;
- * the newer ones are absent rather than low. A maintenance window is a true zero.
+ * rangeSeconds`. A step is counted once its end is {@link COUNTED_AGE_SECONDS} old; newer
+ * steps are Provisional down to {@link PROVISIONAL_MIN_AGE_SECONDS} old (below), and the
+ * ones younger still are absent rather than low. A maintenance window is a true zero.
  *
  * **The window doesn't start before the data** (#195). Steps start no earlier than
  * {@link DATA_START_MARGIN_SECONDS} after the oldest stored PGCR began, because cleanup
  * has deleted the runs that started before it and some of them were still going then. The
  * bound is read from the data rather than from `CRAWLER_CLEANUP_MAX_AGE_HOURS`: the web
  * process doesn't see the crawler's env, and on prod the data reaches further back than
- * that setting says (ADR 0009). Steps before it are absent, like the ones too new to count.
+ * that setting says (ADR 0009). Steps before it are absent, like the ones too new to estimate.
  *
- * **One sweep, not one query per step.** The PGCRs overlapping the window are read once,
- * through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step start`), and
- * each adds its overlap in O(1): the partial first and last steps it touches directly, and
- * the whole steps between them through a running difference array. So the cost is rows +
- * steps, never rows × steps — a run lasting days adds two array writes, not one per hour it
- * spans.
+ * **Steps too recent to count are estimated, not left out** (#196, ADR 0009). Each step
+ * ending between {@link COUNTED_AGE_SECONDS} and {@link PROVISIONAL_MIN_AGE_SECONDS} ago is
+ * returned with `provisional: true`: the raid time of runs already ended, over the share a
+ * step's raid time is usually known at that age, for its hour of the day
+ * ({@link getCompletenessCurve}). Younger steps are absent. The estimate stops at the first
+ * step whose hour has no share to divide by, so it is one unbroken run. With no history to
+ * learn from there is no curve and no estimate. A run that has not ended by `now` is not
+ * read, in either case: the estimate is of what the counted version will say, from what
+ * has ended.
+ *
+ * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
+ * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step
+ * start`), and each adds its overlap in O(1): the partial first and last steps it touches
+ * directly, and the whole steps between them through a running difference array. So the
+ * cost is rows + steps, never rows × steps — a run lasting days adds two array writes, not
+ * one per hour it spans. The curve is a second pass, over its own training week.
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
     const from = now - rangeSeconds;
     const db = getDb();
     const countedUntil = Math.floor((now - COUNTED_AGE_SECONDS) / stepSeconds) * stepSeconds;
+    const cutoff = Math.floor((now - PROVISIONAL_MIN_AGE_SECONDS) / stepSeconds) * stepSeconds;
     // Every PGCR, raid or not: cleanup deletes them all by age. Through idx_pgcrs_period.
     // An empty table reads as the epoch, which no window reaches back to.
     const { oldest } = db.prepare('SELECT COALESCE(MIN(period), 0) AS oldest FROM pgcrs').get() as { oldest: number };
@@ -1690,26 +1734,20 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         countedUntil,
         Math.ceil(Math.max(from, oldest + DATA_START_MARGIN_SECONDS) / stepSeconds) * stepSeconds
     );
-    const steps = (countedUntil - firstStart) / stepSeconds;
+    const countedSteps = (countedUntil - firstStart) / stepSeconds;
+    const steps = (cutoff - firstStart) / stepSeconds;
+    const curve = getCompletenessCurve({ now, stepSeconds });
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
-    // One slot past the last step in each, for a run ending exactly at `countedUntil`: its
+    // One slot past the last step in each, for a run ending exactly at the cutoff: its
     // last piece lands there, and is zero seconds long.
     const partialSeconds = new Float64Array(steps + 1);
     const wholeStepsDelta = new Float64Array(steps + 1);
 
-    const rows = db.prepare(`
-    SELECT p.period, p.ended_at
-    FROM pgcrs p
-    WHERE p.ended_at > ?
-      AND p.period < ?
-      AND p.raid_key IS NOT NULL
-  `).raw().iterate(firstStart, countedUntil) as IterableIterator<[number, number]>;
-
-    for (const [period, endedAt] of rows) {
+    for (const [period, endedAt] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
         const start = Math.max(period, firstStart);
-        const end = Math.min(endedAt, countedUntil);
+        const end = Math.min(endedAt, cutoff);
         const first = Math.floor((start - firstStart) / stepSeconds);
         const last = Math.floor((end - firstStart) / stepSeconds);
         // The run's piece of its first step, its piece of its last, and +1 for every whole
@@ -1727,10 +1765,68 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     for (let index = 0; index < steps; index++) {
         wholeRuns += wholeStepsDelta[index];
         const start = firstStart + index * stepSeconds;
-        points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds });
+        const end = start + stepSeconds;
+        const observed = wholeRuns + partialSeconds[index] / stepSeconds;
+        if (index < countedSteps) {
+            points.push({ start, end, total: observed, provisional: false });
+            continue;
+        }
+        // The estimate stops at the first step it can't make, so it is one unbroken run
+        // and `provisionalUntil` is where it ends: shares are per hour of the day, and a
+        // later step with a share would otherwise be drawn joined across the gap.
+        const total = curve === null ? null : estimateTotal(observed, shareAt(curve, hourOfStep(start, stepSeconds), now - end));
+        if (total === null) break;
+        points.push({ start, end, total, provisional: true });
     }
 
-    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, points };
+    const lastPoint = points.at(-1);
+    const provisionalUntil = lastPoint?.provisional ? lastPoint.end : countedUntil;
+    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil, points };
+}
+
+/**
+ * The completeness curve for a range's step size, learned from the Tracker's PGCRs (#196):
+ * for each hour of the day, how much of a step's raid time is known a given age after the
+ * step ends (./completeness-curve.ts). Null when the training week holds no raid at all.
+ *
+ * **Reads the week of whole steps ending between 8 days and 24 hours before `now`**, so
+ * every run that overlapped them has long since ended, and nothing newer teaches it
+ * how incomplete a recent step is. Raids only, by `ended_at` (the covering
+ * `idx_pgcrs_ended_period_raid`, no table lookups) and never `fetched_at`: the curve is
+ * about how long raids last, and the scanner's lag is not. A run that has not ended by
+ * `now` is not a report yet, as in {@link getRaidsInProgress}.
+ *
+ * A second pass over the same index as the sweep: about 230 ms on the prod backup, once
+ * per cache refresh of a range.
+ */
+export function getCompletenessCurve(options: { now: number; stepSeconds: number }): CompletenessCurve | null {
+    const { now, stepSeconds } = options;
+    const window = trainingWindow(now, stepSeconds);
+    const tally = newTally();
+    for (const [period, endedAt] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
+        tallyRun(tally, window, stepSeconds, period, endedAt);
+    }
+    return curveFromTally(tally);
+}
+
+/**
+ * `[period, ended_at]` of every raid that ended after `endedAfter` and by `now`, and started
+ * before `startedBefore` (all unix seconds, named so no two can be swapped): the runs Raid
+ * Activity counts ({@link getRaidsInProgress}) and the ones its completeness curve learns
+ * from ({@link getCompletenessCurve}), read one way for both so the estimate scales up the
+ * same population it was learned from. Raids only, through the covering
+ * `idx_pgcrs_ended_period_raid`. A run that has not ended by `now` is not a report yet.
+ */
+function endedRaidRuns(bounds: { endedAfter: number; now: number; startedBefore: number }): IterableIterator<[number, number]> {
+    const { endedAfter, now, startedBefore } = bounds;
+    return getDb().prepare(`
+    SELECT p.period, p.ended_at
+    FROM pgcrs p
+    WHERE p.ended_at > ?
+      AND p.ended_at <= ?
+      AND p.period < ?
+      AND p.raid_key IS NOT NULL
+  `).raw().iterate(endedAfter, now, startedBefore) as IterableIterator<[number, number]>;
 }
 
 // =====================

@@ -6,6 +6,7 @@ import {
     type RaidsInProgressSeries,
 } from '@/lib/db/queries';
 import { resetTestDb } from '../helpers/db';
+import { getDb } from '@/lib/db';
 import { seedRun, type SeedRunOptions } from '../helpers/seed';
 import { NON_RAID_HASH } from '../helpers/pgcr-builder';
 
@@ -33,6 +34,11 @@ function hoursBeforeNow(hours: number): number {
 /** The value of the step starting at `start`, or undefined when the series has no such step. */
 function valueAt(series: RaidsInProgressSeries, start: number): number | undefined {
     return series.points.find((point) => point.start === start)?.total;
+}
+
+/** The series' counted steps: the Provisional ones are #196's, and these tests are about the count. */
+function countedPoints(series: RaidsInProgressSeries) {
+    return series.points.filter((point) => !point.provisional);
 }
 
 let nextInstance = 1;
@@ -104,7 +110,7 @@ describe('step averaging', () => {
 
         const series = getRaidsInProgress(SEVEN_DAYS);
 
-        expect(series.points[0]).toEqual({ start: firstStep, end: firstStep + HOUR, total: 0.5 });
+        expect(series.points[0]).toEqual({ start: firstStep, end: firstStep + HOUR, total: 0.5, provisional: false });
     });
 });
 
@@ -128,6 +134,16 @@ describe('which runs count', () => {
 });
 
 describe('which steps come back', () => {
+    it('does not read a counted run that has not ended by "now"', () => {
+        // The series says what had ended as of `now`. A report whose end lies after it was
+        // not a raid already ended then, even where it overlaps a long-counted step. (The
+        // writer would not store one this far ahead; this is a row seen from an earlier now.)
+        seedRaid(hoursBeforeNow(10), HOUR);
+        getDb().prepare('UPDATE pgcrs SET ended_at = ? WHERE instance_id = ?').run(NOW + HOUR, String(nextInstance - 1));
+
+        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0);
+    });
+
     it('returns hourly steps over the last 7 days, ending at the last step 2 hours old', () => {
         // With NOW on the hour, the window's steps run from exactly 7 days back to the step
         // ending 2 hours ago: 166 of the range's 168 hours. The newer two are absent, not
@@ -149,7 +165,7 @@ describe('which steps come back', () => {
 
         const series = getRaidsInProgress({ ...SEVEN_DAYS, now });
 
-        expect(series.points.at(-1)).toEqual({ start: hoursBeforeNow(3), end: hoursBeforeNow(2), total: 1 });
+        expect(series.points.at(-1)).toEqual({ start: hoursBeforeNow(3), end: hoursBeforeNow(2), total: 1, provisional: false });
     });
 
     it('reports counting as ending where the last counted step ends, not at "now" minus 2 hours', () => {
@@ -271,7 +287,7 @@ describe('where the data starts', () => {
         const series = getRaidsInProgress(SEVEN_DAYS);
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY);
-        expect(series.points).toHaveLength(166);
+        expect(countedPoints(series)).toHaveLength(166);
     });
 
     it('starts at the first whole step the margin after the oldest report', () => {
@@ -284,7 +300,7 @@ describe('where the data starts', () => {
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY + HOUR);
         expect(series.points[0].start).toBe(NOW - 7 * DAY + HOUR);
-        expect(series.points).toHaveLength(165);
+        expect(countedPoints(series)).toHaveLength(165);
     });
 
     it('reads the data start from any report, not only raids', () => {
@@ -316,5 +332,225 @@ describe('where the data starts', () => {
         expect(series.countedFrom).toBe(NOW - 7 * DAY);
         expect(series.points).toHaveLength(166);
         expect(series.points.every((point) => point.total === 0)).toBe(true);
+    });
+});
+
+/**
+ * The Provisional estimate (#196). A step less than 2 hours old is not counted but
+ * estimated: the raid time already reported, divided by the share of a step's raid time
+ * that is usually reported by then (./completeness-curve.ts), learned for that hour of the
+ * day from the week before. The history below makes the shares come out by hand.
+ *
+ * "Now" here is 11:30 UTC on a day 20 days back, so the steps the estimate covers fall in
+ * known hours of the day (9 and 10) and every run is long over. Each day of the training
+ * week (2 to 7 days before) holds three runs, all hour-aligned:
+ *
+ * - 09:00-10:00: the whole 09:00 step, reported at once; hour 9's share is 1 at every age.
+ * - 10:00-11:00 and 10:45-11:45: 3600 s in the 10:00 step reported at once, and 900 s of
+ *   it only 45 minutes after the step ends. Of 4500 s, hour 10's share is 0.8 until then.
+ */
+const MIDNIGHT = Math.floor(Date.now() / 1000 / DAY) * DAY - 20 * DAY;
+const HALF_PAST_ELEVEN = MIDNIGHT + 11 * HOUR + 30 * MINUTE;
+
+/** Seconds past the test day's midnight at `hour:minute`. */
+function clock(hour: number, minute = 0): number {
+    return MIDNIGHT + hour * HOUR + minute * MINUTE;
+}
+
+/** The daily runs described above, as `[hour, minute, seconds]` triples. */
+function seedTrainingWeek(runs: Array<[number, number, number]>): void {
+    for (let day = 2; day <= 7; day++) {
+        for (const [hour, minute, seconds] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds);
+    }
+}
+
+const STANDARD_WEEK: Array<[number, number, number]> = [
+    [9, 0, HOUR],
+    [10, 0, HOUR],
+    [10, 45, HOUR],
+];
+
+function provisionalAt(series: RaidsInProgressSeries, start: number) {
+    return series.points.find((point) => point.start === start && point.provisional);
+}
+
+describe('the Provisional estimate', () => {
+    it('runs from where counting ends down to the last step 15 minutes old, flagging each point', () => {
+        // At 11:30 the last step 2 hours old ends at 09:00 (counted), the steps ending at
+        // 10:00 and 11:00 are 90 and 30 minutes old (estimated), and the one in progress
+        // is absent. Every point says which it is.
+        seedTrainingWeek(STANDARD_WEEK);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        const tail = series.points.slice(-3);
+        expect(tail.map((point) => [point.end, point.provisional])).toEqual([
+            [clock(9), false],
+            [clock(10), true],
+            [clock(11), true],
+        ]);
+        expect(series.points.filter((point) => point.provisional)).toHaveLength(2);
+        expect(series.countedUntil).toBe(clock(9));
+        expect(series.provisionalUntil).toBe(clock(11));
+    });
+
+    it('estimates a step as its reported raid time over the share reported by then', () => {
+        // 09:00 holds half an hour of one raid, reported at once; its hour's share is 1, so
+        // the estimate is the count. 10:00 holds the same half hour, but hour 10 reports only
+        // 80% of its time by 30 minutes after the step: 0.5 / 0.8.
+        seedTrainingWeek(STANDARD_WEEK);
+        seedRaid(clock(9), 30 * MINUTE);
+        seedRaid(clock(10), 30 * MINUTE);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(provisionalAt(series, clock(9))?.total).toBeCloseTo(0.5, 10);
+        expect(provisionalAt(series, clock(10))?.total).toBeCloseTo(0.625, 10);
+    });
+
+    it('gives each hour of the day its own estimate from the same partial count', () => {
+        // Same raid time reported in two steps, each read 30 minutes after it ends (09:00 at
+        // 10:30, 10:00 at 11:30), and two different answers, because the hours' runs differ:
+        // hour 9's share is 1 and hour 10's is 0.8. Divided by one curve for every hour, the
+        // same partial count at the same age would give the same estimate. (The training week
+        // is the same at both nows: both bounds move by an hour and no run is near either.)
+        seedTrainingWeek(STANDARD_WEEK);
+        seedRaid(clock(9), 30 * MINUTE);
+        seedRaid(clock(10), 30 * MINUTE);
+
+        const ninth = provisionalAt(getRaidsInProgress({ ...SEVEN_DAYS, now: clock(10, 30) }), clock(9))?.total;
+        const tenth = provisionalAt(getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN }), clock(10))?.total;
+
+        expect(ninth).toBeCloseTo(0.5, 10);
+        expect(tenth).toBeCloseTo(0.625, 10);
+    });
+
+    it('counts a run still going at the 15-minute cutoff only up to the cutoff', () => {
+        // 10:50 to 11:20 has ended by 11:30, but only its 10 minutes inside the 10:00 step
+        // are in that step; its 20 minutes in 11:00 belong to a step too recent to draw.
+        seedTrainingWeek(STANDARD_WEEK);
+        seedRaid(clock(10, 50), 30 * MINUTE);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(provisionalAt(series, clock(10))?.total).toBeCloseTo(10 / 60 / 0.8, 10);
+    });
+
+    it('does not read a run that has not ended by "now"', () => {
+        // A report ending after "now" is not a raid already ended. (The writer would not
+        // store one this far ahead; this is a row seen from an earlier now.)
+        seedTrainingWeek(STANDARD_WEEK);
+        seedRaid(clock(10), HOUR);
+        getDb().prepare('UPDATE pgcrs SET ended_at = ? WHERE instance_id = ?').run(HALF_PAST_ELEVEN + HOUR, String(nextInstance - 1));
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(provisionalAt(series, clock(10))?.total).toBe(0);
+    });
+
+    it('returns nothing for a step less than 15 minutes old, and the step at exactly 15', () => {
+        // The step ending at 11:00 is 14 minutes 59 seconds old at 11:14:59 and 15 minutes
+        // old at 11:15:00.
+        seedTrainingWeek(STANDARD_WEEK);
+
+        const early = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(11, 15) - 1 });
+        const exact = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(11, 15) });
+
+        expect(early.points.at(-1)?.end).toBe(clock(10));
+        expect(exact.points.at(-1)?.end).toBe(clock(11));
+        expect(exact.provisionalUntil).toBe(clock(11));
+    });
+
+    it('counts a step that is exactly 2 hours old and estimates one a second younger', () => {
+        // The step ending at 10:00: counted at 12:00:00, still an estimate at 11:59:59.
+        seedTrainingWeek(STANDARD_WEEK);
+
+        const counted = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(12) });
+        const estimated = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(12) - 1 });
+
+        expect(counted.points.find((point) => point.end === clock(10))?.provisional).toBe(false);
+        expect(estimated.points.find((point) => point.end === clock(10))?.provisional).toBe(true);
+    });
+
+    it('applies the same cutoffs at every step size', () => {
+        // At 12:45 the counted boundary and the 15-minute cutoff fall on each grid: 10:40 to
+        // 12:30 in 10-minute steps (11 estimates), 10:00 to 12:00 in hours (2), 09:00 to
+        // 12:00 in 3-hour steps (1). No estimated step is under 15 minutes or 2 hours old.
+        seedTrainingWeek(STANDARD_WEEK);
+        const now = clock(12, 45);
+        const cases = [
+            { rangeSeconds: DAY, stepSeconds: 10 * MINUTE, counted: clock(10, 40), until: clock(12, 30), estimates: 11 },
+            { rangeSeconds: 7 * DAY, stepSeconds: HOUR, counted: clock(10), until: clock(12), estimates: 2 },
+            { rangeSeconds: 30 * DAY, stepSeconds: 3 * HOUR, counted: clock(9), until: clock(12), estimates: 1 },
+        ];
+
+        for (const { rangeSeconds, stepSeconds, counted, until, estimates } of cases) {
+            const series = getRaidsInProgress({ rangeSeconds, stepSeconds, now });
+            const estimated = series.points.filter((point) => point.provisional);
+
+            expect(series.countedUntil, `${stepSeconds}s counted boundary`).toBe(counted);
+            expect(series.provisionalUntil, `${stepSeconds}s cutoff`).toBe(until);
+            expect(estimated, `${stepSeconds}s estimates`).toHaveLength(estimates);
+            expect(estimated[0].start, `${stepSeconds}s first estimate`).toBe(counted);
+            expect(estimated.at(-1)?.end, `${stepSeconds}s last estimate`).toBe(until);
+            expect(series.points.filter((point) => !point.provisional).at(-1)?.end).toBe(counted);
+        }
+    });
+
+    it('estimates nothing for a step whose hour reports none of its time by then', () => {
+        // Every training run is the late one, so hour 10 reports nothing by 30 minutes: no
+        // share to divide by. Its step is left out rather than drawn at infinity, and the
+        // line ends where the last estimate does.
+        seedTrainingWeek([[10, 45, HOUR]]);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(series.points.at(-1)?.end).toBe(clock(10));
+        expect(series.points.at(-1)?.provisional).toBe(true);
+        expect(series.provisionalUntil).toBe(clock(10));
+    });
+
+    it('ends the estimate at the first step with no share, rather than skipping over it', () => {
+        // Shares are per hour of the day, so a middle step can have none while a later one
+        // has some. Here every training run from 09:00 lasts until 11:45, 105 minutes past
+        // the 09:00 step's end: hour 9 reports nothing by 90 minutes. Hour 10 reports a
+        // third of its time by 30 minutes (a 10:00-10:30 run). At 11:30 the 09:00 step has
+        // no estimate, so the 10:00 step after it is not drawn either: the dashed line is
+        // one unbroken run, and the shade starts where it stops.
+        seedTrainingWeek([
+            [9, 0, 165 * MINUTE],
+            [10, 0, 30 * MINUTE],
+        ]);
+        seedRaid(clock(10), 30 * MINUTE);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(series.points.some((point) => point.provisional)).toBe(false);
+        expect(series.points.at(-1)?.end).toBe(clock(9));
+        expect(series.provisionalUntil).toBe(clock(9));
+    });
+
+    it('estimates nothing when there is no history to learn from', () => {
+        // An empty week has no curve. The series is the counted one, ending where it did
+        // before #196, and the cutoff sits at the counted boundary.
+        seedRaid(clock(10), HOUR);
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(series.points.some((point) => point.provisional)).toBe(false);
+        expect(series.points.at(-1)?.end).toBe(clock(9));
+        expect(series.provisionalUntil).toBe(series.countedUntil);
+    });
+
+    it('leaves counted values as they were', () => {
+        // Adding the estimate must not move a counted step: a run in a counted hour reads
+        // the same whether or not there is a curve.
+        seedRaid(clock(7), 30 * MINUTE);
+        const without = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        seedTrainingWeek(STANDARD_WEEK);
+        const withCurve = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+
+        expect(valueAt(without, clock(7))).toBe(0.5);
+        expect(valueAt(withCurve, clock(7))).toBe(0.5);
     });
 });

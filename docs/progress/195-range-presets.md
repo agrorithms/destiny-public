@@ -34,6 +34,15 @@ added to visual:check, and a dated ADR 0009 Consequences line.
 8. Simplify
    - [x] /simplify pass
 
+## Review fixes
+
+Loop 1 (the user picked O1, S2, S3, S4; S1 is a follow-up issue, O3 declined).
+
+- [x] S3 — `activity-range.ts` exports `MINUTE`/`HOUR`/`DAY`; `activity-geometry.ts` counts in them (no `SECONDS_PER_DAY`, no bare `3600`). `NOT_YET_COUNTED_AGE_SECONDS` stays its own value, held equal to the query's by its test
+- [x] S2 — `rangeOfSeries` (`activity-range.ts`) reads the preset off a series' window and step and throws for a series no preset makes; `ActivityChart` takes `series` only, so its ticks, caption and shades all come from one step
+- [x] O1 — the intro reads "averaged over every 10 minutes / hour / 3 hours of the last …"
+- [x] S4 — `e2e/activity.spec.ts`'s `rangeLink` finds a preset's link by its label from `ACTIVITY_RANGES`
+
 ## Surviving mutants
 
 None. Loop 1 (`b1c2855`) killed or removed all six from the first run: two hour-tick boundaries
@@ -42,6 +51,11 @@ were removed, and `DATA_START_MARGIN_SECONDS` became a literal (`6 * 3600` sat i
 initialiser no test could switch). No `Stryker disable` comments.
 
 ## Bite proofs
+
+- Review fixes: `npm run mutate:diff -- 071f9d0...HEAD --typecheck` — 100% (28/28), one survivor
+  (the refusal's message emptied) killed by a test that the refusal names the span and step.
+  S4: one deliberate break, the control rendering `label.toUpperCase()`, turned 8 of the spec's
+  11 tests red on `rangeLink`; reverted.
 
 - Vitest: `npm run mutate:diff -- c9ef7f2...HEAD`, see the report.
 - Playwright: the red run at `2be05d1` and one deliberate break (one cache key for every range);

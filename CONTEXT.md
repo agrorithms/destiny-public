@@ -29,6 +29,24 @@ A fireteam observed to be inside a raid right now. Ceases to be active when the 
 the raid ended, or when the observation goes stale.
 _Avoid_: live session, current activity, in-progress raid
 
+**Session Snapshot**:
+A count of the Active Sessions, in fireteams, per Raid, at one moment, recorded each time the
+crawler polls for them. Non-raid activity is not counted in it. Only as wide as that poll: it
+counts the fireteams of the players polled that cycle, not every fireteam raiding.
+_Avoid_: session history, active session count, population
+
+**Raids in Progress**:
+How many raid instances were under way at a given moment, reconstructed from their PGCRs once
+those raids have ended. The measure of raid activity over time. Unlike a Session Snapshot it does
+not depend on who was polled, but it can only be counted for moments whose raids have finished.
+_Avoid_: concurrent raids, active raids, population, active sessions
+
+**Provisional**:
+A Raids in Progress figure for a moment so recent that some of its raids have not ended yet, so it
+is an estimate scaled up from the raids that have, not a count. Stops being provisional at two
+hours old, by which time nearly all of those raids are over.
+_Avoid_: live, real-time, projected
+
 **Roster**:
 The players making up a fireteam, as reported by Bungie. May be incomplete — Bungie does not
 always disclose every member — so a roster of one usually means limited visibility rather than a

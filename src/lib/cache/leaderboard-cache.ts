@@ -22,7 +22,7 @@
  */
 import { getDb } from '../db';
 import { CLEAR_TIME, COMPLETION, buildRaidFilterClause, type RaidFilters } from '../db/queries';
-import { getAllRaidDefinitions } from '../bungie/manifest';
+import { getAllRaidDefinitions, getRaidKeysWithDifficulty } from '../bungie/manifest';
 import { envSeconds, envMs } from '../env';
 import { getOrCompute, type CacheState } from './swr-cache';
 
@@ -354,6 +354,13 @@ export function fastestBody(
     return { board: 'fastest', mode: 'individual', hours, raidKeys, leaderboards };
 }
 
+/** The envelope the request's board and mode ask for, with no raids and no rows. */
+function emptyBody(request: LeaderboardRequest): unknown {
+    if (request.board === 'fastest') return fastestBody(request.hours, [], {});
+    if (request.mode === 'individual') return individualBody(request.hours, [], {});
+    return aggregateBody(request.hours, [], []);
+}
+
 function sliceBoards<E>(
     boards: Record<string, IndividualLeaderboard<E>>,
     limit: number,
@@ -387,11 +394,23 @@ export function filterKeySuffix(filters?: RaidFilters): string {
  * (aggregate-all, individual-all, single-raid) are memoized via the SWR cache;
  * arbitrary multi-raid subsets bypass the cache and compute fresh.
  */
-export async function getLeaderboardResponse(req: LeaderboardRequest): Promise<LeaderboardResult> {
+export async function getLeaderboardResponse(request: LeaderboardRequest): Promise<LeaderboardResult> {
     const allRaids = getAllRaidDefinitions();
-    const allKeys = Object.keys(allRaids);
-    const band = leaderboardCacheBand(req.hours);
+    const band = leaderboardCacheBand(request.hours);
     const swr = { freshMs: band.freshMs, staleMs: band.staleMs, negativeMs: band.negativeMs };
+
+    // Under a Difficulty, a raid with no version at it has no board at all (#41, decision 6),
+    // and the response's raidKeys say so. A raid with the version but no clears in the window
+    // keeps its empty board: the two are different answers.
+    const allKeys = request.filters?.difficulty
+        ? getRaidKeysWithDifficulty(request.filters.difficulty)
+        : Object.keys(allRaids);
+    const raidKeys = request.raidKeys.filter((key) => allKeys.includes(key));
+    if (request.raidKeys.length > 0 && raidKeys.length === 0) {
+        // Every selected raid lacks the version, which an empty selection would read as "all".
+        return { body: emptyBody(request), state: 'bypass', band };
+    }
+    const req = { ...request, raidKeys };
 
     const sortedSelected = [...req.raidKeys].sort();
     const isAll = sortedSelected.length === 0 || isFullSet(sortedSelected, allKeys);

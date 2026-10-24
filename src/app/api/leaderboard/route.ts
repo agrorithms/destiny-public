@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
+import { isDifficulty } from '@/lib/bungie/difficulty';
 import { readLeaderboardSnapshot } from '@/lib/maintenance/snapshots';
 import { withCache, withNoStore } from '@/lib/http/cache';
 import { fastestBody, getLeaderboardResponse } from '@/lib/cache/leaderboard-cache';
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     const maxPlayersParam = searchParams.get('maxPlayers');
 
     const filters: RaidFilters = {};
-    if (difficultyParam === 'normal' || difficultyParam === 'master') {
+    if (isDifficulty(difficultyParam)) {
         filters.difficulty = difficultyParam;
     }
     if (exactPlayersParam) {

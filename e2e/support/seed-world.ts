@@ -1,5 +1,6 @@
 import { deleteActiveSessionForPlayer, upsertActiveSession } from '../../src/lib/db/queries';
 import { hoursAgo, seedPlayer, seedRun } from '../../tests/helpers/seed';
+import { DP_EPIC, VOG_MASTER, VOG_NORMAL } from '../../tests/helpers/pgcr-builder';
 import { fixtureRunId } from './fixture-db';
 
 /**
@@ -235,6 +236,33 @@ export const FASTEST_CLEARS = {
 } as const;
 
 /**
+ * The Difficulty world (#41): one run per player, each on a version of Vault of Glass or The
+ * Desert Perpetual, so selecting a Difficulty visibly swaps who is on those raids' cards.
+ * Difficulty comes from the activity hash. GOLF's Normal run has Feats on (`difficulty_tier` 2),
+ * the shape that used to count as Master, so the Normal and Master assertions both cover it.
+ *
+ * Vault of Glass and The Desert Perpetual have no other PGCRs in this world (the active-session
+ * specs that use them write `active_sessions`, a different table). One clear each keeps these
+ * players under FixtureAlpha's three on the Total Clears board.
+ */
+export const DIFFICULTY_VOG = { key: 'vault_of_glass', name: 'Vault of Glass' } as const;
+export const DIFFICULTY_DP = { key: 'the_desert_perpetual', name: 'The Desert Perpetual' } as const;
+
+export const DIFFICULTY_PLAYERS = {
+    /** Vault of Glass: Standard, with Feats on. Normal. */
+    normal: { membershipId: '4611686018400010021', name: 'FixtureGolf', code: 5555, hash: VOG_NORMAL, difficultyTier: 2 },
+    /** Vault of Glass: Master. */
+    master: { membershipId: '4611686018400010022', name: 'FixtureHotel', code: 6666, hash: VOG_MASTER, difficultyTier: 0 },
+    /** The Desert Perpetual (Epic): Standard. */
+    epic: { membershipId: '4611686018400010023', name: 'FixtureIndia', code: 7777, hash: DP_EPIC, difficultyTier: 0 },
+} as const;
+
+export function difficultyPlayerName(player: keyof typeof DIFFICULTY_PLAYERS): string {
+    const { name, code } = DIFFICULTY_PLAYERS[player];
+    return `${name}#${code}`;
+}
+
+/**
  * The Raid Activity chart's runs (#194, #195): what `/activity` draws in the seeded world.
  *
  * Every run of the leaderboard world above starts an hour ago, inside the two hours the
@@ -344,6 +372,18 @@ export function seedStaticWorld(): void {
                 });
             }
         }
+    }
+
+    for (const player of Object.values(DIFFICULTY_PLAYERS)) {
+        seedPlayer(player.membershipId, player.name, player.code);
+        seedRun({
+            instanceId: `9000${instance++}`,
+            activityHash: player.hash,
+            completedBy: [player.membershipId],
+            difficultyTier: player.difficultyTier,
+            period: hoursAgo(1),
+            activityDurationSeconds: 1800,
+        });
     }
 
     seedActivityRuns();

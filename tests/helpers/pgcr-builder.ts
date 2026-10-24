@@ -22,6 +22,15 @@ export const RAID_HASH = 2192826039;
 /** Not present in RAID_DEFINITIONS, so isRaidActivityHash rejects it. */
 export const NON_RAID_HASH = 1;
 
+/**
+ * One hash per Difficulty (#41), from the labels in `data/manifest-cache.json`. Two versions of
+ * one raid, so a test can show a Difficulty narrowing a single raid's runs.
+ */
+export const VOG_NORMAL = 3881495763; // "Vault of Glass: Standard"
+export const VOG_MASTER = 1681562271; // "Vault of Glass: Master"
+export const DP_NORMAL = 1044919065; // "The Desert Perpetual: Standard"
+export const DP_EPIC = 3817322389; // "The Desert Perpetual (Epic): Standard"
+
 const HOUR = 3600;
 
 /** Unix seconds, `hours` in the past. Runs are seeded relative to now because

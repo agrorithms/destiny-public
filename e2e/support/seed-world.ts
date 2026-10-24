@@ -235,16 +235,24 @@ export const FASTEST_CLEARS = {
 } as const;
 
 /**
- * The Raid Activity chart's runs (#194): what `/activity` draws in the seeded world.
+ * The Raid Activity chart's runs (#194, #195): what `/activity` draws in the seeded world.
  *
  * Every run of the leaderboard world above starts an hour ago, inside the two hours the
  * chart leaves uncounted, so on its own the chart would be a flat line. These give it a
- * shape, all well inside its 7-day window:
+ * shape, all but the last inside its 7-day window:
  *
  * - **the peak**: {@link ACTIVITY_PEAK_RAIDS} runs covering exactly one clock hour two
  *   days back, so the busiest hour averages exactly that many raids in progress;
  * - a run of two and a half hours four days back, which reads 1, 1 and 0.5;
- * - one hour-long run a day for the six days before today, a small daily rhythm.
+ * - one hour-long run a day for the six days before today, a small daily rhythm;
+ * - **the 24-hour peak** (#195): {@link ACTIVITY_RECENT_PEAK_RAIDS} runs of 20 minutes six
+ *   hours back, the only counted runs in the last 24 hours, so its busiest 10 minutes
+ *   averages exactly that many. Over 30 days the busiest 3 hours is the 7-day peak's,
+ *   three hour-long runs in one 3-hour step: exactly 1;
+ * - **the oldest report** (#195): an hour-long run {@link ACTIVITY_OLDEST_DAYS} days back,
+ *   the oldest PGCR in the world. The chart starts counting 6 hours after the oldest report
+ *   (cleanup deletes by start, so earlier steps would read low), so the 30-day chart shades
+ *   its first ten days as having no data, while 24 hours and 7 days are drawn whole.
  *
  * All of them are Checkpoint Runs nobody finished, by members no `players` row names, so
  * no leaderboard, Fastest Clears board, player page or player search can see them: the
@@ -255,6 +263,12 @@ export const FASTEST_CLEARS = {
  */
 export const ACTIVITY_PEAK_RAIDS = 3;
 
+/** How many runs make the 24-hour range's busiest 10 minutes. */
+export const ACTIVITY_RECENT_PEAK_RAIDS = 2;
+
+/** How many days back the world's oldest PGCR started. */
+export const ACTIVITY_OLDEST_DAYS = 20;
+
 function seedActivityRuns(): void {
     const hour = 3600;
     const thisHour = Math.floor(Date.now() / 1000 / hour) * hour;
@@ -262,6 +276,8 @@ function seedActivityRuns(): void {
         ...Array.from({ length: ACTIVITY_PEAK_RAIDS }, () => ({ start: thisHour - 48 * hour, seconds: hour })),
         { start: thisHour - 100 * hour, seconds: 2.5 * hour },
         ...Array.from({ length: 6 }, (_, day) => ({ start: thisHour - ((day + 1) * 24 + 6) * hour, seconds: hour })),
+        ...Array.from({ length: ACTIVITY_RECENT_PEAK_RAIDS }, () => ({ start: thisHour - 6 * hour, seconds: hour / 3 })),
+        { start: thisHour - ACTIVITY_OLDEST_DAYS * 24 * hour, seconds: hour },
     ];
 
     runs.forEach((run, index) => {

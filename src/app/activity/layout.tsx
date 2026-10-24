@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 const title = 'Raid Activity — Destiny Farm Finder';
-const description = 'How many Destiny 2 raids were in progress, hour by hour, over the last 7 days.';
+const description = 'How many Destiny 2 raids were in progress over the last day, week or month.';
 
 export const metadata: Metadata = {
     title,

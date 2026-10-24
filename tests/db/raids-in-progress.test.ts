@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries';
+import {
+    DATA_START_MARGIN_SECONDS,
+    deleteExpiredPGCRBatch,
+    getRaidsInProgress,
+    type RaidsInProgressSeries,
+} from '@/lib/db/queries';
 import { resetTestDb } from '../helpers/db';
 import { seedRun, type SeedRunOptions } from '../helpers/seed';
 import { NON_RAID_HASH } from '../helpers/pgcr-builder';
@@ -36,8 +41,18 @@ function seedRaid(start: number, seconds: number, extra: Partial<SeedRunOptions>
     seedRun({ instanceId: String(nextInstance++), period: start, activityDurationSeconds: seconds, completedBy: ['p1'], ...extra });
 }
 
+/**
+ * A report long before any window, so the stored history reaches back further than every
+ * range and no test below is clamped by where the data starts — except the ones about
+ * exactly that, which reset it away. Not a raid, so it adds nothing to any step.
+ */
+function seedHistoryReachingBack(): void {
+    seedRaid(NOW - 60 * 24 * HOUR, HOUR, { activityHash: NON_RAID_HASH });
+}
+
 beforeEach(() => {
     resetTestDb();
+    seedHistoryReachingBack();
 });
 
 describe('step averaging', () => {
@@ -160,5 +175,146 @@ describe('which steps come back', () => {
 
         expect(series.from).toBe(now - 7 * 24 * HOUR);
         expect(series.points[0].start).toBe(NOW - 7 * 24 * HOUR + HOUR);
+    });
+});
+
+const MINUTE = 60;
+const DAY = 24 * HOUR;
+
+/** NOW's 3-hour cousin: a whole 3-hour step in the past, so the 30-day grid lines up with it. */
+const NOW_3H = Math.floor(Date.now() / 1000 / (3 * HOUR)) * 3 * HOUR - 3 * HOUR;
+const TWENTY_FOUR_HOURS = { rangeSeconds: DAY, stepSeconds: 10 * MINUTE, now: NOW };
+const THIRTY_DAYS = { rangeSeconds: 30 * DAY, stepSeconds: 3 * HOUR, now: NOW_3H };
+
+describe('each range', () => {
+    it('returns 10-minute steps over the last 24 hours, the newest two hours aside', () => {
+        // #195's 24h preset: 144 ten-minute steps fit the window, and the 12 ending in the
+        // last two hours are not counted yet, so 132 come back.
+        const series = getRaidsInProgress(TWENTY_FOUR_HOURS);
+
+        expect(series.stepSeconds).toBe(10 * MINUTE);
+        expect(series.points).toHaveLength(132);
+        expect(series.points[0].start).toBe(NOW - DAY);
+        expect(series.points[1].start).toBe(NOW - DAY + 10 * MINUTE);
+        expect(series.points.at(-1)?.end).toBe(hoursBeforeNow(2));
+    });
+
+    it('returns 3-hour steps over the last 30 days, the newest whole step 2 hours old last', () => {
+        // #195's 30d preset: 240 three-hour steps fit the window. With "now" on a 3-hour
+        // boundary the step ending 2 hours ago is not whole yet, so counting ends 3 hours
+        // back and 239 come back.
+        const series = getRaidsInProgress(THIRTY_DAYS);
+
+        expect(series.stepSeconds).toBe(3 * HOUR);
+        expect(series.points).toHaveLength(239);
+        expect(series.points[0].start).toBe(NOW_3H - 30 * DAY);
+        expect(series.points[1].start).toBe(NOW_3H - 30 * DAY + 3 * HOUR);
+        expect(series.countedUntil).toBe(NOW_3H - 3 * HOUR);
+    });
+
+    it('splits a run across a 10-minute boundary by its overlap with each step', () => {
+        // Four minutes before a boundary and six after: 0.4 of one step and 0.6 of the next.
+        const boundary = hoursBeforeNow(10);
+        seedRaid(boundary - 4 * MINUTE, 10 * MINUTE);
+
+        const series = getRaidsInProgress(TWENTY_FOUR_HOURS);
+
+        expect(valueAt(series, boundary - 10 * MINUTE)).toBeCloseTo(0.4, 10);
+        expect(valueAt(series, boundary)).toBeCloseTo(0.6, 10);
+    });
+
+    it('splits a run across a 3-hour boundary by its overlap with each step', () => {
+        // An hour either side of a boundary: a third of each 3-hour step.
+        const boundary = NOW_3H - 4 * DAY;
+        seedRaid(boundary - HOUR, 2 * HOUR);
+
+        const series = getRaidsInProgress(THIRTY_DAYS);
+
+        expect(valueAt(series, boundary - 3 * HOUR)).toBeCloseTo(1 / 3, 10);
+        expect(valueAt(series, boundary)).toBeCloseTo(1 / 3, 10);
+    });
+});
+
+describe('where the data starts', () => {
+    beforeEach(() => {
+        // These tests are about the oldest stored report, so they choose it themselves.
+        resetTestDb();
+    });
+
+    it('never under-counts the 30-day window\'s first step after cleanup removed older runs', () => {
+        // Prod keeps PGCRs for 720 hours — the 30-day window exactly — and cleanup deletes by
+        // *start*. A run that started before the window and ended inside it is gone, so the
+        // window's first hours read low. Here a run starts every 3 hours and lasts 6, so 2
+        // are in progress at every moment, and the real cleanup removes everything started
+        // before the window. The first step drawn must still read 2: it starts the margin
+        // after the oldest report left, by when every run in it is one that was kept.
+        const from = NOW_3H - 30 * DAY;
+        for (let start = from - 12 * HOUR; start <= from + 15 * HOUR; start += 3 * HOUR) {
+            seedRaid(start, 6 * HOUR);
+        }
+        expect(deleteExpiredPGCRBatch(from, 1000).pgcrsDeleted).toBe(4);
+
+        const series = getRaidsInProgress(THIRTY_DAYS);
+
+        expect(DATA_START_MARGIN_SECONDS).toBe(6 * HOUR);
+        expect(series.from).toBe(from);
+        expect(series.countedFrom).toBe(from + 6 * HOUR);
+        expect(series.points[0].start).toBe(from + 6 * HOUR);
+        expect(series.points.slice(0, 2).map((point) => point.total)).toEqual([2, 2]);
+    });
+
+    it('does not clamp a window whose data reaches back the margin before it', () => {
+        // The oldest report exactly 6 hours before the window: every run in its first step
+        // could still be stored, so the window starts where it always does.
+        seedRaid(NOW - 7 * DAY - 6 * HOUR, HOUR);
+
+        const series = getRaidsInProgress(SEVEN_DAYS);
+
+        expect(series.countedFrom).toBe(NOW - 7 * DAY);
+        expect(series.points).toHaveLength(166);
+    });
+
+    it('starts at the first whole step the margin after the oldest report', () => {
+        // The oldest report 5.5 hours before the window: the margin ends half an hour into
+        // the window, so the first step is the next whole hour, and nothing before it is
+        // returned.
+        seedRaid(NOW - 7 * DAY - 5.5 * HOUR, HOUR);
+
+        const series = getRaidsInProgress(SEVEN_DAYS);
+
+        expect(series.countedFrom).toBe(NOW - 7 * DAY + HOUR);
+        expect(series.points[0].start).toBe(NOW - 7 * DAY + HOUR);
+        expect(series.points).toHaveLength(165);
+    });
+
+    it('reads the data start from any report, not only raids', () => {
+        // Cleanup deletes every PGCR by age, raid or not, so the oldest of any kind marks
+        // how far back the stored history goes.
+        seedRaid(NOW - 3 * DAY, HOUR, { activityHash: NON_RAID_HASH });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).countedFrom).toBe(NOW - 3 * DAY + 6 * HOUR);
+    });
+
+    it('returns no steps, and keeps where counting ends, when the data starts too recently', () => {
+        // A database whose oldest report is an hour old has nothing it can count yet. The
+        // counted boundary still sits 2 hours back on the step grid, where #196's estimate
+        // starts, rather than moving to meet the data.
+        seedRaid(hoursBeforeNow(1), 30 * MINUTE);
+
+        const series = getRaidsInProgress(SEVEN_DAYS);
+
+        expect(series.points).toEqual([]);
+        expect(series.countedUntil).toBe(hoursBeforeNow(2));
+        expect(series.countedFrom).toBe(hoursBeforeNow(2));
+    });
+
+    it('does not clamp an empty database', () => {
+        // Nothing stored says nothing about where history starts: the window is drawn whole,
+        // at zero, as #194 drew it.
+        const series = getRaidsInProgress(SEVEN_DAYS);
+
+        expect(series.countedFrom).toBe(NOW - 7 * DAY);
+        expect(series.points).toHaveLength(166);
+        expect(series.points.every((point) => point.total === 0)).toBe(true);
     });
 });

@@ -1,27 +1,39 @@
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
+import { rangeOfSeries } from './activity-range';
 import {
     CHART_HEIGHT,
     CHART_WIDTH,
+    axisTicks,
+    beforeData,
     busiestStep,
-    dayTicks,
-    formatRaidCount,
-    formatStepWindow,
+    describeBeforeData,
+    describePeak,
     linePath,
     notYetCounted,
+    notYetCountedLegend,
     valueAxis,
+    type ShadedSpan,
 } from './activity-geometry';
 
-/** The not-yet-counted shade's fill, shared by the shaded span and its key in the caption. */
+/**
+ * The shades' fill, shared by both shaded spans and their keys in the caption. One look
+ * for both: each says "no counted data here", and the legend says which end is which.
+ */
 const SHADE_FILL = 'var(--ui-text-muted)';
 const SHADE_OPACITY = 0.35;
 
 /**
- * The Raid Activity chart (#194): one line of total Raids in Progress, one point per step,
- * with the span too recent to count shaded at the right-hand edge.
+ * The Raid Activity chart (#194, #195): one line of total Raids in Progress, one point per
+ * step of the chosen range, with the span too recent to count shaded at the right-hand edge
+ * and, when the stored PGCRs start inside the window, the span before them at the left.
  *
  * A server component drawing hand-made SVG, with no chart library and no client
  * JavaScript, so it draws exactly the same with JavaScript off. Every position comes from
  * ./activity-geometry.ts; this file only draws what it is handed.
+ *
+ * The range — the ticks and the caption's wording — is read off the series itself
+ * ({@link rangeOfSeries}) rather than handed in beside it, so the step the shades are
+ * sized by and the step the caption names are always the same one.
  *
  * Text is HTML rather than SVG `<text>`: the SVG stretches non-uniformly
  * (`preserveAspectRatio="none"`, so it fills the column at any width), which would smear
@@ -30,13 +42,13 @@ const SHADE_OPACITY = 0.35;
  */
 export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     const { from, to, points } = series;
+    const range = rangeOfSeries(series);
     const busiest = busiestStep(points);
     const axis = valueAxis(busiest?.total ?? 0);
-    const ticks = dayTicks(from, to);
+    const ticks = axisTicks(from, to, range);
     const shade = notYetCounted(series);
-    const peak = busiest === null
-        ? null
-        : `${formatRaidCount(busiest.total)} raids in progress, ${formatStepWindow(busiest.start, busiest.end)}`;
+    const missing = beforeData(series);
+    const peak = describePeak(busiest, range);
 
     return (
         <figure data-testid="activity-chart" className="ui-card space-y-3 p-4">
@@ -59,11 +71,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
                         preserveAspectRatio="none"
                         role="img"
-                        aria-label={
-                            peak === null
-                                ? 'Raids in progress per hour over the last 7 days: none counted yet'
-                                : `Raids in progress per hour over the last 7 days, peaking at ${peak}`
-                        }
+                        aria-label={peak.ariaLabel}
                         className="block h-48 w-full sm:h-64"
                     >
                         {axis.ticks.map((tick) => (
@@ -90,17 +98,8 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                                 vectorEffect="non-scaling-stroke"
                             />
                         ))}
-                        {/* Percentages straight onto the rect, which SVG resolves against the
-                            viewBox width, so it sits on the same axis as the line. */}
-                        <rect
-                            data-testid="activity-not-yet-counted"
-                            x={`${shade.startPercent}%`}
-                            y={0}
-                            width={`${shade.widthPercent}%`}
-                            height={CHART_HEIGHT}
-                            fill={SHADE_FILL}
-                            fillOpacity={SHADE_OPACITY}
-                        />
+                        {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
+                        <ShadeRect testId="activity-not-yet-counted" span={shade} />
                         {/* `vector-effect` because the non-uniform stretch would otherwise draw
                             the stroke as a wedge, thin where the chart is wide. */}
                         <path
@@ -131,21 +130,50 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
             </div>
 
             <figcaption className="ui-text-secondary space-y-1 text-xs leading-5">
-                <p data-testid="activity-peak">
-                    {peak === null ? 'No raids counted in the last 7 days yet.' : `Busiest hour: ${peak}.`}
-                </p>
+                <p data-testid="activity-peak">{peak.caption}</p>
                 <p className="flex items-start gap-2">
-                    <span
-                        aria-hidden
-                        className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm"
-                        style={{ background: SHADE_FILL, opacity: SHADE_OPACITY }}
-                    />
+                    <ShadeKey />
                     <span>
-                        Shaded: the last 2 to 3 hours, not yet counted. A raid still running has no
-                        report yet, so this stretch would read low.
+                        <span data-testid="activity-not-yet-counted-legend">{notYetCountedLegend(series.stepSeconds)}</span>{' '}
+                        A raid still running has no report yet, so this stretch would read low.
                     </span>
                 </p>
+                {missing === null ? null : (
+                    <p className="flex items-start gap-2">
+                        <ShadeKey />
+                        <span data-testid="activity-before-data-legend">{describeBeforeData(series.countedFrom)}</span>
+                    </p>
+                )}
             </figcaption>
         </figure>
+    );
+}
+
+/**
+ * A shaded span on the chart. Percentages straight onto the rect, which SVG resolves
+ * against the viewBox width, so it sits on the same axis as the line.
+ */
+function ShadeRect({ testId, span }: { testId: string; span: ShadedSpan }) {
+    return (
+        <rect
+            data-testid={testId}
+            x={`${span.startPercent}%`}
+            y={0}
+            width={`${span.widthPercent}%`}
+            height={CHART_HEIGHT}
+            fill={SHADE_FILL}
+            fillOpacity={SHADE_OPACITY}
+        />
+    );
+}
+
+/** The shades' swatch in the caption. */
+function ShadeKey() {
+    return (
+        <span
+            aria-hidden
+            className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm"
+            style={{ background: SHADE_FILL, opacity: SHADE_OPACITY }}
+        />
     );
 }

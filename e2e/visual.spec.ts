@@ -30,6 +30,17 @@ const DYNAMIC_ROUTE_FIXTURES: Record<string, string> = {
     '/player/[membershipType]/[membershipId]': `/player/3/${LEADERBOARD_PLAYERS[0].membershipId}`,
 };
 
+/**
+ * Pages whose URL draws a different layout from the bare route, screenshotted as well.
+ * The Raid Activity chart's 24-hour and 30-day presets (#195) put different ticks and
+ * shades on the axis, and only a human looking at them can say whether 30 days of labels
+ * reads well at 360px.
+ */
+const EXTRA_ROUTES: Route[] = [
+    { slug: 'activity-24h', path: '/activity?range=24h' },
+    { slug: 'activity-30d', path: '/activity?range=30d' },
+];
+
 /** Behind basic auth, which the e2e server sets no credentials for. */
 const SKIPPED_ROUTES = new Set(['/admin/stats']);
 
@@ -54,7 +65,7 @@ function allRoutes(): Route[] {
         const slug = pattern === '/' ? 'home' : pattern.split('/').filter((s) => s && !s.startsWith('[')).join('-');
         routes.push({ slug, path: url });
     }
-    return routes.sort((a, b) => a.slug.localeCompare(b.slug));
+    return [...routes, ...EXTRA_ROUTES].sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 /** How long no request may be awaiting its response before the page counts as drawn. */

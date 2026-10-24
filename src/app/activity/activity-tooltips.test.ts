@@ -126,6 +126,16 @@ describe('which step a pointer is over', () => {
         expect(at(1.1)).toBeNull();
     });
 
+    it('gives a pointer exactly on the line between two steps to the later one', () => {
+        // A 4-hour window from midnight, its three steps starting at 01:00: a quarter of the
+        // way across is exactly 01:00, where step 0 begins, and half way is exactly 02:00,
+        // where step 0 ends and step 1 begins. A step owns its start and not its end.
+        const steps = activitySlots([point(MIDNIGHT + HOUR, HOUR, 1), point(MIDNIGHT + 2 * HOUR, HOUR, 2), point(MIDNIGHT + 3 * HOUR, HOUR, 3)]);
+
+        expect(slotAtFraction(0.25, steps, MIDNIGHT, MIDNIGHT + 4 * HOUR)).toBe(0);
+        expect(slotAtFraction(0.5, steps, MIDNIGHT, MIDNIGHT + 4 * HOUR)).toBe(1);
+    });
+
     it('is over no step in a series with none', () => {
         expect(slotAtFraction(0.5, [], FROM, NOW)).toBeNull();
         expect(slotAtFraction(0.0206, [], FROM, NOW)).toBeNull();

@@ -1667,8 +1667,9 @@ export interface RaidsInProgressOptions {
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read once,
  * through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step start`), and
  * each adds its overlap in O(1): the partial first and last steps it touches directly, and
- * the whole steps between them through a running difference array. So the cost is rows + steps, never rows × steps
- * — a run lasting days adds two array writes, not one per hour it spans.
+ * the whole steps between them through a running difference array. So the cost is rows +
+ * steps, never rows × steps — a run lasting days adds two array writes, not one per hour it
+ * spans.
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
@@ -1683,11 +1684,10 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         Math.ceil(Math.max(from, oldest + DATA_START_MARGIN_SECONDS) / stepSeconds) * stepSeconds
     );
     const steps = (countedUntil - firstStart) / stepSeconds;
-    const lastEnd = countedUntil;
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
-    // One slot past the last step in each, for a run ending exactly at `lastEnd`: its
+    // One slot past the last step in each, for a run ending exactly at `countedUntil`: its
     // last piece lands there, and is zero seconds long.
     const partialSeconds = new Float64Array(steps + 1);
     const wholeStepsDelta = new Float64Array(steps + 1);
@@ -1698,11 +1698,11 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     WHERE p.ended_at > ?
       AND p.period < ?
       AND p.raid_key IS NOT NULL
-  `).raw().iterate(firstStart, lastEnd) as IterableIterator<[number, number]>;
+  `).raw().iterate(firstStart, countedUntil) as IterableIterator<[number, number]>;
 
     for (const [period, endedAt] of rows) {
         const start = Math.max(period, firstStart);
-        const end = Math.min(endedAt, lastEnd);
+        const end = Math.min(endedAt, countedUntil);
         const first = Math.floor((start - firstStart) / stepSeconds);
         const last = Math.floor((end - firstStart) / stepSeconds);
         // The run's piece of its first step, its piece of its last, and +1 for every whole

@@ -13,7 +13,7 @@
  */
 
 /** The URL's spelling of the range. Absent means 7 days. */
-export const ACTIVITY_RANGE_PARAM = 'range';
+const ACTIVITY_RANGE_PARAM = 'range';
 
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;

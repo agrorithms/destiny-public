@@ -82,17 +82,7 @@ export interface DayTickOptions {
  * `options` ({@link axisTicks}).
  */
 export function dayTicks(from: number, to: number, options: DayTickOptions = { everyDays: 1, phoneEvery: 2 }): ActivityTick[] {
-    const every = options.everyDays * SECONDS_PER_DAY;
-    const ticks: ActivityTick[] = [];
-    for (let midnight = Math.ceil(from / every) * every; midnight <= to; midnight += every) {
-        const percent = xPercent(midnight, from, to);
-        ticks.push({
-            percent,
-            label: percent <= LAST_LABELLED_TICK_PERCENT ? dayLabel(midnight) : null,
-            phone: ticks.length % options.phoneEvery === 0,
-        });
-    }
-    return ticks;
+    return ticksEvery(from, to, options.everyDays * SECONDS_PER_DAY, dayLabel, (_, index) => index % options.phoneEvery === 0);
 }
 
 /** The 24-hour range's tick spacing, and the spacing of the labels a phone keeps. */
@@ -106,13 +96,34 @@ const PHONE_HOUR_TICK_SECONDS = 6 * 60 * 60;
  * label: three hours is ~37px of chart at 360px, and a label ~30px.
  */
 export function hourTicks(from: number, to: number): ActivityTick[] {
+    return ticksEvery(
+        from,
+        to,
+        HOUR_TICK_SECONDS,
+        (at) => (at % SECONDS_PER_DAY === 0 ? dayLabel(at) : clock(at)),
+        (at) => at % PHONE_HOUR_TICK_SECONDS === 0
+    );
+}
+
+/**
+ * A tick on every multiple of `every` seconds since the epoch inside the window, labelled
+ * by `label` unless it starts past {@link LAST_LABELLED_TICK_PERCENT}, and kept on a phone
+ * where `phone` says so, given the instant and the tick's place from the first.
+ */
+function ticksEvery(
+    from: number,
+    to: number,
+    every: number,
+    label: (at: number) => string,
+    phone: (at: number, index: number) => boolean
+): ActivityTick[] {
     const ticks: ActivityTick[] = [];
-    for (let at = Math.ceil(from / HOUR_TICK_SECONDS) * HOUR_TICK_SECONDS; at <= to; at += HOUR_TICK_SECONDS) {
+    for (let at = Math.ceil(from / every) * every; at <= to; at += every) {
         const percent = xPercent(at, from, to);
         ticks.push({
             percent,
-            label: percent <= LAST_LABELLED_TICK_PERCENT ? (at % SECONDS_PER_DAY === 0 ? dayLabel(at) : clock(at)) : null,
-            phone: at % PHONE_HOUR_TICK_SECONDS === 0,
+            label: percent <= LAST_LABELLED_TICK_PERCENT ? label(at) : null,
+            phone: phone(at, ticks.length),
         });
     }
     return ticks;
@@ -313,4 +324,3 @@ function clock(at: number): string {
 function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
-

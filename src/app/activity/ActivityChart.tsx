@@ -12,6 +12,7 @@ import {
     notYetCounted,
     notYetCountedLegend,
     valueAxis,
+    type ShadedSpan,
 } from './activity-geometry';
 
 /**
@@ -92,28 +93,8 @@ export function ActivityChart({ series, range }: { series: RaidsInProgressSeries
                                 vectorEffect="non-scaling-stroke"
                             />
                         ))}
-                        {/* Percentages straight onto the rects, which SVG resolves against the
-                            viewBox width, so they sit on the same axis as the line. */}
-                        {missing === null ? null : (
-                            <rect
-                                data-testid="activity-before-data"
-                                x={`${missing.startPercent}%`}
-                                y={0}
-                                width={`${missing.widthPercent}%`}
-                                height={CHART_HEIGHT}
-                                fill={SHADE_FILL}
-                                fillOpacity={SHADE_OPACITY}
-                            />
-                        )}
-                        <rect
-                            data-testid="activity-not-yet-counted"
-                            x={`${shade.startPercent}%`}
-                            y={0}
-                            width={`${shade.widthPercent}%`}
-                            height={CHART_HEIGHT}
-                            fill={SHADE_FILL}
-                            fillOpacity={SHADE_OPACITY}
-                        />
+                        {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
+                        <ShadeRect testId="activity-not-yet-counted" span={shade} />
                         {/* `vector-effect` because the non-uniform stretch would otherwise draw
                             the stroke as a wedge, thin where the chart is wide. */}
                         <path
@@ -160,6 +141,24 @@ export function ActivityChart({ series, range }: { series: RaidsInProgressSeries
                 )}
             </figcaption>
         </figure>
+    );
+}
+
+/**
+ * A shaded span on the chart. Percentages straight onto the rect, which SVG resolves
+ * against the viewBox width, so it sits on the same axis as the line.
+ */
+function ShadeRect({ testId, span }: { testId: string; span: ShadedSpan }) {
+    return (
+        <rect
+            data-testid={testId}
+            x={`${span.startPercent}%`}
+            y={0}
+            width={`${span.widthPercent}%`}
+            height={CHART_HEIGHT}
+            fill={SHADE_FILL}
+            fillOpacity={SHADE_OPACITY}
+        />
     );
 }
 

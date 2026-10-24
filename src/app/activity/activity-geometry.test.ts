@@ -3,6 +3,7 @@ import { COUNTED_AGE_SECONDS, PROVISIONAL_MIN_AGE_SECONDS } from '@/lib/db/queri
 import { ACTIVITY_RANGES, type ActivityRangeId } from './activity-range';
 import {
     CHART_HEIGHT,
+    CHART_WIDTH,
     LAST_LABELLED_TICK_PERCENT,
     NOT_YET_COUNTED_AGE_SECONDS,
     TOO_RECENT_AGE_SECONDS,
@@ -209,6 +210,28 @@ describe('the too-recent span', () => {
         expect(span.startPercent).toBeCloseTo(98.4795, 3);
         expect(span.endPercent).toBe(100);
         expect(span.widthPercent).toBeCloseTo(1.5205, 3);
+    });
+
+    it('starts where the dashed line ends, so the line meets the shade and never enters it', () => {
+        // Hourly steps, "now" 5 hours 20 minutes into the window: the last step 15 minutes
+        // old ends at 5 hours, and the estimate runs up to it. Its last vertex, the step's
+        // midpoint at 4.5 hours (843.75 of 1000), sits left of the shade's start at 5 hours
+        // (93.75%): a dashed line drawn into the shade would be one estimating too-recent steps.
+        const from = 1792195200;
+        const series = { from, to: from + 5 * HOUR + 20 * 60, provisionalUntil: from + 5 * HOUR };
+        const points = [0, 1, 2, 3, 4].map((index) => ({
+            start: from + index * HOUR,
+            end: from + (index + 1) * HOUR,
+            total: 2,
+            provisional: index >= 3,
+        }));
+
+        const dashed = linePaths(points, series.from, series.to, 4).dashed ?? '';
+        const lastX = Number(dashed.match(/L([\d.]+),[\d.]+$/)?.[1]);
+
+        expect(lastX).toBeCloseTo(843.75, 2);
+        expect((lastX / CHART_WIDTH) * 100).toBeLessThanOrEqual(tooRecent(series).startPercent);
+        expect(tooRecent(series).startPercent).toBeCloseTo(93.75, 3);
     });
 });
 

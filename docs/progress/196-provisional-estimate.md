@@ -14,8 +14,8 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] `tests/db/completeness-curve.test.ts` (new) — a week of fixed-length runs, hour-of-day curves, the 24 h bound, `ended_at` only, three step sizes
    - [x] `src/lib/db/queries.ts` — `getCompletenessCurve`
 3. Provisional points in the series, red then green (S3)
-   - [ ] `tests/db/raids-in-progress.test.ts` — `provisional` flag, partial ÷ share, the 15-minute cutoff, counted at 2 h, three step sizes, `ended_at <= now`
-   - [ ] `src/lib/db/queries.ts` — `provisional`, `provisionalUntil`, `PROVISIONAL_MIN_AGE_SECONDS`, the extended sweep
+   - [x] `tests/db/raids-in-progress.test.ts` — `provisional` flag, partial ÷ share, the 15-minute cutoff, counted at 2 h, three step sizes, `ended_at <= now`
+   - [x] `src/lib/db/queries.ts` — `provisional`, `provisionalUntil`, `PROVISIONAL_MIN_AGE_SECONDS`, the extended sweep
 4. Geometry, red then green (S4)
    - [ ] `src/app/activity/activity-geometry.test.ts` — dashed path, too-recent span, legends, axis fits estimates, counted-only peak, the 15-minute mirror
    - [ ] `src/app/activity/activity-geometry.ts`

@@ -36,6 +36,11 @@ function valueAt(series: RaidsInProgressSeries, start: number): number | undefin
     return series.points.find((point) => point.start === start)?.total;
 }
 
+/** The series' counted steps: the Provisional ones are #196's, and these tests are about the count. */
+function countedPoints(series: RaidsInProgressSeries) {
+    return series.points.filter((point) => !point.provisional);
+}
+
 let nextInstance = 1;
 /** A raid run from `start` lasting `seconds`; every other field is seedRun's default. */
 function seedRaid(start: number, seconds: number, extra: Partial<SeedRunOptions> = {}): void {
@@ -129,6 +134,16 @@ describe('which runs count', () => {
 });
 
 describe('which steps come back', () => {
+    it('does not read a counted run that has not ended by "now"', () => {
+        // The series says what had ended as of `now`. A report whose end lies after it was
+        // not a raid already ended then, even where it overlaps a long-counted step. (The
+        // writer would not store one this far ahead; this is a row seen from an earlier now.)
+        seedRaid(hoursBeforeNow(10), HOUR);
+        getDb().prepare('UPDATE pgcrs SET ended_at = ? WHERE instance_id = ?').run(NOW + HOUR, String(nextInstance - 1));
+
+        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0);
+    });
+
     it('returns hourly steps over the last 7 days, ending at the last step 2 hours old', () => {
         // With NOW on the hour, the window's steps run from exactly 7 days back to the step
         // ending 2 hours ago: 166 of the range's 168 hours. The newer two are absent, not
@@ -272,7 +287,7 @@ describe('where the data starts', () => {
         const series = getRaidsInProgress(SEVEN_DAYS);
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY);
-        expect(series.points).toHaveLength(166);
+        expect(countedPoints(series)).toHaveLength(166);
     });
 
     it('starts at the first whole step the margin after the oldest report', () => {
@@ -285,7 +300,7 @@ describe('where the data starts', () => {
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY + HOUR);
         expect(series.points[0].start).toBe(NOW - 7 * DAY + HOUR);
-        expect(series.points).toHaveLength(165);
+        expect(countedPoints(series)).toHaveLength(165);
     });
 
     it('reads the data start from any report, not only raids', () => {

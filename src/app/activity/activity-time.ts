@@ -21,9 +21,17 @@ export type OffsetOf = ((at: number) => number) | null;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/**
+ * The instant shifted by the zone's offset, so that arithmetic on it (`% DAY`) reads the
+ * zone's wall clock: a multiple of a day is a local midnight.
+ */
+export function localSeconds(at: number, offsetOf: OffsetOf): number {
+    return at + (offsetOf === null ? 0 : offsetOf(at) * 60);
+}
+
 /** The instant as a Date whose UTC fields read the zone's wall clock. */
-export function wallClock(at: number, offsetOf: OffsetOf): Date {
-    return new Date((at + (offsetOf === null ? 0 : offsetOf(at) * 60)) * 1000);
+function wallClock(at: number, offsetOf: OffsetOf): Date {
+    return new Date(localSeconds(at, offsetOf) * 1000);
 }
 
 /** The weekday and day of the month an instant falls on in the zone: `Sat 17`. */

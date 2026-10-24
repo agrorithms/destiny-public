@@ -18,10 +18,10 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
 1. Local-time formatting, red then green (S1)
    - [x] `src/app/activity/activity-time.test.ts` (new)
    - [x] `src/app/activity/activity-time.ts` (new) — the formatters move out of the geometry module
-   - [ ] `src/app/activity/activity-geometry.ts` / `.test.ts` — take the formatters from it; `describePeak`, `describeBeforeData` take an offset
+   - [x] `src/app/activity/activity-geometry.ts` / `.test.ts` — take the formatters from it; `describePeak`, `describeBeforeData` take an offset
 2. Tick sets in local time, red then green (S2)
-   - [ ] `src/app/activity/activity-geometry.test.ts` — `axisTicks` with an offset
-   - [ ] `src/app/activity/activity-geometry.ts` — `ticksEvery` scans local wall time
+   - [x] `src/app/activity/activity-geometry.test.ts` — `axisTicks` with an offset
+   - [x] `src/app/activity/activity-geometry.ts` — `ticksEvery` scans local wall time
 3. Tooltip copy and slot mapping, red then green (S3)
    - [ ] `src/app/activity/activity-tooltips.test.ts` (new)
    - [ ] `src/app/activity/activity-tooltips.ts` (new)

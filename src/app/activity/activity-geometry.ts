@@ -321,13 +321,16 @@ function formatInstant(at: number): string {
     return `${dateLabel(at)}, ${clock(at)} UTC`;
 }
 
-/** `15 minutes`, `1 hour 15 minutes`, `2 hours`, `2 hours 10 minutes`. */
+/**
+ * `15 minutes`, `1 hour 15 minutes`, `2 hours`, `2 hours 10 minutes`. Steps are whole
+ * multiples of 10 minutes, so a leftover minute count is never 1.
+ */
 function formatDuration(seconds: number): string {
     const hours = Math.floor(seconds / HOUR);
     const minutes = Math.round((seconds % HOUR) / MINUTE);
     const parts: string[] = [];
     if (hours > 0) parts.push(`${hours} ${hours === 1 ? 'hour' : 'hours'}`);
-    if (minutes > 0) parts.push(`${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`);
+    if (minutes > 0) parts.push(`${minutes} minutes`);
     return parts.join(' ');
 }
 

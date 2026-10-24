@@ -167,11 +167,17 @@ describe('the solid and the dashed line', () => {
     it('draws the counted steps solid and the estimated ones dashed, the dashed starting on the last counted point', () => {
         // The two segments meet: the dashed path begins at the solid one's last vertex, so
         // the line is continuous and only its style changes at the boundary.
-        const points = [step(0, 1, false), step(1, 3, false), step(2, 2, true), step(3, 4, true)];
+        const points = [
+            step(0, 1, false),
+            step(1, 3, false),
+            step(2, 2, false),
+            step(3, 4, true),
+            step(4, 2, true),
+        ];
 
         expect(linePaths(points, from, to, 4)).toEqual({
-            solid: 'M50,150L150,50',
-            dashed: 'M150,50L250,100L350,0',
+            solid: 'M50,150L150,50L250,100',
+            dashed: 'M250,100L350,0L450,100',
         });
     });
 
@@ -428,6 +434,13 @@ describe('the legends for the estimate and the shade', () => {
         expect(provisionalLegend(HOUR)).toBe('Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.');
         expect(provisionalLegend(600)).toBe('Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.');
         expect(provisionalLegend(3 * HOUR)).toBe('Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.');
+    });
+
+    it('words any step size, not only the three ranges\'', () => {
+        // A step that makes the longest end exactly an hour: "15 minutes to 1 hour", each end
+        // with its own unit, not "0.25 to 1 hour" or "15 to 1 hour".
+        expect(tooRecentLegend(45 * 60)).toBe('Shaded: the last 15 minutes to 1 hour, too recent to estimate.');
+        expect(provisionalLegend(30 * 60)).toBe('Dashed: an estimate, from 2 hours to 2 hours 30 minutes ago up to the shaded stretch.');
     });
 
     it('keeps a copy of the query\'s counted age', () => {

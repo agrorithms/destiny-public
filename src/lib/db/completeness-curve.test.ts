@@ -112,6 +112,9 @@ describe('learning shares from runs', () => {
         expect(shareAt(curve, 3, 0)).toBeCloseTo(0.8, 10);
         expect(shareAt(curve, 3, 20 * MINUTE)).toBeCloseTo(0.8, 10);
         expect(shareAt(curve, 3, 45 * MINUTE)).toBeCloseTo(1, 10);
+        // Between the two points the share moves from 0.8 to 1 in proportion: a quarter of
+        // the way through the 40-to-45-minute bin is 0.85.
+        expect(shareAt(curve, 3, 41.25 * MINUTE)).toBeCloseTo(0.85, 10);
     });
 
     it('credits a long run to every step it overlaps, each at its own age', () => {
@@ -133,6 +136,17 @@ describe('learning shares from runs', () => {
         const curve = curveOf([[S, S + 3.5 * HOUR]]);
 
         expect(shareAt(curve, 3, CURVE_MAX_AGE_SECONDS)).toBe(0);
+    });
+
+    it('ignores the steps of a run that lie before the window, as well as after it', () => {
+        // The window is 04:00 only. The run starts in 03:00 and ends in 05:00: only its 04:00
+        // piece is learned, so hours 3 and 5 stay empty.
+        const window = { from: S + HOUR, until: S + 2 * HOUR };
+        const curve = curveOf([[S + 30 * MINUTE, S + 150 * MINUTE]], HOUR, window);
+
+        expect(curve.byHour[3]).toBeNull();
+        expect(curve.byHour[4]).not.toBeNull();
+        expect(curve.byHour[5]).toBeNull();
     });
 
     it('ignores steps outside the training window, even of a run that overlaps it', () => {
@@ -166,6 +180,19 @@ describe('learning shares from runs', () => {
 
         expect(shareAt(curve, hour, 55 * MINUTE)).toBe(0);
         expect(shareAt(curve, hour, 60 * MINUTE)).toBe(1);
+    });
+});
+
+describe('the curve\'s points', () => {
+    it('has one every 5 minutes from age 0 to 2 hours, for each hour and for all hours', () => {
+        // 25 points: 0, 5 … 120 minutes. The estimate reads the curve at a step's end age,
+        // which is never 2 hours or more (a step that old is counted), so nothing longer is kept.
+        const curve = curveOf([[S, S + HOUR]]);
+        const points = CURVE_MAX_AGE_SECONDS / CURVE_BIN_SECONDS + 1;
+
+        expect(points).toBe(25);
+        expect(curve.overall).toHaveLength(points);
+        expect(curve.byHour[3]).toHaveLength(points);
     });
 });
 

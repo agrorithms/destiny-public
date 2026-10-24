@@ -35,10 +35,13 @@ export const CURVE_MAX_AGE_SECONDS = 7200;
 export const CURVE_COMPLETE_AGE_SECONDS = 86400;
 
 /** How far back the training steps reach: the week before the completeness bound. */
-export const CURVE_TRAINING_SECONDS = 7 * 86400;
+export const CURVE_TRAINING_SECONDS = 604800; // seven days
 
 const HOURS_IN_DAY = 24;
-const BINS = CURVE_MAX_AGE_SECONDS / CURVE_BIN_SECONDS + 1;
+// A point every CURVE_BIN_SECONDS from age 0 to CURVE_MAX_AGE_SECONDS: 0, 5 … 120 minutes. A
+// literal, not derived: a top-level calculation is out of reach of the mutation run; a test
+// holds it equal to the two constants.
+const BINS = 25;
 
 /**
  * Shares at ages 0, 5, 10 … 120 minutes, per hour of day (null where no training step fell
@@ -94,10 +97,10 @@ export function tallyRun(
     endedAt: number
 ): void {
     const first = Math.max(Math.floor(period / stepSeconds) * stepSeconds, window.from);
-    for (let start = first; start < window.until && start < endedAt; start += stepSeconds) {
+    const last = Math.min(Math.ceil(endedAt / stepSeconds) * stepSeconds, window.until);
+    for (let start = first; start < last; start += stepSeconds) {
         const end = start + stepSeconds;
         const overlap = Math.min(endedAt, end) - Math.max(period, start);
-        if (overlap <= 0) continue;
         const hour = hourOfStep(start, stepSeconds);
         tally.seconds[hour] += overlap;
         const bin = Math.max(0, Math.ceil((endedAt - end) / CURVE_BIN_SECONDS));

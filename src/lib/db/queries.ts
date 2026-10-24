@@ -1732,8 +1732,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     );
     const countedSteps = (countedUntil - firstStart) / stepSeconds;
     const steps = (cutoff - firstStart) / stepSeconds;
-    // Nothing to learn, and nothing to read, when no step lies between the two boundaries.
-    const curve = cutoff > countedUntil ? getCompletenessCurve({ now, stepSeconds }) : null;
+    const curve = getCompletenessCurve({ now, stepSeconds });
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.

@@ -2448,6 +2448,13 @@ HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at
   1, 2, 4 and 5 failed, each showing the 7-day series under another range's label ("Busiest 10
   minutes: 3 raids in progress, … 03:00–04:00 UTC", "Busiest 3 hours: 3 raids in progress, …").
   3 passed, as it should: its range is 7d. Restored and green.
+- Review fix S4 (2026-10-24): `rangeLink` now finds a preset's link by its `label` from
+  `ACTIVITY_RANGES`, not its id, so renaming a label breaks no spec by itself. One deliberate
+  break, the control rendering `label.toUpperCase()`: 8 of the spec's 11 tests failed on
+  `rangeLink` finding no link (every test that touches the control); the 3 that never look at it
+  passed. Restored and green. Since review fix S2 the chart reads its wording off the series
+  itself, so the one-cache-key break above would no longer show a series under another range's
+  wording; that record is of the code at the time.
 
 ### What is still NOT covered
 

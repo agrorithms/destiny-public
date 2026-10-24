@@ -131,11 +131,13 @@ describe('learning shares from runs', () => {
     });
 
     it('keeps a run that ends after the curve\'s longest age out of every share', () => {
-        // A run that is only reported 2 h 30 min after its step never counts within the
-        // 2 hours the curve covers, so the share stays short of 1 however far the age goes.
-        const curve = curveOf([[S, S + 3.5 * HOUR]]);
+        // A run reported 2 hours 5 minutes after its step ends is past the 2 hours the curve
+        // covers, so the 03:00 share stays at nothing however far the age goes, and the curve
+        // gains no point for it.
+        const curve = curveOf([[S, S + HOUR + 125 * MINUTE]]);
 
         expect(shareAt(curve, 3, CURVE_MAX_AGE_SECONDS)).toBe(0);
+        expect(curve.byHour[3]).toHaveLength(CURVE_MAX_AGE_SECONDS / CURVE_BIN_SECONDS + 1);
     });
 
     it('ignores the steps of a run that lie before the window, as well as after it', () => {

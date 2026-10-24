@@ -50,7 +50,7 @@ export default async function ActivityPage({
             <header className="space-y-2">
                 <h1 className="text-3xl font-bold ui-text-primary">Raid Activity</h1>
                 <p className="ui-text-secondary">
-                    How many raids were in progress across every raid, averaged over each{' '}
+                    How many raids were in progress across every raid, averaged over every{' '}
                     {range.step} of the last {range.span}. Every raid instance counts,
                     checkpoint runs and unfinished ones included. Times are UTC.
                 </p>

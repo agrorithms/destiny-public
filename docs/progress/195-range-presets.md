@@ -16,8 +16,8 @@ added to visual:check, and a dated ADR 0009 Consequences line.
    - [x] `src/app/activity/activity-range.test.ts` (new)
    - [x] `src/app/activity/activity-range.ts` (new) — `ACTIVITY_RANGES`, `parseActivityRange`, `activityRangeHref`
 4. Geometry, red then green
-   - [ ] `src/app/activity/activity-geometry.test.ts` — hour/day ticks per range, `beforeData`, `describePeak`, `notYetCountedLegend`, `describeBeforeData`
-   - [ ] `src/app/activity/activity-geometry.ts`
+   - [x] `src/app/activity/activity-geometry.test.ts` — hour/day ticks per range, `beforeData`, `describePeak`, `notYetCountedLegend`, `describeBeforeData`
+   - [x] `src/app/activity/activity-geometry.ts`
 5. The page
    - [ ] `src/app/activity/ActivityRangeControl.tsx` (new) — Link-based, `aria-current`
    - [ ] `src/app/activity/ActivityChart.tsx` — the range's ticks, wording and the data-start shade

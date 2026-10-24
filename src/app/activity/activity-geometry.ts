@@ -2,8 +2,9 @@ import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queri
 import type { ActivityRange } from './activity-range';
 
 /**
- * Where things sit on the Raid Activity chart (#194): the day ticks and their labels, the
- * y-axis, the line's path and the shaded "not yet counted" span. The arithmetic is here
+ * Where things sit on the Raid Activity chart (#194, #195): the time ticks and their
+ * labels, the y-axis, the line's path, the shaded spans at either end, and the sentences
+ * that describe them, each worded for the range (./activity-range.ts). The arithmetic is here
  * rather than in ./ActivityChart.tsx so that `mutate:diff` reaches it and the component
  * only draws what it is handed.
  *
@@ -65,23 +66,68 @@ export function xPercent(at: number, from: number, to: number): number {
     return ((at - from) / (to - from)) * 100;
 }
 
+/** Which midnights a day axis marks, and how many of its labels a phone keeps. */
+export interface DayTickOptions {
+    /** A tick on every UTC midnight whose day number since the epoch is a multiple of this. */
+    everyDays: number;
+    /** On a phone, every this-many ticks keeps its label, from the first. */
+    phoneEvery: number;
+}
+
 /**
  * One tick per UTC midnight inside the window, labelled with the weekday and day of the
  * month it begins (`Sat 17`). A 7-day window has seven; a label past
  * {@link LAST_LABELLED_TICK_PERCENT} is dropped and its gridline kept, and on a phone only
- * every other label shows ({@link ActivityTick.phone}).
+ * every other label shows ({@link ActivityTick.phone}). The 30-day range thins them with
+ * `options` ({@link axisTicks}).
  */
-export function dayTicks(from: number, to: number): ActivityTick[] {
+export function dayTicks(from: number, to: number, options: DayTickOptions = { everyDays: 1, phoneEvery: 2 }): ActivityTick[] {
+    const every = options.everyDays * SECONDS_PER_DAY;
     const ticks: ActivityTick[] = [];
-    for (let midnight = Math.ceil(from / SECONDS_PER_DAY) * SECONDS_PER_DAY; midnight <= to; midnight += SECONDS_PER_DAY) {
+    for (let midnight = Math.ceil(from / every) * every; midnight <= to; midnight += every) {
         const percent = xPercent(midnight, from, to);
         ticks.push({
             percent,
             label: percent <= LAST_LABELLED_TICK_PERCENT ? dayLabel(midnight) : null,
-            phone: ticks.length % 2 === 0,
+            phone: ticks.length % options.phoneEvery === 0,
         });
     }
     return ticks;
+}
+
+/** The 24-hour range's tick spacing, and the spacing of the labels a phone keeps. */
+const HOUR_TICK_SECONDS = 3 * 60 * 60;
+const PHONE_HOUR_TICK_SECONDS = 6 * 60 * 60;
+
+/**
+ * One tick every 3 UTC hours inside the window, labelled with its hour (`21:00`), except
+ * midnight, which is labelled with the day it begins (`Sat 17`) so a day's chart still
+ * shows where one day ends. On a phone only the ticks on a 6-hour boundary keep their
+ * label: three hours is ~37px of chart at 360px, and a label ~30px.
+ */
+export function hourTicks(from: number, to: number): ActivityTick[] {
+    const ticks: ActivityTick[] = [];
+    for (let at = Math.ceil(from / HOUR_TICK_SECONDS) * HOUR_TICK_SECONDS; at <= to; at += HOUR_TICK_SECONDS) {
+        const percent = xPercent(at, from, to);
+        ticks.push({
+            percent,
+            label: percent <= LAST_LABELLED_TICK_PERCENT ? (at % SECONDS_PER_DAY === 0 ? dayLabel(at) : clock(at)) : null,
+            phone: at % PHONE_HOUR_TICK_SECONDS === 0,
+        });
+    }
+    return ticks;
+}
+
+/**
+ * The x-axis ticks a range draws: hours for 24 hours, every midnight for 7 days, and every
+ * other midnight for 30 days, on even days since the epoch so the labels don't jump a day
+ * whenever the window crosses a midnight. At 30 days two days is ~20px of chart on a
+ * phone, so a phone keeps every third label, six days apart.
+ */
+export function axisTicks(from: number, to: number, range: ActivityRange): ActivityTick[] {
+    if (range.id === '24h') return hourTicks(from, to);
+    if (range.id === '30d') return dayTicks(from, to, { everyDays: 2, phoneEvery: 3 });
+    return dayTicks(from, to);
 }
 
 /**
@@ -131,18 +177,85 @@ export function linePath(points: RaidsInProgressPoint[], from: number, to: numbe
         .join('');
 }
 
+/** A shaded span across the chart, as percentages of its width. */
+export interface ShadedSpan {
+    startPercent: number;
+    endPercent: number;
+    widthPercent: number;
+}
+
 /**
  * The span shaded as not yet counted: from where counted data ends (`countedUntil`, the
  * end of the last counted step) to "now" at the right-hand edge, so it meets the line's
- * last step with no gap. Two to three hours wide at 1-hour steps. #196 fills it with a
- * Provisional estimate.
+ * last step with no gap. Two hours plus up to one step wide ({@link notYetCountedLegend}).
+ * #196 fills it with a Provisional estimate.
  */
 export function notYetCounted(
     series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>
-): { startPercent: number; endPercent: number; widthPercent: number } {
+): ShadedSpan {
     const startPercent = xPercent(series.countedUntil, series.from, series.to);
     const endPercent = 100;
     return { startPercent, endPercent, widthPercent: endPercent - startPercent };
+}
+
+/**
+ * The span shaded as before the data starts: from the left-hand edge to where counting
+ * starts (`countedFrom`), when the stored PGCRs don't reach back to the window's first
+ * whole step — prod keeps 720 hours of them, the 30-day window exactly. Null when counting
+ * starts at that first whole step: the part-step before it is the step grid, not missing
+ * history, and the chart has always left it bare.
+ */
+export function beforeData(
+    series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'stepSeconds' | 'countedFrom'>
+): ShadedSpan | null {
+    const firstWholeStep = Math.ceil(series.from / series.stepSeconds) * series.stepSeconds;
+    if (series.countedFrom <= firstWholeStep) return null;
+    const endPercent = xPercent(series.countedFrom, series.from, series.to);
+    return { startPercent: 0, endPercent, widthPercent: endPercent };
+}
+
+/** The legend line for {@link beforeData}'s shade, naming where the data starts in UTC. */
+export function describeBeforeData(countedFrom: number): string {
+    return `Shaded at the left: no data before ${formatInstant(countedFrom)}. Older raid reports are no longer stored.`;
+}
+
+/**
+ * How old a step's end must be before it is counted: the query's `COUNTED_AGE_SECONDS`,
+ * copied because importing a value from `@/lib/db/queries` would put better-sqlite3 on
+ * this module's import path. A test holds the two equal.
+ */
+export const NOT_YET_COUNTED_AGE_SECONDS = 2 * 60 * 60;
+
+/**
+ * The not-yet-counted shade's legend: how wide it can be at this step. Counting ends at
+ * the last whole step 2 hours old, so the shade is 2 hours plus up to one step wide — 2 to
+ * 3 hours at 1-hour steps, 2 hours to 2 hours 10 minutes at 10-minute steps.
+ */
+export function notYetCountedLegend(stepSeconds: number): string {
+    const shortest = NOT_YET_COUNTED_AGE_SECONDS;
+    const longest = shortest + stepSeconds;
+    const span = longest % 3600 === 0
+        ? `${shortest / 3600} to ${formatDuration(longest)}`
+        : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
+    return `Shaded: the last ${span}, not yet counted.`;
+}
+
+/**
+ * The sentence naming the busiest step, for the caption and the chart's accessible name,
+ * worded for the range: "Busiest 10 minutes" over the last 24 hours, "Busiest hour" over 7
+ * days, "Busiest 3 hours" over 30. A step that rounds to one raid says "1 raid".
+ */
+export function describePeak(
+    busiest: RaidsInProgressPoint | null,
+    range: ActivityRange
+): { caption: string; ariaLabel: string } {
+    const measure = `Raids in progress per ${range.step} over the last ${range.span}`;
+    if (busiest === null) {
+        return { caption: `No raids counted in the last ${range.span} yet.`, ariaLabel: `${measure}: none counted yet` };
+    }
+    const count = formatRaidCount(busiest.total);
+    const peak = `${count} ${count === '1' ? 'raid' : 'raids'} in progress, ${formatStepWindow(busiest.start, busiest.end)}`;
+    return { caption: `Busiest ${range.step}: ${peak}.`, ariaLabel: `${measure}, peaking at ${peak}` };
 }
 
 /**
@@ -158,7 +271,21 @@ export function busiestStep(points: RaidsInProgressPoint[]): RaidsInProgressPoin
 
 /** A step's window as a reader would say it: `Sat 17 Oct, 20:00–21:00 UTC`. */
 export function formatStepWindow(start: number, end: number): string {
-    return `${dayLabel(start)} ${MONTHS[new Date(start * 1000).getUTCMonth()]}, ${clock(start)}–${clock(end)} UTC`;
+    return `${dateLabel(start)}, ${clock(start)}–${clock(end)} UTC`;
+}
+
+/** An instant as a reader would say it: `Sat 26 Sep, 06:00 UTC`. */
+function formatInstant(at: number): string {
+    return `${dateLabel(at)}, ${clock(at)} UTC`;
+}
+
+/** `2 hours`, `5 hours`, `2 hours 10 minutes`: whole minutes, never "1 hours". */
+function formatDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.round((seconds % 3600) / 60);
+    const parts = [`${hours} ${hours === 1 ? 'hour' : 'hours'}`];
+    if (minutes > 0) parts.push(`${minutes} minutes`);
+    return parts.join(' ');
 }
 
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */
@@ -172,6 +299,11 @@ function dayLabel(at: number): string {
     return `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()}`;
 }
 
+/** The UTC weekday, day and month an instant falls on: `Sat 17 Oct`. */
+function dateLabel(at: number): string {
+    return `${dayLabel(at)} ${MONTHS[new Date(at * 1000).getUTCMonth()]}`;
+}
+
 /** `HH:MM` in UTC. */
 function clock(at: number): string {
     return new Date(at * 1000).toISOString().slice(11, 16);
@@ -181,11 +313,3 @@ function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
 
-// Stubs for #195's red commit.
-export const NOT_YET_COUNTED_AGE_SECONDS = 0;
-export function hourTicks(from: number, to: number): ActivityTick[] { void from; void to; throw new Error('not implemented'); }
-export function axisTicks(from: number, to: number, range: ActivityRange): ActivityTick[] { void from; void to; void range; throw new Error('not implemented'); }
-export function beforeData(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'stepSeconds' | 'countedFrom'>): { startPercent: number; endPercent: number; widthPercent: number } | null { void series; throw new Error('not implemented'); }
-export function describeBeforeData(countedFrom: number): string { void countedFrom; throw new Error('not implemented'); }
-export function describePeak(busiest: RaidsInProgressPoint | null, range: ActivityRange): { caption: string; ariaLabel: string } { void busiest; void range; throw new Error('not implemented'); }
-export function notYetCountedLegend(stepSeconds: number): string { void stepSeconds; throw new Error('not implemented'); }

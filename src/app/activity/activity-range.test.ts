@@ -74,6 +74,12 @@ describe('the preset a series was built for', () => {
         expect(() => rangeOfSeries({ from: NOW - DAY, to: NOW, stepSeconds: HOUR })).toThrow();
     });
 
+    it('names the span and step it was given when it refuses', () => {
+        // The error is a 500 on the page, so it has to say which series reached the chart:
+        // the span and the step, in seconds, whatever the sentence around them.
+        expect(() => rangeOfSeries({ from: NOW - DAY, to: NOW, stepSeconds: HOUR })).toThrow(/86400(?=.*3600)/);
+    });
+
     it('refuses a series whose window is no preset\'s', () => {
         expect(() => rangeOfSeries({ from: NOW - 2 * DAY, to: NOW, stepSeconds: HOUR })).toThrow();
     });

@@ -1590,6 +1590,8 @@ export function deleteSessionsContainingPlayer(membershipId: string): void {
  */
 export const COUNTED_AGE_SECONDS = 7200; // two hours
 
+export const DATA_START_MARGIN_SECONDS = 6 * 3600;
+
 /** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
 export interface RaidsInProgressPoint {
     start: number;
@@ -1604,6 +1606,7 @@ export interface RaidsInProgressSeries {
     /** The window's right edge: `now`. */
     to: number;
     stepSeconds: number;
+    countedFrom: number;
     /**
      * Where counted data ends: the end of the last step returned, on the step grid. That is
      * the last step boundary at or before `now - COUNTED_AGE_SECONDS`, so between two and
@@ -1689,7 +1692,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds });
     }
 
-    return { from, to: now, stepSeconds, countedUntil: lastEnd, points };
+    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil: lastEnd, points };
 }
 
 // =====================

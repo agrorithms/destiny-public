@@ -15,9 +15,10 @@
 /** The URL's spelling of the range. Absent means 7 days. */
 const ACTIVITY_RANGE_PARAM = 'range';
 
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+/** Seconds in each unit: the one set the presets and the chart's geometry both count in. */
+export const MINUTE = 60;
+export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
 
 /** One list, three uses: the recogniser, the control's order and labels, and the query's arguments. */
 export const ACTIVITY_RANGES = [

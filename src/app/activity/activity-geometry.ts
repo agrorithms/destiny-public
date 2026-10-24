@@ -1,5 +1,5 @@
 import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queries';
-import type { ActivityRange } from './activity-range';
+import { DAY, HOUR, MINUTE, type ActivityRange } from './activity-range';
 
 /**
  * Where things sit on the Raid Activity chart (#194, #195): the time ticks and their
@@ -30,7 +30,6 @@ export const CHART_HEIGHT = 200;
  */
 export const LAST_LABELLED_TICK_PERCENT = 88;
 
-const SECONDS_PER_DAY = 24 * 60 * 60;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -82,12 +81,12 @@ export interface DayTickOptions {
  * `options` ({@link axisTicks}).
  */
 export function dayTicks(from: number, to: number, options: DayTickOptions = { everyDays: 1, phoneEvery: 2 }): ActivityTick[] {
-    return ticksEvery(from, to, options.everyDays * SECONDS_PER_DAY, dayLabel, (_, index) => index % options.phoneEvery === 0);
+    return ticksEvery(from, to, options.everyDays * DAY, dayLabel, (_, index) => index % options.phoneEvery === 0);
 }
 
 /** The 24-hour range's tick spacing, and the spacing of the labels a phone keeps. */
-const HOUR_TICK_SECONDS = 3 * 60 * 60;
-const PHONE_HOUR_TICK_SECONDS = 6 * 60 * 60;
+const HOUR_TICK_SECONDS = 3 * HOUR;
+const PHONE_HOUR_TICK_SECONDS = 6 * HOUR;
 
 /**
  * One tick every 3 UTC hours inside the window, labelled with its hour (`21:00`), except
@@ -100,7 +99,7 @@ export function hourTicks(from: number, to: number): ActivityTick[] {
         from,
         to,
         HOUR_TICK_SECONDS,
-        (at) => (at % SECONDS_PER_DAY === 0 ? dayLabel(at) : clock(at)),
+        (at) => (at % DAY === 0 ? dayLabel(at) : clock(at)),
         (at) => at % PHONE_HOUR_TICK_SECONDS === 0
     );
 }
@@ -235,7 +234,7 @@ export function describeBeforeData(countedFrom: number): string {
  * copied because importing a value from `@/lib/db/queries` would put better-sqlite3 on
  * this module's import path. A test holds the two equal.
  */
-export const NOT_YET_COUNTED_AGE_SECONDS = 2 * 60 * 60;
+export const NOT_YET_COUNTED_AGE_SECONDS = 2 * HOUR;
 
 /**
  * The not-yet-counted shade's legend: how wide it can be at this step. Counting ends at
@@ -245,8 +244,8 @@ export const NOT_YET_COUNTED_AGE_SECONDS = 2 * 60 * 60;
 export function notYetCountedLegend(stepSeconds: number): string {
     const shortest = NOT_YET_COUNTED_AGE_SECONDS;
     const longest = shortest + stepSeconds;
-    const span = longest % 3600 === 0
-        ? `${shortest / 3600} to ${formatDuration(longest)}`
+    const span = longest % HOUR === 0
+        ? `${shortest / HOUR} to ${formatDuration(longest)}`
         : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
     return `Shaded: the last ${span}, not yet counted.`;
 }
@@ -295,8 +294,8 @@ function formatInstant(at: number): string {
  * widths, which are never under 2 hours, so it has no singular.
  */
 function formatDuration(seconds: number): string {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.round((seconds % 3600) / 60);
+    const hours = Math.floor(seconds / HOUR);
+    const minutes = Math.round((seconds % HOUR) / MINUTE);
     return minutes > 0 ? `${hours} hours ${minutes} minutes` : `${hours} hours`;
 }
 

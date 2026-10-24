@@ -1,6 +1,6 @@
 import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queries';
 import { DAY, HOUR, MINUTE, type ActivityRange } from './activity-range';
-import { clock, dayLabel, formatInstant, formatStepWindow } from './activity-time';
+import { clock, dayLabel, formatInstant, formatStepWindow, type OffsetOf } from './activity-time';
 
 /**
  * Where things sit on the Raid Activity chart (#194, #195): the time ticks and their
@@ -132,7 +132,8 @@ function ticksEvery(
  * whenever the window crosses a midnight. At 30 days two days is ~20px of chart on a
  * phone, so a phone keeps every third label, six days apart.
  */
-export function axisTicks(from: number, to: number, range: ActivityRange): ActivityTick[] {
+export function axisTicks(from: number, to: number, range: ActivityRange, offsetOf: OffsetOf = null): ActivityTick[] {
+    void offsetOf; // red: not yet read
     if (range.id === '24h') return hourTicks(from, to);
     if (range.id === '30d') return dayTicks(from, to, { everyDays: 2, phoneEvery: 3 });
     return dayTicks(from, to);
@@ -241,7 +242,8 @@ export function beforeData(
 }
 
 /** The legend line for {@link beforeData}'s shade, naming where the data starts in UTC. */
-export function describeBeforeData(countedFrom: number): string {
+export function describeBeforeData(countedFrom: number, offsetOf: OffsetOf = null): string {
+    void offsetOf; // red: not yet read
     return `Shaded at the left: no data before ${formatInstant(countedFrom)}. Older raid reports are no longer stored.`;
 }
 
@@ -282,8 +284,10 @@ export function provisionalLegend(stepSeconds: number): string {
  */
 export function describePeak(
     busiest: RaidsInProgressPoint | null,
-    range: ActivityRange
+    range: ActivityRange,
+    offsetOf: OffsetOf = null
 ): { caption: string; ariaLabel: string } {
+    void offsetOf; // red: not yet read
     const measure = `Raids in progress per ${range.step} over the last ${range.span}`;
     if (busiest === null) {
         return { caption: `No raids counted in the last ${range.span} yet.`, ariaLabel: `${measure}: none counted yet` };

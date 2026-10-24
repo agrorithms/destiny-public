@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTED_AGE_SECONDS, PROVISIONAL_MIN_AGE_SECONDS } from '@/lib/db/queries';
 import { ACTIVITY_RANGES, type ActivityRangeId } from './activity-range';
+import type { OffsetOf } from './activity-time';
 import {
     CHART_HEIGHT,
     LAST_LABELLED_TICK_PERCENT,
@@ -480,3 +481,104 @@ describe('the legends for the estimate and the shade', () => {
 function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
+
+/**
+ * The same chart in a reader's time zone (#197): the gridlines and their labels fall on the
+ * zone's midnights and 3-hour marks, so a UTC midnight is no longer where a day starts. Every
+ * expected position is worked out by hand from the zone's offset.
+ */
+describe('ticks in a reader\'s time zone', () => {
+    // UTC+5:45 all year: a local midnight is 18:15 UTC the evening before.
+    const KATHMANDU: OffsetOf = () => 345;
+
+    it('puts the 7-day range\'s ticks on local midnights, not UTC ones', () => {
+        // The window opens Fri 16 Oct at 20:33:16 UTC. Local Sat 17 began at 18:15 UTC on the
+        // 16th, before it; local Sun 18 began 78,104 s in (21 h 41 m 44 s), 12.9143% of the
+        // week, and each day after is another 14.2857%. Local Sat 24 began at 18:15 UTC on
+        // Fri 23, just before "now": a seventh tick, past the label cut-off.
+        const ticks = axisTicks(FROM, NOW, range('7d'), KATHMANDU);
+
+        expect(ticks.map((tick) => tick.label)).toEqual(['Sun 18', 'Mon 19', 'Tue 20', 'Wed 21', 'Thu 22', 'Fri 23', null]);
+        ticks.forEach((tick, index) => expect(tick.percent).toBeCloseTo(12.9143 + index * 14.2857, 3));
+        expect(ticks.map((tick) => tick.phone)).toEqual([true, false, true, false, true, false, true]);
+    });
+
+    it('puts the 24-hour range\'s ticks on local 3-hour marks, a quarter past on the UTC clock', () => {
+        // Local 03:00 is 21:15 UTC the evening before. The window opens Thu 22 Oct at
+        // 20:33:16 UTC, so the first mark is 2,504 s in: 2.8981% of the day, and each 3 hours
+        // is another 12.5%. The last, local midnight at 90.3981%, is past the label cut-off.
+        const ticks = axisTicks(NOW - DAY, NOW, range('24h'), KATHMANDU);
+
+        expect(ticks.map((tick) => tick.label)).toEqual(['03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00', null]);
+        ticks.forEach((tick, index) => expect(tick.percent).toBeCloseTo(2.8981 + index * 12.5, 3));
+        // A phone keeps the marks on a local 6-hour boundary, midnight among them.
+        expect(ticks.map((tick) => tick.phone)).toEqual([false, true, false, true, false, true, false, true]);
+    });
+
+    it('names the day at a local midnight in the 24-hour range', () => {
+        // Window to Fri 23 Oct 12:00 UTC, opening Thu 22 at 12:00. Local midnight Fri 23 is
+        // 18:15 UTC on the 22nd, 6 h 15 m in (26.0417%), and is named by its day as in UTC.
+        // The mark before it is 18:00 and 21:00 local; the last, 15:00 local at 88.5417%, is
+        // past the label cut-off.
+        const now = 1792756800;
+        const ticks = axisTicks(now - DAY, now, range('24h'), KATHMANDU);
+
+        expect(ticks.map((tick) => tick.label)).toEqual(['18:00', '21:00', 'Fri 23', '03:00', '06:00', '09:00', '12:00', null]);
+        expect(ticks[2].percent).toBeCloseTo(26.0417, 3);
+        expect(ticks[7].percent).toBeCloseTo(88.5417, 3);
+    });
+
+    it('puts the 30-day range\'s ticks on every other local midnight, on even local days', () => {
+        // Local Thu 24 Sep began before the window opened, so the first even local day is
+        // Sat 26 (day 20,722), 164,504 s in: 6.3466% of 30 days; every two days is another
+        // 6.6667%. Local Thu 22 and Sat 24 Oct are past the label cut-off.
+        const ticks = axisTicks(NOW - 30 * DAY, NOW, range('30d'), KATHMANDU);
+
+        expect(ticks.map((tick) => tick.label)).toEqual([
+            'Sat 26', 'Mon 28', 'Wed 30', 'Fri 2', 'Sun 4', 'Tue 6', 'Thu 8', 'Sat 10',
+            'Mon 12', 'Wed 14', 'Fri 16', 'Sun 18', 'Tue 20', null, null,
+        ]);
+        ticks.forEach((tick, index) => expect(tick.percent).toBeCloseTo(6.3466 + index * 6.6667, 3));
+        expect(ticks.map((tick) => tick.phone).slice(0, 4)).toEqual([true, false, false, true]);
+    });
+
+    it('follows a clock change: the midnight after it is an hour later in UTC than the one before', () => {
+        // London goes back an hour at 01:00 UTC on Sun 25 Oct 2026. The window is the 7 days
+        // to Mon 26 Oct 12:00 UTC. Local Tue 20 began at 23:00 UTC on Mon 19, 39,600 s in
+        // (6.5476%); local Sun 25 began at 23:00 UTC on Sat 24 (summer time), 471,600 s in
+        // (77.9762%) and local Mon 26 at 00:00 UTC, 561,600 s in (92.8571%, unlabelled).
+        const london: OffsetOf = (at) => (at < 1792890000 ? 60 : 0);
+        const now = 1793016000;
+        const ticks = axisTicks(now - 7 * DAY, now, range('7d'), london);
+
+        expect(ticks.map((tick) => tick.label)).toEqual(['Tue 20', 'Wed 21', 'Thu 22', 'Fri 23', 'Sat 24', 'Sun 25', null]);
+        expect(ticks[0].percent).toBeCloseTo(6.5476, 3);
+        expect(ticks[5].percent).toBeCloseTo(77.9762, 3);
+        expect(ticks[6].percent).toBeCloseTo(92.8571, 3);
+    });
+
+    it('is the UTC axis when there is no offset', () => {
+        expect(axisTicks(FROM, NOW, range('7d'), null)).toEqual(axisTicks(FROM, NOW, range('7d')));
+    });
+});
+
+describe('the sentences in a reader\'s time zone', () => {
+    const KATHMANDU: OffsetOf = () => 345;
+
+    it('names the peak\'s window on the reader\'s clock, and keeps the accessible name in UTC', () => {
+        // 00:00–01:00 UTC on Sat 17 Oct is 05:45–06:45 in Kathmandu. The SVG's accessible name
+        // is read before any script runs and must not change under a screen reader.
+        const peak = describePeak({ start: 1792195200, end: 1792195200 + HOUR, total: 1828, provisional: false }, range('7d'), KATHMANDU);
+
+        expect(peak.caption).toBe('Busiest hour: 1,828 raids in progress, Sat 17 Oct, 05:45–06:45.');
+        expect(peak.ariaLabel).toBe(
+            'Raids in progress per hour over the last 7 days, peaking at 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC'
+        );
+    });
+
+    it('says where the data starts on the reader\'s clock', () => {
+        expect(describeBeforeData(1792195200 - 21 * DAY + 6 * HOUR, KATHMANDU)).toBe(
+            'Shaded at the left: no data before Sat 26 Sep, 11:45. Older raid reports are no longer stored.'
+        );
+    });
+});

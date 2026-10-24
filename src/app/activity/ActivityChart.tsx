@@ -94,8 +94,8 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                             y={0}
                             width={`${shade.endPercent - shade.startPercent}%`}
                             height={CHART_HEIGHT}
-                            fill="var(--ui-text-subtle)"
-                            fillOpacity={0.25}
+                            fill="var(--ui-text-muted)"
+                            fillOpacity={0.35}
                         />
                         {/* `vector-effect` because the non-uniform stretch would otherwise draw
                             the stroke as a wedge, thin where the chart is wide. */}
@@ -115,7 +115,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                             tick.label === null ? null : (
                                 <span
                                     key={tick.percent}
-                                    className="ui-text-secondary absolute top-0 whitespace-nowrap pl-0.5 text-[10px] tabular-nums"
+                                    className={`ui-text-secondary absolute top-0 whitespace-nowrap pl-0.5 text-[10px] tabular-nums ${tick.phone ? '' : 'max-sm:hidden'}`}
                                     style={{ left: `${tick.percent}%` }}
                                 >
                                     {tick.label}
@@ -134,7 +134,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                     <span
                         aria-hidden
                         className="mt-1 inline-block h-3 w-3 shrink-0 rounded-sm"
-                        style={{ background: 'var(--ui-text-subtle)', opacity: 0.25 }}
+                        style={{ background: 'var(--ui-text-muted)', opacity: 0.35 }}
                     />
                     <span>
                         Shaded: the last 2 hours, not yet counted. A raid still running has no

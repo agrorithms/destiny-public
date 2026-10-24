@@ -39,6 +39,12 @@ describe('day ticks', () => {
         ticks.forEach((tick, index) => expect(tick.percent).toBeCloseTo(expected[index], 3));
     });
 
+    it('labels every other day on a phone, from the first', () => {
+        // At 360px a day is ~38px of chart and a label ~35px, so seven labels touch. Every
+        // other one keeps the axis readable and still names a day every 48 hours.
+        expect(dayTicks(FROM, NOW).map((tick) => tick.phone)).toEqual([true, false, true, false, true, false, true]);
+    });
+
     it('keeps a midnight near the right-hand edge as a gridline but drops its label', () => {
         // A label runs rightwards from its tick, so one starting past the cut-off would
         // run off the chart at 360px. "Now" at 08:24 UTC puts the last midnight at

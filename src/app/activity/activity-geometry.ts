@@ -36,6 +36,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 export interface ActivityTick {
     percent: number;
     label: string | null;
+    /**
+     * Whether the label is also shown on a phone. At 360px a day is ~38px of chart and a
+     * label ~35px, so every other day is labelled there, from the first; the gridlines all
+     * stay.
+     */
+    phone: boolean;
 }
 
 /** The y-axis: its top value, and a labelled gridline at each round step from 0 up. */
@@ -52,7 +58,8 @@ export function xPercent(at: number, from: number, to: number): number {
 /**
  * One tick per UTC midnight inside the window, labelled with the weekday and day of the
  * month it begins (`Sat 17`). A 7-day window has seven; a label past
- * {@link LAST_LABELLED_TICK_PERCENT} is dropped and its gridline kept.
+ * {@link LAST_LABELLED_TICK_PERCENT} is dropped and its gridline kept, and on a phone only
+ * every other label shows ({@link ActivityTick.phone}).
  */
 export function dayTicks(from: number, to: number): ActivityTick[] {
     const ticks: ActivityTick[] = [];
@@ -62,6 +69,7 @@ export function dayTicks(from: number, to: number): ActivityTick[] {
         ticks.push({
             percent,
             label: percent <= LAST_LABELLED_TICK_PERCENT ? `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()}` : null,
+            phone: ticks.length % 2 === 0,
         });
     }
     return ticks;

@@ -33,6 +33,10 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] `npm run mutate:diff -- c1a18a0...HEAD --typecheck` (full runs only)
    - [x] Parity run of the real functions against the mirror script on a scratch copy of the backup
    - [x] `npm run visual:check`
+8. Simplify
+   - [x] /simplify pass (`a558e80`, `b5094ba`, `7ba925b`): one read of ended raid runs shared by the sweep and the
+     curve's training pass; the line's stroke shared by both paths and the dashed key; `ageSpan` takes the step;
+     the e2e spec imports `TOO_RECENT_AGE_SECONDS`. Full run after it at `7ba925b`: 100.0% overall (142/142), PASS.
 
 ## Surviving mutants
 

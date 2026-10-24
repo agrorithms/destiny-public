@@ -44,10 +44,19 @@ export interface ActivityTick {
     phone: boolean;
 }
 
-/** The y-axis: its top value, and a labelled gridline at each round step from 0 up. */
+/**
+ * The y-axis: its top value, and a labelled gridline at each round step from 0 up. Each
+ * tick sits `percent` of the way up (where the HTML label goes) and at `y` in viewBox units,
+ * measured down from the top as SVG does (where the gridline goes).
+ */
 export interface ValueAxis {
     max: number;
-    ticks: Array<{ value: number; label: string; percent: number }>;
+    ticks: Array<{ value: number; label: string; percent: number; y: number }>;
+}
+
+/** How far down from the top a value sits, in viewBox units, on an axis topping out at `max`. */
+function yAt(value: number, max: number): number {
+    return CHART_HEIGHT * (1 - value / max);
 }
 
 /** Where an instant sits across the window `[from, to]`, as a percentage of its width. */
@@ -92,7 +101,7 @@ export function valueAxis(busiest: number): ValueAxis {
     const max = Math.max(1, Math.ceil(busiest / step)) * step;
     const ticks: ValueAxis['ticks'] = [];
     for (let value = 0; value <= max; value += step) {
-        ticks.push({ value, label: formatRaidCount(value), percent: (value / max) * 100 });
+        ticks.push({ value, label: formatRaidCount(value), percent: (value / max) * 100, y: yAt(value, max) });
     }
     return { max, ticks };
 }
@@ -116,8 +125,7 @@ export function linePath(points: RaidsInProgressPoint[], from: number, to: numbe
     return points
         .map((point, index) => {
             const x = (xPercent((point.start + point.end) / 2, from, to) / 100) * CHART_WIDTH;
-            const y = CHART_HEIGHT * (1 - point.total / max);
-            return `${index === 0 ? 'M' : 'L'}${round(x)},${round(y)}`;
+            return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(point.total, max))}`;
         })
         .join('');
 }
@@ -130,8 +138,10 @@ export function linePath(points: RaidsInProgressPoint[], from: number, to: numbe
  */
 export function notYetCounted(
     series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>
-): { startPercent: number; endPercent: number } {
-    return { startPercent: xPercent(series.countedUntil, series.from, series.to), endPercent: 100 };
+): { startPercent: number; endPercent: number; widthPercent: number } {
+    const startPercent = xPercent(series.countedUntil, series.from, series.to);
+    const endPercent = 100;
+    return { startPercent, endPercent, widthPercent: endPercent - startPercent };
 }
 
 /**

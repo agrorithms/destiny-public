@@ -66,21 +66,18 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                         }
                         className="block h-48 w-full sm:h-64"
                     >
-                        {axis.ticks.map((tick) => {
-                            const y = CHART_HEIGHT * (1 - tick.percent / 100);
-                            return (
-                                <line
-                                    key={`y${tick.value}`}
-                                    x1={0}
-                                    x2={CHART_WIDTH}
-                                    y1={y}
-                                    y2={y}
-                                    stroke="var(--ui-border-subtle)"
-                                    strokeWidth={1}
-                                    vectorEffect="non-scaling-stroke"
-                                />
-                            );
-                        })}
+                        {axis.ticks.map((tick) => (
+                            <line
+                                key={`y${tick.value}`}
+                                x1={0}
+                                x2={CHART_WIDTH}
+                                y1={tick.y}
+                                y2={tick.y}
+                                stroke="var(--ui-border-subtle)"
+                                strokeWidth={1}
+                                vectorEffect="non-scaling-stroke"
+                            />
+                        ))}
                         {ticks.map((tick) => (
                             <line
                                 key={`x${tick.percent}`}
@@ -99,7 +96,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                             data-testid="activity-not-yet-counted"
                             x={`${shade.startPercent}%`}
                             y={0}
-                            width={`${shade.endPercent - shade.startPercent}%`}
+                            width={`${shade.widthPercent}%`}
                             height={CHART_HEIGHT}
                             fill={SHADE_FILL}
                             fillOpacity={SHADE_OPACITY}

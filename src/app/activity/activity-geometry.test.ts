@@ -84,15 +84,17 @@ describe('value axis', () => {
 
     it('rounds the busiest step up to a whole number of round steps', () => {
         // Prod's 7-day peak was ~1,828: four steps of 500 cover it, so the axis tops out at
-        // 2,000 and is labelled every 500, from the bottom of the chart up.
+        // 2,000 and is labelled every 500, from the bottom of the chart up. Each gridline's
+        // y is measured down from the top of the 200-high chart, so 0 sits at 200 and the
+        // top value at 0.
         expect(valueAxis(1828)).toEqual({
             max: 2000,
             ticks: [
-                { value: 0, label: '0', percent: 0 },
-                { value: 500, label: '500', percent: 25 },
-                { value: 1000, label: '1,000', percent: 50 },
-                { value: 1500, label: '1,500', percent: 75 },
-                { value: 2000, label: '2,000', percent: 100 },
+                { value: 0, label: '0', percent: 0, y: 200 },
+                { value: 500, label: '500', percent: 25, y: 150 },
+                { value: 1000, label: '1,000', percent: 50, y: 100 },
+                { value: 1500, label: '1,500', percent: 75, y: 50 },
+                { value: 2000, label: '2,000', percent: 100, y: 0 },
             ],
         });
     });
@@ -105,8 +107,8 @@ describe('value axis', () => {
         expect(valueAxis(0)).toEqual({
             max: 1,
             ticks: [
-                { value: 0, label: '0', percent: 0 },
-                { value: 1, label: '1', percent: 100 },
+                { value: 0, label: '0', percent: 0, y: 200 },
+                { value: 1, label: '1', percent: 100, y: 0 },
             ],
         });
     });
@@ -142,10 +144,12 @@ describe('the not-yet-counted span', () => {
         // step ends at 18:00 — 9,196 s before "now", which is where the query reports that
         // counting ends. The shade starts there, (604,800 − 9,196) / 604,800 = 98.4795% of
         // the way across, and meets the line's last step rather than leaving a gap after it.
+        // It runs to the right-hand edge, so it is 9,196 / 604,800 = 1.5205% wide.
         const span = notYetCounted({ from: FROM, to: NOW, countedUntil: NOW - 9196 });
 
         expect(span.startPercent).toBeCloseTo(98.4795, 3);
         expect(span.endPercent).toBe(100);
+        expect(span.widthPercent).toBeCloseTo(1.5205, 3);
     });
 });
 

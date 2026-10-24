@@ -40,7 +40,7 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
 7. Bite proofs
    - [x] `npm run mutate:diff -- 9307ce8...HEAD --typecheck` — 100.0% overall (93/93 scored), loops 0, no survivors
    - [x] `npm run visual:check` — 68 passed
-   - [ ] lint, build, test, e2e at HEAD
+   - [x] lint, build, test, e2e at HEAD (6a88dff): lint 0 errors, tsc, 791 vitest, build, 189 e2e
 
 ## Notes
 

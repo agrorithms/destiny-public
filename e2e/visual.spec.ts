@@ -20,6 +20,10 @@ import { expectNoOverflow } from './support/viewport';
  * expectNoOverflow() itself.
  */
 
+// The Raid Activity chart labels itself in the reader's zone (#197): pinned, so a screenshot
+// does not depend on the machine it was taken on.
+test.use({ timezoneId: 'UTC' });
+
 const APP = path.join('src', 'app');
 const VISUAL_DIR = path.join(process.cwd(), VISUAL_CHECK_DIR);
 

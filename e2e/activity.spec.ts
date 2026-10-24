@@ -1,9 +1,9 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { ACTIVITY_RANGES } from '../src/app/activity/activity-range';
-import { CHART_HEIGHT, TOO_RECENT_AGE_SECONDS } from '../src/app/activity/activity-geometry';
+import { CHART_HEIGHT, CHART_WIDTH, TOO_RECENT_AGE_SECONDS } from '../src/app/activity/activity-geometry';
 import { ACTIVITY_PEAK_RAIDS, ACTIVITY_RECENT_PEAK_RAIDS } from './support/seed-world';
-import { expectInsideViewport, expectNoOverflow } from './support/viewport';
+import { boxOf, expectInsideViewport, expectNoOverflow } from './support/viewport';
 
 /**
  * The Raid Activity page (#194, #195): the nav link to it, the chart drawn from the seeded
@@ -26,11 +26,26 @@ import { expectInsideViewport, expectNoOverflow } from './support/viewport';
  * in its own test for what the picture means: the dashed line continues the counted one and
  * stops short of the shade. Its values are not asserted — they depend on the hour of day the
  * suite runs in, which the unit tests pin — only its structure and, at 24 hours, that the
- * seeded recent run lifts it off the baseline. Tooltips are a later ticket (#197).
+ * seeded recent run lifts it off the baseline.
+ *
+ * The tooltips and local time (#197) are asserted at the end of the file. Every test here runs
+ * in a pinned UTC zone ({@link test.use} below) so a developer's own zone cannot change what
+ * the JavaScript-on tests read; the local-time tests pin a zone of their own, Asia/Kathmandu
+ * (UTC+5:45), whose half-hour offset puts every 3-hour mark a quarter past on the UTC clock
+ * and so cannot be mistaken for the UTC chart. What they expect is worked out with `Intl`,
+ * which shares nothing with the app's formatter.
  */
 
+test.use({ timezoneId: 'UTC' });
+
 const WEEKDAY = '(Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
-const WINDOW = (clock: string) => `${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, ${clock}–${clock} UTC`;
+const WINDOW = (clock: string, zone: Zone) => `${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, ${clock}–${clock}${zone === 'utc' ? ' UTC' : ''}`;
+
+/**
+ * Whether a label is in the reader's zone (JavaScript on) or in UTC and says so (the server's
+ * render, which is all a reader without scripts gets).
+ */
+type Zone = 'local' | 'utc';
 
 /**
  * What each preset draws in the seeded world. Vertex counts allow for the clock: the
@@ -41,7 +56,7 @@ const RANGES = {
     '24h': {
         axis: 'hours',
         label: /^Raids in progress per 10 minutes over the last 24 hours, peaking at /,
-        peak: new RegExp(`^Busiest 10 minutes: ${ACTIVITY_RECENT_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:\\d{2}')}\\.$`),
+        peak: (zone: Zone) => new RegExp(`^Busiest 10 minutes: ${ACTIVITY_RECENT_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:\\d{2}', zone)}\\.$`),
         vertices: [131, 132],
         // The estimates between the counted boundary and the 15-minute cutoff: 10 or 11 ten-minute
         // steps, and the dashed line also holds the last counted point it starts from.
@@ -54,7 +69,7 @@ const RANGES = {
     '7d': {
         axis: 'days',
         label: /^Raids in progress per hour over the last 7 days, peaking at /,
-        peak: new RegExp(`^Busiest hour: ${ACTIVITY_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:00')}\\.$`),
+        peak: (zone: Zone) => new RegExp(`^Busiest hour: ${ACTIVITY_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:00', zone)}\\.$`),
         vertices: [165, 166],
         // One or two hourly estimates, plus the point it starts from.
         estimateVertices: [2, 3],
@@ -66,7 +81,7 @@ const RANGES = {
     '30d': {
         axis: 'days',
         label: /^Raids in progress per 3 hours over the last 30 days, peaking at /,
-        peak: new RegExp(`^Busiest 3 hours: 1 raid in progress, ${WINDOW('\\d{2}:00')}\\.$`),
+        peak: (zone: Zone) => new RegExp(`^Busiest 3 hours: 1 raid in progress, ${WINDOW('\\d{2}:00', zone)}\\.$`),
         vertices: [150, 160],
         // Zero or one 3-hour estimate: the grid can leave no whole step between the counted
         // boundary and the cutoff. Present, it has the point it starts from and one more.
@@ -100,7 +115,7 @@ function rangeLink(page: Page, id: RangeId) {
  * chart's name, line, caption, axis labels and shades are that range's. Drawn from the
  * seeded Tracker, so a control that changed the URL without changing the query fails here.
  */
-async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
+async function expectRangeDrawn(page: Page, id: RangeId, zone: Zone = 'local'): Promise<void> {
     const range = RANGES[id];
     for (const other of Object.keys(RANGES) as RangeId[]) {
         if (other === id) await expect(rangeLink(page, other)).toHaveAttribute('aria-current', 'page');
@@ -109,7 +124,7 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
 
     const chart = page.getByTestId('activity-chart');
     await expect(chart.getByRole('img', { name: range.label })).toBeVisible();
-    await expect(page.getByTestId('activity-peak')).toHaveText(range.peak);
+    await expect(page.getByTestId('activity-peak')).toHaveText(range.peak(zone));
 
     // The solid path has a point for every counted step and none for the estimated ones.
     const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
@@ -144,7 +159,7 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
         await expect(page.getByTestId('activity-provisional-legend')).toHaveCount(0);
     }
 
-    // Labels are HTML under the axis, in UTC. Hours over 24 hours, the day named at midnight;
+    // Labels are HTML under the axis. Hours over 24 hours, the day named at midnight;
     // days otherwise, at least six (a last midnight too near the right-hand edge is unlabelled).
     if (range.axis === 'hours') {
         expect(await chart.getByText(/^\d{2}:00$/).count()).toBeGreaterThanOrEqual(4);
@@ -162,7 +177,7 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
         expect(width).toBeGreaterThan(33.5);
         expect(width).toBeLessThan(35);
         await expect(page.getByTestId('activity-before-data-legend')).toHaveText(
-            new RegExp(`^Shaded at the left: no data before ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:00 UTC\\. Older raid reports are no longer stored\\.$`)
+            new RegExp(`^Shaded at the left: no data before ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:00${zone === 'utc' ? ' UTC' : ''}\\. Older raid reports are no longer stored\\.$`)
         );
     } else {
         await expect(before).toHaveCount(0);
@@ -176,9 +191,9 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
  * JavaScript-off and phone tests, so they cannot drift apart on what "the chart is drawn"
  * means.
  */
-async function expectChartDrawn(page: Page): Promise<void> {
+async function expectChartDrawn(page: Page, zone: Zone = 'local'): Promise<void> {
     await expect(page.getByRole('heading', { level: 1, name: 'Raid Activity' })).toBeVisible();
-    await expectRangeDrawn(page, '7d');
+    await expectRangeDrawn(page, '7d', zone);
 }
 
 test.describe('the Raid Activity page', () => {
@@ -211,12 +226,14 @@ test.describe('the Raid Activity page', () => {
         test.use({ javaScriptEnabled: false });
 
         test('still draws the chart, labelled in UTC', async ({ page }) => {
-            // The chart is server-rendered SVG with no client step in this ticket, so a
-            // reader without scripts gets the same picture — and the copy says it is UTC.
+            // The chart is server-rendered SVG, and the client step that moves it into the
+            // reader's zone does not run, so a reader without scripts gets the same picture
+            // — and the copy says it is UTC.
             await page.goto('/activity');
 
-            await expectChartDrawn(page);
+            await expectChartDrawn(page, 'utc');
             await expect(page.getByText('Times are UTC.', { exact: false })).toBeVisible();
+            await expectTicksOn(page, 'UTC');
         });
     });
 
@@ -323,7 +340,7 @@ test.describe('the range presets', () => {
             await rangeLink(page, '24h').click();
 
             await expect(page).toHaveURL(/\?range=24h$/);
-            await expectRangeDrawn(page, '24h');
+            await expectRangeDrawn(page, '24h', 'utc');
         });
     });
 
@@ -341,6 +358,313 @@ test.describe('the range presets', () => {
                 await expectInsideViewport(page.getByTestId('activity-range'), `the range control on ${id}`);
                 await expectNoOverflow(page);
             }
+        });
+    });
+});
+
+// ---------------------------------------------------------------------------------------
+// Tooltips and local time (#197)
+// ---------------------------------------------------------------------------------------
+
+/**
+ * A tooltip: the average, then the step's window — `Wed 21 Oct, 12:00–13:00` on the reader's
+ * clock, the end naming its weekday when it falls on the next day.
+ */
+const TOOLTIP = new RegExp(
+    `^[\\d,]+ average raids? in progress, ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:\\d{2}–(${WEEKDAY} )?\\d{2}:\\d{2}`
+);
+const ESTIMATE = / · estimate, still arriving$/;
+
+/** The chart's graphic, the part src/components/chart/ChartHover.tsx puts the pointer over. */
+function chartSvg(page: Page) {
+    return page.getByTestId('activity-chart').locator('[data-timeline-part="total"]');
+}
+
+function tooltip(page: Page) {
+    return page.getByTestId('activity-tooltip');
+}
+
+/** How far across the chart each vertex of a path is, from 0 to 1. */
+function fractions(d: string): number[] {
+    return vertices(d).map((vertex) => parseFloat(vertex.split(',')[0]) / CHART_WIDTH);
+}
+
+async function solidFractions(page: Page): Promise<number[]> {
+    return fractions((await page.getByTestId('activity-line').getAttribute('d')) ?? '');
+}
+
+async function dashedFractions(page: Page): Promise<number[]> {
+    return fractions((await page.getByTestId('activity-provisional-line').getAttribute('d')) ?? '');
+}
+
+/** The vertex of the counted line with the most raids in progress, as a fraction across. */
+async function peakFraction(page: Page): Promise<number> {
+    const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
+    const points = vertices(d).map((vertex) => vertex.split(',').map(parseFloat));
+    // Heights are measured down from the top: the peak is the smallest y, the earliest on a tie.
+    const peak = points.reduce((best, point) => (point[1] < best[1] ? point : best));
+    return peak[0] / CHART_WIDTH;
+}
+
+/** Points the mouse `fraction` of the way across the chart, halfway up. */
+async function hoverAt(page: Page, fraction: number): Promise<void> {
+    const svg = chartSvg(page);
+    const box = await boxOf(svg);
+    await svg.hover({ position: { x: box.width * fraction, y: box.height / 2 } });
+}
+
+/** {@link hoverAt} for a finger. */
+async function tapAt(page: Page, fraction: number): Promise<void> {
+    const svg = chartSvg(page);
+    const box = await boxOf(svg);
+    await svg.tap({ position: { x: box.width * fraction, y: box.height / 2 } });
+}
+
+/**
+ * Waits until the client step has run: the intro line names the reader's zone only once the
+ * page has hydrated, and the tooltips and the local ticks come with it. A spec that points
+ * the mouse first would otherwise race the script.
+ */
+async function waitForClientStep(page: Page): Promise<void> {
+    await expect(page.getByTestId('activity-zone')).toContainText('your time zone');
+}
+
+/**
+ * Every tick label sits where the zone's clock says it is. The label's own position gives
+ * the instant it marks — the figure's window and the label's percentage across it — and
+ * `Intl` says what the zone's clock reads then: `HH:MM` for an hour mark, `Sat 17` at
+ * exactly midnight. A gridline sits under each label. Shares nothing with the app's formatter.
+ */
+async function expectTicksOn(page: Page, timeZone: string): Promise<void> {
+    const chart = page.getByTestId('activity-chart');
+    const from = Number(await chart.getAttribute('data-window-from'));
+    const to = Number(await chart.getAttribute('data-window-to'));
+    const labels = await page
+        .getByTestId('activity-x-labels')
+        .locator('span')
+        .evaluateAll((spans) =>
+            spans.map((span) => ({
+                text: span.textContent ?? '',
+                left: parseFloat(/left:\s*([\d.]+)%/.exec(span.getAttribute('style') ?? '')?.[1] ?? 'NaN'),
+            }))
+        );
+    const gridlines = await chartSvg(page)
+        .locator('line[x1$="%"]')
+        .evaluateAll((lines) => lines.map((line) => parseFloat(line.getAttribute('x1') ?? 'NaN')));
+    expect(labels.length, 'the axis has labels').toBeGreaterThanOrEqual(4);
+
+    const clock = new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        weekday: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    });
+    for (const label of labels) {
+        const at = Math.round((from + (label.left / 100) * (to - from)) / 60) * 60;
+        const parts = Object.fromEntries(clock.formatToParts(new Date(at * 1000)).map((part) => [part.type, part.value]));
+        const time = `${parts.hour}:${parts.minute}`;
+        if (/^\d{2}:\d{2}$/.test(label.text)) expect(label.text, `the label at ${label.left}%`).toBe(time);
+        else {
+            expect(label.text, `the label at ${label.left}%`).toBe(`${parts.weekday} ${parts.day}`);
+            expect(time, `${label.text} marks a midnight`).toBe('00:00');
+        }
+        expect(gridlines.some((line) => Math.abs(line - label.left) < 1e-9), `a gridline under ${label.text}`).toBe(true);
+    }
+}
+
+/** A tooltip's window as minutes since midnight: its start and its end. */
+function windowMinutes(text: string): [number, number] {
+    const [, start, end] = /(\d{2}:\d{2})–(?:[A-Z][a-z]{2} )?(\d{2}:\d{2})/.exec(text)!;
+    const minutes = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3));
+    return [minutes(start), minutes(end)];
+}
+
+test.describe('the tooltips', () => {
+    test('hovering a counted step shows its average and its window', async ({ page }) => {
+        await page.goto('/activity');
+        await waitForClientStep(page);
+
+        // The busiest hour is the seeded one: its tooltip repeats the caption's number and window.
+        await hoverAt(page, await peakFraction(page));
+        const caption = (await page.getByTestId('activity-peak').textContent()) ?? '';
+        const window = /in progress, (.+)\.$/.exec(caption)![1];
+        await expect(tooltip(page)).toHaveText(`${ACTIVITY_PEAK_RAIDS} average raids in progress, ${window}`);
+
+        // The last counted step is a count, not an estimate.
+        await hoverAt(page, (await solidFractions(page)).at(-1)!);
+        await expect(tooltip(page)).toHaveText(TOOLTIP);
+        await expect(tooltip(page)).not.toHaveText(ESTIMATE);
+
+        await page.mouse.move(0, 0);
+        await expect(tooltip(page)).toHaveCount(0);
+    });
+
+    test('hovering the dashed line says the step is an estimate, still arriving', async ({ page }) => {
+        await page.goto('/activity?range=24h');
+        await waitForClientStep(page);
+        const [lastCounted, firstEstimate] = await dashedFractions(page);
+
+        await hoverAt(page, firstEstimate);
+        await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
+        const [start, end] = windowMinutes((await tooltip(page).textContent()) ?? '');
+        expect((end - start + 1440) % 1440, 'a 10-minute step').toBe(10);
+
+        // The dashed line starts on the last counted point, and that step is counted.
+        await hoverAt(page, lastCounted);
+        await expect(tooltip(page)).toHaveText(TOOLTIP);
+        await expect(tooltip(page)).not.toHaveText(ESTIMATE);
+    });
+
+    test('a shaded span has no tooltip, and moving into one hides it', async ({ page }) => {
+        await page.goto('/activity?range=30d');
+        await waitForClientStep(page);
+
+        await hoverAt(page, (await solidFractions(page))[3]);
+        await expect(tooltip(page)).toBeVisible();
+
+        // The span before the data starts, shaded at the left.
+        const before = page.getByTestId('activity-before-data');
+        const beforeWidth = parseFloat((await before.getAttribute('width')) ?? '');
+        await hoverAt(page, beforeWidth / 2 / 100);
+        await expect(tooltip(page)).toHaveCount(0);
+
+        // The last 15 minutes or so, too recent to estimate, shaded at the right.
+        await hoverAt(page, (await solidFractions(page))[3]);
+        await expect(tooltip(page)).toBeVisible();
+        const shade = page.getByTestId('activity-too-recent');
+        const shadeX = parseFloat((await shade.getAttribute('x')) ?? '');
+        const shadeWidth = parseFloat((await shade.getAttribute('width')) ?? '');
+        await hoverAt(page, (shadeX + shadeWidth / 2) / 100);
+        await expect(tooltip(page)).toHaveCount(0);
+    });
+
+    test.describe('on a touch screen', () => {
+        test.use({ viewport: { width: 360, height: 780 }, hasTouch: true });
+
+        test('a tap shows the tooltip, a tap elsewhere dismisses it, and nothing overflows', async ({ page }) => {
+            // The widest tooltip texts are the 10-minute and 3-hour ranges'; the overflow
+            // check comes once the tooltip is open, which is when something new is on screen.
+            for (const id of ['24h', '30d'] as const) {
+                await page.goto(`/activity?range=${id}`);
+                await waitForClientStep(page);
+                const counted = await solidFractions(page);
+
+                await tapAt(page, counted[Math.floor(counted.length / 2)]);
+                await expect(tooltip(page)).toHaveText(TOOLTIP);
+                await expectInsideViewport(tooltip(page), `the tooltip on ${id}`);
+                await expectNoOverflow(page);
+
+                // A tap on the chart moves it rather than closing it.
+                const first = await tooltip(page).textContent();
+                await tapAt(page, counted[Math.floor(counted.length / 3)]);
+                await expect(tooltip(page)).not.toHaveText(first ?? '');
+                await expectNoOverflow(page);
+
+                await page.getByRole('heading', { level: 1, name: 'Raid Activity' }).tap();
+                await expect(tooltip(page)).toHaveCount(0);
+            }
+        });
+
+        test('a tap on the dashed line says the step is an estimate', async ({ page }) => {
+            await page.goto('/activity?range=24h');
+            await waitForClientStep(page);
+
+            await tapAt(page, (await dashedFractions(page))[1]);
+
+            await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
+            await expectInsideViewport(tooltip(page), 'the estimate tooltip');
+            await expectNoOverflow(page);
+        });
+    });
+
+    test.describe('on a short touch screen', () => {
+        test.use({ viewport: { width: 360, height: 480 }, hasTouch: true });
+
+        test('a finger swiped across the chart scrolls the page and opens no tooltip', async ({ page }) => {
+            await page.goto('/activity');
+            await waitForClientStep(page);
+            const svg = chartSvg(page);
+            await svg.scrollIntoViewIfNeeded();
+            const box = await boxOf(svg);
+            const scrolledBefore = await page.evaluate(() => window.scrollY);
+
+            // A real touch gesture through Chromium's input pipeline, as the /gos10k timeline's
+            // spec sends it: Playwright's own touch API only taps.
+            const session = await page.context().newCDPSession(page);
+            const x = box.x + box.width * 0.8;
+            const y = box.y + box.height / 2;
+            await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+            for (let step = 1; step <= 10; step += 1) {
+                await session.send('Input.dispatchTouchEvent', {
+                    type: 'touchMove',
+                    touchPoints: [{ x: x - step * 4, y: y - step * 12 }],
+                });
+            }
+            await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+            await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolledBefore);
+            await expect(tooltip(page)).toHaveCount(0);
+        });
+    });
+});
+
+test.describe('in the reader\'s time zone', () => {
+    test.describe('in Kathmandu, UTC+5:45', () => {
+        test.use({ timezoneId: 'Asia/Kathmandu' });
+
+        test('the gridlines and labels fall on the reader\'s clock at every range, and the page says whose', async ({ page }) => {
+            for (const id of ['24h', '7d', '30d'] as const) {
+                await page.goto(`/activity?range=${id}`);
+                await waitForClientStep(page);
+
+                await expect(page.getByTestId('activity-zone')).toHaveText('Times are in your time zone (Asia/Kathmandu).');
+                await expectTicksOn(page, 'Asia/Kathmandu');
+            }
+        });
+
+        test('a tooltip and the caption are 5 hours 45 minutes ahead of the UTC the chart is named in', async ({ page }) => {
+            await page.goto('/activity');
+            await waitForClientStep(page);
+
+            // The accessible name is read before any script runs, and stays UTC.
+            const name = (await chartSvg(page).getAttribute('aria-label')) ?? '';
+            expect(name).toMatch(/ UTC$/);
+            const [utcStart, utcEnd] = windowMinutes(name);
+
+            await hoverAt(page, await peakFraction(page));
+            const [localStart, localEnd] = windowMinutes((await tooltip(page).textContent()) ?? '');
+            expect((localStart - utcStart + 1440) % 1440).toBe(345);
+            expect((localEnd - utcEnd + 1440) % 1440).toBe(345);
+            await expect(tooltip(page)).not.toContainText('UTC');
+
+            // The caption names the same window on the same clock, with no UTC in it.
+            const caption = (await page.getByTestId('activity-peak').textContent()) ?? '';
+            expect(windowMinutes(caption)).toEqual([localStart, localEnd]);
+            expect(caption).not.toContain('UTC');
+        });
+
+        test('the 30-day legend names where the data starts on the reader\'s clock', async ({ page }) => {
+            await page.goto('/activity?range=30d');
+            await waitForClientStep(page);
+
+            // Counting starts on a 3-hour boundary in UTC, a quarter to the hour in Kathmandu.
+            const legend = page.getByTestId('activity-before-data-legend');
+            await expect(legend).toHaveText(/^Shaded at the left: no data before [A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, \d{2}:45\./);
+            await expect(legend).not.toContainText('UTC');
+        });
+    });
+
+    test.describe('with JavaScript disabled, in Kathmandu', () => {
+        test.use({ javaScriptEnabled: false, timezoneId: 'Asia/Kathmandu' });
+
+        test('the labels are still UTC, and say so', async ({ page }) => {
+            await page.goto('/activity?range=24h');
+
+            await expect(page.getByTestId('activity-zone')).toHaveText('Times are UTC.');
+            await expect(page.getByTestId('activity-peak')).toContainText(' UTC.');
+            await expectTicksOn(page, 'UTC');
         });
     });
 });

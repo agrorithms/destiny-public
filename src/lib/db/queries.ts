@@ -1654,11 +1654,11 @@ export interface RaidsInProgressSeries {
      */
     countedFrom: number;
     /**
-     * Where counted data ends: the end of the last step returned, on the step grid. That is
+     * Where counted data ends: the end of the last counted step, on the step grid. That is
      * the last step boundary at or before `now - COUNTED_AGE_SECONDS`, so between two and
-     * three hours before `now` at 1-hour steps. The chart's not-yet-counted shade starts
-     * here, and the Provisional estimate (#196) starts from here, so the two must meet the
-     * line rather than sit at `now - COUNTED_AGE_SECONDS` and leave a gap with neither.
+     * three hours before `now` at 1-hour steps. The Provisional steps (#196) start here, and
+     * the chart's dashed line starts from the last counted point, so they meet the line
+     * rather than sit at `now - COUNTED_AGE_SECONDS` and leave a gap with neither.
      */
     countedUntil: number;
     /**

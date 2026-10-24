@@ -7,7 +7,7 @@ import { ActivityChart } from './ActivityChart';
 /**
  * Raid Activity (#194, parent #51): how many raid instances were in progress over the last
  * 7 days, one point per hour, rebuilt from PGCRs. Not from Session Snapshots, which don't
- * measure activity (ADR 0009, which lands with #192).
+ * measure activity (ADR 0009).
  *
  * The tracer bullet of #51's chain: one range, the total line only, UTC labels, and the
  * span after the last counted hour shaded as not yet counted. #195 adds the range presets,

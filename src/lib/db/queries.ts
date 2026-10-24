@@ -1664,8 +1664,9 @@ export interface RaidsInProgressSeries {
     /**
      * Where the line ends: the end of the last Provisional step returned, on the step grid
      * and at least {@link PROVISIONAL_MIN_AGE_SECONDS} before `to` — the grid floor of that
-     * age, unless the curve left the last step without an estimate. `countedUntil` when no
-     * step is Provisional (no history to learn a curve from, or no step between the counted
+     * age, unless the curve has no share for an earlier step: the estimate stops at the
+     * first step it can't make. `countedUntil` when no step is Provisional (no history to
+     * learn a curve from, no share for the first step, or no step between the counted
      * boundary and the cutoff). The chart's too-recent shade starts here.
      */
     provisionalUntil: number;
@@ -1765,10 +1766,14 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         const observed = wholeRuns + partialSeconds[index] / stepSeconds;
         if (index < countedSteps) {
             points.push({ start, end, total: observed, provisional: false });
-        } else if (curve !== null) {
-            const total = estimateTotal(observed, shareAt(curve, hourOfStep(start, stepSeconds), now - end));
-            if (total !== null) points.push({ start, end, total, provisional: true });
+            continue;
         }
+        // The estimate stops at the first step it can't make, so it is one unbroken run
+        // and `provisionalUntil` is where it ends: shares are per hour of the day, and a
+        // later step with a share would otherwise be drawn joined across the gap.
+        const total = curve === null ? null : estimateTotal(observed, shareAt(curve, hourOfStep(start, stepSeconds), now - end));
+        if (total === null) break;
+        points.push({ start, end, total, provisional: true });
     }
 
     const lastPoint = points.at(-1);

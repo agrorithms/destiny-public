@@ -82,8 +82,9 @@ step-size curve was chosen for being the simpler to state and test.
 - **Training:** steps whose end is between 8 days and 24 hours old, per hour of the day (the step's
   midpoint hour), shares every 5 minutes up to 2 hours (a Provisional step's end is always under
   2 hours old), interpolated linearly. An hour with no data uses the all-hours curve; no data at all
-  means no estimate; a share of 0 leaves that step out. 24 hours is the bound for "complete": 6, 12,
-  24 and 48 hours gave the same error to within 0.2 points.
+  means no estimate; a share of 0 ends the estimate at that step, so it and every younger step are
+  left out and the dashed line is never drawn across a gap. 24 hours is the bound for "complete":
+  6, 12, 24 and 48 hours gave the same error to within 0.2 points.
 - **From `ended_at`, never `fetched_at`.** A curve that learned fetch delay over a week containing the
   scanner's backlog (8–15 October) over-estimated a normal day by 20–65% (median error 20–52%). A
   curve from `ended_at` is unaffected by the scanner, at the price of ignoring the delay that

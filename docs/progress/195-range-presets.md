@@ -10,8 +10,8 @@ added to visual:check, and a dated ADR 0009 Consequences line.
    - [x] `tests/db/raids-in-progress-index.test.ts` (new) — the opened Tracker has `idx_pgcrs_ended_period_raid (ended_at, period, raid_key)`
    - [x] `src/lib/db/schema.ts` — `CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid`
 2. The query's ranges and data start, red then green
-   - [ ] `tests/db/raids-in-progress.test.ts` — per-range step size and point count, boundary splits at 10 min and 3 h, real cleanup then the 30-day first step, no clamp when the data reaches back
-   - [ ] `src/lib/db/queries.ts` — `countedFrom`, `DATA_START_MARGIN_SECONDS`, `countedUntil` independent of the clamp
+   - [x] `tests/db/raids-in-progress.test.ts` — per-range step size and point count, boundary splits at 10 min and 3 h, real cleanup then the 30-day first step, no clamp when the data reaches back
+   - [x] `src/lib/db/queries.ts` — `countedFrom`, `DATA_START_MARGIN_SECONDS`, `countedUntil` independent of the clamp
 3. The range module, red then green
    - [ ] `src/app/activity/activity-range.test.ts` (new)
    - [ ] `src/app/activity/activity-range.ts` (new) — `ACTIVITY_RANGES`, `parseActivityRange`, `activityRangeHref`

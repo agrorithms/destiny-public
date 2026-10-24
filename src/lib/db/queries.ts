@@ -1590,6 +1590,14 @@ export function deleteSessionsContainingPlayer(membershipId: string): void {
  */
 export const COUNTED_AGE_SECONDS = 7200; // two hours
 
+/**
+ * How long after the oldest stored PGCR began a step may start (#195). Cleanup deletes PGCRs
+ * by *start* (`period`), so a moment just after the oldest one kept is under-counted by every
+ * run that started before it and was still going. On the 2026-10-23 prod backup the runs in
+ * progress at a moment that had started more than 6 hours earlier were 1.5% of the count on
+ * average and 4.0% at worst (2 h: 7.7% / 12.9%; 24 h: 0.75% / 2.7%). The tail is runs lasting
+ * days, so no margin makes it exact, and past 6 hours each extra hour buys little.
+ */
 export const DATA_START_MARGIN_SECONDS = 6 * 3600;
 
 /** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
@@ -1606,6 +1614,14 @@ export interface RaidsInProgressSeries {
     /** The window's right edge: `now`. */
     to: number;
     stepSeconds: number;
+    /**
+     * Where counted data starts: the start of the first step returned, on the step grid.
+     * Normally the window's first whole step. When the stored PGCRs don't reach back that
+     * far — prod keeps them for 720 hours, the 30-day window exactly — it is the first step
+     * starting {@link DATA_START_MARGIN_SECONDS} after the oldest one, so no step is drawn
+     * that cleanup has already emptied. The chart shades from `from` to here. Never past
+     * `countedUntil`.
+     */
     countedFrom: number;
     /**
      * Where counted data ends: the end of the last step returned, on the step grid. That is
@@ -1641,18 +1657,33 @@ export interface RaidsInProgressOptions {
  * rangeSeconds`. A step is returned only once its end is {@link COUNTED_AGE_SECONDS} old;
  * the newer ones are absent rather than low. A maintenance window is a true zero.
  *
+ * **The window doesn't start before the data** (#195). Steps start no earlier than
+ * {@link DATA_START_MARGIN_SECONDS} after the oldest stored PGCR began, because cleanup
+ * has deleted the runs that started before it and some of them were still going then. The
+ * bound is read from the data rather than from `CRAWLER_CLEANUP_MAX_AGE_HOURS`: the web
+ * process doesn't see the crawler's env, and on prod the data reaches further back than
+ * that setting says (ADR 0009). Steps before it are absent, like the ones too new to count.
+ *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read once,
- * through `idx_pgcrs_ended` (`ended_at > first step start`), and each adds its overlap in
- * O(1): the partial first and last steps it touches directly, and the whole steps between
- * them through a running difference array. So the cost is rows + steps, never rows × steps
+ * through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step start`), and
+ * each adds its overlap in O(1): the partial first and last steps it touches directly, and
+ * the whole steps between them through a running difference array. So the cost is rows + steps, never rows × steps
  * — a run lasting days adds two array writes, not one per hour it spans.
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
     const from = now - rangeSeconds;
-    const firstStart = Math.ceil(from / stepSeconds) * stepSeconds;
-    const steps = Math.max(0, Math.floor((now - COUNTED_AGE_SECONDS - firstStart) / stepSeconds));
-    const lastEnd = firstStart + steps * stepSeconds;
+    const db = getDb();
+    const countedUntil = Math.floor((now - COUNTED_AGE_SECONDS) / stepSeconds) * stepSeconds;
+    // Every PGCR, raid or not: cleanup deletes them all by age. Through idx_pgcrs_period.
+    const { oldest } = db.prepare('SELECT MIN(period) AS oldest FROM pgcrs').get() as { oldest: number | null };
+    const dataStart = oldest === null ? from : oldest + DATA_START_MARGIN_SECONDS;
+    const firstStart = Math.min(
+        countedUntil,
+        Math.ceil(Math.max(from, dataStart) / stepSeconds) * stepSeconds
+    );
+    const steps = (countedUntil - firstStart) / stepSeconds;
+    const lastEnd = countedUntil;
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
@@ -1661,7 +1692,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     const partialSeconds = new Float64Array(steps + 1);
     const wholeStepsDelta = new Float64Array(steps + 1);
 
-    const rows = getDb().prepare(`
+    const rows = db.prepare(`
     SELECT p.period, p.ended_at
     FROM pgcrs p
     WHERE p.ended_at > ?
@@ -1692,7 +1723,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds });
     }
 
-    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil: lastEnd, points };
+    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, points };
 }
 
 // =====================

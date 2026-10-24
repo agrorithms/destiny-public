@@ -123,8 +123,9 @@ export function linePath(points: RaidsInProgressPoint[], from: number, to: numbe
 }
 
 /**
- * The span shaded as not yet counted: from the moment two hours ago (`countedUntil`),
- * which no counted step ends after, to "now" at the right-hand edge. #196 fills it with a
+ * The span shaded as not yet counted: from where counted data ends (`countedUntil`, the
+ * end of the last counted step) to "now" at the right-hand edge, so it meets the line's
+ * last step with no gap. Two to three hours wide at 1-hour steps. #196 fills it with a
  * Provisional estimate.
  */
 export function notYetCounted(

@@ -44,12 +44,12 @@ async function expectChartDrawn(page: Page): Promise<void> {
 
     await expect(page.getByTestId('activity-peak')).toHaveText(PEAK_CAPTION);
 
-    // The not-yet-counted shade covers the newest two hours of 168, so it starts about
-    // 98.8% of the way across and runs to the right-hand edge.
+    // The not-yet-counted shade starts where the last counted hour ends, two to three hours
+    // before now of 168, so past 98.2% of the way across, and runs to the right-hand edge.
     const shade = page.getByTestId('activity-not-yet-counted');
     const x = parseFloat((await shade.getAttribute('x')) ?? '');
     const width = parseFloat((await shade.getAttribute('width')) ?? '');
-    expect(x).toBeGreaterThan(98.5);
+    expect(x).toBeGreaterThan(98.2);
     expect(x + width).toBeCloseTo(100, 6);
 
     // Day labels are HTML under the axis, in UTC: a 7-day window holds at least six (the

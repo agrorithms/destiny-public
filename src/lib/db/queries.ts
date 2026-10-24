@@ -1604,7 +1604,13 @@ export interface RaidsInProgressSeries {
     /** The window's right edge: `now`. */
     to: number;
     stepSeconds: number;
-    /** `now - COUNTED_AGE_SECONDS`. No point ends after it. */
+    /**
+     * Where counted data ends: the end of the last step returned, on the step grid. That is
+     * the last step boundary at or before `now - COUNTED_AGE_SECONDS`, so between two and
+     * three hours before `now` at 1-hour steps. The chart's not-yet-counted shade starts
+     * here, and #196's Provisional estimate fills from here, so it must meet the line rather
+     * than sit at `now - COUNTED_AGE_SECONDS` and leave a gap with neither.
+     */
     countedUntil: number;
     points: RaidsInProgressPoint[];
 }
@@ -1641,9 +1647,8 @@ export interface RaidsInProgressOptions {
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
     const from = now - rangeSeconds;
-    const countedUntil = now - COUNTED_AGE_SECONDS;
     const firstStart = Math.ceil(from / stepSeconds) * stepSeconds;
-    const steps = Math.max(0, Math.floor((countedUntil - firstStart) / stepSeconds));
+    const steps = Math.max(0, Math.floor((now - COUNTED_AGE_SECONDS - firstStart) / stepSeconds));
     const lastEnd = firstStart + steps * stepSeconds;
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
@@ -1684,7 +1689,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds });
     }
 
-    return { from, to: now, stepSeconds, countedUntil, points };
+    return { from, to: now, stepSeconds, countedUntil: lastEnd, points };
 }
 
 // =====================

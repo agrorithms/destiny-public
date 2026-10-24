@@ -137,12 +137,14 @@ describe('the line', () => {
 });
 
 describe('the not-yet-counted span', () => {
-    it('shades from the moment two hours ago to the right-hand edge', () => {
-        // 166 of the window's 168 hours are counted, so the shade starts 166/168 of the way
-        // across, 98.8095%, and runs to the end.
-        const span = notYetCounted({ from: FROM, to: NOW, countedUntil: NOW - 2 * HOUR });
+    it('shades from where the last counted step ends to the right-hand edge', () => {
+        // "Now" is 20:33:16, so the moment two hours ago is 18:33:16 and the last counted
+        // step ends at 18:00 — 9,196 s before "now", which is where the query reports that
+        // counting ends. The shade starts there, (604,800 − 9,196) / 604,800 = 98.4795% of
+        // the way across, and meets the line's last step rather than leaving a gap after it.
+        const span = notYetCounted({ from: FROM, to: NOW, countedUntil: NOW - 9196 });
 
-        expect(span.startPercent).toBeCloseTo(98.8095, 3);
+        expect(span.startPercent).toBeCloseTo(98.4795, 3);
         expect(span.endPercent).toBe(100);
     });
 });

@@ -144,7 +144,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                         style={{ background: SHADE_FILL, opacity: SHADE_OPACITY }}
                     />
                     <span>
-                        Shaded: the last 2 hours, not yet counted. A raid still running has no
+                        Shaded: the last 2 to 3 hours, not yet counted. A raid still running has no
                         report yet, so this stretch would read low.
                     </span>
                 </p>

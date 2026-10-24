@@ -2371,7 +2371,7 @@ untouched.
 2. **The total line is drawn from the seeded Tracker.** The SVG's accessible name says it peaks at
    3 raids in progress; the line's path has a vertex for every counted hour (at least 165); the
    caption reads "Busiest hour: 3 raids in progress, <Day> <date> <Mon>, HH:00–HH:00 UTC."; the
-   not-yet-counted shade starts past 98.5% of the width and ends at 100%; at least six UTC day
+   not-yet-counted shade starts past 98.2% of the width and ends at 100%; at least six UTC day
    labels sit under the axis. No console errors. The hour itself is not pinned: it is two days
    before the seed ran, and the spec's clock may have crossed an hour since.
 3. **With JavaScript off** (`javaScriptEnabled: false`), the same checks pass, and the copy says

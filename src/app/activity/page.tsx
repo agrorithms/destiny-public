@@ -10,9 +10,9 @@ import { ActivityChart } from './ActivityChart';
  * measure activity (ADR 0009, which lands with #192).
  *
  * The tracer bullet of #51's chain: one range, the total line only, UTC labels, and the
- * last two hours shaded as not yet counted. #195 adds the range presets, #196 the
- * Provisional estimate, #197 tooltips in local time, #198–#199 the per-raid panel — each
- * through the query's options and the geometry module, not a new read.
+ * span after the last counted hour shaded as not yet counted. #195 adds the range presets,
+ * #196 the Provisional estimate, #197 tooltips in local time, #198–#199 the per-raid panel —
+ * each through the query's options and the geometry module, not a new read.
  *
  * **Server-rendered, with no new endpoint**: the page calls the Tracker query module
  * directly, and the chart is hand-made SVG with no client JavaScript.

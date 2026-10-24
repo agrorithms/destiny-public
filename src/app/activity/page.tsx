@@ -61,7 +61,7 @@ export default async function ActivityPage({
                     Database maintenance is in progress. Raid Activity is temporarily unavailable.
                 </p>
             ) : (
-                <ActivityChart series={series} range={range} />
+                <ActivityChart series={series} />
             )}
         </div>
     );

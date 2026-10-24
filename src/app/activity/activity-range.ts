@@ -64,5 +64,12 @@ export interface SeriesShape {
  * preset's — throws: drawing it under any preset's wording would mislabel it.
  */
 export function rangeOfSeries(series: SeriesShape): ActivityRange {
-    throw new Error('not implemented');
+    const rangeSeconds = series.to - series.from;
+    const range = ACTIVITY_RANGES.find(
+        (preset) => preset.rangeSeconds === rangeSeconds && preset.stepSeconds === series.stepSeconds
+    );
+    if (range === undefined) {
+        throw new Error(`No Raid Activity preset spans ${rangeSeconds}s in ${series.stepSeconds}s steps`);
+    }
+    return range;
 }

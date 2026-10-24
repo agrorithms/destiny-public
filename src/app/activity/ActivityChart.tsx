@@ -1,5 +1,5 @@
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
-import type { ActivityRange } from './activity-range';
+import { rangeOfSeries } from './activity-range';
 import {
     CHART_HEIGHT,
     CHART_WIDTH,
@@ -31,13 +31,18 @@ const SHADE_OPACITY = 0.35;
  * JavaScript, so it draws exactly the same with JavaScript off. Every position comes from
  * ./activity-geometry.ts; this file only draws what it is handed.
  *
+ * The range — the ticks and the caption's wording — is read off the series itself
+ * ({@link rangeOfSeries}) rather than handed in beside it, so the step the shades are
+ * sized by and the step the caption names are always the same one.
+ *
  * Text is HTML rather than SVG `<text>`: the SVG stretches non-uniformly
  * (`preserveAspectRatio="none"`, so it fills the column at any width), which would smear
  * text, and HTML labels keep a real font size on a phone. The same reason as the /gos10k
  * timeline, whose approach this follows.
  */
-export function ActivityChart({ series, range }: { series: RaidsInProgressSeries; range: ActivityRange }) {
+export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     const { from, to, points } = series;
+    const range = rangeOfSeries(series);
     const busiest = busiestStep(points);
     const axis = valueAxis(busiest?.total ?? 0);
     const ticks = axisTicks(from, to, range);

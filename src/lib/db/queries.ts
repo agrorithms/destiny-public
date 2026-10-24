@@ -1,4 +1,4 @@
-import type { CompletenessCurve } from './completeness-curve';
+import { curveFromTally, newTally, tallyRun, trainingWindow, type CompletenessCurve } from './completeness-curve';
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
 import { getHashesWithDifficulty } from '../bungie/manifest';
@@ -1735,11 +1735,34 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
 }
 
 /**
- * The completeness curve for a range's step size, learned from the Tracker's PGCRs (#196).
- * Stub: the tests come first.
+ * The completeness curve for a range's step size, learned from the Tracker's PGCRs (#196):
+ * for each hour of the day, how much of a step's raid time is known a given age after the
+ * step ends (./completeness-curve.ts). Null when the training week holds no raid at all.
+ *
+ * **Reads the week of whole steps ending between 8 days and 24 hours before `now`**, so
+ * every run that overlapped them has long since ended, and nothing newer teaches it
+ * how incomplete a recent step is. Raids only, by `ended_at` (the covering
+ * `idx_pgcrs_ended_period_raid`, no table lookups) and never `fetched_at`: the curve is
+ * about how long raids last, and the scanner's lag is not. A run that has not ended by
+ * `now` is not a report yet, as in {@link getRaidsInProgress}.
+ *
+ * A second pass over the same index as the sweep: about 230 ms on the prod backup, once
+ * per cache refresh of a range.
  */
-export function getCompletenessCurve(_options: { now: number; stepSeconds: number }): CompletenessCurve | null {
-    throw new Error('not implemented');
+export function getCompletenessCurve(options: { now: number; stepSeconds: number }): CompletenessCurve | null {
+    const { now, stepSeconds } = options;
+    const window = trainingWindow(now, stepSeconds);
+    const tally = newTally();
+    const rows = getDb().prepare(`
+    SELECT p.period, p.ended_at
+    FROM pgcrs p
+    WHERE p.ended_at > ?
+      AND p.ended_at <= ?
+      AND p.period < ?
+      AND p.raid_key IS NOT NULL
+  `).raw().iterate(window.from, now, window.until) as IterableIterator<[number, number]>;
+    for (const [period, endedAt] of rows) tallyRun(tally, window, stepSeconds, period, endedAt);
+    return curveFromTally(tally);
 }
 
 // =====================

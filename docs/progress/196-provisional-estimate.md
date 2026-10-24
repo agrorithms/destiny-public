@@ -11,8 +11,8 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] `src/lib/db/completeness-curve.test.ts` (new) — tally, curve per hour, fallback, `shareAt`, `estimate`
    - [x] `src/lib/db/completeness-curve.ts` (new)
 2. Learning the curve from the Tracker, red then green (S2)
-   - [ ] `tests/db/completeness-curve.test.ts` (new) — a week of fixed-length runs, hour-of-day curves, the 24 h bound, `ended_at` only, three step sizes
-   - [ ] `src/lib/db/queries.ts` — `getCompletenessCurve`
+   - [x] `tests/db/completeness-curve.test.ts` (new) — a week of fixed-length runs, hour-of-day curves, the 24 h bound, `ended_at` only, three step sizes
+   - [x] `src/lib/db/queries.ts` — `getCompletenessCurve`
 3. Provisional points in the series, red then green (S3)
    - [ ] `tests/db/raids-in-progress.test.ts` — `provisional` flag, partial ÷ share, the 15-minute cutoff, counted at 2 h, three step sizes, `ended_at <= now`
    - [ ] `src/lib/db/queries.ts` — `provisional`, `provisionalUntil`, `PROVISIONAL_MIN_AGE_SECONDS`, the extended sweep

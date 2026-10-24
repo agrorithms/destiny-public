@@ -28,10 +28,19 @@ added to visual:check, and a dated ADR 0009 Consequences line.
    - [x] `e2e/activity.spec.ts` — presets set `?range=` and redraw, reload, nonsense, JS off, 360px
    - [x] `e2e/visual.spec.ts` — `/activity?range=24h` and `/activity?range=30d`
 7. Bookkeeping
-   - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated Consequences line
-   - [ ] `docs/e2e-coverage.md` — flow list, seed count, journal entry with every deliberate break
-   - [ ] `docs/progress/195-range-presets.md` (this file)
+   - [x] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated Consequences line
+   - [x] `docs/e2e-coverage.md` — flow list, seed count, journal entry with every deliberate break
+   - [x] `docs/progress/195-range-presets.md` (this file)
 
 ## Surviving mutants
 
-(none yet)
+None. Loop 1 (`b1c2855`) killed or removed all six from the first run: two hour-tick boundaries
+got tests, an unreachable singular in `formatDuration` and the empty-table branch in the query
+were removed, and `DATA_START_MARGIN_SECONDS` became a literal (`6 * 3600` sat in a top-level
+initialiser no test could switch). No `Stryker disable` comments.
+
+## Bite proofs
+
+- Vitest: `npm run mutate:diff -- c9ef7f2...HEAD`, see the report.
+- Playwright: the red run at `2be05d1` and one deliberate break (one cache key for every range);
+  both recorded in `docs/e2e-coverage.md`'s #195 entry.

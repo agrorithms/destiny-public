@@ -2399,3 +2399,63 @@ untouched.
   that a later request within the window reuses it, or that one after it recomputes.
 - The values themselves beyond the peak. Step averaging is pinned in
   `tests/db/raids-in-progress.test.ts`, the geometry in `src/app/activity/activity-geometry.test.ts`.
+
+## 2026-10-23 — #195 the Raid Activity range presets (`?range=`)
+
+`e2e/activity.spec.ts`, **five new specs** under "the range presets". The suite is now
+**twenty-eight flows, 167 tests including the two canary setups**. `e2e/visual.spec.ts` also
+screenshots `/activity?range=24h` and `/activity?range=30d` (slugs `activity-24h`, `activity-30d`),
+so `npm run visual:check` gates their overflow at all six viewport/theme pairs too.
+
+**Seed world:** `seedActivityRuns` now makes **thirteen** PGCRs, three more than #194's ten, all
+still `92`-prefixed Checkpoint Runs nobody finished:
+- two 20-minute runs six hours back (`ACTIVITY_RECENT_PEAK_RAIDS` = 2), the only counted runs in
+  the last 24 hours, so the 24-hour chart's busiest 10 minutes is exactly 2;
+- one hour-long run 20 days back (`ACTIVITY_OLDEST_DAYS`), the world's oldest PGCR. The query
+  starts counting at the first step 6 hours after the oldest report (ADR 0009's #195 line), so the
+  30-day chart shades its first ~10 days (34.0–34.6% of the width) as no data, while 24 hours and
+  7 days are drawn whole, as #194's specs need.
+
+Over 30 days the busiest 3 hours is the 7-day peak's: three hour-long runs inside one 3-hour step,
+exactly 1 — which is also what shows the caption says "1 raid", not "1 raids".
+
+`expectRangeDrawn(page, id)` is what "the chart is that range's" means, shared by every spec below:
+the control marks that preset `aria-current="page"` and no other; the SVG's accessible name says
+"per 10 minutes over the last 24 hours" / "per hour over the last 7 days" / "per 3 hours over the
+last 30 days"; the line's vertex count is in range (131–132, 165–166, 150–160); the peak caption is
+that range's; the not-yet-counted shade starts past 100 − its widest share of the window, and its
+legend states that range's width ("the last 2 hours to 2 hours 10 minutes" / "2 to 3 hours" /
+"2 to 5 hours"); hour labels (`HH:00`) under a 24-hour axis, day labels under the others; and the
+data-start shade and its dated legend ("Shaded at the left: no data before <Day> <date> <Mon>,
+HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at 24h and 7d.
+
+1. **Each preset sets `?range=` and redraws.** From `/activity` (7d), clicking 24h, 30d then 7d
+   sets `/activity?range=<id>` each time, 7d included, and the chart is that range's.
+2. **A reload keeps the range.** 30d clicked, the page reloaded: still `?range=30d`, still 30d.
+3. **An unreadable range shows 7 days.** `/activity?range=nonsense` draws the 7-day chart with 7d
+   marked.
+4. **With JavaScript off**, the 24h preset is a plain link the browser follows to `?range=24h` and
+   the 24-hour chart.
+5. **Phone (360×780):** the control sits inside the viewport on 7d, 30d and 24h, and
+   `expectNoOverflow(page)` finds nothing after each switch.
+
+**Bite proof — the red run, then one deliberate break.**
+- Red at `2be05d1`, specs and seed committed before the control existed (the query's data start
+  was already in the build): all 5 new specs failed, #194's four passed. 1 and 3 on "24h is not
+  marked … element(s) not found"; 2 and 4 on `locator.click` timing out on the missing link; 5 on
+  `locator.boundingBox` timing out on the missing control.
+- With the control built, one cache key for every range (`raids-in-progress:7d` in `page.tsx`):
+  1, 2, 4 and 5 failed, each showing the 7-day series under another range's label ("Busiest 10
+  minutes: 3 raids in progress, … 03:00–04:00 UTC", "Busiest 3 hours: 3 raids in progress, …").
+  3 passed, as it should: its range is 7d. Restored and green.
+
+### What is still NOT covered
+
+- The data-start shade's position is checked within a band, not exactly: the exact arithmetic is
+  pinned in `src/app/activity/activity-geometry.test.ts` and the bound itself in
+  `tests/db/raids-in-progress.test.ts`, which runs the real cleanup before reading the 30-day window.
+- The 30-day axis's label density is a human's call from the `activity-30d` screenshots; no spec
+  asserts labels don't touch.
+- The per-range cache's lifetime, as for #194.
+- Later tickets: the Provisional estimate (#196), tooltips in local time (#197), the per-raid
+  panel (#198, #199).

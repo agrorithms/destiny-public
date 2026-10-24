@@ -89,6 +89,23 @@ error of the hour-of-day curves.
   Snapshots and leaves Raids in Progress alone.
 - **The range is bounded by PGCR retention** (`CRAWLER_CLEANUP_MAX_AGE_HOURS`, 720 h on prod). The
   window can't start earlier than the data.
+  - *2026-10-23 (#195):* the bound is read from the data, not from that setting: counting starts
+    at the first step **6 hours after the oldest stored PGCR began** (`DATA_START_MARGIN_SECONDS`),
+    and the chart shades the span before it as "no data". The web process doesn't see the
+    crawler's env (whose two defaults disagree, 48 h and 720 h), and on the 2026-10-23 backup the
+    data reached 8.3 h past the 30-day bound. The margin is there because cleanup deletes by
+    *start*: a moment just after the oldest kept PGCR is missing every run that started before it
+    and was still going. Measured on that backup over 80 moments, runs that had started more than
+    X hours earlier were this share of a moment's Raids in Progress:
+
+    | X                | 2 h   | 3 h  | 4 h  | 6 h  | 12 h | 24 h  |
+    | ---------------- | ----- | ---- | ---- | ---- | ---- | ----- |
+    | mean             | 7.7%  | 3.5% | 2.2% | 1.5% | 1.1% | 0.75% |
+    | worst moment     | 12.9% | 7.1% | 5.4% | 4.0% | 3.6% | 2.7%  |
+
+    The tail is runs lasting days (138 over 24 h, the longest 310 h), so no margin makes the first
+    step exact; past 6 hours each extra hour buys little. Reading the bound from the setting
+    instead would cut data that is there, and break whenever the web and crawler disagree on it.
 - **A scanner hole looks like a quiet period.** Ids skipped when Discovery moves the Scanner
   Position ahead leave a gap that PGCRs alone can't tell apart from low activity. A scanner outage
   is filled in when the scanner catches up; a maintenance window is a true zero.

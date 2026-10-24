@@ -130,9 +130,9 @@ describe('the line', () => {
         // 1/3, 3/3 and 2/3 of it, measured down from the top.
         const from = 1792195200;
         const points = [
-            { start: from, end: from + HOUR, total: 1 },
-            { start: from + HOUR, end: from + 2 * HOUR, total: 3 },
-            { start: from + 2 * HOUR, end: from + 3 * HOUR, total: 2 },
+            { start: from, end: from + HOUR, total: 1, provisional: false },
+            { start: from + HOUR, end: from + 2 * HOUR, total: 3, provisional: false },
+            { start: from + 2 * HOUR, end: from + 3 * HOUR, total: 2, provisional: false },
         ];
 
         const h = CHART_HEIGHT;
@@ -167,9 +167,9 @@ describe('the busiest step', () => {
         // The caption under the chart reads it: the hour with the most raids in progress,
         // the earliest one on a tie, and its window spelled out as a reader would say it.
         const points = [
-            { start: 1792195200, end: 1792198800, total: 4 },
-            { start: 1792198800, end: 1792202400, total: 7.4 },
-            { start: 1792202400, end: 1792206000, total: 7.4 },
+            { start: 1792195200, end: 1792198800, total: 4, provisional: false },
+            { start: 1792198800, end: 1792202400, total: 7.4, provisional: false },
+            { start: 1792202400, end: 1792206000, total: 7.4, provisional: false },
         ];
 
         expect(busiestStep(points)).toEqual(points[1]);
@@ -183,8 +183,8 @@ describe('the busiest step', () => {
         // A week of zeros has no busiest hour: naming its first as "0 raids in progress"
         // would hide the caption's "No raids counted" sentence behind a peak that isn't one.
         const points = [
-            { start: 1792195200, end: 1792198800, total: 0 },
-            { start: 1792198800, end: 1792202400, total: 0 },
+            { start: 1792195200, end: 1792198800, total: 0, provisional: false },
+            { start: 1792198800, end: 1792202400, total: 0, provisional: false },
         ];
 
         expect(busiestStep(points)).toBeNull();
@@ -321,14 +321,14 @@ describe('the peak sentence', () => {
 
     it('names the busiest hour over the last 7 days', () => {
         // #194's caption and label, unchanged for the default range.
-        expect(describePeak({ start: midnight, end: midnight + HOUR, total: 1828 }, range('7d'))).toEqual({
+        expect(describePeak({ start: midnight, end: midnight + HOUR, total: 1828, provisional: false }, range('7d'))).toEqual({
             caption: 'Busiest hour: 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC.',
             ariaLabel: 'Raids in progress per hour over the last 7 days, peaking at 1,828 raids in progress, Sat 17 Oct, 00:00–01:00 UTC',
         });
     });
 
     it('names the busiest 10 minutes over the last 24 hours', () => {
-        expect(describePeak({ start: midnight, end: midnight + 600, total: 2 }, range('24h'))).toEqual({
+        expect(describePeak({ start: midnight, end: midnight + 600, total: 2, provisional: false }, range('24h'))).toEqual({
             caption: 'Busiest 10 minutes: 2 raids in progress, Sat 17 Oct, 00:00–00:10 UTC.',
             ariaLabel: 'Raids in progress per 10 minutes over the last 24 hours, peaking at 2 raids in progress, Sat 17 Oct, 00:00–00:10 UTC',
         });
@@ -336,12 +336,12 @@ describe('the peak sentence', () => {
 
     it('names the busiest 3 hours over the last 30 days, and says "raid" for one', () => {
         // An average of 1 — or anything that rounds to it — is one raid, not "1 raids".
-        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 1 }, range('30d'))).toEqual({
+        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 1, provisional: false }, range('30d'))).toEqual({
             caption: 'Busiest 3 hours: 1 raid in progress, Sat 17 Oct, 00:00–03:00 UTC.',
             ariaLabel: 'Raids in progress per 3 hours over the last 30 days, peaking at 1 raid in progress, Sat 17 Oct, 00:00–03:00 UTC',
         });
-        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 0.6 }, range('30d')).caption).toMatch(/^Busiest 3 hours: 1 raid in progress,/);
-        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 1.5 }, range('30d')).caption).toMatch(/^Busiest 3 hours: 2 raids in progress,/);
+        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 0.6, provisional: false }, range('30d')).caption).toMatch(/^Busiest 3 hours: 1 raid in progress,/);
+        expect(describePeak({ start: midnight, end: midnight + 3 * HOUR, total: 1.5, provisional: false }, range('30d')).caption).toMatch(/^Busiest 3 hours: 2 raids in progress,/);
     });
 
     it('says nothing was counted when there is no busiest step', () => {

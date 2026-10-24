@@ -1614,6 +1614,8 @@ export interface RaidsInProgressPoint {
     end: number;
     /** Raid instances in progress across every raid, averaged over the step. */
     total: number;
+    /** True when `total` is an estimate (CONTEXT.md, Provisional); false when it is counted. */
+    provisional: boolean;
 }
 
 export interface RaidsInProgressSeries {
@@ -1639,6 +1641,8 @@ export interface RaidsInProgressSeries {
      * than sit at `now - COUNTED_AGE_SECONDS` and leave a gap with neither.
      */
     countedUntil: number;
+    /** Stub. */
+    provisionalUntil: number;
     points: RaidsInProgressPoint[];
 }
 
@@ -1728,10 +1732,10 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     for (let index = 0; index < steps; index++) {
         wholeRuns += wholeStepsDelta[index];
         const start = firstStart + index * stepSeconds;
-        points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds });
+        points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds, provisional: false });
     }
 
-    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, points };
+    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil: countedUntil, points };
 }
 
 /**

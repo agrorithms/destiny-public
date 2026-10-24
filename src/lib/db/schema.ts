@@ -223,6 +223,17 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_member_completed_instance ON pgcr_players(membership_id, completed, instance_id);
   `);
 
+    // Covering index for the Raid Activity sweep (getRaidsInProgress, #195): `ended_at > ?`
+    // leads the range scan, and `period` and `raid_key` after it let SQLite answer the
+    // whole sweep from the index without touching the table. On the 2026-10-23 prod backup
+    // (1.84M PGCRs) it took the default 7-day chart from ~330–450 ms to ~210 ms; 30 days is
+    // nearly the whole table, so it barely helps there. Built here at open, not by a
+    // maintenance script: 1.3 s and 65 MB on that backup. The planner picks it before any
+    // ANALYZE has seen it, so the query needs no INDEXED BY.
+    db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid ON pgcrs(ended_at, period, raid_key);
+  `);
+
     // Indexes for tiered bucket selection on the denormalized last_seen_at.
     // hot/warm filter by last_seen_at range and order by last_attempt_at ASC
     // (idx_players_last_seen_attempt). idx_players_last_seen is retained for the

@@ -7,8 +7,8 @@ cost accepted behind per-range cache keys, the dated data-start legend, `/activi
 added to visual:check, and a dated ADR 0009 Consequences line.
 
 1. The covering index, red then green
-   - [ ] `tests/db/raids-in-progress-index.test.ts` (new) — the opened Tracker has `idx_pgcrs_ended_period_raid (ended_at, period, raid_key)`
-   - [ ] `src/lib/db/schema.ts` — `CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid`
+   - [x] `tests/db/raids-in-progress-index.test.ts` (new) — the opened Tracker has `idx_pgcrs_ended_period_raid (ended_at, period, raid_key)`
+   - [x] `src/lib/db/schema.ts` — `CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid`
 2. The query's ranges and data start, red then green
    - [ ] `tests/db/raids-in-progress.test.ts` — per-range step size and point count, boundary splits at 10 min and 3 h, real cleanup then the 30-day first step, no clamp when the data reaches back
    - [ ] `src/lib/db/queries.ts` — `countedFrom`, `DATA_START_MARGIN_SECONDS`, `countedUntil` independent of the clamp

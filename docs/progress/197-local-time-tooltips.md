@@ -23,8 +23,8 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] `src/app/activity/activity-geometry.test.ts` — `axisTicks` with an offset
    - [x] `src/app/activity/activity-geometry.ts` — `ticksEvery` scans local wall time
 3. Tooltip copy and slot mapping, red then green (S3)
-   - [ ] `src/app/activity/activity-tooltips.test.ts` (new)
-   - [ ] `src/app/activity/activity-tooltips.ts` (new)
+   - [x] `src/app/activity/activity-tooltips.test.ts` (new)
+   - [x] `src/app/activity/activity-tooltips.ts` (new)
 4. The browser suite, red (S6)
    - [ ] `e2e/activity.spec.ts` — hover, tap, swipe, local time, JS off, 360px overflow
    - [ ] `e2e/visual.spec.ts` — `timezoneId: 'UTC'`

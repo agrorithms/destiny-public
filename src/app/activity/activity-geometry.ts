@@ -319,7 +319,7 @@ export function describePeak(
         return { caption: `No raids counted in the last ${range.span} yet.`, ariaLabel: `${measure}: none counted yet` };
     }
     const count = formatRaidCount(busiest.total);
-    const raids = `${count} ${count === '1' ? 'raid' : 'raids'} in progress`;
+    const raids = `${count} ${raidNoun(count)} in progress`;
     return {
         caption: `Busiest ${range.step}: ${raids}, ${formatStepWindow(busiest.start, busiest.end, offsetOf)}.`,
         // Always UTC: the name is read before any script runs, and must not change under a screen reader.
@@ -370,6 +370,11 @@ function ageSpan(shortest: number, stepSeconds: number): string {
     return wholeHours || bothMinutes
         ? `${shortest / (wholeHours ? HOUR : MINUTE)} to ${formatDuration(longest)}`
         : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
+}
+
+/** `raid` for a count that reads "1", else `raids`: the count as {@link formatRaidCount} wrote it. */
+export function raidNoun(count: string): string {
+    return count === '1' ? 'raid' : 'raids';
 }
 
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */

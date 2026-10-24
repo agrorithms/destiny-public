@@ -66,6 +66,8 @@ None. No `Stryker disable` comments.
   could add a point to the curve. Killed in loop 2 (`b85d9e5`).
 - Run 3 (`b85d9e5`, full, `--typecheck`): **100.0% overall (142/142), 100.0% covered**, PASS.
   140 killed, 2 timed out, 0 survived, 36 compile errors discarded.
+- Fix loop 1 (`4c506da`, full, `--typecheck`): **100.0% overall (141/141), 100.0% covered**, PASS.
+  140 killed, 1 timed out, 0 survived, 39 compile errors discarded.
 
 ## Bite proofs
 

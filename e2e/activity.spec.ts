@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { ACTIVITY_RANGES } from '../src/app/activity/activity-range';
-import { CHART_HEIGHT } from '../src/app/activity/activity-geometry';
+import { CHART_HEIGHT, TOO_RECENT_AGE_SECONDS } from '../src/app/activity/activity-geometry';
 import { ACTIVITY_PEAK_RAIDS, ACTIVITY_RECENT_PEAK_RAIDS } from './support/seed-world';
 import { expectInsideViewport, expectNoOverflow } from './support/viewport';
 
@@ -80,9 +80,6 @@ const RANGES = {
 
 type RangeId = keyof typeof RANGES;
 
-/** 15 minutes: nothing is drawn for a step younger than this (the query's cutoff, #196). */
-const TOO_RECENT_SECONDS = 15 * 60;
-
 /** The `x,y` of each vertex of a path the chart wrote (`M50,150L150,50`), in order. */
 function vertices(d: string): string[] {
     return d.match(/[ML]-?[\d.]+,-?[\d.]+/g)?.map((vertex) => vertex.slice(1)) ?? [];
@@ -114,11 +111,10 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
     await expect(chart.getByRole('img', { name: range.label })).toBeVisible();
     await expect(page.getByTestId('activity-peak')).toHaveText(range.peak);
 
-    // One "M" and then an "L" per further vertex: the solid path has a point for every counted step
-    // and none for the estimated ones.
+    // The solid path has a point for every counted step and none for the estimated ones.
     const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
     expect(d.startsWith('M'), 'the line has a starting point').toBe(true);
-    const solidVertices = (d.match(/L/g) ?? []).length + 1;
+    const solidVertices = vertices(d).length;
     expect(solidVertices, `${id} vertex count`).toBeGreaterThanOrEqual(range.vertices[0]);
     expect(solidVertices, `${id} vertex count`).toBeLessThanOrEqual(range.vertices[1]);
 
@@ -129,8 +125,8 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
     const x = parseFloat((await shade.getAttribute('x')) ?? '');
     const width = parseFloat((await shade.getAttribute('width')) ?? '');
     expect(x + width).toBeCloseTo(100, 6);
-    expect(width, `${id} shade width`).toBeGreaterThanOrEqual((TOO_RECENT_SECONDS / rangeSeconds) * 100 - 1e-6);
-    expect(width, `${id} shade width`).toBeLessThanOrEqual(((TOO_RECENT_SECONDS + stepSeconds) / rangeSeconds) * 100 + 1e-6);
+    expect(width, `${id} shade width`).toBeGreaterThanOrEqual((TOO_RECENT_AGE_SECONDS / rangeSeconds) * 100 - 1e-6);
+    expect(width, `${id} shade width`).toBeLessThanOrEqual(((TOO_RECENT_AGE_SECONDS + stepSeconds) / rangeSeconds) * 100 + 1e-6);
     await expect(page.getByTestId('activity-too-recent-legend')).toHaveText(range.tooRecentLegend);
 
     // The dashed estimate: always there at 24 hours and 7 days; at 30 days the 3-hour grid
@@ -265,7 +261,7 @@ test.describe('the Provisional estimate', () => {
             const lastX = parseFloat(estimate.at(-1)!.split(',')[0]) / 10;
             const shadeX = parseFloat((await page.getByTestId('activity-too-recent').getAttribute('x')) ?? '');
             expect(lastX, `${id}: the estimate ends before the shade`).toBeLessThan(shadeX);
-            expect(lastX, `${id}: nothing within 15 minutes of now`).toBeLessThanOrEqual(100 - (TOO_RECENT_SECONDS / rangeSeconds) * 100);
+            expect(lastX, `${id}: nothing within 15 minutes of now`).toBeLessThanOrEqual(100 - (TOO_RECENT_AGE_SECONDS / rangeSeconds) * 100);
 
             await expectNoOverflow(page);
         }

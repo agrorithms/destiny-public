@@ -302,7 +302,8 @@ export const ACTIVITY_OLDEST_DAYS = 20;
 
 function seedActivityRuns(): void {
     const hour = 3600;
-    const thisHour = Math.floor(Date.now() / 1000 / hour) * hour;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const thisHour = Math.floor(nowSeconds / hour) * hour;
     const runs: Array<{ start: number; seconds: number }> = [
         ...Array.from({ length: ACTIVITY_PEAK_RAIDS }, () => ({ start: thisHour - 48 * hour, seconds: hour })),
         { start: thisHour - 100 * hour, seconds: 2.5 * hour },
@@ -313,7 +314,7 @@ function seedActivityRuns(): void {
         // ran, so its steps are too recent to count and only the dashed line can show it. Placed
         // from the clock rather than the clock hour so it stays under 2 hours old for the 80
         // minutes after seeding that the suite needs.
-        { start: Math.floor(Date.now() / 1000) - 3600, seconds: hour / 3 },
+        { start: nowSeconds - hour, seconds: hour / 3 },
     ];
 
     runs.forEach((run, index) => {

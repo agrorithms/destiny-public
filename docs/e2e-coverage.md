@@ -2357,7 +2357,7 @@ transformed element would pass.
 `e2e/activity.spec.ts`, **new**, four specs. The suite is now **twenty-seven flows, 162 tests
 including the two canary setups**.
 
-**Seed world:** `seedActivityRuns` in `e2e/support/seed-world.ts` adds twelve PGCRs on Salvation's
+**Seed world:** `seedActivityRuns` in `e2e/support/seed-world.ts` adds ten PGCRs on Salvation's
 Edge, all well inside the chart's 7-day window: three runs covering exactly one clock hour two
 days back (the peak, `ACTIVITY_PEAK_RAIDS` = 3), one run of two and a half hours four days back,
 and one hour-long run a day for the six days before. Every leaderboard run starts an hour ago,

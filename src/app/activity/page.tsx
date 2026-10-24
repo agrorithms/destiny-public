@@ -4,7 +4,7 @@ import { getOrCompute } from '@/lib/cache/swr-cache';
 import { envSeconds } from '@/lib/env';
 import { ActivityChart } from './ActivityChart';
 import { ActivityRangeControl } from './ActivityRangeControl';
-import { parseActivityRange, type ActivityRange } from './activity-range';
+import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activity-range';
 
 /**
  * Raid Activity (#194, parent #51): how many raid instances were in progress over the last
@@ -28,6 +28,12 @@ import { parseActivityRange, type ActivityRange } from './activity-range';
  * still shades the right span. One cache key per range: an uncached 30-day series costs
  * ~1 s on x86 (~2 s on the ARM box), nearly the whole PGCR table, and that was accepted
  * behind the cache rather than built around (#195).
+ *
+ * **The intro's wording follows the series; the control follows the URL.** With a series in
+ * hand, the intro names its step and span off the series ({@link rangeOfSeries}), as the
+ * chart does, so the sentence above the chart can't describe a different chart from the one
+ * drawn; the URL's range is only the fallback when maintenance leaves no series. The range
+ * control stays on the URL's range: it is navigation, and it marks the link that was followed.
  */
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +50,7 @@ export default async function ActivityPage({
         if (!isDatabaseMaintenanceError(error)) throw error;
         series = null;
     }
+    const described = series === null ? range : rangeOfSeries(series);
 
     return (
         <div className="mx-auto max-w-4xl space-y-6">
@@ -51,7 +58,7 @@ export default async function ActivityPage({
                 <h1 className="text-3xl font-bold ui-text-primary">Raid Activity</h1>
                 <p className="ui-text-secondary">
                     How many raids were in progress across every raid, averaged over every{' '}
-                    {range.step} of the last {range.span}. Every raid instance counts,
+                    {described.step} of the last {described.span}. Every raid instance counts,
                     checkpoint runs and unfinished ones included. Times are UTC.
                 </p>
                 <ActivityRangeControl range={range.id} />

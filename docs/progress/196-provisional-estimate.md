@@ -38,7 +38,7 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
 
 None. No `Stryker disable` comments.
 
-- Run 1 (`08307e2`): 88.1% overall (140+1 of 197 scored), 18 survivors. All killed or removed in loop 1
+- Run 1 (`08307e2`): 88.1% overall (141 of 160 scored), 18 survivors. All killed or removed in loop 1
   (`3485fdc`): the tally's loop is bounded by the run itself (`ceil(endedAt)`), which dropped two
   redundant guards; the curve's constants became literals (a top-level calculation is out of the
   mutation run's reach, as in #195); the singular "1 minute" was unreachable and removed; tests for

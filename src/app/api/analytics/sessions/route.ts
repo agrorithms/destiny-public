@@ -5,6 +5,7 @@ import { getSessionHistory } from '@/lib/db/queries';
 import { getOrCompute } from '@/lib/cache/swr-cache';
 import { withCache, withNoStore } from '@/lib/http/cache';
 
+// Session Snapshots don't measure raid activity; see docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md.
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const hours = parseInt(searchParams.get('hours') || '24', 10);

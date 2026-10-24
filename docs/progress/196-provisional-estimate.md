@@ -8,8 +8,8 @@ the grid floor of now − 15 min (`countedUntil` when no step is Provisional); t
 final value; the sweep and the training read both stop at `ended_at <= now`.
 
 1. The pure curve, red then green (S1)
-   - [ ] `src/lib/db/completeness-curve.test.ts` (new) — tally, curve per hour, fallback, `shareAt`, `estimate`
-   - [ ] `src/lib/db/completeness-curve.ts` (new)
+   - [x] `src/lib/db/completeness-curve.test.ts` (new) — tally, curve per hour, fallback, `shareAt`, `estimate`
+   - [x] `src/lib/db/completeness-curve.ts` (new)
 2. Learning the curve from the Tracker, red then green (S2)
    - [ ] `tests/db/completeness-curve.test.ts` (new) — a week of fixed-length runs, hour-of-day curves, the 24 h bound, `ended_at` only, three step sizes
    - [ ] `src/lib/db/queries.ts` — `getCompletenessCurve`

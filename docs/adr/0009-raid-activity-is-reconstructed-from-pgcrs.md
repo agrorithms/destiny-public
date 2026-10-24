@@ -112,8 +112,17 @@ what had been fetched by then, the production condition:
 | 3 h | 30–60 min | 1.7 (1.7) | 2 | 0.8 (2.0) | 37 |
 | 3 h | 1–2 h | 0.5 (0.9) | 7 | 0.6 (1.8) | 79 |
 
-A single week of one prod backup; the 3-hour rows are few. The mirror script and the real functions
-agree to 1e-15 on the points they share and exactly on the curve's shares.
+A single week of one prod backup. The mirror script and the real functions agree to 1e-15 on the
+points they share and exactly on the curve's shares.
+
+**Why this table isn't in the form of #51's.** #51 measured instants, at four ages, against one curve
+of instants. The shipped curve is one per step size, with age measured to the step's end, so a
+Provisional step's end is always under 2 hours old: there is no 2-hour figure, and each row is a band
+of ages rather than one age. The pretend-nows differ too (19–22 October here, 21–23 October in #51).
+The 10-minute rows are the nearest to #51's instants, and each band's median is below #51's figure at
+the band's younger end: 3.2% at 15–30 minutes against 5.2% at 15 and 3.4% at 30; 1.5% at 30–60
+minutes against 3.4% and 1.6%; 1.1% at 1–2 hours against 1.6% and 0.8%. The 3-hour rows of the
+shipped-code replay rest on 2, 2 and 7 steps (20, 37 and 79 in the fetched run): too few to compare.
 
 ## Alternatives rejected
 

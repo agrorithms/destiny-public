@@ -13,8 +13,8 @@ added to visual:check, and a dated ADR 0009 Consequences line.
    - [x] `tests/db/raids-in-progress.test.ts` — per-range step size and point count, boundary splits at 10 min and 3 h, real cleanup then the 30-day first step, no clamp when the data reaches back
    - [x] `src/lib/db/queries.ts` — `countedFrom`, `DATA_START_MARGIN_SECONDS`, `countedUntil` independent of the clamp
 3. The range module, red then green
-   - [ ] `src/app/activity/activity-range.test.ts` (new)
-   - [ ] `src/app/activity/activity-range.ts` (new) — `ACTIVITY_RANGES`, `parseActivityRange`, `activityRangeHref`
+   - [x] `src/app/activity/activity-range.test.ts` (new)
+   - [x] `src/app/activity/activity-range.ts` (new) — `ACTIVITY_RANGES`, `parseActivityRange`, `activityRangeHref`
 4. Geometry, red then green
    - [ ] `src/app/activity/activity-geometry.test.ts` — hour/day ticks per range, `beforeData`, `describePeak`, `notYetCountedLegend`, `describeBeforeData`
    - [ ] `src/app/activity/activity-geometry.ts`

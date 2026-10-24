@@ -44,5 +44,5 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
 
 ## Notes
 
-- Red run: `db312cd`, 18 of 23 activity specs failed. Deliberate breaks in one build, plus the dismissal break alone: `docs/e2e-coverage.md`.
+- Red run: `db312cd`, 18 of 21 activity specs failed (the two canaries passed with 3 others). Deliberate breaks in one build, plus the dismissal break alone: `docs/e2e-coverage.md`.
 - Chromium names the zone `Asia/Katmandu`; the spec accepts both spellings.

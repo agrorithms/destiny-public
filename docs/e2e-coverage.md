@@ -2647,8 +2647,9 @@ instant it marks. No seed change.
 The existing JavaScript-off specs also check the ticks sit on UTC instants.
 
 **Bite proof — the red run.** Specs committed (`db312cd`) before the client step existed: of the 23
-activity specs, **18 failed and 5 passed** (the nav link, the first-visit shape of three others and
-the unreadable range's). Every new spec failed, but most failed first on the page not yet saying
+tests (21 activity specs and the two canary setups), **18 failed and 5 passed**: the canaries, the
+nav link, the 24-hour estimate's baseline, and the JavaScript-off presets spec, which already read
+UTC. Every new spec failed, but most failed first on the page not yet saying
 "your time zone" (`waitForClientStep`), which says nothing of their later assertions, so the later
 assertions were each broken on purpose in one build (`npm run e2e`, 11 failed, 12 passed):
 

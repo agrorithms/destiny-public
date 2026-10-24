@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVITY_RANGES, activityRangeHref, parseActivityRange } from './activity-range';
+import { ACTIVITY_RANGES, DAY, HOUR, MINUTE, activityRangeHref, parseActivityRange, rangeOfSeries } from './activity-range';
 
 /**
  * The Raid Activity range presets (#195): which chart a URL asks for, and the links that
@@ -52,5 +52,29 @@ describe('the presets', () => {
             '/activity?range=7d',
             '/activity?range=30d',
         ]);
+    });
+});
+
+describe('the preset a series was built for', () => {
+    // The chart words its caption and picks its ticks from the series it draws, so a
+    // series and the range it is described as can never disagree (#195 review, S2).
+    const NOW = 1_760_000_000;
+
+    it('reads each preset back off its window and step', () => {
+        for (const range of ACTIVITY_RANGES) {
+            const series = { from: NOW - range.rangeSeconds, to: NOW, stepSeconds: range.stepSeconds };
+            expect(rangeOfSeries(series).id, range.id).toBe(range.id);
+        }
+    });
+
+    it('refuses a series whose window is one preset\'s and whose step is another\'s', () => {
+        // 7 days at 10-minute steps: neither "Busiest hour" nor "Busiest 10 minutes" over
+        // the last 7 days describes it truthfully.
+        expect(() => rangeOfSeries({ from: NOW - 7 * DAY, to: NOW, stepSeconds: 10 * MINUTE })).toThrow();
+        expect(() => rangeOfSeries({ from: NOW - DAY, to: NOW, stepSeconds: HOUR })).toThrow();
+    });
+
+    it('refuses a series whose window is no preset\'s', () => {
+        expect(() => rangeOfSeries({ from: NOW - 2 * DAY, to: NOW, stepSeconds: HOUR })).toThrow();
     });
 });

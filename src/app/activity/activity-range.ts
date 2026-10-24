@@ -49,3 +49,20 @@ export function parseActivityRange(searchParams: Record<string, string | string[
 export function activityRangeHref(id: ActivityRangeId): string {
     return `/activity?${new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id })}`;
 }
+
+/** What {@link rangeOfSeries} reads off a series: its window and its step, both in seconds. */
+export interface SeriesShape {
+    from: number;
+    to: number;
+    stepSeconds: number;
+}
+
+/**
+ * The preset a series was built for, read off its window and step, so the chart takes its
+ * wording and ticks from the series it draws rather than from a range handed alongside it
+ * that could disagree with it. A series no preset makes — a span or a step that isn't one
+ * preset's — throws: drawing it under any preset's wording would mislabel it.
+ */
+export function rangeOfSeries(series: SeriesShape): ActivityRange {
+    throw new Error('not implemented');
+}

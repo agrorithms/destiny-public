@@ -1598,7 +1598,7 @@ export const COUNTED_AGE_SECONDS = 7200; // two hours
  * average and 4.0% at worst (2 h: 7.7% / 12.9%; 24 h: 0.75% / 2.7%). The tail is runs lasting
  * days, so no margin makes it exact, and past 6 hours each extra hour buys little.
  */
-export const DATA_START_MARGIN_SECONDS = 6 * 3600;
+export const DATA_START_MARGIN_SECONDS = 21600; // six hours
 
 /** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
 export interface RaidsInProgressPoint {
@@ -1676,11 +1676,11 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     const db = getDb();
     const countedUntil = Math.floor((now - COUNTED_AGE_SECONDS) / stepSeconds) * stepSeconds;
     // Every PGCR, raid or not: cleanup deletes them all by age. Through idx_pgcrs_period.
-    const { oldest } = db.prepare('SELECT MIN(period) AS oldest FROM pgcrs').get() as { oldest: number | null };
-    const dataStart = oldest === null ? from : oldest + DATA_START_MARGIN_SECONDS;
+    // An empty table reads as the epoch, which no window reaches back to.
+    const { oldest } = db.prepare('SELECT COALESCE(MIN(period), 0) AS oldest FROM pgcrs').get() as { oldest: number };
     const firstStart = Math.min(
         countedUntil,
-        Math.ceil(Math.max(from, dataStart) / stepSeconds) * stepSeconds
+        Math.ceil(Math.max(from, oldest + DATA_START_MARGIN_SECONDS) / stepSeconds) * stepSeconds
     );
     const steps = (countedUntil - firstStart) / stepSeconds;
     const lastEnd = countedUntil;

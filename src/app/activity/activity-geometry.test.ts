@@ -218,6 +218,26 @@ describe('hour ticks for the 24-hour range', () => {
         expect(hourTicks(from, NOW).map((tick) => tick.phone)).toEqual([false, true, false, true, false, true, false, true]);
     });
 
+    it('draws a gridline on each edge of a window from midnight to midnight, the right-hand one unlabelled', () => {
+        // Ticks run up to and including the right-hand edge, like the day ticks: a window
+        // ending on the hour still has its gridline there, with no label to run off it.
+        const midnight = 1792195200; // Sat 17 Oct 2026, 00:00 UTC
+        const ticks = hourTicks(midnight - DAY, midnight);
+
+        expect(ticks).toHaveLength(9);
+        expect(ticks[0]).toMatchObject({ percent: 0, label: 'Fri 16' });
+        expect(ticks.at(-1)).toMatchObject({ percent: 100, label: null });
+    });
+
+    it('labels a tick exactly at the cut-off', () => {
+        // Only a label starting *past* 88% would run off the chart: one at 88% stays. The
+        // window ends 10,368 s after midnight, so midnight sits 76,032 s into 86,400: 88%.
+        const midnight = 1792195200;
+        const ticks = hourTicks(midnight - 76032, midnight + 10368);
+
+        expect(ticks.find((tick) => tick.label === 'Sat 17')?.percent).toBe(88);
+    });
+
     it('is what the 24-hour range draws', () => {
         expect(axisTicks(from, NOW, range('24h'))).toEqual(hourTicks(from, NOW));
     });

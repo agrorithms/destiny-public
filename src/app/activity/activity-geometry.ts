@@ -279,13 +279,14 @@ function formatInstant(at: number): string {
     return `${dateLabel(at)}, ${clock(at)} UTC`;
 }
 
-/** `2 hours`, `5 hours`, `2 hours 10 minutes`: whole minutes, never "1 hours". */
+/**
+ * `2 hours`, `5 hours`, `2 hours 10 minutes`. Only ever given the not-yet-counted shade's
+ * widths, which are never under 2 hours, so it has no singular.
+ */
 function formatDuration(seconds: number): string {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.round((seconds % 3600) / 60);
-    const parts = [`${hours} ${hours === 1 ? 'hour' : 'hours'}`];
-    if (minutes > 0) parts.push(`${minutes} minutes`);
-    return parts.join(' ');
+    return minutes > 0 ? `${hours} hours ${minutes} minutes` : `${hours} hours`;
 }
 
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */

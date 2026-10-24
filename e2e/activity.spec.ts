@@ -35,7 +35,7 @@ async function expectChartDrawn(page: Page): Promise<void> {
     await expect(page.getByRole('heading', { level: 1, name: 'Raid Activity' })).toBeVisible();
 
     const chart = page.getByTestId('activity-chart');
-    await expect(chart.getByRole('img', { name: /^Raids in progress per hour over the last 7 days, peaking at 3 raids in progress/ })).toBeVisible();
+    await expect(chart.getByRole('img', { name: new RegExp(`^Raids in progress per hour over the last 7 days, peaking at ${ACTIVITY_PEAK_RAIDS} raids in progress`) })).toBeVisible();
 
     // One "M" and then an "L" per further vertex: the path has a point for every hour.
     const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';

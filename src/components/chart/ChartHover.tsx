@@ -4,16 +4,17 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft } from '@/lib/chart/pointer';
 
 /**
- * Hover and tap tooltips for a chart (#114), shared by #193. Born as /gos10k's timeline
- * wrapper (the page's first client JavaScript; the other is src/app/gos10k/TimelineDrag.tsx
- * (#115), which wraps this one on the main chart) and lifted here so the Raid Activity page
- * can use it without importing anything from the Archive.
+ * Hover and tap tooltips for a chart (#114), shared by #193 and used by two charts: the
+ * /gos10k timeline (the page's first client JavaScript; the other is
+ * src/app/gos10k/TimelineDrag.tsx (#115), which wraps this one on the main chart) and the Raid
+ * Activity chart (#197, through src/app/activity/ActivityLocal.tsx). Lifted here so the Raid
+ * Activity page can use it without importing anything from the Archive.
  *
  * **Knows nothing about the Archive or the Tracker.** It is handed one record of strings per
  * slot, keyed by *part* — a part being one of the chart's stacked graphics, named by the
  * `parts` prop — and the server marks each graphic with `data-timeline-part="<part>"`. The
- * Archive's parts are `line` and `bar`; another chart may name its own. The attribute keeps
- * its `timeline` name because the browser spec finds /gos10k's halves by it.
+ * Archive's parts are `line` and `bar`; the Raid Activity chart has one, `total`. The
+ * attribute keeps its `timeline` name because the browser spec finds /gos10k's graphics by it.
  *
  * **A wrapper, not the chart.** The line and the bars are still drawn by the server
  * component (for /gos10k, src/app/gos10k/ArchiveTimeline.tsx) and arrive here as `children`,
@@ -25,13 +26,16 @@ import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft } from '@/lib/c
  * (for /gos10k, by src/app/gos10k/timeline-tooltips.ts) and arrives as strings. Everything
  * imported here is shipped to the browser, so this file imports only the pointer helpers.
  *
- * **Which half of the chart the pointer is over** is read off a `data-timeline-part`
- * attribute the server puts on each SVG — for /gos10k `line` or `bar` — and **which
- * bucket** from the pointer's fraction of the way across, by slot ({@link slotAt}). One
- * answer for both halves, so the line and the bar beneath it always name the same bucket.
+ * **Which graphic the pointer is over** is read off a `data-timeline-part` attribute the
+ * server puts on each SVG — for /gos10k `line` or `bar` — and **which slot** from the
+ * pointer's fraction of the way across. By default the slots are equal shares of the width
+ * ({@link slotAt}), one answer for every graphic, so the line and the bar beneath it always
+ * name the same bucket. A chart whose slots are not equal shares — the Raid Activity
+ * chart's steps sit inside a window that starts and ends mid-step, with shaded spans at
+ * either end — hands in a `locate` of its own, and a pointer over no slot shows nothing.
  *
- * **Touch (and pen):** a tap shows the tooltip, and a tap anywhere that is neither half
- * of the chart dismisses it. A tap on the chart only
+ * **Touch (and pen):** a tap shows the tooltip, and a tap anywhere that is neither a
+ * graphic of the chart nor a slot of it dismisses it. A tap on the chart only
  * moves it: there is nothing on the chart to navigate to, so a tap never changes the
  * range. Anything that is not a mouse is treated as tapping, because a pen, like a
  * finger, "leaves" as it lifts. A tap is read on `pointerup` rather than `pointerdown`,
@@ -40,7 +44,8 @@ import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft } from '@/lib/c
  *
  * **Hidden while a drag is under way** (#115): the drag span is what the reader is
  * looking at then. The drag wrapper marks itself `data-dragging` and the box and its marker hide
- * under that, so neither component has to know the other's state.
+ * under that, through the class the caller passes as `hideClass`, so neither component has
+ * to know the other's state. A chart with no drag passes none.
  *
  * **A tooltip that outlives a change of chart width is closed, not moved.** A tapped one
  * stays up until the next tap, so a phone rotated under it would otherwise keep a `left`
@@ -52,13 +57,25 @@ interface Hovered<Part extends string> {
     part: Part;
 }
 
-/** The gap between the tooltip's bottom edge and the top of the half it describes, in px. */
+/** The gap between the tooltip's bottom edge and the top of the graphic it describes, in px. */
 const GAP = 4;
+
+/**
+ * Where a chart's slots are, when they are not equal shares of its width: which slot a
+ * pointer a `fraction` of the way across is over (or none), and where in pixels a slot's
+ * anchor sits on a chart `chartWidth` wide.
+ */
+export interface SlotLocator {
+    slotAt: (fraction: number) => number | null;
+    centre: (index: number, chartWidth: number) => number;
+}
 
 export function ChartHover<Part extends string>({
     tooltips,
     parts,
     testId,
+    locate,
+    hideClass = '',
     children,
 }: {
     /** One record per slot, in axis order: the text each part shows when its slot is hovered or tapped. */
@@ -67,6 +84,10 @@ export function ChartHover<Part extends string>({
     parts: readonly Part[];
     /** The tooltip box's `data-testid`, so each chart's browser spec can find its own. */
     testId: string;
+    /** Where the slots are, for a chart whose slots are not `tooltips.length` equal shares of its width. */
+    locate?: SlotLocator;
+    /** A class that hides the box and its marker, for a chart that has something else to show some of the time. */
+    hideClass?: string;
     children: React.ReactNode;
 }) {
     const [hovered, setHovered] = useState<Hovered<Part> | null>(null);
@@ -74,25 +95,36 @@ export function ChartHover<Part extends string>({
     const tooltipRef = useRef<HTMLDivElement>(null);
     const markerRef = useRef<HTMLDivElement>(null);
 
+    /** Whether a `data-timeline-part` value names one of this chart's graphics. */
+    function isPart(value: string | null | undefined): value is Part {
+        return value != null && (parts as readonly string[]).includes(value);
+    }
+
     function show(event: React.PointerEvent<HTMLDivElement>) {
         const chart = chartRef.current;
         const part = (event.target as Element).closest('[data-timeline-part]')?.getAttribute('data-timeline-part');
         if (!chart) return;
-        if (!part || !(parts as readonly string[]).includes(part)) {
-            // A tap between the two halves is a tap on neither, so it dismisses. That is a
-            // pen's case: a finger cannot land in a 4px gap, because the browser's touch
+        if (!isPart(part)) {
+            // A tap between two stacked graphics is a tap on neither, so it dismisses. That is
+            // a pen's case: a finger cannot land in a thin gap, because the browser's touch
             // adjustment retargets the tap onto the nearer SVG (measured in Chromium). A
             // mouse crossing the gap keeps the tooltip rather than flickering it.
             if (!isMouse(event)) setHovered(null);
             return;
         }
 
-        const index = slotAt(chartFraction(event.clientX, chart.getBoundingClientRect()), tooltips.length);
-        if (index === null) return;
+        const fraction = chartFraction(event.clientX, chart.getBoundingClientRect());
+        const index = locate ? locate.slotAt(fraction) : slotAt(fraction, tooltips.length);
+        if (index === null) {
+            // Over no slot — a shaded span, say — there is nothing to say, and what the
+            // pointer has just left is no longer under it.
+            setHovered(null);
+            return;
+        }
 
         // Only on a change: a mouse fires pointermove for every pixel it crosses, and
         // most of those pixels are inside the bucket the tooltip already describes.
-        if (hovered?.index !== index || hovered.part !== part) setHovered({ index, part: part as Part });
+        if (hovered?.index !== index || hovered.part !== part) setHovered({ index, part });
     }
 
     // Positioned after render and before paint: the box's width is only known once its
@@ -110,7 +142,9 @@ export function ChartHover<Part extends string>({
         const partBox = chart.querySelector(`[data-timeline-part="${hovered.part}"]`)?.getBoundingClientRect();
         if (!partBox) return;
         const chartBox = chart.getBoundingClientRect();
-        const anchor = slotCentre(hovered.index, tooltips.length, chartBox.width);
+        const anchor = locate
+            ? locate.centre(hovered.index, chartBox.width)
+            : slotCentre(hovered.index, tooltips.length, chartBox.width);
         const top = partBox.top - chartBox.top;
 
         tooltip.style.left = `${tooltipLeft(anchor, tooltip.offsetWidth, chartBox.width)}px`;
@@ -118,7 +152,7 @@ export function ChartHover<Part extends string>({
         marker.style.left = `${anchor}px`;
         marker.style.top = `${top}px`;
         marker.style.height = `${partBox.height}px`;
-    }, [hovered, tooltips]);
+    }, [hovered, tooltips, locate]);
 
     // A tap anywhere outside the chart dismisses the tooltip. Listened for only while one
     // is showing, so the page carries no document listener the rest of the time — and
@@ -170,12 +204,12 @@ export function ChartHover<Part extends string>({
             {children}
             {hovered && tooltip && (
                 <>
-                    {/* Which bucket, on the chart itself: the tooltip is slid inwards at
+                    {/* Which slot, on the chart itself: the tooltip is slid inwards at
                         either end, so its position alone cannot say which bar it means. */}
                     <div
                         ref={markerRef}
                         aria-hidden
-                        className="ui-accent-text pointer-events-none absolute w-px bg-current opacity-60 group-data-[dragging]/drag:hidden"
+                        className={`ui-accent-text pointer-events-none absolute w-px bg-current opacity-60 ${hideClass}`}
                     />
                     {/* `w-max max-w-full`: as wide as its text, never wider than the chart.
                         Without `w-max` an absolute box shrinks to the room right of its
@@ -185,7 +219,7 @@ export function ChartHover<Part extends string>({
                         ref={tooltipRef}
                         role="tooltip"
                         data-testid={testId}
-                        className="ui-card ui-text-primary pointer-events-none absolute z-10 w-max max-w-full rounded-md border px-2 py-1 text-xs tabular-nums shadow-sm group-data-[dragging]/drag:hidden"
+                        className={`ui-card ui-text-primary pointer-events-none absolute z-10 w-max max-w-full rounded-md border px-2 py-1 text-xs tabular-nums shadow-sm ${hideClass}`}
                     >
                         {tooltip[hovered.part]}
                     </div>

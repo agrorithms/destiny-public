@@ -26,13 +26,13 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] `src/app/activity/activity-tooltips.test.ts` (new)
    - [x] `src/app/activity/activity-tooltips.ts` (new)
 4. The browser suite, red (S6)
-   - [ ] `e2e/activity.spec.ts` — hover, tap, swipe, local time, JS off, 360px overflow
-   - [ ] `e2e/visual.spec.ts` — `timezoneId: 'UTC'`
+   - [x] `e2e/activity.spec.ts` — hover, tap, swipe, local time, JS off, 360px overflow
+   - [x] `e2e/visual.spec.ts` — `timezoneId: 'UTC'`
 5. The client step and the wrapper, green (S4, S5)
-   - [ ] `src/components/chart/ChartHover.tsx` — `locate`, `isPart()`, the dragging class as a prop, comments
-   - [ ] `src/app/gos10k/ArchiveTimeline.tsx` — the dragging prop
-   - [ ] `src/app/activity/ActivityLocal.tsx` (new) — offset hook, hover wrapper, local ticks, localised sentences
-   - [ ] `src/app/activity/ActivityChart.tsx`, `src/app/activity/page.tsx` — wired
+   - [x] `src/components/chart/ChartHover.tsx` — `locate`, `isPart()`, the dragging class as a prop, comments
+   - [x] `src/app/gos10k/ArchiveTimeline.tsx` — the dragging prop
+   - [x] `src/app/activity/ActivityLocal.tsx` (new) — offset hook, hover wrapper, local ticks, localised sentences
+   - [x] `src/app/activity/ActivityChart.tsx`, `src/app/activity/page.tsx` — wired
 6. Bookkeeping (S7)
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated line
    - [ ] `docs/e2e-coverage.md` — flow entry and journal

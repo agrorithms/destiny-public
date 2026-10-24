@@ -433,7 +433,8 @@ async function waitForClientStep(page: Page): Promise<void> {
  * Every tick label sits where the zone's clock says it is. The label's own position gives
  * the instant it marks — the figure's window and the label's percentage across it — and
  * `Intl` says what the zone's clock reads then: `HH:MM` for an hour mark, `Sat 17` at
- * exactly midnight. A gridline sits under each label. Shares nothing with the app's formatter.
+ * exactly midnight. A gridline sits under each label (to the 1e-3 % the browser keeps when it
+ * writes a style back). Shares nothing with the app's formatter.
  */
 async function expectTicksOn(page: Page, timeZone: string): Promise<void> {
     const chart = page.getByTestId('activity-chart');
@@ -470,7 +471,7 @@ async function expectTicksOn(page: Page, timeZone: string): Promise<void> {
             expect(label.text, `the label at ${label.left}%`).toBe(`${parts.weekday} ${parts.day}`);
             expect(time, `${label.text} marks a midnight`).toBe('00:00');
         }
-        expect(gridlines.some((line) => Math.abs(line - label.left) < 1e-9), `a gridline under ${label.text}`).toBe(true);
+        expect(gridlines.some((line) => Math.abs(line - label.left) < 1e-3), `a gridline under ${label.text}`).toBe(true);
     }
 }
 
@@ -619,7 +620,8 @@ test.describe('in the reader\'s time zone', () => {
                 await page.goto(`/activity?range=${id}`);
                 await waitForClientStep(page);
 
-                await expect(page.getByTestId('activity-zone')).toHaveText('Times are in your time zone (Asia/Kathmandu).');
+                // Chromium spells the zone by its older name, Asia/Katmandu.
+                await expect(page.getByTestId('activity-zone')).toHaveText(/^Times are in your time zone \(Asia\/Kath?mandu\)\.$/);
                 await expectTicksOn(page, 'Asia/Kathmandu');
             }
         });

@@ -255,7 +255,12 @@ function MainChart({
 }) {
     return (
         <Draggable slots={slots} runs={runs} tab={tab}>
-            <ChartHover tooltips={tooltips} parts={TIMELINE_PARTS} testId="archive-timeline-tooltip">
+            <ChartHover
+                tooltips={tooltips}
+                parts={TIMELINE_PARTS}
+                testId="archive-timeline-tooltip"
+                hideClass="group-data-[dragging]/drag:hidden"
+            >
                 <Climb buckets={buckets} from={from} label={lineLabel} />
                 <Bars buckets={buckets} variant="main" label={barsLabel} />
             </ChartHover>

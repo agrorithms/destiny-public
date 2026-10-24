@@ -1742,7 +1742,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     const partialSeconds = new Float64Array(steps + 1);
     const wholeStepsDelta = new Float64Array(steps + 1);
 
-    for (const [period, endedAt] of endedRaidRuns(firstStart, now, cutoff)) {
+    for (const [period, endedAt] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
         const start = Math.max(period, firstStart);
         const end = Math.min(endedAt, cutoff);
         const first = Math.floor((start - firstStart) / stepSeconds);
@@ -1800,7 +1800,7 @@ export function getCompletenessCurve(options: { now: number; stepSeconds: number
     const { now, stepSeconds } = options;
     const window = trainingWindow(now, stepSeconds);
     const tally = newTally();
-    for (const [period, endedAt] of endedRaidRuns(window.from, now, window.until)) {
+    for (const [period, endedAt] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
         tallyRun(tally, window, stepSeconds, period, endedAt);
     }
     return curveFromTally(tally);
@@ -1808,13 +1808,14 @@ export function getCompletenessCurve(options: { now: number; stepSeconds: number
 
 /**
  * `[period, ended_at]` of every raid that ended after `endedAfter` and by `now`, and started
- * before `startedBefore`: the runs Raid Activity counts ({@link getRaidsInProgress}) and the
+ * before `startedBefore` (all unix seconds, named so no two can be swapped): the runs Raid Activity counts ({@link getRaidsInProgress}) and the
  * ones its completeness curve learns from ({@link getCompletenessCurve}), read one way for
  * both so the estimate scales up the same population it was learned from. Raids only,
  * through the covering `idx_pgcrs_ended_period_raid`. A run that has not ended by `now` is
  * not a report yet.
  */
-function endedRaidRuns(endedAfter: number, now: number, startedBefore: number): IterableIterator<[number, number]> {
+function endedRaidRuns(bounds: { endedAfter: number; now: number; startedBefore: number }): IterableIterator<[number, number]> {
+    const { endedAfter, now, startedBefore } = bounds;
     return getDb().prepare(`
     SELECT p.period, p.ended_at
     FROM pgcrs p

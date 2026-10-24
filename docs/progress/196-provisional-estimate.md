@@ -46,7 +46,7 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [ ] S2 `src/lib/db/queries.ts` — `getRaidsInProgress`'s doc comment
    - [x] S3 `src/lib/db/queries.ts` — the estimate stops at the first step with no share; test; ADR wording (red at `4a24713`)
    - [ ] S4 `src/app/activity/activity-geometry.ts` — `formatDuration`'s comment
-   - [ ] S5 `src/lib/db/queries.ts` — `endedRaidRuns` takes one named object
+   - [x] S5 `src/lib/db/queries.ts` — `endedRaidRuns` takes one named object
    - [ ] S6 why comments on the tests that had none
 
 ## Surviving mutants

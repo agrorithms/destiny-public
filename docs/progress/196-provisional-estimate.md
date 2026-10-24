@@ -38,6 +38,17 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
      curve's training pass; the line's stroke shared by both paths and the dashed key; `ageSpan` takes the step;
      the e2e spec imports `TOO_RECENT_AGE_SECONDS`. Full run after it at `7ba925b`: 100.0% overall (142/142), PASS.
 
+9. Fix loop 1 (review findings P1–P3, S1–S6)
+   - [x] P1 `tests/db/raids-in-progress.test.ts` — the per-hour test compares two hours at the same end age (30 minutes); red with `shareAt` reading only the all-hours curve
+   - [ ] P2 `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — why the backtest's form changed, against #51's figures
+   - [ ] P3 `src/app/activity/activity-geometry.test.ts` — the dashed line ends at or before the shade
+   - [ ] S1 `tests/db/completeness-curve.test.ts` — a run already ended inside the last 24 hours, red with the bound removed
+   - [ ] S2 `src/lib/db/queries.ts` — `getRaidsInProgress`'s doc comment
+   - [ ] S3 `src/lib/db/queries.ts` — the estimate stops at the first step with no share; test; ADR wording
+   - [ ] S4 `src/app/activity/activity-geometry.ts` — `formatDuration`'s comment
+   - [ ] S5 `src/lib/db/queries.ts` — `endedRaidRuns` takes one named object
+   - [ ] S6 why comments on the tests that had none
+
 ## Surviving mutants
 
 None. No `Stryker disable` comments.

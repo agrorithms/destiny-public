@@ -409,19 +409,20 @@ describe('the Provisional estimate', () => {
     });
 
     it('gives each hour of the day its own estimate from the same partial count', () => {
-        // Same raid time reported in two steps, and two different answers, because the
-        // hours' runs differ. Divided by one curve for every hour, they would match.
+        // Same raid time reported in two steps, each read 30 minutes after it ends (09:00 at
+        // 10:30, 10:00 at 11:30), and two different answers, because the hours' runs differ:
+        // hour 9's share is 1 and hour 10's is 0.8. Divided by one curve for every hour, the
+        // same partial count at the same age would give the same estimate. (The training week
+        // is the same at both nows: both bounds move by an hour and no run is near either.)
         seedTrainingWeek(STANDARD_WEEK);
         seedRaid(clock(9), 30 * MINUTE);
         seedRaid(clock(10), 30 * MINUTE);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const ninth = provisionalAt(getRaidsInProgress({ ...SEVEN_DAYS, now: clock(10, 30) }), clock(9))?.total;
+        const tenth = provisionalAt(getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN }), clock(10))?.total;
 
-        const ninth = provisionalAt(series, clock(9))?.total;
-        const tenth = provisionalAt(series, clock(10))?.total;
-        expect(ninth).toBeDefined();
-        expect(tenth).toBeDefined();
-        expect(tenth).not.toBeCloseTo(ninth as number, 3);
+        expect(ninth).toBeCloseTo(0.5, 10);
+        expect(tenth).toBeCloseTo(0.625, 10);
     });
 
     it('counts a run still going at the 15-minute cutoff only up to the cutoff', () => {

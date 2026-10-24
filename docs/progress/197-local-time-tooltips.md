@@ -41,6 +41,8 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] `npm run mutate:diff -- 9307ce8...HEAD --typecheck` — 100.0% overall (93/93 scored), loops 0, no survivors
    - [x] `npm run visual:check` — 68 passed
    - [x] lint, build, test, e2e at HEAD (6a88dff): lint 0 errors, tsc, 791 vitest, build, 189 e2e
+8. Simplify
+   - [x] /simplify pass — tooltip steps placed from the slots and `xPercent` (the locator record and the second `SlotLocator` gone), `describePeak` split into `peakCaption` / `peakAriaLabel`, tick-helper tidy; boundary test kills the two survivors (`mutate:diff --incremental`: activity files 132/132); suite at 0b8ccdb: lint 0 errors, tsc, build, 791 vitest, 189 e2e, visual:check 68
 
 ## Notes
 

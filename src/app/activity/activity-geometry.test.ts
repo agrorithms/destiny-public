@@ -3,7 +3,6 @@ import { COUNTED_AGE_SECONDS, PROVISIONAL_MIN_AGE_SECONDS } from '@/lib/db/queri
 import { ACTIVITY_RANGES, type ActivityRangeId } from './activity-range';
 import {
     CHART_HEIGHT,
-    CHART_WIDTH,
     LAST_LABELLED_TICK_PERCENT,
     NOT_YET_COUNTED_AGE_SECONDS,
     TOO_RECENT_AGE_SECONDS,
@@ -183,6 +182,7 @@ describe('the solid and the dashed line', () => {
     });
 
     it('draws no dashed line when nothing is estimated', () => {
+        // With no history to learn a curve from there are no estimates: no dashed path at all.
         const points = [step(0, 1, false), step(1, 3, false)];
 
         expect(linePaths(points, from, to, 4)).toEqual({ solid: 'M50,150L150,50', dashed: null });
@@ -213,11 +213,12 @@ describe('the too-recent span', () => {
         expect(span.widthPercent).toBeCloseTo(1.5205, 3);
     });
 
-    it('starts where the dashed line ends, so the line meets the shade and never enters it', () => {
-        // Hourly steps, "now" 5 hours 20 minutes into the window: the last step 15 minutes
-        // old ends at 5 hours, and the estimate runs up to it. Its last vertex, the step's
-        // midpoint at 4.5 hours (843.75 of 1000), sits left of the shade's start at 5 hours
-        // (93.75%): a dashed line drawn into the shade would be one estimating too-recent steps.
+    it("the dashed line's last vertex sits at or before the too-recent shade", () => {
+        // Hourly steps, "now" 5 hours 20 minutes into the window: the last step at least 15
+        // minutes old ends at 5 hours, and the estimate runs through it. The dashed line's last
+        // vertex is that step's midpoint, 4.5 hours in (843.75 of 1000); the shade starts at
+        // the step's end, 5 hours in (93.75%), half a step to its right. A vertex inside the
+        // shade would be an estimate of a step too recent to estimate.
         const from = 1792195200;
         const series = { from, to: from + 5 * HOUR + 20 * 60, provisionalUntil: from + 5 * HOUR };
         const points = [0, 1, 2, 3, 4].map((index) => ({
@@ -231,7 +232,6 @@ describe('the too-recent span', () => {
         const lastX = Number(dashed.match(/L([\d.]+),[\d.]+$/)?.[1]);
 
         expect(lastX).toBeCloseTo(843.75, 2);
-        expect((lastX / CHART_WIDTH) * 100).toBeLessThanOrEqual(tooRecent(series).startPercent);
         expect(tooRecent(series).startPercent).toBeCloseTo(93.75, 3);
     });
 });

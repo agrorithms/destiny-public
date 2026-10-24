@@ -3,16 +3,18 @@ import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries
 import { getOrCompute } from '@/lib/cache/swr-cache';
 import { envSeconds } from '@/lib/env';
 import { ActivityChart } from './ActivityChart';
+import { ActivityRangeControl } from './ActivityRangeControl';
+import { parseActivityRange, type ActivityRange } from './activity-range';
 
 /**
  * Raid Activity (#194, parent #51): how many raid instances were in progress over the last
- * 7 days, one point per hour, rebuilt from PGCRs. Not from Session Snapshots, which don't
- * measure activity (ADR 0009).
+ * 24 hours, 7 days or 30 days (`?range=`, #195), one point per step, rebuilt from PGCRs. Not
+ * from Session Snapshots, which don't measure activity (ADR 0009).
  *
- * The tracer bullet of #51's chain: one range, the total line only, UTC labels, and the
- * span after the last counted hour shaded as not yet counted. #195 adds the range presets,
- * #196 the Provisional estimate, #197 tooltips in local time, #198–#199 the per-raid panel —
- * each through the query's options and the geometry module, not a new read.
+ * Built up along #51's chain: #194's tracer bullet (the total line, UTC labels, the span
+ * after the last counted step shaded), #195's range presets, then #196's Provisional
+ * estimate, #197's tooltips in local time and #198–#199's per-raid panel — each through the
+ * query's options and the geometry module, not a new read.
  *
  * **Server-rendered, with no new endpoint**: the page calls the Tracker query module
  * directly, and the chart is hand-made SVG with no client JavaScript.
@@ -23,17 +25,21 @@ import { ActivityChart } from './ActivityChart';
  * endpoints. Next's `revalidate` export can't do this: it must be a literal, so it can't
  * read the env knob, and it would prerender the page at build time against whatever
  * database the build machine has. The series carries its own "now", so a cached one
- * still shades the right span.
+ * still shades the right span. One cache key per range: an uncached 30-day series costs
+ * ~1 s on x86 (~2 s on the ARM box), nearly the whole PGCR table, and that was accepted
+ * behind the cache rather than built around (#195).
  */
 export const dynamic = 'force-dynamic';
 
-/** The tracer bullet's one range: 7 days at 1-hour steps. #195 turns this into `?range=`. */
-const SEVEN_DAYS = { rangeSeconds: 7 * 24 * 60 * 60, stepSeconds: 60 * 60 };
-
-export default async function ActivityPage() {
+export default async function ActivityPage({
+    searchParams,
+}: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+    const range = parseActivityRange(await searchParams);
     let series: RaidsInProgressSeries | null;
     try {
-        series = await readSeries();
+        series = await readSeries(range);
     } catch (error) {
         if (!isDatabaseMaintenanceError(error)) throw error;
         series = null;
@@ -44,29 +50,34 @@ export default async function ActivityPage() {
             <header className="space-y-2">
                 <h1 className="text-3xl font-bold ui-text-primary">Raid Activity</h1>
                 <p className="ui-text-secondary">
-                    How many raids were in progress across every raid, averaged over each hour
-                    of the last 7 days. Every raid instance counts, checkpoint runs and
-                    unfinished ones included. Times are UTC.
+                    How many raids were in progress across every raid, averaged over each{' '}
+                    {range.step} of the last {range.span}. Every raid instance counts,
+                    checkpoint runs and unfinished ones included. Times are UTC.
                 </p>
+                <ActivityRangeControl range={range.id} />
             </header>
             {series === null ? (
                 <p className="ui-text-secondary">
                     Database maintenance is in progress. Raid Activity is temporarily unavailable.
                 </p>
             ) : (
-                <ActivityChart series={series} />
+                <ActivityChart series={series} range={range} />
             )}
         </div>
     );
 }
 
-async function readSeries(): Promise<RaidsInProgressSeries> {
+async function readSeries(range: ActivityRange): Promise<RaidsInProgressSeries> {
     const freshSec = envSeconds('ANALYTICS_CACHE_FRESH_SEC', 300);
     const swrSec = envSeconds('ANALYTICS_CACHE_SWR_SEC', 1800);
     const { value } = await getOrCompute(
-        'raids-in-progress:7d',
+        `raids-in-progress:${range.id}`,
         { freshMs: freshSec * 1000, staleMs: swrSec * 1000 },
-        () => getRaidsInProgress({ ...SEVEN_DAYS, now: Math.floor(Date.now() / 1000) })
+        () => getRaidsInProgress({
+            rangeSeconds: range.rangeSeconds,
+            stepSeconds: range.stepSeconds,
+            now: Math.floor(Date.now() / 1000),
+        })
     );
     return value;
 }

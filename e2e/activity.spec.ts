@@ -197,14 +197,15 @@ async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
 
     const before = page.getByTestId('activity-before-data');
     if (range.beforeData) {
-        // The oldest report is 20 days back and counting starts 6 to 8 hours after it, so
-        // the shade covers the window's first ~10 days: about a third of the chart.
+        // The oldest report started 20 days before the seed's clock hour, and counting starts
+        // at the first 3-hour step at least 6 hours after it: 245 to 249 hours into the
+        // 720-hour window, give or take the minutes since seeding. 34.0% to 34.6%.
         expect(parseFloat((await before.getAttribute('x')) ?? '')).toBe(0);
         const width = parseFloat((await before.getAttribute('width')) ?? '');
-        expect(width).toBeGreaterThan(31);
-        expect(width).toBeLessThan(34);
+        expect(width).toBeGreaterThan(33.5);
+        expect(width).toBeLessThan(35);
         await expect(page.getByTestId('activity-before-data-legend')).toHaveText(
-            new RegExp(`^Shaded at the left: no data before ${WINDOW('\\d{2}:00').split('–')[0]}\\. Older raid reports are no longer stored\\.$`)
+            new RegExp(`^Shaded at the left: no data before ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:00 UTC\\. Older raid reports are no longer stored\\.$`)
         );
     } else {
         await expect(before).toHaveCount(0);

@@ -19,13 +19,13 @@ added to visual:check, and a dated ADR 0009 Consequences line.
    - [x] `src/app/activity/activity-geometry.test.ts` — hour/day ticks per range, `beforeData`, `describePeak`, `notYetCountedLegend`, `describeBeforeData`
    - [x] `src/app/activity/activity-geometry.ts`
 5. The page
-   - [ ] `src/app/activity/ActivityRangeControl.tsx` (new) — Link-based, `aria-current`
-   - [ ] `src/app/activity/ActivityChart.tsx` — the range's ticks, wording and the data-start shade
-   - [ ] `src/app/activity/page.tsx` — `?range=`, per-range cache key, intro per range
-   - [ ] `src/app/activity/layout.tsx` — a description that names no single range
+   - [x] `src/app/activity/ActivityRangeControl.tsx` (new) — Link-based, `aria-current`
+   - [x] `src/app/activity/ActivityChart.tsx` — the range's ticks, wording and the data-start shade
+   - [x] `src/app/activity/page.tsx` — `?range=`, per-range cache key, intro per range
+   - [x] `src/app/activity/layout.tsx` — a description that names no single range
 6. The browser suite, red then green
-   - [ ] `e2e/support/seed-world.ts` — B1 (the oldest PGCR, 20 days back) and B2 (two 20-minute runs 6 h back)
-   - [ ] `e2e/activity.spec.ts` — presets set `?range=` and redraw, reload, nonsense, JS off, 360px
+   - [x] `e2e/support/seed-world.ts` — B1 (the oldest PGCR, 20 days back) and B2 (two 20-minute runs 6 h back)
+   - [x] `e2e/activity.spec.ts` — presets set `?range=` and redraw, reload, nonsense, JS off, 360px
    - [ ] `e2e/visual.spec.ts` — `/activity?range=24h` and `/activity?range=30d`
 7. Bookkeeping
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated Consequences line

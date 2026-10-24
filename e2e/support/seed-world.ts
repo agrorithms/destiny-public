@@ -235,6 +235,48 @@ export const FASTEST_CLEARS = {
 } as const;
 
 /**
+ * The Raid Activity chart's runs (#194): what `/activity` draws in the seeded world.
+ *
+ * Every run of the leaderboard world above starts an hour ago, inside the two hours the
+ * chart leaves uncounted, so on its own the chart would be a flat line. These give it a
+ * shape, all well inside its 7-day window:
+ *
+ * - **the peak**: {@link ACTIVITY_PEAK_RAIDS} runs covering exactly one clock hour two
+ *   days back, so the busiest hour averages exactly that many raids in progress;
+ * - a run of two and a half hours four days back, which reads 1, 1 and 0.5;
+ * - one hour-long run a day for the six days before today, a small daily rhythm.
+ *
+ * All of them are Checkpoint Runs nobody finished, by members no `players` row names, so
+ * no leaderboard, Fastest Clears board, player page or player search can see them: the
+ * chart counts every raid instance (All Attempts), and nothing else on the site counts
+ * these. Their member ids carry the `91` namespace so they collide with no spec's players.
+ */
+export const ACTIVITY_PEAK_RAIDS = 3;
+
+function seedActivityRuns(): void {
+    const hour = 3600;
+    const thisHour = Math.floor(Date.now() / 1000 / hour) * hour;
+    const runs: Array<{ start: number; seconds: number }> = [
+        ...Array.from({ length: ACTIVITY_PEAK_RAIDS }, () => ({ start: thisHour - 48 * hour, seconds: hour })),
+        { start: thisHour - 100 * hour, seconds: 2.5 * hour },
+        ...Array.from({ length: 6 }, (_, day) => ({ start: thisHour - ((day + 1) * 24 + 6) * hour, seconds: hour })),
+    ];
+
+    runs.forEach((run, index) => {
+        seedRun({
+            instanceId: `9100${index + 1}`,
+            activityHash: RAID_A.hash,
+            raidKey: RAID_A.key,
+            incompleteBy: [`91000000000000${String(index + 1).padStart(2, '0')}`],
+            startedFromBeginning: false,
+            period: run.start,
+            activityDurationSeconds: run.seconds,
+            timePlayedSeconds: run.seconds,
+        });
+    });
+}
+
+/**
  * Proves the *running server* opened this run's fixture database — not just
  * that this process did, and not a database left behind by an earlier run.
  * Searched for through /api/players/search, which reads local SQLite only and is
@@ -285,6 +327,8 @@ export function seedStaticWorld(): void {
             }
         }
     }
+
+    seedActivityRuns();
 }
 
 export interface SeedPlayerSessionOptions {

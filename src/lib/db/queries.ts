@@ -1580,6 +1580,114 @@ export function deleteSessionsContainingPlayer(membershipId: string): void {
 }
 
 // =====================
+// RAID ACTIVITY QUERIES
+// =====================
+
+/**
+ * How old a moment must be before its Raids in Progress are counted (CONTEXT.md). A raid
+ * still running has no PGCR yet, so a newer moment would read low; on prod a moment two
+ * hours old is ~93% complete. A step is counted once its *end* is this old.
+ */
+export const COUNTED_AGE_SECONDS = 7200; // two hours
+
+/** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
+export interface RaidsInProgressPoint {
+    start: number;
+    end: number;
+    /** Raid instances in progress across every raid, averaged over the step. */
+    total: number;
+}
+
+export interface RaidsInProgressSeries {
+    /** The window's left edge, unix seconds: `now - rangeSeconds`. */
+    from: number;
+    /** The window's right edge: `now`. */
+    to: number;
+    stepSeconds: number;
+    /** `now - COUNTED_AGE_SECONDS`. No point ends after it. */
+    countedUntil: number;
+    points: RaidsInProgressPoint[];
+}
+
+export interface RaidsInProgressOptions {
+    rangeSeconds: number;
+    stepSeconds: number;
+    /** Unix seconds. Passed in, never read from the clock here, so a test can pin it. */
+    now: number;
+}
+
+/**
+ * Raids in Progress across every raid, one point per step (CONTEXT.md, #194).
+ *
+ * **Every raid instance counts** (All Attempts): Fresh Runs and Checkpoint Runs, finished
+ * or not. A PGCR counts when it has a raid key, the same "is this a raid at all" test every
+ * other raid query here makes, and an `ended_at` — a PGCR with no usable duration has no
+ * interval to place. Session Snapshots are not read: they don't measure activity.
+ *
+ * **Each point is the step's average**, not a sample at one instant: the raid time that
+ * overlaps the step, over the step's length. A run covering half a step adds 0.5.
+ *
+ * **Steps sit on the step grid** — whole multiples of `stepSeconds` since the epoch, so a
+ * 1-hour step is a UTC clock hour — from the first boundary at or after `now -
+ * rangeSeconds`. A step is returned only once its end is {@link COUNTED_AGE_SECONDS} old;
+ * the newer ones are absent rather than low. A maintenance window is a true zero.
+ *
+ * **One sweep, not one query per step.** The PGCRs overlapping the window are read once,
+ * through `idx_pgcrs_ended` (`ended_at > first step start`), and each adds its overlap in
+ * O(1): the partial first and last steps it touches directly, and the whole steps between
+ * them through a running difference array. So the cost is rows + steps, never rows × steps
+ * — a run lasting days adds two array writes, not one per hour it spans.
+ */
+export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
+    const { rangeSeconds, stepSeconds, now } = options;
+    const from = now - rangeSeconds;
+    const countedUntil = now - COUNTED_AGE_SECONDS;
+    const firstStart = Math.ceil(from / stepSeconds) * stepSeconds;
+    const steps = Math.max(0, Math.floor((countedUntil - firstStart) / stepSeconds));
+    const lastEnd = firstStart + steps * stepSeconds;
+
+    // Seconds of raid time inside each step from runs that only partly cover it, and the
+    // change in "runs covering the whole step" at each step, summed into a running count.
+    // One slot past the last step in each, for a run ending exactly at `lastEnd`: its
+    // last piece lands there, and is zero seconds long.
+    const partialSeconds = new Float64Array(steps + 1);
+    const wholeStepsDelta = new Float64Array(steps + 1);
+
+    const rows = getDb().prepare(`
+    SELECT p.period, p.ended_at
+    FROM pgcrs p
+    WHERE p.ended_at > ?
+      AND p.period < ?
+      AND p.raid_key IS NOT NULL
+  `).raw().iterate(firstStart, lastEnd) as IterableIterator<[number, number]>;
+
+    for (const [period, endedAt] of rows) {
+        const start = Math.max(period, firstStart);
+        const end = Math.min(endedAt, lastEnd);
+        const first = Math.floor((start - firstStart) / stepSeconds);
+        const last = Math.floor((end - firstStart) / stepSeconds);
+        // The run's piece of its first step, its piece of its last, and +1 for every whole
+        // step between them. A run inside a single step takes the same path: its two
+        // pieces then overlap and add up to one step more than the run, and the -1 at
+        // `last` (which is `first`) takes that step back.
+        partialSeconds[first] += firstStart + (first + 1) * stepSeconds - start;
+        partialSeconds[last] += end - (firstStart + last * stepSeconds);
+        wholeStepsDelta[first + 1] += 1;
+        wholeStepsDelta[last] -= 1;
+    }
+
+    const points: RaidsInProgressPoint[] = [];
+    let wholeRuns = 0;
+    for (let index = 0; index < steps; index++) {
+        wholeRuns += wholeStepsDelta[index];
+        const start = firstStart + index * stepSeconds;
+        points.push({ start, end: start + stepSeconds, total: wholeRuns + partialSeconds[index] / stepSeconds });
+    }
+
+    return { from, to: now, stepSeconds, countedUntil, points };
+}
+
+// =====================
 // SESSION SNAPSHOT QUERIES
 // =====================
 

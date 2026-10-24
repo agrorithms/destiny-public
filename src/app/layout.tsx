@@ -85,6 +85,12 @@ export default function RootLayout({
                 >
                   Active Sessions
                 </Link>
+                <Link
+                  href="/activity"
+                  className="text-sm ui-text-secondary hover:text-[var(--ui-text-primary)] transition-colors"
+                >
+                  Activity
+                </Link>
               </div>
               <ThemeToggle />
             </div>

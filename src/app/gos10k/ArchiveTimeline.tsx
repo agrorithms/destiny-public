@@ -5,6 +5,7 @@ import type {
 } from '@/lib/db/archive/queries';
 import { archiveRunSpan, type ArchiveRunSpan, type ArchiveSpan } from '@/lib/db/archive/range';
 import { monthSlots, type TimelineBucketSlot } from '@/lib/db/archive/timeline-buckets';
+import { ChartHover } from '@/components/chart/ChartHover';
 import type { ArchiveTab } from './archive-tab';
 import {
     describeArchiveRange,
@@ -14,6 +15,7 @@ import {
     formatTimelineBucketInSentence,
 } from './range-copy';
 import {
+    TIMELINE_PARTS,
     timelineBand,
     yearTicks,
     zoomedTicks,
@@ -22,7 +24,6 @@ import {
     type TimelineTick,
 } from './timeline-geometry';
 import { TimelineDrag } from './TimelineDrag';
-import { TimelineHover } from './TimelineHover';
 import { wholeArchiveTooltips, zoomedTooltips, type TimelineTooltip } from './timeline-tooltips';
 
 /**
@@ -56,9 +57,9 @@ import { wholeArchiveTooltips, zoomedTooltips, type TimelineTooltip } from './ti
  * polylines is a decision for the user, not a default.
  *
  * **Still a server component under #114's hover tooltips.** The main chart's line and
- * bars are wrapped in ./TimelineHover.tsx, a client component that takes them as
- * `children` — so they are still rendered here, and with JavaScript off the page draws
- * them exactly as before. What each tooltip says is worked out here too
+ * bars are wrapped in src/components/chart/ChartHover.tsx, a client component that takes
+ * them as `children` — so they are still rendered here, and with JavaScript off the page
+ * draws them exactly as before. What each tooltip says is worked out here too
  * (./timeline-tooltips.ts) and handed down as strings. The overview strip is not wrapped:
  * tooltips belong to the main chart.
  *
@@ -254,10 +255,10 @@ function MainChart({
 }) {
     return (
         <Draggable slots={slots} runs={runs} tab={tab}>
-            <TimelineHover tooltips={tooltips}>
+            <ChartHover tooltips={tooltips} parts={TIMELINE_PARTS} testId="archive-timeline-tooltip">
                 <Climb buckets={buckets} from={from} label={lineLabel} />
                 <Bars buckets={buckets} variant="main" label={barsLabel} />
-            </TimelineHover>
+            </ChartHover>
         </Draggable>
     );
 }
@@ -312,7 +313,8 @@ function TimelineSection({ heading, children }: { heading: string; children: Rea
  * role="img" with a label rather than an unlabelled graphic: the shape is the content
  * here, and the figures a screen reader needs are in the captions either side of it.
  *
- * Always the main chart's, so always marked as the `line` half for ./TimelineHover.tsx.
+ * Always the main chart's, so always marked as the `line` half for
+ * src/components/chart/ChartHover.tsx.
  */
 function Climb({ buckets, from, label }: { buckets: ChartBucket[]; from: number; label: string }) {
     const top = buckets.length === 0 ? from : buckets[buckets.length - 1].cumulativeClears;
@@ -364,9 +366,9 @@ function Bars({
     label: string;
     band?: TimelineBand | null;
     /**
-     * `main`: the main chart's bars, which ./TimelineHover.tsx explains. `overview`: the
-     * strip — the same bars at half the height, so it reads as context, and never
-     * hoverable (#114).
+     * `main`: the main chart's bars, which src/components/chart/ChartHover.tsx explains.
+     * `overview`: the strip — the same bars at half the height, so it reads as context,
+     * and never hoverable (#114).
      */
     variant: 'main' | 'overview';
 }) {

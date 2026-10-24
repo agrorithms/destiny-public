@@ -368,7 +368,15 @@ echo "=== I. commit gate (guard-commit.sh) ==="
 # FAKE_FAIL. Under test is the gate's decision, not lint or vitest.
 GATE_REPO="$(mktemp -d)"
 git -C "$GATE_REPO" init -q
-git -C "$GATE_REPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+# The gate writes its log inside the repo it gates; ignored here as in the real
+# .gitignore, or the log would read as a changed non-.md path from then on.
+echo '.claude/hooks/logs/' > "$GATE_REPO/.gitignore"
+git -C "$GATE_REPO" add .gitignore
+git -C "$GATE_REPO" -c user.name=t -c user.email=t@t commit -q -m init
+GATE_FILE="$GATE_REPO/.claude/hooks/logs/commit-gate.log"
+logged() { # logged <ERE> -> yes | no: does the gate log's last line match?
+  tail -n 1 "$GATE_FILE" 2>/dev/null | grep -qE "$1" && echo yes || echo no
+}
 export GATE_LOG="$GATE_REPO.log"
 cat > "$GATE_REPO.runner" <<'RUNNER'
 #!/usr/bin/env bash
@@ -378,13 +386,16 @@ exit 0
 RUNNER
 chmod +x "$GATE_REPO.runner"
 export COMMIT_GATE_RUNNER="$GATE_REPO.runner"
-gate() { # gate <command> -> allow | deny; the checks it ran are in $GATE_LOG
+gate_raw() { # gate_raw <command> -> the hook's raw output; the checks it ran are in $GATE_LOG
   : > "$GATE_LOG"
+  jq -nc --arg c "$1" --arg d "$GATE_REPO" \
+    '{session_id:"sessGATE",cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh
+}
+gate() { # gate <command> -> allow | deny. A pass prints only a systemMessage, which allows.
   local out
-  out=$(jq -nc --arg c "$1" --arg d "$GATE_REPO" \
-    '{session_id:"sessGATE",cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh)
+  out="$(gate_raw "$1")"
   [ -z "$out" ] && { echo allow; return; }
-  jq -r '.hookSpecificOutput.permissionDecision // "malformed"' <<<"$out"
+  jq -r '.hookSpecificOutput.permissionDecision // (if .systemMessage then "allow" else "malformed" end)' <<<"$out"
 }
 ran() { paste -sd, "$GATE_LOG"; }
 ALL='lint,tsc (app),tsc (scripts),vitest'
@@ -406,13 +417,32 @@ check "heredoc message -> gated" "allow" "$(gate "git commit -F - <<'EOF'
 WIP #1: x
 EOF")"
 
+# Every gated commit leaves a log line, so "did the gate run?" has an answer
+# from inside a session; a pass also says so in a systemMessage.
+check "pass -> systemMessage with the time taken" "yes" \
+  "$(jq -r '.systemMessage' <<<"$(gate_raw 'git commit -m x')" | grep -qE '^commit gate: pass in [0-9]+s$' && echo yes || echo no)"
+check "pass -> logged with branch, result, time and checks" "yes" \
+  "$(logged '^[0-9]{4}-[0-9-]{5}T[0-9:]{8}Z [^ ]+@[0-9a-f]+ pass [0-9]+s lint,tsc \(app\),tsc \(scripts\),vitest$')"
+LINES=$(wc -l < "$GATE_FILE")
+gate 'git status' >/dev/null
+check "not a commit -> nothing logged" "$LINES" "$(wc -l < "$GATE_FILE")"
+check "the real repo ignores the gate log" "ignored" \
+  "$(git check-ignore -q .claude/hooks/logs/commit-gate.log && echo ignored || echo tracked)"
+mv "$GATE_REPO/.claude/hooks/logs" "$GATE_REPO/logs.bak" && touch "$GATE_REPO/.claude/hooks/logs"
+check "a log that can't be written -> still allow" "allow" "$(gate 'git commit -m x')"
+rm "$GATE_REPO/.claude/hooks/logs" && mv "$GATE_REPO/logs.bak" "$GATE_REPO/.claude/hooks/logs"
+
 export FAKE_FAIL=vitest
 check "vitest red -> deny" "deny" "$(gate 'git commit -m "WIP #1: x"')"
+check "deny -> logged as blocked by that check" "yes" \
+  "$(logged ' blocked by vitest [0-9]+s lint,tsc \(app\),tsc \(scripts\),vitest$')"
 out=$(jq -nc --arg c 'git commit -m x' --arg d "$GATE_REPO" '{cwd:$d,tool_input:{command:$c}}' | $H/guard-commit.sh)
 check "deny names the red check" "yes" \
   "$(jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$out" | grep -q 'vitest is red' && echo yes || echo no)"
 check "red-first commit -> allow" "allow" "$(gate 'git commit -m "WIP #1: red — size specs"')"
 check "red-first commit -> vitest skipped" "lint,tsc (app),tsc (scripts)" "$(ran)"
+check "red-first commit -> logged as such" "yes" \
+  "$(logged ' pass \(red-first: vitest skipped\) [0-9]+s lint,tsc \(app\),tsc \(scripts\)$')"
 check "red marker with a hyphen -> allow" "allow" "$(gate 'git commit -m "WIP #1: red - size specs"')"
 check "'red' elsewhere in the message is no marker" "deny" "$(gate 'git commit -m "WIP #1: the red border"')"
 export FAKE_FAIL="tsc (app)"
@@ -427,12 +457,14 @@ export COMMIT_GATE_RUNNER="$GATE_REPO.runner"
 rm "$GATE_REPO/a.ts"; echo notes > "$GATE_REPO/notes.md"
 check ".md-only tree -> allow" "allow" "$(gate 'git commit -m "WIP #1: progress tick"')"
 check ".md-only tree -> nothing runs" "" "$(ran)"
+check ".md-only tree -> logged as skipped" "yes" "$(logged ' skipped \(only \*\.md changed\) [0-9]+s none$')"
 echo x > "$GATE_REPO/b.ts"
 gate 'git add notes.md && git commit -m x' >/dev/null
 check ".md staged but code changed elsewhere -> all four" "$ALL" "$(ran)"
 rm "$GATE_REPO/b.ts" "$GATE_REPO/notes.md"
 check "nothing changed (message-only amend) -> allow" "allow" "$(gate 'git commit --amend -m y')"
 check "nothing changed -> nothing runs" "" "$(ran)"
+check "nothing changed -> logged as skipped" "yes" "$(logged ' skipped \(nothing changed\) [0-9]+s none$')"
 unset COMMIT_GATE_RUNNER GATE_LOG
 rm -rf "$GATE_REPO" "$GATE_REPO.log" "$GATE_REPO.runner"
 
@@ -486,6 +518,16 @@ check "report.sh: missing SHA -> exit 3" "3" "$(cd "$SHIP_REPO" && "$REPORT" 999
 state committed "$OFF"
 check "SHA outside HEAD's history -> block" "block" "$(verdict "$(stop)")"
 
+# pre_run: commits already on the branch when /ship-ticket started. Recorded
+# SHAs like any other, so a rebase that drops one is caught.
+state_set() { # state_set <jq args...> -> rewrites the state file through jq
+  jq "$@" "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+}
+state committed "$C1"; state_set --arg c "$C1" '.pre_run = [$c]'
+check "pre_run SHA in HEAD's history -> silent" "silent" "$(verdict "$(stop)")"
+state_set --arg o "$OFF" '.pre_run = [$o]'
+check "pre_run SHA outside HEAD's history -> block" "block" "$(verdict "$(stop)")"
+
 state committed "$C1"
 echo dirty > "$SHIP_REPO/c.ts"
 check "committed but tree dirty -> block" "block" "$(verdict "$(stop)")"
@@ -501,6 +543,98 @@ check "not a feat/NNN-* branch -> silent" "silent" "$(verdict "$(stop)")"
 sg switch -q feat/999-test
 rm "$STATE_FILE"
 check "feat branch, no state file -> silent" "silent" "$(verdict "$(stop)")"
+
+echo
+echo "=== J2. the code-changed check (ship_code_unchanged_since) ==="
+# One definition shared by report.sh's STALE label and the skill's reuse of a
+# suite run, so the two can't disagree about what a docs-only range is.
+source "$H/ship-state.sh"
+mkdir -p "$SHIP_REPO/docs/progress" "$SHIP_REPO/src"
+echo n > "$SHIP_REPO/docs/progress/999.md" && sg add docs/progress && sg commit -q -m "WIP #999: progress"
+check "docs-only commits since <sha> -> unchanged" "yes" \
+  "$(ship_code_unchanged_since "$SHIP_REPO" "$C1" && echo yes || echo no)"
+# Root files, on a scratch branch so J3's commit counts from C1 stay as they are.
+# vitest.config.ts and middleware.ts were missed by the old list of code paths.
+J2_BRANCH=$(sg branch --show-current) && sg switch -q -c j2-scratch
+since_commit() { # since_commit <path> -> yes | no: is the tree unchanged since the commit before <path>?
+  local b; b=$(sg rev-parse HEAD)
+  echo y > "$SHIP_REPO/$1" && sg add "$1" && sg commit -q -m "scratch: $1"
+  ship_code_unchanged_since "$SHIP_REPO" "$b" && echo yes || echo no
+}
+check "a root CLAUDE.md commit -> unchanged" "yes" "$(since_commit CLAUDE.md)"
+check "a vitest.config.ts commit -> changed" "no" "$(since_commit vitest.config.ts)"
+check "a middleware.ts commit -> changed" "no" "$(since_commit middleware.ts)"
+sg switch -q "$J2_BRANCH" && sg branch -q -D j2-scratch
+echo x > "$SHIP_REPO/src/x.ts" && sg add src && sg commit -q -m "WIP #999: src"
+check "a src/ commit since <sha> -> changed" "no" \
+  "$(ship_code_unchanged_since "$SHIP_REPO" "$C1" && echo yes || echo no)"
+check "an unknown <sha> -> not unchanged" "no" \
+  "$(ship_code_unchanged_since "$SHIP_REPO" 0123456789012345678901234567890123456789 && echo yes || echo no)"
+SRC=$(sg rev-parse HEAD)
+
+echo
+echo "=== J3. report.sh's lines ==="
+rep() { (cd "$SHIP_REPO" && "$REPORT" 999); }
+says() { # says <ERE> -> yes | no: does some line of the report match?
+  rep | grep -qE -- "$1" && echo yes || echo no
+}
+state committed "$SRC"
+
+# Checks and mutation: STALE only when code changed since the run.
+state_set --arg c "$C1" '.checks = {sha: $c, lint: "pass"}'
+check "checks behind a src/ change -> STALE" "yes" "$(says '^Checks +@ [0-9a-f]+ \(STALE, 2 commit\(s\) behind HEAD\)')"
+state_set --arg c "$SRC" '.checks = {sha: $c, lint: "pass"}'
+check "checks at HEAD -> HEAD" "yes" "$(says '^Checks +@ [0-9a-f]+ \(HEAD\)')"
+echo m > "$SHIP_REPO/docs/progress/999.md" && sg commit -q -am "WIP #999: progress tick"
+state committed "$(sg rev-parse HEAD)"; state_set --arg c "$SRC" '.checks = {sha: $c, lint: "pass"}'
+check "checks behind a docs-only commit -> current" "yes" \
+  "$(says '^Checks +@ [0-9a-f]+ \(current, 1 commit\(s\) behind HEAD, none touching code\)')"
+
+# The mutation line says which pass ran it; only Handoff's is the reported score.
+mut() { state_set --arg c "$SRC" --arg p "$1" --argjson f "$2" \
+  '.mutation = {sha: $c, pass: $p, full: $f, overall: 100, covered: 100, killed: 8, scored: 8, verdict: "PASS", survivors: []}'; }
+mut implement true
+check "implementer's full run -> not the reported score" "yes" \
+  "$(says '; full --typecheck run, implement pass, not the reported score\): 100% overall')"
+mut fix false
+check "fixer's partial run -> says so" "yes" "$(says '; not a full --typecheck run, fix pass, not the reported score\)')"
+mut handoff true
+check "handoff's full run -> the reported score" "yes" "$(says '; full --typecheck run, the reported score\)')"
+
+# Commits made before the run are listed apart, once.
+state_set --arg c "$C1" '.pre_run = [$c]'
+check "pre_run commit listed under 'before the run'" "yes" \
+  "$(rep | grep -A1 '^  before the run:$' | tail -n 1 | grep -qE '^    [0-9a-f]+ WIP #999: a$' && echo yes || echo no)"
+check "pre_run commit not repeated in the run's list" "1" "$(rep | grep -cE ' WIP #999: a$')"
+state_set '.pre_run = []'
+
+# Findings grouped by axis; picked and follow-up are listed with open; fixed ones are gone.
+state_set '.findings = [
+  {id:"S1",axis:"standards",severity:"blocking",status:"open",where:"a.ts:1",summary:"s"},
+  {id:"S2",axis:"standards",severity:"blocking",status:"follow-up",where:"a.ts:6",summary:"s2"},
+  {id:"P1",axis:"spec",severity:"non-blocking",status:"open",where:"a.ts:2",summary:"p"},
+  {id:"P2",axis:"spec",severity:"blocking",status:"fixed",where:"a.ts:3",summary:"p2"},
+  {id:"O1",axis:"orchestrator",severity:"non-blocking",status:"picked",where:"a.ts:4",summary:"o"},
+  {id:"X1",severity:"non-blocking",status:"open",where:"a.ts:5",summary:"x"}]'
+check "findings grouped Spec, Standards, Orchestrator, then no axis" \
+  "Findings,Spec,P1,Standards,S1,S2,Orchestrator,O1,No,X1,Out" \
+  "$(rep | sed -n '/^Findings/,/^Out of scope/p' | awk '{print $1}' | paste -sd,)"
+# A blocking finding left for a follow-up issue stays in view until Handoff drafts it.
+check "a follow-up finding is counted" "yes" "$(says '^Findings open, picked or follow-up: 5$')"
+
+state_set '.out_of_scope = [{summary:"a",issue:null},{summary:"b",issue:12},{summary:"c",issue:"fixed"}]'
+check "an item fixed in place isn't counted as an issue" "yes" \
+  "$(says '^Out of scope: 3 listed, 1 with an issue, 1 fixed in place$')"
+state_set '.passes.handoff = {status:"committed",issues:[],pr:"user"}'
+check "pr: user -> the user pushes" "yes" "$(says '^PR: none, the user pushes$')"
+
+# Past 30 commits, the oldest are counted rather than silently cut.
+for i in $(seq 1 32); do sg commit -q --allow-empty -m "WIP #999: e$i"; done
+state committed "$(sg rev-parse HEAD)"
+# Reads the Commits block as its "… N more" line, how many lines follow it, and the last one's subject.
+check "36 commits -> '… 6 more', then the newest 30" "… 6 more|30|WIP #999: e32" \
+  "$(rep | sed -n '/^Commits/,/^$/p' | sed '1d;$d' | { read -r more; mapfile -t rest;
+     echo "$(sed 's/^ *//' <<<"$more")|${#rest[@]}|${rest[-1]#*[0-9a-f] }"; })"
 rm -rf "$SHIP_REPO"
 
 echo

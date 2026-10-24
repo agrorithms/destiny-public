@@ -87,6 +87,9 @@ docs/tickets/
 # claude plans and skills
 .claude/plans/
 .claude/settings.local.json
+# The commit gate's log (guard-commit.sh). Must stay ignored: an untracked log would make every
+# *.md-only commit pay for the full gate.
+.claude/hooks/logs/
 # playwright
 /test-results/
 /playwright-report/

@@ -135,7 +135,7 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
   player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy) applied to both membership ids and display names, so no two specs
+  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy, `91` = active-sessions-size; `92` is the seed world's own activity runs, for `/activity`) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -1473,7 +1473,7 @@ strip's) — the client wrapper reads it to tell the halves apart, and the specs
 rule. Next's `<Link>` prefetches (`?_rsc=`) for the page's other links land in the same window
 and cannot be told apart from a fetch the timeline might make without depending on timing. The
 rule is kept by construction instead: `TimelineHover.tsx` has no fetch and receives its strings as
-props.
+props (moved to src/components/chart/ChartHover.tsx by #193).
 
 **Tried and dropped (review round):** a touch tap in the 4px gap between the two SVGs, meant to
 prove it dismisses. Chromium's touch adjustment retargets a finger tap there onto the nearer SVG
@@ -2415,3 +2415,129 @@ only against ancestors from its `offsetParent` up, and a fixed one against none.
 ancestor becomes the real containing block for both; if Chromium's `offsetParent` passes over it,
 an ancestor that clips the popup is never checked, and a #160-style clipped popup inside a
 transformed element would pass.
+
+## 2026-10-23 — #194 the Raid Activity page (`/activity`)
+
+`e2e/activity.spec.ts`, **new**, four specs. The suite is now **twenty-seven flows, 162 tests
+including the two canary setups**.
+
+**Seed world:** `seedActivityRuns` in `e2e/support/seed-world.ts` adds ten PGCRs on Salvation's
+Edge, all well inside the chart's 7-day window: three runs covering exactly one clock hour two
+days back (the peak, `ACTIVITY_PEAK_RAIDS` = 3), one run of two and a half hours four days back,
+and one hour-long run a day for the six days before. Every leaderboard run starts an hour ago,
+inside the two hours the chart leaves uncounted, so without these the chart was a flat line. They
+are Checkpoint Runs nobody finished, by `92`-prefixed members with no `players` row, so no
+leaderboard, Fastest Clears board, player page or player search sees them. The canary is
+untouched.
+
+1. **The nav links to it.** From `/leaderboard`, the nav shows Leaderboard and Active Sessions, and
+   its Activity link goes to `/activity`, headed "Raid Activity".
+2. **The total line is drawn from the seeded Tracker.** The SVG's accessible name says it peaks at
+   3 raids in progress; the line's path has a vertex for every counted hour (at least 165); the
+   caption reads "Busiest hour: 3 raids in progress, <Day> <date> <Mon>, HH:00–HH:00 UTC."; the
+   not-yet-counted shade starts past 98.2% of the width and ends at 100%; at least six UTC day
+   labels sit under the axis. No console errors. The hour itself is not pinned: it is two days
+   before the seed ran, and the spec's clock may have crossed an hour since.
+3. **With JavaScript off** (`javaScriptEnabled: false`), the same checks pass, and the copy says
+   "Times are UTC."
+4. **Phone (360×780):** the Activity link and the chart sit inside the viewport, the chart passes
+   the same checks, and `expectNoOverflow(page)` finds nothing.
+
+**Bite proof — one deliberate break per spec, batched into one build** (then restored and green):
+- The nav link pointing at `/leaderboard`: only 1 failed ("Expected pattern: /\/activity$/,
+  Received string: http://localhost:3100/leaderboard").
+- The line drawn only after mount, by a client component that renders `d=""` on the server: only 3
+  failed ("the line has a starting point"). 2 and 4, with JavaScript on, passed.
+- The chart's figure at `min-w-[420px]`: only 4 failed ("the chart ends inside the viewport",
+  436 against 360).
+- Against that same build, `seedActivityRuns()` left out of the seed world (no rebuild needed:
+  the seed is the runner's): 2 failed, its chart no longer named a peak of 3.
+
+### What is still NOT covered
+
+- Anything later tickets add: range presets (#195), the Provisional estimate (#196), hover and tap
+  tooltips in local time (#197), the per-raid panel (#198, #199).
+- The maintenance message ("Raid Activity is temporarily unavailable"). The e2e server can't be put
+  into database maintenance, and stubbing our own page is not an exception ADR 0004 allows.
+- The 300-second cache: every spec reads the series the first request computed. Nothing asserts
+  that a later request within the window reuses it, or that one after it recomputes.
+- The values themselves beyond the peak. Step averaging is pinned in
+  `tests/db/raids-in-progress.test.ts`, the geometry in `src/app/activity/activity-geometry.test.ts`.
+
+## 2026-10-23 — #195 the Raid Activity range presets (`?range=`)
+
+`e2e/activity.spec.ts`, **five new specs** under "the range presets". The suite is now
+**twenty-eight flows, 167 tests including the two canary setups**. `e2e/visual.spec.ts` also
+screenshots `/activity?range=24h` and `/activity?range=30d` (slugs `activity-24h`, `activity-30d`),
+so `npm run visual:check` gates their overflow at all six viewport/theme pairs too.
+
+**Seed world:** `seedActivityRuns` now makes **thirteen** PGCRs, three more than #194's ten, all
+still `92`-prefixed Checkpoint Runs nobody finished:
+- two 20-minute runs six hours back (`ACTIVITY_RECENT_PEAK_RAIDS` = 2), the only counted runs in
+  the last 24 hours, so the 24-hour chart's busiest 10 minutes is exactly 2;
+- one hour-long run 20 days back (`ACTIVITY_OLDEST_DAYS`), the world's oldest PGCR. The query
+  starts counting at the first step 6 hours after the oldest report (ADR 0009's #195 line), so the
+  30-day chart shades its first ~10 days (34.0–34.6% of the width) as no data, while 24 hours and
+  7 days are drawn whole, as #194's specs need.
+
+Over 30 days the busiest 3 hours is the 7-day peak's: three hour-long runs inside one 3-hour step,
+exactly 1 — which is also what shows the caption says "1 raid", not "1 raids".
+
+`expectRangeDrawn(page, id)` is what "the chart is that range's" means, shared by every spec below:
+the control marks that preset `aria-current="page"` and no other; the SVG's accessible name says
+"per 10 minutes over the last 24 hours" / "per hour over the last 7 days" / "per 3 hours over the
+last 30 days"; the line's vertex count is in range (131–132, 165–166, 150–160); the peak caption is
+that range's; the not-yet-counted shade starts past 100 − its widest share of the window, and its
+legend states that range's width ("the last 2 hours to 2 hours 10 minutes" / "2 to 3 hours" /
+"2 to 5 hours"); hour labels (`HH:00`) under a 24-hour axis, day labels under the others; and the
+data-start shade and its dated legend ("Shaded at the left: no data before <Day> <date> <Mon>,
+HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at 24h and 7d.
+
+1. **Each preset sets `?range=` and redraws.** From `/activity` (7d), clicking 24h, 30d then 7d
+   sets `/activity?range=<id>` each time, 7d included, and the chart is that range's.
+2. **A reload keeps the range.** 30d clicked, the page reloaded: still `?range=30d`, still 30d.
+3. **An unreadable range shows 7 days.** `/activity?range=nonsense` draws the 7-day chart with 7d
+   marked.
+4. **With JavaScript off**, the 24h preset is a plain link the browser follows to `?range=24h` and
+   the 24-hour chart.
+5. **Phone (360×780):** the control sits inside the viewport on 7d, 30d and 24h, and
+   `expectNoOverflow(page)` finds nothing after each switch.
+
+**Bite proof — the red run, then one deliberate break.**
+- Red at `2be05d1`, specs and seed committed before the control existed (the query's data start
+  was already in the build): all 5 new specs failed, #194's four passed. 1 and 3 on "24h is not
+  marked … element(s) not found"; 2 and 4 on `locator.click` timing out on the missing link; 5 on
+  `locator.boundingBox` timing out on the missing control.
+- With the control built, one cache key for every range (`raids-in-progress:7d` in `page.tsx`):
+  1, 2, 4 and 5 failed, each showing the 7-day series under another range's label ("Busiest 10
+  minutes: 3 raids in progress, … 03:00–04:00 UTC", "Busiest 3 hours: 3 raids in progress, …").
+  3 passed, as it should: its range is 7d. Restored and green.
+- Review fix S4 (2026-10-24): `rangeLink` now finds a preset's link by its `label` from
+  `ACTIVITY_RANGES`, not its id, so renaming a label breaks no spec by itself. One deliberate
+  break, the control rendering `label.toUpperCase()`: 8 of the spec's 11 tests failed on
+  `rangeLink` finding no link (every test that touches the control); the 3 that never look at it
+  passed. Restored and green.
+- Review fixes S2 and S5 (2026-10-24): the chart (S2) and then the intro (S5) read their step
+  and span off the series itself, so the one-cache-key break above no longer shows a series
+  under another range's wording: the record above is of the code at the time. Rerun against
+  `693ae4a`: the same 4 of the 11 failed (1, 2, 4 and 5 of the new specs), now on the chart's
+  name — `expectRangeDrawn`'s marked-preset check passed, then "per 10 minutes over the last 24
+  hours" was not found. The page at `?range=30d` read "averaged over every hour of the last 7
+  days" in the intro and "Busiest hour" in the caption, with 30d still marked in the control.
+  Restored and green. So the specs catch a series that isn't the URL's range, through the chart
+  and the marked preset, which follows the URL on purpose (it is navigation). No spec reads the
+  intro's step or span — only its "Times are UTC." — so an intro that disagreed with the chart
+  drawn under it would pass; S5 removed the way they could disagree rather than adding a check.
+
+### What is still NOT covered
+
+- The data-start shade's position is checked within a band, not exactly: the exact arithmetic is
+  pinned in `src/app/activity/activity-geometry.test.ts` and the bound itself in
+  `tests/db/raids-in-progress.test.ts`, which runs the real cleanup before reading the 30-day window.
+- The 30-day axis's label density is a human's call from the `activity-30d` screenshots; no spec
+  asserts labels don't touch.
+- The per-range cache's lifetime, as for #194.
+- The intro sentence's step and span: no spec reads them. Since S5 they come off the same
+  series as the chart's name, which `expectRangeDrawn` does check.
+- Later tickets: the Provisional estimate (#196), tooltips in local time (#197), the per-raid
+  panel (#198, #199).

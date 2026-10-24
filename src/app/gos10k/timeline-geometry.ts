@@ -20,8 +20,9 @@ import { formatArchiveDayOfMonth, formatArchiveMonth } from './range-copy';
  * client bundle. The generic pointer helpers the hover tooltip and the drag share — which
  * pointer is a mouse, which slot a pointer is over, where a tooltip's box goes — moved to
  * `@/lib/chart/pointer` in #193, so another page can use them without this module.
- * Nothing here, or in what it imports, may reach the database: `@/lib/db/archive/queries` opens better-sqlite3, so anything on this module's
- * import path — ./range-copy.ts included — takes only types from it.
+ * Nothing here, or in what it imports, may reach the database: `@/lib/db/archive/queries`
+ * opens better-sqlite3, so anything on this module's import path — ./range-copy.ts
+ * included — takes only types from it.
  *
  * **The month list is assumed contiguous** — every calendar month from the Archive's
  * first to its last, gaps included, which is exactly what {@link getMonthlyClears} builds.

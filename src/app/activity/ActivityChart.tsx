@@ -14,7 +14,7 @@ import {
     valueAxis,
     type ShadedSpan,
 } from './activity-geometry';
-import { activitySlots, locatorOf } from './activity-tooltips';
+import { activitySlots } from './activity-tooltips';
 import { ActivityHover, LocalBeforeData, LocalGridlines, LocalPeak, LocalTickLabels } from './ActivityLocal';
 
 /**
@@ -91,7 +91,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                    <ActivityHover slots={activitySlots(points)} locator={locatorOf(series)}>
+                    <ActivityHover slots={activitySlots(points)} from={from} to={to}>
                         <svg
                             data-timeline-part="total"
                             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}

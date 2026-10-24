@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
     ESTIMATE_TAIL,
     activitySlots,
-    locatorOf,
     slotAtFraction,
     slotCentreFraction,
     tooltipText,
@@ -102,49 +101,39 @@ describe('which step a pointer is over', () => {
     // Counting starts at Sat 17 00:00 UTC, 12,404 s in (2.0509% across), with three 1-hour
     // steps, to 3.8 % (12,404 + 10,800 s in).
     const NOW = 1792787596;
-    const locator = locatorOf({
-        from: NOW - 7 * DAY,
-        to: NOW,
-        stepSeconds: HOUR,
-        countedFrom: MIDNIGHT,
-        points: [point(MIDNIGHT, HOUR, 1), point(MIDNIGHT + HOUR, HOUR, 2), point(MIDNIGHT + 2 * HOUR, HOUR, 3, true)],
-    });
+    const FROM = NOW - 7 * DAY;
+    const slots = activitySlots([point(MIDNIGHT, HOUR, 1), point(MIDNIGHT + HOUR, HOUR, 2), point(MIDNIGHT + 2 * HOUR, HOUR, 3, true)]);
+    const at = (fraction: number) => slotAtFraction(fraction, slots, FROM, NOW);
 
     it('finds the step the pointer is across, by time and not by equal share of the width', () => {
         // Step 0 spans 12,404–16,004 s: fractions 0.020509 to 0.026463. Step 1 ends at
         // 19,604 s, 0.032416; step 2 at 23,204 s, 0.038369.
-        expect(slotAtFraction(0.0206, locator)).toBe(0);
-        expect(slotAtFraction(0.0264, locator)).toBe(0);
-        expect(slotAtFraction(0.0265, locator)).toBe(1);
-        expect(slotAtFraction(0.0324, locator)).toBe(1);
-        expect(slotAtFraction(0.0325, locator)).toBe(2);
-        expect(slotAtFraction(0.0383, locator)).toBe(2);
+        expect(at(0.0206)).toBe(0);
+        expect(at(0.0264)).toBe(0);
+        expect(at(0.0265)).toBe(1);
+        expect(at(0.0324)).toBe(1);
+        expect(at(0.0325)).toBe(2);
+        expect(at(0.0383)).toBe(2);
     });
 
     it('is over no step before the first or after the last, where the chart is shaded or bare', () => {
-        expect(slotAtFraction(0, locator)).toBeNull();
-        expect(slotAtFraction(0.0205, locator)).toBeNull();
-        expect(slotAtFraction(0.0384, locator)).toBeNull();
-        expect(slotAtFraction(0.5, locator)).toBeNull();
-        expect(slotAtFraction(1, locator)).toBeNull();
-        expect(slotAtFraction(-0.1, locator)).toBeNull();
-        expect(slotAtFraction(1.1, locator)).toBeNull();
+        expect(at(0)).toBeNull();
+        expect(at(0.0205)).toBeNull();
+        expect(at(0.0384)).toBeNull();
+        expect(at(0.5)).toBeNull();
+        expect(at(1)).toBeNull();
+        expect(at(-0.1)).toBeNull();
+        expect(at(1.1)).toBeNull();
     });
 
     it('is over no step in a series with none', () => {
-        const empty = locatorOf({ from: NOW - 7 * DAY, to: NOW, stepSeconds: HOUR, countedFrom: MIDNIGHT, points: [] });
-
-        expect(slotAtFraction(0.5, empty)).toBeNull();
-        expect(slotAtFraction(0.0206, empty)).toBeNull();
+        expect(slotAtFraction(0.5, [], FROM, NOW)).toBeNull();
+        expect(slotAtFraction(0.0206, [], FROM, NOW)).toBeNull();
     });
 
     it('puts a step\'s anchor at the middle of its window, where the line draws its vertex', () => {
         // Step 0's middle is 12,404 + 1,800 s in; step 2's is 12,404 + 9,000 s in.
-        expect(slotCentreFraction(0, locator)).toBeCloseTo(14204 / 604800, 6);
-        expect(slotCentreFraction(2, locator)).toBeCloseTo(21404 / 604800, 6);
-    });
-
-    it('is a plain record of numbers, which can cross to the browser', () => {
-        expect(JSON.parse(JSON.stringify(locator))).toEqual(locator);
+        expect(slotCentreFraction(0, slots, FROM, NOW)).toBeCloseTo(14204 / 604800, 6);
+        expect(slotCentreFraction(2, slots, FROM, NOW)).toBeCloseTo(21404 / 604800, 6);
     });
 });

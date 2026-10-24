@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft } from '@/lib/chart/pointer';
 
 /**
@@ -61,13 +61,20 @@ interface Hovered<Part extends string> {
 const GAP = 4;
 
 /**
- * Where a chart's slots are, when they are not equal shares of its width: which slot a
- * pointer a `fraction` of the way across is over (or none), and where in pixels a slot's
- * anchor sits on a chart `chartWidth` wide.
+ * Where a chart's slots are: which slot a pointer a `fraction` of the way across is over (or
+ * none), and where in pixels a slot's anchor sits on a chart `chartWidth` wide.
  */
 export interface SlotLocator {
     slotAt: (fraction: number) => number | null;
     centre: (index: number, chartWidth: number) => number;
+}
+
+/** The default: `count` slots, each an equal share of the width. */
+function equalShares(count: number): SlotLocator {
+    return {
+        slotAt: (fraction) => slotAt(fraction, count),
+        centre: (index, chartWidth) => slotCentre(index, count, chartWidth),
+    };
 }
 
 export function ChartHover<Part extends string>({
@@ -94,6 +101,7 @@ export function ChartHover<Part extends string>({
     const chartRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const markerRef = useRef<HTMLDivElement>(null);
+    const where = useMemo(() => locate ?? equalShares(tooltips.length), [locate, tooltips.length]);
 
     /** Whether a `data-timeline-part` value names one of this chart's graphics. */
     function isPart(value: string | null | undefined): value is Part {
@@ -114,7 +122,7 @@ export function ChartHover<Part extends string>({
         }
 
         const fraction = chartFraction(event.clientX, chart.getBoundingClientRect());
-        const index = locate ? locate.slotAt(fraction) : slotAt(fraction, tooltips.length);
+        const index = where.slotAt(fraction);
         if (index === null) {
             // Over no slot — a shaded span, say — there is nothing to say, and what the
             // pointer has just left is no longer under it.
@@ -142,9 +150,7 @@ export function ChartHover<Part extends string>({
         const partBox = chart.querySelector(`[data-timeline-part="${hovered.part}"]`)?.getBoundingClientRect();
         if (!partBox) return;
         const chartBox = chart.getBoundingClientRect();
-        const anchor = locate
-            ? locate.centre(hovered.index, chartBox.width)
-            : slotCentre(hovered.index, tooltips.length, chartBox.width);
+        const anchor = where.centre(hovered.index, chartBox.width);
         const top = partBox.top - chartBox.top;
 
         tooltip.style.left = `${tooltipLeft(anchor, tooltip.offsetWidth, chartBox.width)}px`;
@@ -152,7 +158,7 @@ export function ChartHover<Part extends string>({
         marker.style.left = `${anchor}px`;
         marker.style.top = `${top}px`;
         marker.style.height = `${partBox.height}px`;
-    }, [hovered, tooltips, locate]);
+    }, [hovered, tooltips, where]);
 
     // A tap anywhere outside the chart dismisses the tooltip. Listened for only while one
     // is showing, so the page carries no document listener the rest of the time — and

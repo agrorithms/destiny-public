@@ -11,13 +11,7 @@ import {
 } from './activity-geometry';
 import type { ActivityRange } from './activity-range';
 import { describeTimeZone, type OffsetOf } from './activity-time';
-import {
-    slotAtFraction,
-    slotCentreFraction,
-    tooltipText,
-    type ActivitySlot,
-    type SlotLocator as ActivitySlotLocator,
-} from './activity-tooltips';
+import { slotAtFraction, slotCentreFraction, tooltipText, type ActivitySlot } from './activity-tooltips';
 
 /**
  * The Raid Activity chart's client step (#197): everything that finishes in the reader's
@@ -127,26 +121,28 @@ const PARTS = ['total'] as const;
 /**
  * Hover and tap tooltips over the chart (src/components/chart/ChartHover.tsx), finished in
  * the reader's zone. The slots are the server's — the number and the wording — and the clock
- * window is added here ({@link tooltipText}). The locator says where the steps sit on the
- * x-axis, because they are not equal shares of the chart's width.
+ * window is added here ({@link tooltipText}). The steps are placed on the x-axis by their
+ * timestamps across the window `[from, to]`, because they are not equal shares of its width.
  */
 export function ActivityHover({
     slots,
-    locator,
+    from,
+    to,
     children,
 }: {
     slots: ActivitySlot[];
-    locator: ActivitySlotLocator;
+    from: number;
+    to: number;
     children: React.ReactNode;
 }) {
     const offsetOf = useOffsetOf();
     const tooltips = useMemo(() => slots.map((slot) => ({ total: tooltipText(slot, offsetOf) })), [slots, offsetOf]);
     const locate = useMemo<SlotLocator>(
         () => ({
-            slotAt: (fraction) => slotAtFraction(fraction, locator),
-            centre: (index, chartWidth) => slotCentreFraction(index, locator) * chartWidth,
+            slotAt: (fraction) => slotAtFraction(fraction, slots, from, to),
+            centre: (index, chartWidth) => slotCentreFraction(index, slots, from, to) * chartWidth,
         }),
-        [locator]
+        [slots, from, to]
     );
     return (
         <ChartHover tooltips={tooltips} parts={PARTS} testId="activity-tooltip" locate={locate}>

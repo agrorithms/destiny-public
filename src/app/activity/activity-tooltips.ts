@@ -1,5 +1,5 @@
-import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queries';
-import { formatRaidCount, raidNoun } from './activity-geometry';
+import type { RaidsInProgressPoint } from '@/lib/db/queries';
+import { formatRaidCount, raidNoun, xPercent } from './activity-geometry';
 import { formatStepWindow, type OffsetOf } from './activity-time';
 
 /**
@@ -51,43 +51,22 @@ export function tooltipText(slot: ActivitySlot, offsetOf: OffsetOf): string {
 }
 
 /**
- * What it takes to place a step on the chart: the window the x-axis spans, and where the
- * steps start and how many there are. The steps run on from `firstStart` without a gap.
- */
-export interface SlotLocator {
-    from: number;
-    to: number;
-    firstStart: number;
-    stepSeconds: number;
-    count: number;
-}
-
-export function locatorOf(
-    series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'stepSeconds' | 'countedFrom' | 'points'>
-): SlotLocator {
-    return {
-        from: series.from,
-        to: series.to,
-        firstStart: series.countedFrom,
-        stepSeconds: series.stepSeconds,
-        count: series.points.length,
-    };
-}
-
-/**
  * The step a pointer `fraction` of the way across the chart is over, or null where there is
  * none: the bare part-step at the left, the shaded spans at either end, anywhere past the
  * last step. By time, not by an equal share of the width, because the chart's axis is the
  * window `[from, to]`, which neither starts on a step boundary nor ends on one.
  */
-export function slotAtFraction(fraction: number, locator: SlotLocator): number | null {
-    const at = locator.from + fraction * (locator.to - locator.from);
-    const index = Math.floor((at - locator.firstStart) / locator.stepSeconds);
-    return index >= 0 && index < locator.count ? index : null;
+export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[], from: number, to: number): number | null {
+    const at = from + fraction * (to - from);
+    const index = slots.findIndex((slot) => slot.start <= at && at < slot.end);
+    return index === -1 ? null : index;
 }
 
-/** How far across the chart step `index`'s window is centred: where the line draws its vertex. */
-export function slotCentreFraction(index: number, locator: SlotLocator): number {
-    const middle = locator.firstStart + (index + 0.5) * locator.stepSeconds;
-    return (middle - locator.from) / (locator.to - locator.from);
+/**
+ * How far across the chart step `index`'s window is centred: where the line draws its
+ * vertex, placed by the same {@link xPercent} as the line.
+ */
+export function slotCentreFraction(index: number, slots: readonly ActivitySlot[], from: number, to: number): number {
+    const { start, end } = slots[index];
+    return xPercent((start + end) / 2, from, to) / 100;
 }

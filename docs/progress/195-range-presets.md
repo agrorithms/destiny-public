@@ -31,6 +31,8 @@ added to visual:check, and a dated ADR 0009 Consequences line.
    - [x] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated Consequences line
    - [x] `docs/e2e-coverage.md` — flow list, seed count, journal entry with every deliberate break
    - [x] `docs/progress/195-range-presets.md` (this file)
+8. Simplify
+   - [x] /simplify pass
 
 ## Surviving mutants
 
@@ -44,3 +46,7 @@ initialiser no test could switch). No `Stryker disable` comments.
 - Vitest: `npm run mutate:diff -- c9ef7f2...HEAD`, see the report.
 - Playwright: the red run at `2be05d1` and one deliberate break (one cache key for every range);
   both recorded in `docs/e2e-coverage.md`'s #195 entry.
+- /simplify pass: `e2e/activity.spec.ts`'s #194 helper `expectChartDrawn` now runs
+  `expectRangeDrawn(page, '7d')`, which took over its `M`-start and right-edge checks. Bite
+  proof: one deliberate break, `notYetCounted`'s `endPercent` set to 99, turned 8 of the
+  spec's 9 tests red on `x + width ≈ 100` (the nav-link test draws no chart); reverted.

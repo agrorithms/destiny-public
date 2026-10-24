@@ -23,45 +23,120 @@ import { expectInsideViewport, expectNoOverflow } from './support/viewport';
  * here.
  */
 
-/** Every step the chart can draw over 7 days at 1-hour steps, the newest two hours aside. */
-const MIN_COUNTED_STEPS = 165;
-
-/** The caption's sentence for the busiest hour, its UTC window spelled out. */
-const PEAK_CAPTION = new RegExp(
-    `^Busiest hour: ${ACTIVITY_PEAK_RAIDS} raids in progress, (Mon|Tue|Wed|Thu|Fri|Sat|Sun) \\d{1,2} [A-Z][a-z]{2}, \\d{2}:00–\\d{2}:00 UTC\\.$`
-);
+const WEEKDAY = '(Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
+const WINDOW = (clock: string) => `${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, ${clock}–${clock} UTC`;
 
 /**
- * The checks that the chart drew from the seeded Tracker: one line with a vertex per
- * counted hour, the seeded peak in the caption, the shade at the right-hand edge, and day
- * labels under the axis. Shared by the JavaScript-on and JavaScript-off tests, so the two
- * cannot drift apart on what "the chart is drawn" means.
+ * What each preset draws in the seeded world. Vertex counts allow for the clock: the
+ * window's edges move with "now", so a range's counted steps vary by one; 30 days starts
+ * 6 hours after the oldest report and so holds about 157 three-hour steps of its 240.
+ */
+const RANGES = {
+    '24h': {
+        axis: 'hours',
+        label: /^Raids in progress per 10 minutes over the last 24 hours, peaking at /,
+        peak: new RegExp(`^Busiest 10 minutes: ${ACTIVITY_RECENT_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:\\d{2}')}\\.$`),
+        vertices: [131, 132],
+        // 2 hours plus up to one 10-minute step, of 24 hours.
+        shadeFrom: 100 - (130 / 1440) * 100,
+        legend: 'Shaded: the last 2 hours to 2 hours 10 minutes, not yet counted.',
+        beforeData: false,
+    },
+    '7d': {
+        axis: 'days',
+        label: /^Raids in progress per hour over the last 7 days, peaking at /,
+        peak: new RegExp(`^Busiest hour: ${ACTIVITY_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:00')}\\.$`),
+        vertices: [165, 166],
+        // 2 hours plus up to one 1-hour step, of 168 hours.
+        shadeFrom: 100 - (3 / 168) * 100,
+        legend: 'Shaded: the last 2 to 3 hours, not yet counted.',
+        beforeData: false,
+    },
+    '30d': {
+        axis: 'days',
+        label: /^Raids in progress per 3 hours over the last 30 days, peaking at /,
+        peak: new RegExp(`^Busiest 3 hours: 1 raid in progress, ${WINDOW('\\d{2}:00')}\\.$`),
+        vertices: [150, 160],
+        // 2 hours plus up to one 3-hour step, of 720 hours.
+        shadeFrom: 100 - (5 / 720) * 100,
+        legend: 'Shaded: the last 2 to 5 hours, not yet counted.',
+        beforeData: true,
+    },
+} as const;
+
+type RangeId = keyof typeof RANGES;
+
+/** The range control's link to a preset. */
+function rangeLink(page: Page, id: RangeId) {
+    return page.getByTestId('activity-range').getByRole('link', { name: id, exact: true });
+}
+
+/**
+ * The checks that the chart on screen is `id`'s: the control marks it and only it, and the
+ * chart's name, line, caption, axis labels and shades are that range's. Drawn from the
+ * seeded Tracker, so a control that changed the URL without changing the query fails here.
+ */
+async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
+    const range = RANGES[id];
+    for (const other of Object.keys(RANGES) as RangeId[]) {
+        if (other === id) await expect(rangeLink(page, other)).toHaveAttribute('aria-current', 'page');
+        else await expect(rangeLink(page, other), `${other} is not marked`).not.toHaveAttribute('aria-current');
+    }
+
+    const chart = page.getByTestId('activity-chart');
+    await expect(chart.getByRole('img', { name: range.label })).toBeVisible();
+    await expect(page.getByTestId('activity-peak')).toHaveText(range.peak);
+
+    // One "M" and then an "L" per further vertex: the path has a point for every counted step.
+    const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
+    expect(d.startsWith('M'), 'the line has a starting point').toBe(true);
+    const vertices = (d.match(/L/g) ?? []).length + 1;
+    expect(vertices, `${id} vertex count`).toBeGreaterThanOrEqual(range.vertices[0]);
+    expect(vertices, `${id} vertex count`).toBeLessThanOrEqual(range.vertices[1]);
+
+    // The not-yet-counted shade starts where the last counted step ends and runs to the
+    // right-hand edge.
+    const shade = page.getByTestId('activity-not-yet-counted');
+    const x = parseFloat((await shade.getAttribute('x')) ?? '');
+    expect(x).toBeGreaterThan(range.shadeFrom);
+    expect(x + parseFloat((await shade.getAttribute('width')) ?? '')).toBeCloseTo(100, 6);
+    await expect(page.getByTestId('activity-not-yet-counted-legend')).toHaveText(range.legend);
+
+    // Labels are HTML under the axis, in UTC. Hours over 24 hours, the day named at midnight;
+    // days otherwise, at least six (a last midnight too near the right-hand edge is unlabelled).
+    if (range.axis === 'hours') {
+        expect(await chart.getByText(/^\d{2}:00$/).count()).toBeGreaterThanOrEqual(4);
+    } else {
+        expect(await chart.getByText(new RegExp(`^${WEEKDAY} \\d{1,2}$`)).count()).toBeGreaterThanOrEqual(6);
+    }
+
+    const before = page.getByTestId('activity-before-data');
+    if (range.beforeData) {
+        // The oldest report started 20 days before the seed's clock hour, and counting starts
+        // at the first 3-hour step at least 6 hours after it: 245 to 249 hours into the
+        // 720-hour window, give or take the minutes since seeding. 34.0% to 34.6%.
+        expect(parseFloat((await before.getAttribute('x')) ?? '')).toBe(0);
+        const width = parseFloat((await before.getAttribute('width')) ?? '');
+        expect(width).toBeGreaterThan(33.5);
+        expect(width).toBeLessThan(35);
+        await expect(page.getByTestId('activity-before-data-legend')).toHaveText(
+            new RegExp(`^Shaded at the left: no data before ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:00 UTC\\. Older raid reports are no longer stored\\.$`)
+        );
+    } else {
+        await expect(before).toHaveCount(0);
+        await expect(page.getByTestId('activity-before-data-legend')).toHaveCount(0);
+    }
+}
+
+/**
+ * The default chart, as the page's first visit draws it: the heading, and the 7-day chart
+ * drawn from the seeded Tracker ({@link expectRangeDrawn}). Shared by the JavaScript-on,
+ * JavaScript-off and phone tests, so they cannot drift apart on what "the chart is drawn"
+ * means.
  */
 async function expectChartDrawn(page: Page): Promise<void> {
     await expect(page.getByRole('heading', { level: 1, name: 'Raid Activity' })).toBeVisible();
-
-    const chart = page.getByTestId('activity-chart');
-    await expect(chart.getByRole('img', { name: new RegExp(`^Raids in progress per hour over the last 7 days, peaking at ${ACTIVITY_PEAK_RAIDS} raids in progress`) })).toBeVisible();
-
-    // One "M" and then an "L" per further vertex: the path has a point for every hour.
-    const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
-    expect(d.startsWith('M'), 'the line has a starting point').toBe(true);
-    expect((d.match(/L/g) ?? []).length + 1).toBeGreaterThanOrEqual(MIN_COUNTED_STEPS);
-
-    await expect(page.getByTestId('activity-peak')).toHaveText(PEAK_CAPTION);
-
-    // The not-yet-counted shade starts where the last counted hour ends, two to three hours
-    // before now of 168, so past 98.2% of the way across, and runs to the right-hand edge.
-    const shade = page.getByTestId('activity-not-yet-counted');
-    const x = parseFloat((await shade.getAttribute('x')) ?? '');
-    const width = parseFloat((await shade.getAttribute('width')) ?? '');
-    expect(x).toBeGreaterThan(98.2);
-    expect(x + width).toBeCloseTo(100, 6);
-
-    // Day labels are HTML under the axis, in UTC: a 7-day window holds at least six (the
-    // seventh is dropped when the last midnight is too near the right-hand edge).
-    const dayLabels = await chart.getByText(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2}$/).count();
-    expect(dayLabels).toBeGreaterThanOrEqual(6);
+    await expectRangeDrawn(page, '7d');
 }
 
 test.describe('the Raid Activity page', () => {
@@ -118,100 +193,6 @@ test.describe('the Raid Activity page', () => {
         });
     });
 });
-
-const WEEKDAY = '(Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
-const WINDOW = (clock: string) => `${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, ${clock}–${clock} UTC`;
-
-/**
- * What each preset draws in the seeded world. Vertex counts allow for the clock: the
- * window's edges move with "now", so a range's counted steps vary by one; 30 days starts
- * 6 hours after the oldest report and so holds about 157 three-hour steps of its 240.
- */
-const RANGES = {
-    '24h': {
-        label: /^Raids in progress per 10 minutes over the last 24 hours, peaking at /,
-        peak: new RegExp(`^Busiest 10 minutes: ${ACTIVITY_RECENT_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:\\d{2}')}\\.$`),
-        vertices: [131, 132],
-        // 2 hours plus up to one 10-minute step, of 24 hours.
-        shadeFrom: 100 - (130 / 1440) * 100,
-        legend: 'Shaded: the last 2 hours to 2 hours 10 minutes, not yet counted.',
-        beforeData: false,
-    },
-    '7d': {
-        label: /^Raids in progress per hour over the last 7 days, peaking at /,
-        peak: new RegExp(`^Busiest hour: ${ACTIVITY_PEAK_RAIDS} raids in progress, ${WINDOW('\\d{2}:00')}\\.$`),
-        vertices: [165, 166],
-        shadeFrom: 98.2,
-        legend: 'Shaded: the last 2 to 3 hours, not yet counted.',
-        beforeData: false,
-    },
-    '30d': {
-        label: /^Raids in progress per 3 hours over the last 30 days, peaking at /,
-        peak: new RegExp(`^Busiest 3 hours: 1 raid in progress, ${WINDOW('\\d{2}:00')}\\.$`),
-        vertices: [150, 160],
-        // 2 hours plus up to one 3-hour step, of 720 hours.
-        shadeFrom: 100 - (5 / 720) * 100,
-        legend: 'Shaded: the last 2 to 5 hours, not yet counted.',
-        beforeData: true,
-    },
-} as const;
-
-type RangeId = keyof typeof RANGES;
-
-/** The range control's link to a preset. */
-function rangeLink(page: Page, id: RangeId) {
-    return page.getByTestId('activity-range').getByRole('link', { name: id, exact: true });
-}
-
-/**
- * The checks that the chart on screen is `id`'s: the control marks it and only it, and the
- * chart's name, line, caption, axis labels and shades are that range's. Drawn from the
- * seeded Tracker, so a control that changed the URL without changing the query fails here.
- */
-async function expectRangeDrawn(page: Page, id: RangeId): Promise<void> {
-    const range = RANGES[id];
-    for (const other of Object.keys(RANGES) as RangeId[]) {
-        if (other === id) await expect(rangeLink(page, other)).toHaveAttribute('aria-current', 'page');
-        else await expect(rangeLink(page, other), `${other} is not marked`).not.toHaveAttribute('aria-current');
-    }
-
-    const chart = page.getByTestId('activity-chart');
-    await expect(chart.getByRole('img', { name: range.label })).toBeVisible();
-    await expect(page.getByTestId('activity-peak')).toHaveText(range.peak);
-
-    const d = (await page.getByTestId('activity-line').getAttribute('d')) ?? '';
-    const vertices = (d.match(/L/g) ?? []).length + 1;
-    expect(vertices, `${id} vertex count`).toBeGreaterThanOrEqual(range.vertices[0]);
-    expect(vertices, `${id} vertex count`).toBeLessThanOrEqual(range.vertices[1]);
-
-    const shade = page.getByTestId('activity-not-yet-counted');
-    expect(parseFloat((await shade.getAttribute('x')) ?? '')).toBeGreaterThan(range.shadeFrom);
-    await expect(page.getByTestId('activity-not-yet-counted-legend')).toHaveText(range.legend);
-
-    if (id === '24h') {
-        // Hours under the axis, and the day named at midnight.
-        expect(await chart.getByText(/^\d{2}:00$/).count()).toBeGreaterThanOrEqual(4);
-    } else {
-        expect(await chart.getByText(new RegExp(`^${WEEKDAY} \\d{1,2}$`)).count()).toBeGreaterThanOrEqual(6);
-    }
-
-    const before = page.getByTestId('activity-before-data');
-    if (range.beforeData) {
-        // The oldest report started 20 days before the seed's clock hour, and counting starts
-        // at the first 3-hour step at least 6 hours after it: 245 to 249 hours into the
-        // 720-hour window, give or take the minutes since seeding. 34.0% to 34.6%.
-        expect(parseFloat((await before.getAttribute('x')) ?? '')).toBe(0);
-        const width = parseFloat((await before.getAttribute('width')) ?? '');
-        expect(width).toBeGreaterThan(33.5);
-        expect(width).toBeLessThan(35);
-        await expect(page.getByTestId('activity-before-data-legend')).toHaveText(
-            new RegExp(`^Shaded at the left: no data before ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:00 UTC\\. Older raid reports are no longer stored\\.$`)
-        );
-    } else {
-        await expect(before).toHaveCount(0);
-        await expect(page.getByTestId('activity-before-data-legend')).toHaveCount(0);
-    }
-}
 
 test.describe('the range presets', () => {
     test('each preset sets ?range= and redraws the chart for its range', async ({ page }) => {

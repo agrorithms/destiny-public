@@ -24,20 +24,41 @@ final value; the sweep and the training read both stop at `ended_at <= now`.
    - [x] `e2e/activity.spec.ts` — dashed segment, joins, cutoff, legends; the red run is the bite proof
    - [x] `src/app/activity/ActivityChart.tsx` — dashed path, too-recent shade, both legends
    - [x] `src/app/activity/page.tsx` — header comment only (cache key per range unchanged)
-   - [ ] `e2e/visual.spec.ts` — no change expected; checked
+   - [x] `e2e/visual.spec.ts` — no change expected; checked
 6. Bookkeeping
-   - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated in-place amendment
-   - [ ] `docs/e2e-coverage.md` — flow entry and journal with the red run
-   - [ ] `docs/progress/196-provisional-estimate.md` (this file)
+   - [x] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated in-place amendment
+   - [x] `docs/e2e-coverage.md` — flow entry and journal with the red run
+   - [x] `docs/progress/196-provisional-estimate.md` (this file)
 7. Bite proofs and the backtest
-   - [ ] `npm run mutate:diff -- c1a18a0...HEAD --typecheck` (full runs only)
-   - [ ] Parity run of the real functions against the mirror script on a scratch copy of the backup
-   - [ ] `npm run visual:check`
+   - [x] `npm run mutate:diff -- c1a18a0...HEAD --typecheck` (full runs only)
+   - [x] Parity run of the real functions against the mirror script on a scratch copy of the backup
+   - [x] `npm run visual:check`
 
 ## Surviving mutants
 
-(filled in after the mutation runs)
+None. No `Stryker disable` comments.
+
+- Run 1 (`08307e2`): 88.1% overall (140+1 of 197 scored), 18 survivors. All killed or removed in loop 1
+  (`3485fdc`): the tally's loop is bounded by the run itself (`ceil(endedAt)`), which dropped two
+  redundant guards; the curve's constants became literals (a top-level calculation is out of the
+  mutation run's reach, as in #195); the singular "1 minute" was unreachable and removed; tests for
+  the interpolation weights, a run starting before the training window, the dashed line starting
+  on the *last* of several counted points, and the legends at step sizes the three ranges don't
+  use. The `cutoff > countedUntil` guard around `getCompletenessCurve` was output-equivalent (it
+  only saved ~230 ms when no step is estimated, about half the time at 30 days) and was removed
+  rather than disabled: see the report.
+- Run 2 (`3485fdc`): 98.6% (140 of 142), 2 survivors: a run reported past the curve's longest age
+  could add a point to the curve. Killed in loop 2 (`b85d9e5`).
+- Run 3 (`b85d9e5`, full, `--typecheck`): **100.0% overall (142/142), 100.0% covered**, PASS.
+  140 killed, 2 timed out, 0 survived, 36 compile errors discarded.
 
 ## Bite proofs
 
-(filled in as they are run)
+- Vitest: the red commits (`f130afc`, `dcb8b62`, `4d1367c`, `4ef40bb`) each fail before their code;
+  the mutation run above is the proof for every changed line of `.ts` under `src/`.
+- Playwright: red at `aa699fa` (10 of 13 failed, 3 passed: the canaries and the nav spec), green
+  at `8bc7ed2` (13 of 13). Recorded in `docs/e2e-coverage.md`. No separate deliberate break.
+- Backtest and parity (scripts in the session scratchpad, not committed): the shipped functions
+  agree with an independent mirror to 1e-15 on the points and exactly on the curve's shares (4200
+  shares, 55 points, three pretend-nows, three ranges); the replay of the shipped code gives the
+  figures in ADR 0009's amendment.

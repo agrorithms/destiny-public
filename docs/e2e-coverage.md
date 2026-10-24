@@ -2546,8 +2546,8 @@ HH:00 UTC. Older raid reports are no longer stored.") at 30 days only, absent at
 
 `e2e/activity.spec.ts`, **two new specs** under "the Provisional estimate", and
 `expectRangeDrawn` now also asserts the estimate for every range, so the JavaScript-off,
-phone-width and preset specs inherit it. The suite is now **thirty flows, 169 tests including
-the two canary setups** (the figures are re-checked from the full run in the report).
+phone-width and preset specs inherit it. The suite is now **thirty flows, 179 tests including
+the two canary setups**.
 
 **Seed world:** `seedActivityRuns` makes **fourteen** PGCRs, one more than #195's thirteen: a
 20-minute run that ended 40 minutes before the seed ran (from the clock, not the clock hour, so

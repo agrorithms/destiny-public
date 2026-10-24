@@ -1741,16 +1741,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     const partialSeconds = new Float64Array(steps + 1);
     const wholeStepsDelta = new Float64Array(steps + 1);
 
-    const rows = db.prepare(`
-    SELECT p.period, p.ended_at
-    FROM pgcrs p
-    WHERE p.ended_at > ?
-      AND p.ended_at <= ?
-      AND p.period < ?
-      AND p.raid_key IS NOT NULL
-  `).raw().iterate(firstStart, now, cutoff) as IterableIterator<[number, number]>;
-
-    for (const [period, endedAt] of rows) {
+    for (const [period, endedAt] of endedRaidRuns(firstStart, now, cutoff)) {
         const start = Math.max(period, firstStart);
         const end = Math.min(endedAt, cutoff);
         const first = Math.floor((start - firstStart) / stepSeconds);
@@ -1780,8 +1771,8 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         }
     }
 
-    const last = points.at(-1);
-    const provisionalUntil = last?.provisional ? last.end : countedUntil;
+    const lastPoint = points.at(-1);
+    const provisionalUntil = lastPoint?.provisional ? lastPoint.end : countedUntil;
     return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil, points };
 }
 
@@ -1804,16 +1795,29 @@ export function getCompletenessCurve(options: { now: number; stepSeconds: number
     const { now, stepSeconds } = options;
     const window = trainingWindow(now, stepSeconds);
     const tally = newTally();
-    const rows = getDb().prepare(`
+    for (const [period, endedAt] of endedRaidRuns(window.from, now, window.until)) {
+        tallyRun(tally, window, stepSeconds, period, endedAt);
+    }
+    return curveFromTally(tally);
+}
+
+/**
+ * `[period, ended_at]` of every raid that ended after `endedAfter` and by `now`, and started
+ * before `startedBefore`: the runs Raid Activity counts ({@link getRaidsInProgress}) and the
+ * ones its completeness curve learns from ({@link getCompletenessCurve}), read one way for
+ * both so the estimate scales up the same population it was learned from. Raids only,
+ * through the covering `idx_pgcrs_ended_period_raid`. A run that has not ended by `now` is
+ * not a report yet.
+ */
+function endedRaidRuns(endedAfter: number, now: number, startedBefore: number): IterableIterator<[number, number]> {
+    return getDb().prepare(`
     SELECT p.period, p.ended_at
     FROM pgcrs p
     WHERE p.ended_at > ?
       AND p.ended_at <= ?
       AND p.period < ?
       AND p.raid_key IS NOT NULL
-  `).raw().iterate(window.from, now, window.until) as IterableIterator<[number, number]>;
-    for (const [period, endedAt] of rows) tallyRun(tally, window, stepSeconds, period, endedAt);
-    return curveFromTally(tally);
+  `).raw().iterate(endedAfter, now, startedBefore) as IterableIterator<[number, number]>;
 }
 
 // =====================

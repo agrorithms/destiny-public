@@ -215,9 +215,10 @@ export function linePaths(
 }
 
 /**
- * The span shaded as too recent to estimate: from where the line ends (`provisionalUntil`,
- * the end of the last estimated step) to "now" at the right-hand edge. 15 minutes plus up to
- * one step wide ({@link tooRecentLegend}).
+ * The span shaded as too recent to estimate: from the end of the last estimated step
+ * (`provisionalUntil`) to "now" at the right-hand edge. The line's last vertex is that
+ * step's midpoint, so the shade starts half a step right of it. 15 minutes plus up to one
+ * step wide ({@link tooRecentLegend}).
  */
 export function tooRecent(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'provisionalUntil'>): ShadedSpan {
     const startPercent = xPercent(series.provisionalUntil, series.from, series.to);

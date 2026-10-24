@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { COUNTED_AGE_SECONDS } from '@/lib/db/queries';
+import { COUNTED_AGE_SECONDS, PROVISIONAL_MIN_AGE_SECONDS } from '@/lib/db/queries';
 import { ACTIVITY_RANGES, type ActivityRangeId } from './activity-range';
 import {
     CHART_HEIGHT,
     LAST_LABELLED_TICK_PERCENT,
     NOT_YET_COUNTED_AGE_SECONDS,
+    TOO_RECENT_AGE_SECONDS,
     axisTicks,
     beforeData,
     busiestStep,
@@ -14,6 +15,11 @@ import {
     formatStepWindow,
     hourTicks,
     linePath,
+    linePaths,
+    provisionalLegend,
+    tallestStep,
+    tooRecent,
+    tooRecentLegend,
     notYetCounted,
     notYetCountedLegend,
     valueAxis,
@@ -159,6 +165,78 @@ describe('the not-yet-counted span', () => {
         expect(span.startPercent).toBeCloseTo(98.4795, 3);
         expect(span.endPercent).toBe(100);
         expect(span.widthPercent).toBeCloseTo(1.5205, 3);
+    });
+});
+
+describe('the solid and the dashed line', () => {
+    // A 10-hour window of hourly steps: midpoints at 5%, 15%, 25%, 35% of a 1000-wide chart
+    // (x = 50, 150, 250, 350). Against a top of 4 on a 200-high chart a total of t sits at
+    // y = 200 (1 - t/4): 1 -> 150, 3 -> 50, 2 -> 100, 4 -> 0.
+    const from = 1792195200;
+    const to = from + 10 * HOUR;
+    const step = (index: number, total: number, provisional: boolean) => ({
+        start: from + index * HOUR,
+        end: from + (index + 1) * HOUR,
+        total,
+        provisional,
+    });
+
+    it('draws the counted steps solid and the estimated ones dashed, the dashed starting on the last counted point', () => {
+        // The two segments meet: the dashed path begins at the solid one's last vertex, so
+        // the line is continuous and only its style changes at the boundary.
+        const points = [step(0, 1, false), step(1, 3, false), step(2, 2, true), step(3, 4, true)];
+
+        expect(linePaths(points, from, to, 4)).toEqual({
+            solid: 'M50,150L150,50',
+            dashed: 'M150,50L250,100L350,0',
+        });
+    });
+
+    it('draws no dashed line when nothing is estimated', () => {
+        const points = [step(0, 1, false), step(1, 3, false)];
+
+        expect(linePaths(points, from, to, 4)).toEqual({ solid: 'M50,150L150,50', dashed: null });
+    });
+
+    it('starts the dashed line at its own first point when there is no counted step', () => {
+        // A database whose history starts hours ago has estimates but nothing counted to
+        // join them to.
+        const points = [step(2, 2, true), step(3, 4, true)];
+
+        expect(linePaths(points, from, to, 4)).toEqual({ solid: '', dashed: 'M250,100L350,0' });
+    });
+
+    it('draws nothing for a series with no points', () => {
+        expect(linePaths([], from, to, 4)).toEqual({ solid: '', dashed: null });
+    });
+});
+
+describe('the too-recent span', () => {
+    it('shades from where the line ends to the right-hand edge', () => {
+        // The last estimated step ends at 98.4795% across a week; the shade runs from there
+        // to "now", the steps too young to estimate.
+        const span = tooRecent({ from: FROM, to: NOW, provisionalUntil: NOW - 9196 });
+
+        expect(span.startPercent).toBeCloseTo(98.4795, 3);
+        expect(span.endPercent).toBe(100);
+        expect(span.widthPercent).toBeCloseTo(1.5205, 3);
+    });
+});
+
+describe('the tallest step', () => {
+    const counted = { start: 0, end: HOUR, total: 3, provisional: false };
+    const estimate = { start: HOUR, end: 2 * HOUR, total: 5.5, provisional: true };
+
+    it('fits the estimates, so the axis does not clip the dashed line', () => {
+        expect(tallestStep([counted, estimate])).toBe(5.5);
+        expect(tallestStep([])).toBe(0);
+    });
+
+    it('leaves the estimates out of the busiest step, which is a counted fact', () => {
+        // The caption names the busiest *counted* hour; an estimate above it must not take
+        // the title and its window.
+        expect(busiestStep([counted, estimate])).toEqual(counted);
+        expect(busiestStep([estimate])).toBeNull();
     });
 });
 
@@ -366,6 +444,29 @@ describe('the not-yet-counted legend', () => {
         // This module can't import the query's value (it would put better-sqlite3 on the
         // client path #197 adds), so it keeps a copy, and this is what stops them drifting.
         expect(NOT_YET_COUNTED_AGE_SECONDS).toBe(COUNTED_AGE_SECONDS);
+    });
+});
+
+describe('the legends for the estimate and the shade', () => {
+    it('says how wide the shade can be at each range\'s step', () => {
+        // The line ends at the last whole step 15 minutes old, so the shade is 15 minutes
+        // plus up to one step wide, per range.
+        expect(tooRecentLegend(HOUR)).toBe('Shaded: the last 15 minutes to 1 hour 15 minutes, too recent to estimate.');
+        expect(tooRecentLegend(600)).toBe('Shaded: the last 15 to 25 minutes, too recent to estimate.');
+        expect(tooRecentLegend(3 * HOUR)).toBe('Shaded: the last 15 minutes to 3 hours 15 minutes, too recent to estimate.');
+    });
+
+    it('says where the dashed line starts at each range\'s step', () => {
+        // It starts where counting ends: 2 hours back plus up to one step.
+        expect(provisionalLegend(HOUR)).toBe('Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.');
+        expect(provisionalLegend(600)).toBe('Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.');
+        expect(provisionalLegend(3 * HOUR)).toBe('Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.');
+    });
+
+    it('keeps a copy of the query\'s 15-minute cutoff', () => {
+        // As with the counted age: this module can't import the query's value without
+        // putting better-sqlite3 on the client path, so this stops the copy drifting.
+        expect(TOO_RECENT_AGE_SECONDS).toBe(PROVISIONAL_MIN_AGE_SECONDS);
     });
 });
 

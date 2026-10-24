@@ -323,3 +323,31 @@ function clock(at: number): string {
 function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
+
+/** Stubs for #196's geometry: the tests come first. */
+export const TOO_RECENT_AGE_SECONDS = 15 * MINUTE;
+
+export function linePaths(
+    _points: RaidsInProgressPoint[],
+    _from: number,
+    _to: number,
+    _max: number
+): { solid: string; dashed: string | null } {
+    throw new Error('not implemented');
+}
+
+export function tooRecent(_series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'provisionalUntil'>): ShadedSpan {
+    throw new Error('not implemented');
+}
+
+export function tooRecentLegend(_stepSeconds: number): string {
+    throw new Error('not implemented');
+}
+
+export function provisionalLegend(_stepSeconds: number): string {
+    throw new Error('not implemented');
+}
+
+export function tallestStep(_points: RaidsInProgressPoint[]): number {
+    throw new Error('not implemented');
+}

@@ -1580,6 +1580,48 @@ export function deleteSessionsContainingPlayer(membershipId: string): void {
 }
 
 // =====================
+// RAID ACTIVITY QUERIES
+// =====================
+
+/**
+ * How old a moment must be before its Raids in Progress are counted (CONTEXT.md). A raid
+ * still running has no PGCR yet, so a newer moment would read low; on prod a moment two
+ * hours old is ~93% complete. A step is counted once its *end* is this old.
+ */
+export const COUNTED_AGE_SECONDS = 2 * 60 * 60;
+
+/** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
+export interface RaidsInProgressPoint {
+    start: number;
+    end: number;
+    /** Raid instances in progress across every raid, averaged over the step. */
+    total: number;
+}
+
+export interface RaidsInProgressSeries {
+    /** The window's left edge, unix seconds: `now - rangeSeconds`. */
+    from: number;
+    /** The window's right edge: `now`. */
+    to: number;
+    stepSeconds: number;
+    /** `now - COUNTED_AGE_SECONDS`. No point ends after it. */
+    countedUntil: number;
+    points: RaidsInProgressPoint[];
+}
+
+export interface RaidsInProgressOptions {
+    rangeSeconds: number;
+    stepSeconds: number;
+    /** Unix seconds. Passed in, never read from the clock here, so a test can pin it. */
+    now: number;
+}
+
+export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
+    const { rangeSeconds, stepSeconds, now } = options;
+    return { from: now - rangeSeconds, to: now, stepSeconds, countedUntil: now - COUNTED_AGE_SECONDS, points: [] };
+}
+
+// =====================
 // SESSION SNAPSHOT QUERIES
 // =====================
 

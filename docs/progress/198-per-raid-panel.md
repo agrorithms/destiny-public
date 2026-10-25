@@ -42,7 +42,7 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 
 9. Review fixes — fix loop 1 (P1 declined)
    - [x] S1 `e2e/activity.spec.ts` — the bottom panel's tooltip seen on a counted step before the count of 0 over the estimate (deliberate break: `countedOnly` forced off in `ActivityLocal.tsx`, red at the new `toHaveCount(0)`)
-   - [ ] S2 `tests/db/raids-in-progress.test.ts` — the zero-activity test reaches `topRaids`' `time > 0` filter
+   - [x] S2 `tests/db/raids-in-progress.test.ts` — the zero-activity test also seeds a raid wholly in the uncounted steps, so it reaches `topRaids`' `time > 0` filter (hand mutation `.filter(() => true)`: the test fails, receiving `crotas_end`; reverted)
    - [ ] S3 `RaidOption` exported from `RaidMultiSelect.tsx` and used for every `{ key, name }` raid list
    - [ ] S4 `ACTIVITY_RAIDS_PARAM` defined in `activity-raids.ts`, imported by `activity-range.ts`
    - [ ] S5 `ActivityChart.tsx` — one `Panel` wrapper for both `<svg>`s

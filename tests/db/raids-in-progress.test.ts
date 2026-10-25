@@ -623,14 +623,17 @@ describe('the top raids in range (#198)', () => {
         expect(asked.topRaids).toEqual(['vault_of_glass']);
     });
 
-    it('leaves out a raid with no time in range, so there can be fewer than 3', () => {
+    it('leaves out a raid with no counted time in range, so there can be fewer than 3', () => {
         seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'last_wish' });
         seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'vault_of_glass' });
-        // Ended before the window opened.
+        // Ended before the window opened: the query never reads it.
         seedRaid(NOW - 7 * 24 * HOUR - 5 * HOUR, HOUR, { raidKey: 'kings_fall' });
+        // Inside the window but wholly in the steps not counted yet: read and swept, so the
+        // raid reaches the ranking with zero counted time, and only the "no time at all" rule
+        // keeps it off the list.
+        seedRaid(hoursBeforeNow(2), HOUR, { raidKey: 'crotas_end' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toHaveLength(2);
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).not.toContain('kings_fall');
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['vault_of_glass', 'last_wish']);
     });
 
     it('breaks a tie in the raid list\'s order, not the order the runs were stored in', () => {

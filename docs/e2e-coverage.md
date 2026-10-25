@@ -2674,6 +2674,15 @@ The tap spec failed first on the overflow break, which hid its dismissal asserti
 was broken alone in a second build (the document's `pointerdown` listener removed): the spec failed
 with the tooltip still open (`toHaveCount(0)`, received 1). All reverted; green at HEAD.
 
+"Hovering a counted step" had failed only on `waitForClientStep` in the red run, and no break in
+the table above reached its later assertions, so fix loop 1 broke it alone in a third build:
+
+| Break | Spec that failed |
+| --- | --- |
+| `tooltipText` names the next step's window (`slot.end` to one step after it) | "hovering a counted step shows its average and its window" (expected `3 average raids in progress, Fri 23 Oct, 03:00–04:00`, received `…04:00–05:00`) |
+
+Reverted; green at HEAD.
+
 ### What is still NOT covered
 
 - A tooltip's position against the line (centred on the step, sliding inward at either end) is

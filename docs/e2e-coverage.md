@@ -2783,6 +2783,16 @@ their own: the red run failed them only on the panel's absence. Vitest holds wha
   text put into it). Red before the fix, against the build of `92472c9`: `toBeAttached()` found no
   element. Green after.
 
+**Review fix loop 2 (O1).** One spec changed, no new ones; still 204 tests.
+
+- "over the newest hours…" read the last counted step's line count with one `innerText()`, which
+  does not retry, while the box could still hold the estimate's one line from the hover before. It
+  is now an `expect.poll` over that read, still `toHaveLength(2)`. Deliberate break, one build
+  (`npm run e2e -- e2e/activity.spec.ts -g "over the newest hours"`): `activitySlots` gives every
+  slot no raid lines — the spec failed at the polled assertion after its 5 s timeout, "Received
+  length: 1" with the counted step's own text (no estimate tail), so the poll had read the redrawn
+  box. Reverted.
+
 ### What is still NOT covered
 
 - The picker's keyboard path (Space on a focused option, arrow keys): the shared component's, and

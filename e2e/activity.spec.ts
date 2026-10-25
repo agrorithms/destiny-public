@@ -956,9 +956,10 @@ test.describe('the per-raid panel', () => {
             await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
             expect((await tooltip(page).innerText()).split('\n')).toHaveLength(1);
 
-            // The last counted step has both.
+            // The last counted step has both. Polled: the box still holds the one-line estimate
+            // until React redraws it, and a single innerText() read could catch that.
             await hoverAt(page, lastCounted, 'total');
-            expect((await tooltip(page).innerText()).split('\n')).toHaveLength(2);
+            await expect.poll(async () => (await tooltip(page).innerText()).split('\n')).toHaveLength(2);
         });
 
         test('shades the newest hours of the bottom panel, with a key for it', async ({ page }) => {

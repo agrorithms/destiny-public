@@ -49,6 +49,9 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
    - [x] S6 `RaidMultiSelect.tsx` — the capped picker's `role="status"` region mounted empty with the open list (spec red before the fix: `toBeAttached()` not found)
    - [x] Fix-loop suite at `ad5d02e`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 839/839, e2e 204/204, visual:check 68/68. Mutation `92472c9...ad5d02e --typecheck`: 2 mutants, 0 scored (1 static, ignored; 1 compile error) — threshold not applied, no survivors
 
+10. Review fixes — fix loop 2 (S7 a follow-up issue)
+   - [x] O1 `e2e/activity.spec.ts` — "over the newest hours…": the last counted step's two-line check is an `expect.poll` over `innerText()`, so it waits for the box to redraw instead of reading the estimate's one line once (deliberate break, one build: `activitySlots` gives every slot no raid lines — red at the polled `toHaveLength(2)`, "Received length: 1", the counted step's own text; reverted)
+
 ## Sweep timing
 
 `getRaidsInProgress` on a copy of `data/raid-tracker.backup-2026-10-25.db` (the backup itself opened by nothing; copied

@@ -658,6 +658,33 @@ test.describe('in the reader\'s time zone', () => {
         });
     });
 
+    test.describe('where the browser names no zone, in Kathmandu', () => {
+        test.use({ timezoneId: 'Asia/Kathmandu' });
+
+        // A browser that names no zone gets "Times are UTC.", so every label has to be UTC to
+        // match it, even though the browser's offset is still Kathmandu's.
+        test.beforeEach(async ({ page }) => {
+            await page.addInitScript(() => {
+                const resolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+                Intl.DateTimeFormat.prototype.resolvedOptions = function () {
+                    return { ...resolvedOptions.call(this), timeZone: '' };
+                };
+            });
+        });
+
+        test('every label is UTC and says so, as the intro does', async ({ page }) => {
+            await page.goto('/activity?range=24h');
+
+            // A tooltip shows only once the page has hydrated, so what follows is the client's render.
+            await hoverAt(page, await peakFraction(page));
+            await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source} UTC$`));
+
+            await expect(page.getByTestId('activity-zone')).toHaveText('Times are UTC.');
+            await expect(page.getByTestId('activity-peak')).toContainText(' UTC.');
+            await expectTicksOn(page, 'UTC');
+        });
+    });
+
     test.describe('with JavaScript disabled, in Kathmandu', () => {
         test.use({ javaScriptEnabled: false, timezoneId: 'Asia/Kathmandu' });
 

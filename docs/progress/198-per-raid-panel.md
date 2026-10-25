@@ -64,4 +64,4 @@ none. (The first run had one, `activity-geometry.ts:480`, an equivalent `join(''
   (`dedupe.ts`, `roster.ts`), files this branch did not touch: `reports/stryker-incremental.json` still held another
   ticket's results. The full run without `--incremental` has none; the reported score comes from it.
 - Red runs and deliberate breaks for the 14 new specs: `docs/e2e-coverage.md`, "#198".
-- Suite at the last code commit (`d503885`, `.md` only since): lint 0 errors (29 warnings), tsc app and scripts, build, vitest 839/839, e2e 204/204, visual:check 68/68.
+- Suite at the last code commit (`8949474`, `.md` only since): lint 0 errors (29 warnings), tsc app and scripts, build, vitest 839/839, e2e 204/204, visual:check 68/68.

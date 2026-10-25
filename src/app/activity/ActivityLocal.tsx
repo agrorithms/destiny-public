@@ -111,13 +111,14 @@ export function LocalTickLabels({ from, to, range }: { from: number; to: number;
     );
 }
 
-/** The one graphic of the chart that takes a tooltip. */
-const PARTS = ['total'] as const;
+/** The chart's two stacked graphics, both of which take the one tooltip (#198). */
+const PARTS = ['total', 'raids'] as const;
+type Part = (typeof PARTS)[number];
 
 /**
  * Hover and tap tooltips over the chart (src/components/chart/ChartHover.tsx), finished in
  * the reader's zone. The slots are the server's — the number and the wording — and the clock
- * window is added here ({@link tooltipText}). The steps are placed on the x-axis by their
+ * window is added here ({@link tooltipText}); the per-raid lines (#198) come with the slot. The steps are placed on the x-axis by their
  * timestamps across the window `[from, to]`, because they are not equal shares of its width.
  */
 export function ActivityHover({
@@ -132,16 +133,25 @@ export function ActivityHover({
     children: React.ReactNode;
 }) {
     const offsetOf = useOffsetOf();
-    const tooltips = useMemo(() => slots.map((slot) => ({ total: tooltipText(slot, offsetOf) })), [slots, offsetOf]);
-    const locate = useMemo<SlotLocator>(
+    // One position names both panels: whichever graphic is hovered, the box says the same.
+    const tooltips = useMemo(
+        () =>
+            slots.map((slot) => {
+                const text = tooltipText(slot, offsetOf);
+                return { total: text, raids: text };
+            }),
+        [slots, offsetOf]
+    );
+    const locate = useMemo<SlotLocator<Part>>(
         () => ({
-            slotAt: (fraction) => slotAtFraction(fraction, slots, from, to),
+            // The per-raid panel shades the steps not counted yet, so it has no slot there.
+            slotAt: (fraction, part) => slotAtFraction(fraction, slots, from, to, part === 'raids'),
             centre: (index, chartWidth) => slotCentreFraction(index, slots, from, to) * chartWidth,
         }),
         [slots, from, to]
     );
     return (
-        <ChartHover tooltips={tooltips} parts={PARTS} testId="activity-tooltip" locate={locate}>
+        <ChartHover tooltips={tooltips} parts={PARTS} testId="activity-tooltip" locate={locate} markerSpansParts>
             {children}
         </ChartHover>
     );

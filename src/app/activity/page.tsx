@@ -1,11 +1,14 @@
+import { redirect } from 'next/navigation';
 import { isDatabaseMaintenanceError } from '@/lib/db';
+import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries';
 import { getOrCompute } from '@/lib/cache/swr-cache';
 import { envSeconds } from '@/lib/env';
 import { ActivityChart } from './ActivityChart';
 import { LocalZoneNote } from './ActivityLocal';
 import { ActivityRangeControl } from './ActivityRangeControl';
-import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activity-range';
+import { activityRangeHref, parseActivityRange, rangeOfSeries, type ActivityRange } from './activity-range';
+import { isRaidsParamClean, parseActivityRaids, pickRaids } from './activity-raids';
 
 /**
  * Raid Activity (#194, parent #51): how many raid instances were in progress over the last
@@ -14,8 +17,9 @@ import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activit
  *
  * Built up along #51's chain: #194's tracer bullet (the total line, UTC labels), #195's
  * range presets, #196's Provisional estimate (the steps too recent to count, dashed, and
- * the last 15 minutes shaded), then #197's tooltips in local time and #198–#199's per-raid
- * panel — each through the query's options and the geometry module, not a new read.
+ * the last 15 minutes shaded), #197's tooltips in local time, #198's per-raid panel and its
+ * raid picker (`?raids=`) and then #199's per-raid estimate — each through the query's
+ * options and the geometry module, not a new read.
  *
  * **Server-rendered, with no new endpoint**: the page calls the Tracker query module
  * directly, and the chart is hand-made SVG. The one client step (#197,
@@ -33,7 +37,11 @@ import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activit
  * each cache refresh, per range, and costs a visitor nothing once the cache is warm. One
  * cache key per range: an uncached 30-day series costs ~1 s on x86 (~2 s on the ARM box),
  * nearly the whole PGCR table, and that was accepted behind the cache rather than built
- * around (#195).
+ * around (#195). **The per-raid values are cached with it, for every raid** (#198): the
+ * query is asked for all of them and the page slices out the picked ones, so the cache has
+ * one entry per range however many combinations of raids the URLs name. A key per pick would
+ * be a 1–2 second sweep for anyone who writes a new `?raids=`, and would fill the
+ * 500-entry store the rest of the site shares.
  *
  * **The intro's wording follows the series; the control follows the URL.** With a series in
  * hand, the intro names its step and span off the series ({@link rangeOfSeries}), as the
@@ -48,7 +56,13 @@ export default async function ActivityPage({
 }: {
     searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-    const range = parseActivityRange(await searchParams);
+    const params = await searchParams;
+    const range = parseActivityRange(params);
+    const raidOptions = readRaidOptions();
+    const urlRaids = parseActivityRaids(params, raidOptions.map((raid) => raid.key));
+    // A `raids` that is not what was read from it (unknown keys, more than five, nothing valid)
+    // is redirected to the link that says what is drawn. Outside the try: redirect throws.
+    if (!isRaidsParamClean(params, urlRaids)) redirect(activityRangeHref(range.id, urlRaids));
     let series: RaidsInProgressSeries | null;
     try {
         series = await readSeries(range);
@@ -67,17 +81,26 @@ export default async function ActivityPage({
                     {described.step} of the last {described.span}. Every raid instance counts,
                     checkpoint runs and unfinished ones included. <LocalZoneNote />
                 </p>
-                <ActivityRangeControl range={range.id} />
+                <ActivityRangeControl range={range.id} raids={urlRaids} />
             </header>
             {series === null ? (
                 <p className="ui-text-secondary">
                     Database maintenance is in progress. Raid Activity is temporarily unavailable.
                 </p>
             ) : (
-                <ActivityChart series={series} />
+                <ActivityChart
+                    series={series}
+                    raidOptions={raidOptions}
+                    picked={pickRaids(urlRaids, series.topRaids, raidOptions.map((raid) => raid.key))}
+                />
             )}
         </div>
     );
+}
+
+/** Every raid the picker offers, in the raid table's order: all of them count, Pantheons included. */
+function readRaidOptions(): Array<{ key: string; name: string }> {
+    return Object.entries(getAllRaidDefinitions()).map(([key, definition]) => ({ key, name: definition.name }));
 }
 
 async function readSeries(range: ActivityRange): Promise<RaidsInProgressSeries> {
@@ -90,6 +113,7 @@ async function readSeries(range: ActivityRange): Promise<RaidsInProgressSeries> 
             rangeSeconds: range.rangeSeconds,
             stepSeconds: range.stepSeconds,
             now: Math.floor(Date.now() / 1000),
+            raidKeys: Object.keys(getAllRaidDefinitions()),
         })
     );
     return value;

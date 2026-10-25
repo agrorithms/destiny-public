@@ -21,6 +21,7 @@ import {
     peakCaption,
     provisionalLegend,
     raidPanel,
+    raidPanelAriaLabel,
     tallestStep,
     tooRecent,
     tooRecentLegend,
@@ -706,5 +707,20 @@ describe('the span the per-raid panel shades (#198)', () => {
         expect(notCountedLegend(HOUR)).toBe('Shaded: the last 2 to 3 hours, not counted yet.');
         expect(notCountedLegend(10 * 60)).toBe('Shaded: the last 2 hours to 2 hours 10 minutes, not counted yet.');
         expect(notCountedLegend(3 * HOUR)).toBe('Shaded: the last 2 to 5 hours, not counted yet.');
+    });
+});
+
+describe('the per-raid panel\'s accessible name (#198)', () => {
+    const hourly = ACTIVITY_RANGES.find((preset) => preset.id === '7d')!;
+
+    it('names the step, the raids and the range', () => {
+        expect(raidPanelAriaLabel(['Last Wish', "King's Fall"], hourly)).toBe(
+            "Raids in progress per hour for Last Wish and King's Fall over the last 7 days."
+        );
+    });
+
+    it('lists three or more with commas, and one on its own', () => {
+        expect(raidPanelAriaLabel(['A', 'B', 'C'], hourly)).toBe('Raids in progress per hour for A, B and C over the last 7 days.');
+        expect(raidPanelAriaLabel(['A'], hourly)).toBe('Raids in progress per hour for A over the last 7 days.');
     });
 });

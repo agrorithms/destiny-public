@@ -474,3 +474,9 @@ export function notCounted(series: Pick<RaidsInProgressSeries, 'from' | 'to' | '
 export function notCountedLegend(stepSeconds: number): string {
     return `Shaded: the last ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)}, not counted yet.`;
 }
+
+/** The bottom panel's accessible name: its step, the raids it draws, and the range. */
+export function raidPanelAriaLabel(names: readonly string[], range: ActivityRange): string {
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names.join('');
+    return `Raids in progress per ${range.step} for ${list} over the last ${range.span}.`;
+}

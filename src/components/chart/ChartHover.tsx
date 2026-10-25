@@ -47,6 +47,10 @@ import { chartFraction, isMouse, slotAt, slotCentre, tooltipLeft } from '@/lib/c
  * under that, through the class the caller passes as `hideClass`, so neither component has
  * to know the other's state. A chart with no drag passes none.
  *
+ * **Several lines in one box** (#198): a slot's text may hold newlines, which the box keeps, and
+ * a chart that stacks panels sharing one time axis can have its marker run through all of them
+ * ({@link markerSpansParts}).
+ *
  * **A tooltip that outlives a change of chart width is closed, not moved.** A tapped one
  * stays up until the next tap, so a phone rotated under it would otherwise keep a `left`
  * measured on the old width — past the edge of the new one.
@@ -62,10 +66,12 @@ const GAP = 4;
 
 /**
  * Where a chart's slots are: which slot a pointer a `fraction` of the way across is over (or
- * none), and where in pixels a slot's anchor sits on a chart `chartWidth` wide.
+ * none) on the graphic named `part`, and where in pixels a slot's anchor sits on a chart
+ * `chartWidth` wide. The part is for a chart whose graphics shade different spans: the Raid
+ * Activity chart's per-raid panel (#198) stops two hours before its total does.
  */
-export interface SlotLocator {
-    slotAt: (fraction: number) => number | null;
+export interface SlotLocator<Part extends string = string> {
+    slotAt: (fraction: number, part: Part) => number | null;
     centre: (index: number, chartWidth: number) => number;
 }
 
@@ -83,6 +89,7 @@ export function ChartHover<Part extends string>({
     testId,
     locate,
     hideClass = '',
+    markerSpansParts = false,
     children,
 }: {
     /** One record per slot, in axis order: the text each part shows when its slot is hovered or tapped. */
@@ -92,16 +99,22 @@ export function ChartHover<Part extends string>({
     /** The tooltip box's `data-testid`, so each chart's browser spec can find its own. */
     testId: string;
     /** Where the slots are, for a chart whose slots are not `tooltips.length` equal shares of its width. */
-    locate?: SlotLocator;
+    locate?: SlotLocator<Part>;
     /** A class that hides the box and its marker, for a chart that has something else to show some of the time. */
     hideClass?: string;
+    /**
+     * Draw the marker from the top of the first graphic to the bottom of the last, one line
+     * through a stack of panels that share a time axis (#198), instead of over the hovered
+     * graphic alone.
+     */
+    markerSpansParts?: boolean;
     children: React.ReactNode;
 }) {
     const [hovered, setHovered] = useState<Hovered<Part> | null>(null);
     const chartRef = useRef<HTMLDivElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const markerRef = useRef<HTMLDivElement>(null);
-    const where = useMemo(() => locate ?? equalShares(tooltips.length), [locate, tooltips.length]);
+    const where = useMemo<SlotLocator<Part>>(() => locate ?? equalShares(tooltips.length), [locate, tooltips.length]);
 
     /** Whether a `data-timeline-part` value names one of this chart's graphics. */
     function isPart(value: string | null | undefined): value is Part {
@@ -122,7 +135,7 @@ export function ChartHover<Part extends string>({
         }
 
         const fraction = chartFraction(event.clientX, chart.getBoundingClientRect());
-        const index = where.slotAt(fraction);
+        const index = where.slotAt(fraction, part);
         if (index === null) {
             // Over no slot — a shaded span, say — there is nothing to say, and what the
             // pointer has just left is no longer under it.
@@ -153,12 +166,21 @@ export function ChartHover<Part extends string>({
         const anchor = where.centre(hovered.index, chartBox.width);
         const top = partBox.top - chartBox.top;
 
+        // The marker's extent: the hovered graphic, or every graphic's together.
+        let markerTop = top;
+        let markerHeight = partBox.height;
+        if (markerSpansParts) {
+            const boxes = [...chart.querySelectorAll('[data-timeline-part]')].map((part) => part.getBoundingClientRect());
+            markerTop = Math.min(...boxes.map((box) => box.top)) - chartBox.top;
+            markerHeight = Math.max(...boxes.map((box) => box.bottom)) - chartBox.top - markerTop;
+        }
+
         tooltip.style.left = `${tooltipLeft(anchor, tooltip.offsetWidth, chartBox.width)}px`;
         tooltip.style.top = `${top - tooltip.offsetHeight - GAP}px`;
         marker.style.left = `${anchor}px`;
-        marker.style.top = `${top}px`;
-        marker.style.height = `${partBox.height}px`;
-    }, [hovered, tooltips, where]);
+        marker.style.top = `${markerTop}px`;
+        marker.style.height = `${markerHeight}px`;
+    }, [hovered, tooltips, where, markerSpansParts]);
 
     // A tap anywhere outside the chart dismisses the tooltip. Listened for only while one
     // is showing, so the page carries no document listener the rest of the time — and
@@ -214,6 +236,7 @@ export function ChartHover<Part extends string>({
                         either end, so its position alone cannot say which bar it means. */}
                     <div
                         ref={markerRef}
+                        data-testid={`${testId}-marker`}
                         aria-hidden
                         className={`ui-accent-text pointer-events-none absolute w-px bg-current opacity-60 ${hideClass}`}
                     />
@@ -225,7 +248,7 @@ export function ChartHover<Part extends string>({
                         ref={tooltipRef}
                         role="tooltip"
                         data-testid={testId}
-                        className={`ui-card ui-text-primary pointer-events-none absolute z-10 w-max max-w-full rounded-md border px-2 py-1 text-xs tabular-nums shadow-sm ${hideClass}`}
+                        className={`ui-card ui-text-primary pointer-events-none absolute z-10 w-max max-w-full whitespace-pre-line rounded-md border px-2 py-1 text-xs tabular-nums shadow-sm ${hideClass}`}
                     >
                         {tooltip[hovered.part]}
                     </div>

@@ -25,6 +25,14 @@
   --ui-accent-soft-border: #c8b79b;
   --ui-nav-bg: #f5f2e8;
   --ui-nav-border: #dad9d4;
+  /* Raid Activity's per-raid lines (#198), by position in the picked list. Checked with the
+     dataviz validator against the card surface above: lightness, chroma, adjacent colour-vision
+     separation (worst 8.2), normal-vision separation (worst 17.2) and 3:1 contrast, all pass. */
+  --ui-series-1: #2a78d6;
+  --ui-series-2: #d4501a;
+  --ui-series-3: #148c62;
+  --ui-series-4: #a86f00;
+  --ui-series-5: #c9477a;
 }
 
 @theme inline {
@@ -55,6 +63,13 @@
   --ui-accent-soft-border: #6a5640;
   --ui-nav-bg: #1f1e1d;
   --ui-nav-border: #41413e;
+  /* The same five hues stepped for the dark card surface; validated the same way (worst
+     adjacent colour-vision separation 8.4, normal-vision 19.3, all 3:1 or better). */
+  --ui-series-1: #3987e5;
+  --ui-series-2: #d95926;
+  --ui-series-3: #199e70;
+  --ui-series-4: #c98500;
+  --ui-series-5: #d55181;
 }
 
 body {

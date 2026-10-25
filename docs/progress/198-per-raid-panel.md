@@ -22,13 +22,13 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
    - [x] `src/app/activity/activity-geometry.test.ts`, `activity-tooltips.test.ts`
    - [x] `src/app/activity/activity-geometry.ts`, `activity-tooltips.ts`
 4. The browser suite, red (S4, S5)
-   - [ ] `e2e/support/seed-world.ts` — six raids with a known ranking
-   - [ ] `e2e/activity.spec.ts` — per-raid specs
+   - [x] `e2e/support/seed-world.ts` — six raids with a known ranking
+   - [x] `e2e/activity.spec.ts` — per-raid specs
 5. UI, green (S4, S5, S6)
-   - [ ] `src/components/RaidMultiSelect.tsx` — opt-in cap
-   - [ ] `src/components/chart/ChartHover.tsx` — part-aware locate, spanning marker, multi-line
-   - [ ] `src/app/globals.css` — `--ui-series-1..5`
-   - [ ] `src/app/activity/ActivityRaidPicker.tsx` (new), `ActivityLocal.tsx`, `ActivityChart.tsx`, `ActivityRangeControl.tsx`, `page.tsx`
+   - [x] `src/components/RaidMultiSelect.tsx` — opt-in cap
+   - [x] `src/components/chart/ChartHover.tsx` — part-aware locate, spanning marker, multi-line
+   - [x] `src/app/globals.css` — `--ui-series-1..5`
+   - [x] `src/app/activity/ActivityRaidPicker.tsx` (new), `ActivityLocal.tsx`, `ActivityChart.tsx`, `ActivityRangeControl.tsx`, `page.tsx`
 6. Bookkeeping
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated line
    - [ ] `docs/e2e-coverage.md` — flow entry and journal

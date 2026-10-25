@@ -7,8 +7,12 @@ import {
     beforeData,
     busiestStep,
     linePaths,
+    notCounted,
+    notCountedLegend,
     peakAriaLabel,
     provisionalLegend,
+    raidPanel,
+    raidPanelAriaLabel,
     tallestStep,
     tooRecent,
     tooRecentLegend,
@@ -16,6 +20,8 @@ import {
     type ShadedSpan,
 } from './activity-geometry';
 import { activitySlots } from './activity-tooltips';
+import { raidColour } from './activity-raids';
+import { ActivityRaidPicker } from './ActivityRaidPicker';
 import { ActivityHover, LocalBeforeData, LocalGridlines, LocalPeak, LocalTickLabels } from './ActivityLocal';
 
 /**
@@ -65,7 +71,17 @@ const LINE_STROKE = {
  * text, and HTML labels keep a real font size on a phone. The same reason as the /gos10k
  * timeline, whose approach this follows.
  */
-export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
+export function ActivityChart({
+    series,
+    raidOptions,
+    picked,
+}: {
+    series: RaidsInProgressSeries;
+    /** Every raid the picker offers, in its order. */
+    raidOptions: Array<{ key: string; name: string }>;
+    /** The raids the bottom panel draws, in the order they are coloured. */
+    picked: string[];
+}) {
     const { from, to, points } = series;
     const range = rangeOfSeries(series);
     const busiest = busiestStep(points);
@@ -73,6 +89,10 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     const { solid, dashed } = linePaths(points, from, to, axis.max);
     const shade = tooRecent(series);
     const missing = beforeData(series);
+    // The bottom panel (#198): a line for each picked raid, on a y-axis of its own.
+    const pickedRaids = picked.map((key) => ({ key, name: raidOptions.find((raid) => raid.key === key)?.name ?? key }));
+    const panel = raidPanel(points, picked, from, to);
+    const uncounted = notCounted(series);
 
     // `data-window-from` / `data-window-to` are for e2e/activity.spec.ts and nothing in the
     // app reads them. The window is request-time state ("now" at render), which the seed
@@ -81,28 +101,25 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     return (
         <figure data-testid="activity-chart" data-window-from={from} data-window-to={to} className="ui-card space-y-3 p-4">
             <div className="flex gap-2">
-                {/* The y-axis labels, each centred on its gridline. */}
-                <div className="relative w-9 shrink-0 select-none" aria-hidden>
-                    {axis.ticks.map((tick) => (
-                        <span
-                            key={tick.value}
-                            className="ui-text-secondary absolute right-0 translate-y-1/2 text-[10px] tabular-nums"
-                            style={{ bottom: `${tick.percent}%` }}
-                        >
-                            {tick.label}
-                        </span>
-                    ))}
+                {/* The y-axis labels, each centred on its gridline: the total's, then the per-raid
+                    panel's own. The blocks are the panels' heights, and `space-y-1` is what the
+                    hover wrapper spaces the panels by, so each label sits on its own gridline. */}
+                <div className="w-9 shrink-0 select-none space-y-1" aria-hidden>
+                    <AxisLabels testId="activity-axis" axis={axis} className={TOTAL_HEIGHT} />
+                    {pickedRaids.length === 0 ? null : (
+                        <AxisLabels testId="activity-raid-axis" axis={panel.axis} className={RAID_HEIGHT} />
+                    )}
                 </div>
 
                 <div className="min-w-0 flex-1">
-                    <ActivityHover slots={activitySlots(points)} from={from} to={to}>
+                    <ActivityHover slots={activitySlots(points, pickedRaids)} from={from} to={to}>
                         <svg
                             data-timeline-part="total"
                             viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
                             preserveAspectRatio="none"
                             role="img"
                             aria-label={peakAriaLabel(busiest, range)}
-                            className="block h-48 w-full sm:h-64"
+                            className={`block w-full ${TOTAL_HEIGHT}`}
                         >
                             {axis.ticks.map((tick) => (
                                 <line
@@ -123,9 +140,65 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                             )}
                         </svg>
 
+                        {pickedRaids.length === 0 ? null : (
+                            <svg
+                                data-timeline-part="raids"
+                                viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+                                preserveAspectRatio="none"
+                                role="img"
+                                aria-label={raidPanelAriaLabel(pickedRaids.map((raid) => raid.name), range)}
+                                className={`block w-full ${RAID_HEIGHT}`}
+                            >
+                                {panel.axis.ticks.map((tick) => (
+                                    <line
+                                        key={`y${tick.value}`}
+                                        x1={0}
+                                        x2={CHART_WIDTH}
+                                        y1={tick.y}
+                                        y2={tick.y}
+                                        {...GRIDLINE_STROKE}
+                                    />
+                                ))}
+                                <LocalGridlines from={from} to={to} range={range} />
+                                {missing === null ? null : <ShadeRect testId="activity-raid-before-data" span={missing} />}
+                                <ShadeRect testId="activity-not-counted" span={uncounted} />
+                                {panel.lines.map((line, index) => (
+                                    <path
+                                        key={line.key}
+                                        data-testid="activity-raid-line"
+                                        data-raid={line.key}
+                                        d={line.path}
+                                        {...LINE_STROKE}
+                                        stroke={raidColour(index)}
+                                    />
+                                ))}
+                            </svg>
+                        )}
+
                         <LocalTickLabels from={from} to={to} range={range} />
                     </ActivityHover>
                 </div>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+                <ActivityRaidPicker raids={raidOptions} picked={picked} range={range.id} />
+                {pickedRaids.length === 0 ? (
+                    <p className="ui-text-secondary text-xs">No raids have been counted in this range yet. Pick some to compare.</p>
+                ) : (
+                    <ul data-testid="activity-raid-legend" className="ui-text-secondary flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs">
+                        {pickedRaids.map((raid, index) => (
+                            <li key={raid.key} data-raid={raid.key} className="flex items-center gap-1.5">
+                                <span
+                                    aria-hidden
+                                    data-swatch
+                                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                                    style={{ background: raidColour(index) }}
+                                />
+                                {raid.name}
+                            </li>
+                        ))}
+                    </ul>
+                )}
             </div>
 
             <figcaption className="ui-text-secondary space-y-1 text-xs leading-5">
@@ -150,6 +223,15 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                         Too few of its raids have a report yet to scale up.
                     </span>
                 </p>
+                {pickedRaids.length === 0 ? null : (
+                    <p className="flex items-start gap-2">
+                        <ShadeKey />
+                        <span>
+                            <span data-testid="activity-not-counted-legend">{notCountedLegend(series.stepSeconds)}</span>{' '}
+                            The per-raid lines are drawn from counted steps only, so they stop here.
+                        </span>
+                    </p>
+                )}
                 {missing === null ? null : (
                     <p className="flex items-start gap-2">
                         <ShadeKey />
@@ -196,5 +278,26 @@ function DashKey() {
         <svg aria-hidden viewBox="0 0 12 12" className="mt-1 h-3 w-3 shrink-0">
             <line x1={0} x2={12} y1={6} y2={6} stroke={LINE_COLOUR} strokeWidth={2} strokeDasharray="4 2" />
         </svg>
+    );
+}
+
+/** The two panels' heights. The axis column uses the same classes, so labels sit on their gridlines. */
+const TOTAL_HEIGHT = 'h-48 sm:h-64';
+const RAID_HEIGHT = 'h-32 sm:h-40';
+
+/** A panel's y-axis labels, each centred on its gridline. */
+function AxisLabels({ testId, axis, className }: { testId: string; axis: ReturnType<typeof valueAxis>; className: string }) {
+    return (
+        <div data-testid={testId} className={`relative ${className}`}>
+            {axis.ticks.map((tick) => (
+                <span
+                    key={tick.value}
+                    className="ui-text-secondary absolute right-0 translate-y-1/2 text-[10px] tabular-nums"
+                    style={{ bottom: `${tick.percent}%` }}
+                >
+                    {tick.label}
+                </span>
+            ))}
+        </div>
     );
 }

@@ -755,6 +755,14 @@ function option(page: Page, name: string) {
     return page.getByRole('option', { name, exact: true });
 }
 
+/**
+ * A click on a raid the cap refuses. The option is `aria-disabled` there, which Playwright
+ * treats as not clickable, but a reader can still click it, and that is the case under test.
+ */
+async function clickRefused(page: Page, name: string): Promise<void> {
+    await option(page, name).click({ force: true });
+}
+
 /** The URL's `raids`, or null. Polled, because a pick lands through a navigation. */
 function raidsParam(page: Page): Promise<string | null> {
     return Promise.resolve(new URL(page.url()).searchParams.get('raids'));
@@ -778,11 +786,14 @@ test.describe('the per-raid panel', () => {
     });
 
     test('the panel has a y-axis of its own, scaled to the raids picked', async ({ page }) => {
-        // The total tops out at 3 raids (the seeded peak); King's Fall never runs more than one.
+        // The total reaches at least the seeded peak of 3 raids (an estimate beside it can go
+        // higher, by the hour of day); King's Fall never runs more than one.
         await page.goto(`/activity?raids=${KINGS_FALL.key}`);
 
-        await expect(page.getByTestId('activity-axis').locator('span')).toHaveText(['0', '1', '2', '3']);
         await expect(page.getByTestId('activity-raid-axis').locator('span')).toHaveText(['0', '1']);
+        const total = await page.getByTestId('activity-axis').locator('span').allTextContents();
+        expect(Number(total.at(-1))).toBeGreaterThanOrEqual(ACTIVITY_PEAK_RAIDS);
+        expect(total.length).toBeGreaterThan(2);
     });
 
     test('picking and unpicking raids updates ?raids=, and a reload keeps them', async ({ page }) => {
@@ -820,11 +831,11 @@ test.describe('the per-raid panel', () => {
         const five = [...DEFAULT_PICKS, LAST_WISH, CROTAS];
         await page.goto(`/activity?raids=${keys(five).join(',')}`);
         await openPicker(page);
-        await expect(page.getByTestId('activity-raid-limit')).toHaveCount(0);
+        await expect(page.getByTestId('raid-limit-message')).toHaveCount(0);
 
-        await option(page, QUIET_PICKS[0].name).click();
+        await clickRefused(page, QUIET_PICKS[0].name);
 
-        await expect(page.getByTestId('activity-raid-limit')).toContainText('Pick up to five raids');
+        await expect(page.getByTestId('raid-limit-message')).toContainText('Pick up to five raids');
         await expect(option(page, QUIET_PICKS[0].name)).toHaveAttribute('aria-selected', 'false');
         expect(await raidsParam(page)).toBe(keys(five).join(','));
         expect(await drawnRaids(page)).toEqual(keys(five));
@@ -979,9 +990,9 @@ test.describe('the per-raid panel', () => {
             await expectInsideViewport(page.getByRole('listbox'), 'the open picker');
             await expectNoOverflow(page);
 
-            await option(page, QUIET_PICKS[0].name).click();
-            await expect(page.getByTestId('activity-raid-limit')).toBeVisible();
-            await expectInsideViewport(page.getByTestId('activity-raid-limit'), 'the limit message');
+            await clickRefused(page, QUIET_PICKS[0].name);
+            await expect(page.getByTestId('raid-limit-message')).toBeVisible();
+            await expectInsideViewport(page.getByTestId('raid-limit-message'), 'the limit message');
             await expectNoOverflow(page);
 
             // Close it, then tap the bottom panel: five named lines is the widest tooltip.

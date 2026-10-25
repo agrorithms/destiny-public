@@ -26,7 +26,10 @@ export interface ActivitySlot {
     value: string;
     /** True for a Provisional step, whose number can still change. */
     estimate: boolean;
-    /** One line per raid picked, `Last Wish: 4`, in the picked order. Empty on a Provisional step. */
+    /**
+     * One line per raid picked, `Last Wish: 4`, in the picked order. Empty on a Provisional
+     * step.
+     */
     raids: string[];
 }
 
@@ -61,8 +64,9 @@ export function tooltipText(slot: ActivitySlot, offsetOf: OffsetOf): string {
  * The step a pointer `fraction` of the way across the chart is over, or null where there is
  * none: the bare part-step at the left, the shaded spans at either end, anywhere past the
  * last step. On the per-raid panel (`countedOnly`) a Provisional step is shaded too, so there
- * is none there either (#198). By time, not by an equal share of the width, because the chart's axis is the
- * window `[from, to]`, which neither starts on a step boundary nor ends on one.
+ * is none there either (#198). By time, not by an equal share of the width, because the
+ * chart's axis is the window `[from, to]`, which neither starts on a step boundary nor ends
+ * on one.
  */
 export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[], from: number, to: number, countedOnly = false): number | null {
     const at = from + fraction * (to - from);

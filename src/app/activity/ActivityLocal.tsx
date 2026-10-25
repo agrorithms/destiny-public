@@ -118,8 +118,9 @@ type Part = (typeof PARTS)[number];
 /**
  * Hover and tap tooltips over the chart (src/components/chart/ChartHover.tsx), finished in
  * the reader's zone. The slots are the server's — the number and the wording — and the clock
- * window is added here ({@link tooltipText}); the per-raid lines (#198) come with the slot. The steps are placed on the x-axis by their
- * timestamps across the window `[from, to]`, because they are not equal shares of its width.
+ * window is added here ({@link tooltipText}); the per-raid lines (#198) come with the slot.
+ * The steps are placed on the x-axis by their timestamps across the window `[from, to]`,
+ * because they are not equal shares of its width.
  */
 export function ActivityHover({
     slots,

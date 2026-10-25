@@ -18,6 +18,7 @@ import {
     tooRecentLegend,
     valueAxis,
     type ShadedSpan,
+    type ValueAxis,
 } from './activity-geometry';
 import { activitySlots } from './activity-tooltips';
 import { raidColour } from './activity-raids';
@@ -121,16 +122,7 @@ export function ActivityChart({
                             aria-label={peakAriaLabel(busiest, range)}
                             className={`block w-full ${TOTAL_HEIGHT}`}
                         >
-                            {axis.ticks.map((tick) => (
-                                <line
-                                    key={`y${tick.value}`}
-                                    x1={0}
-                                    x2={CHART_WIDTH}
-                                    y1={tick.y}
-                                    y2={tick.y}
-                                    {...GRIDLINE_STROKE}
-                                />
-                            ))}
+                            <Gridlines axis={axis} />
                             <LocalGridlines from={from} to={to} range={range} />
                             {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
                             <ShadeRect testId="activity-too-recent" span={shade} />
@@ -149,16 +141,7 @@ export function ActivityChart({
                                 aria-label={raidPanelAriaLabel(pickedRaids.map((raid) => raid.name), range)}
                                 className={`block w-full ${RAID_HEIGHT} ${PANEL_GAP}`}
                             >
-                                {panel.axis.ticks.map((tick) => (
-                                    <line
-                                        key={`y${tick.value}`}
-                                        x1={0}
-                                        x2={CHART_WIDTH}
-                                        y1={tick.y}
-                                        y2={tick.y}
-                                        {...GRIDLINE_STROKE}
-                                    />
-                                ))}
+                                <Gridlines axis={panel.axis} />
                                 <LocalGridlines from={from} to={to} range={range} />
                                 {missing === null ? null : <ShadeRect testId="activity-raid-before-data" span={missing} />}
                                 <ShadeRect testId="activity-not-counted" span={uncounted} />
@@ -281,15 +264,28 @@ function DashKey() {
     );
 }
 
-/** The two panels' heights. The axis column uses the same classes, so labels sit on their gridlines. */
+/**
+ * The two panels' heights. The axis column uses the same classes, so labels sit on their
+ * gridlines.
+ */
 const TOTAL_HEIGHT = 'h-48 sm:h-64';
 const RAID_HEIGHT = 'h-32 sm:h-40';
 
-/** The space above the second panel, on the panel and on its axis block alike, so the two panels read as two. */
+/**
+ * The space above the second panel, on the panel and on its axis block alike, so the two
+ * panels read as two.
+ */
 const PANEL_GAP = 'mt-4';
 
+/** A panel's horizontal gridlines, one per y-axis tick. */
+function Gridlines({ axis }: { axis: ValueAxis }) {
+    return axis.ticks.map((tick) => (
+        <line key={`y${tick.value}`} x1={0} x2={CHART_WIDTH} y1={tick.y} y2={tick.y} {...GRIDLINE_STROKE} />
+    ));
+}
+
 /** A panel's y-axis labels, each centred on its gridline. */
-function AxisLabels({ testId, axis, className }: { testId: string; axis: ReturnType<typeof valueAxis>; className: string }) {
+function AxisLabels({ testId, axis, className }: { testId: string; axis: ValueAxis; className: string }) {
     return (
         <div data-testid={testId} className={`relative ${className}`}>
             {axis.ticks.map((tick) => (

@@ -1732,8 +1732,9 @@ export interface RaidsInProgressOptions {
  * **Per raid, from the same sweep** (#198). Each run is also added to its raid's own overlap
  * arrays, so the per-raid values of a counted step add up to its total and the cost is the
  * same pass plus a few small arrays. `raidKeys` picks which raids' values the points carry
- * (zero for one that never ran, nothing for a Provisional step: a per-raid estimate is #199's);
- * {@link RaidsInProgressSeries.topRaids} is ranked over the counted steps, whichever were asked for.
+ * (zero for one that never ran, nothing for a Provisional step: a per-raid estimate is
+ * #199's); {@link RaidsInProgressSeries.topRaids} is ranked over the counted steps,
+ * whichever were asked for.
  *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
  * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step
@@ -1854,7 +1855,10 @@ const TOP_RAID_COUNT = 3;
  */
 function topRaids(raidTime: ReadonlyMap<string, number>): string[] {
     const listed = Object.keys(getAllRaidDefinitions());
-    const place = (key: string) => (listed.includes(key) ? listed.indexOf(key) : listed.length);
+    const place = (key: string) => {
+        const index = listed.indexOf(key);
+        return index === -1 ? listed.length : index;
+    };
     return [...raidTime]
         .filter(([, time]) => time > 0)
         .sort(([keyA, a], [keyB, b]) => b - a || place(keyA) - place(keyB) || keyA.localeCompare(keyB))

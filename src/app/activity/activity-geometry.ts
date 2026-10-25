@@ -282,7 +282,12 @@ export function linePaths(
  * step wide ({@link tooRecentLegend}).
  */
 export function tooRecent(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'provisionalUntil'>): ShadedSpan {
-    const startPercent = xPercent(series.provisionalUntil, series.from, series.to);
+    return shadeToNow(series.provisionalUntil, series.from, series.to);
+}
+
+/** A span shaded from the instant `start` to "now" at the right-hand edge of `[from, to]`. */
+function shadeToNow(start: number, from: number, to: number): ShadedSpan {
+    const startPercent = xPercent(start, from, to);
     const endPercent = 100;
     return { startPercent, endPercent, widthPercent: endPercent - startPercent };
 }
@@ -467,10 +472,13 @@ export function raidPanel(
  * stretch the total's dashed line and shade cover that the bottom panel leaves bare.
  */
 export function notCounted(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>): ShadedSpan {
-    return tooRecent({ ...series, provisionalUntil: series.countedUntil });
+    return shadeToNow(series.countedUntil, series.from, series.to);
 }
 
-/** The legend for {@link notCounted}'s shade: how wide it can be at this step, as {@link provisionalLegend} says its start. */
+/**
+ * The legend for {@link notCounted}'s shade: how wide it can be at this step, as
+ * {@link provisionalLegend} says its start.
+ */
 export function notCountedLegend(stepSeconds: number): string {
     return `Shaded: the last ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)}, not counted yet.`;
 }

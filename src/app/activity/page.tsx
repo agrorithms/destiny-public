@@ -59,13 +59,14 @@ export default async function ActivityPage({
     const params = await searchParams;
     const range = parseActivityRange(params);
     const raidOptions = readRaidOptions();
-    const urlRaids = parseActivityRaids(params, raidOptions.map((raid) => raid.key));
+    const raidKeys = raidOptions.map((raid) => raid.key);
+    const urlRaids = parseActivityRaids(params, raidKeys);
     // A `raids` that is not what was read from it (unknown keys, more than five, nothing valid)
     // is redirected to the link that says what is drawn. Outside the try: redirect throws.
     if (!isRaidsParamClean(params, urlRaids)) redirect(activityRangeHref(range.id, urlRaids));
     let series: RaidsInProgressSeries | null;
     try {
-        series = await readSeries(range);
+        series = await readSeries(range, raidKeys);
     } catch (error) {
         if (!isDatabaseMaintenanceError(error)) throw error;
         series = null;
@@ -91,19 +92,22 @@ export default async function ActivityPage({
                 <ActivityChart
                     series={series}
                     raidOptions={raidOptions}
-                    picked={pickRaids(urlRaids, series.topRaids, raidOptions.map((raid) => raid.key))}
+                    picked={pickRaids(urlRaids, series.topRaids, raidKeys)}
                 />
             )}
         </div>
     );
 }
 
-/** Every raid the picker offers, in the raid table's order: all of them count, Pantheons included. */
+/**
+ * Every raid the picker offers, in the raid table's order: all of them count, Pantheons
+ * included.
+ */
 function readRaidOptions(): Array<{ key: string; name: string }> {
     return Object.entries(getAllRaidDefinitions()).map(([key, definition]) => ({ key, name: definition.name }));
 }
 
-async function readSeries(range: ActivityRange): Promise<RaidsInProgressSeries> {
+async function readSeries(range: ActivityRange, raidKeys: readonly string[]): Promise<RaidsInProgressSeries> {
     const freshSec = envSeconds('ANALYTICS_CACHE_FRESH_SEC', 300);
     const swrSec = envSeconds('ANALYTICS_CACHE_SWR_SEC', 1800);
     const { value } = await getOrCompute(
@@ -113,7 +117,7 @@ async function readSeries(range: ActivityRange): Promise<RaidsInProgressSeries> 
             rangeSeconds: range.rangeSeconds,
             stepSeconds: range.stepSeconds,
             now: Math.floor(Date.now() / 1000),
-            raidKeys: Object.keys(getAllRaidDefinitions()),
+            raidKeys,
         })
     );
     return value;

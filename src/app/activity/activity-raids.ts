@@ -47,8 +47,9 @@ export function raidColour(index: number): string {
 
 /**
  * Whether the URL's `raids` is exactly `raids` — what {@link parseActivityRaids} read from
- * it — or absent. A `raids` that reads as nothing is not clean, empty included. The page redirects a link that is not, so a bad link is cleaned up: the
- * address bar, a copy of it and the next reload all say what is drawn.
+ * it — or absent. A `raids` that reads as nothing is not clean, empty included. The page
+ * redirects a link that is not, so a bad link is cleaned up: the address bar, a copy of it
+ * and the next reload all say what is drawn.
  */
 export function isRaidsParamClean(
     searchParams: Record<string, string | string[] | undefined>,

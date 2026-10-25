@@ -15,7 +15,10 @@
 /** The URL's spelling of the range. Absent means 7 days. */
 const ACTIVITY_RANGE_PARAM = 'range';
 
-/** The URL's spelling of the bottom panel's raids (#198, ./activity-raids.ts): comma-separated raid keys. */
+/**
+ * The URL's spelling of the bottom panel's raids (#198, ./activity-raids.ts):
+ * comma-separated raid keys.
+ */
 export const ACTIVITY_RAIDS_PARAM = 'raids';
 
 /** Seconds in each unit: the one set the presets and the chart's geometry both count in. */

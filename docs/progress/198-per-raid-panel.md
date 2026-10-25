@@ -30,13 +30,13 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
    - [x] `src/app/globals.css` — `--ui-series-1..5`
    - [x] `src/app/activity/ActivityRaidPicker.tsx` (new), `ActivityLocal.tsx`, `ActivityChart.tsx`, `ActivityRangeControl.tsx`, `page.tsx`
 6. Bookkeeping
-   - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated line
-   - [ ] `docs/e2e-coverage.md` — flow entry and journal
-   - [ ] this file
+   - [x] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated line
+   - [x] `docs/e2e-coverage.md` — flow entry and journal
+   - [x] this file
 7. Bite proofs
-   - [ ] `npm run mutate:diff`
-   - [ ] `npm run visual:check`
-   - [ ] lint, build, test, e2e at HEAD
+   - [x] `npm run mutate:diff -- f33d26c...HEAD --typecheck` at `315f28c` — 100.0% overall (131/131 scored), 100.0% covered, 54 compile errors discarded, 1 kill-and-rerun loop (one survivor at the first run, `raidPanelAriaLabel`'s `join('')`, simplified away), no `Stryker disable` comments
+   - [x] `npm run visual:check`
+   - [x] lint, build, test, e2e at HEAD
 
 ## Sweep timing
 
@@ -56,6 +56,12 @@ so a visitor never pays it once warm.
 
 ## Surviving mutants
 
-(none yet)
+none. (The first run had one, `activity-geometry.ts:480`, an equivalent `join('')` on a one-element list; the code was simplified and the full rerun has none.)
 
 ## Notes
+
+- A second `mutate:diff --incremental` run reported 24 survivors and 12 no-coverage mutants in `src/lib/active-session/`
+  (`dedupe.ts`, `roster.ts`), files this branch did not touch: `reports/stryker-incremental.json` still held another
+  ticket's results. The full run without `--incremental` has none; the reported score comes from it.
+- Red runs and deliberate breaks for the 14 new specs: `docs/e2e-coverage.md`, "#198".
+- Suite at the last code commit (`d503885`, `.md` only since): lint 0 errors (29 warnings), tsc app and scripts, build, vitest 839/839, e2e 204/204, visual:check 68/68.

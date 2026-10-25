@@ -52,7 +52,7 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] S3 `src/app/activity/activity-geometry.test.ts` — the busiest-step comment's stale clause
    - [x] S4 `src/app/activity/activity-time.ts` — `dateLabel` private, tested through `formatInstant`
    - [x] S5 `src/app/activity/activity-geometry.ts` — one `stepCentrePercent` for the line and the tooltips
-   - [ ] S6 `GRIDLINE_STROKE` shared by the x and y gridlines
+   - [x] S6 `GRIDLINE_STROKE` shared by the x and y gridlines
    - [x] S7 `src/app/activity/activity-tooltips.test.ts` — a JSON round trip leaves the tooltip's text unchanged
 
 ## Notes

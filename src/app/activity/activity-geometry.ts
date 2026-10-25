@@ -28,6 +28,18 @@ export const CHART_WIDTH = 1000;
 export const CHART_HEIGHT = 200;
 
 /**
+ * The stroke every gridline shares, x and y: the y gridlines are drawn by the server
+ * (./ActivityChart.tsx) and the x ones by the client step (./ActivityLocal.tsx), so the look
+ * lives here, where both can import it. `vector-effect` keeps them a pixel wide under the
+ * chart's non-uniform stretch.
+ */
+export const GRIDLINE_STROKE = {
+    stroke: 'var(--ui-border-subtle)',
+    strokeWidth: 1,
+    vectorEffect: 'non-scaling-stroke',
+} as const;
+
+/**
  * No day label starts past this point. A label runs rightwards from its midnight, and the
  * widest (`Wed 21`) is about 33px — 11% of the ~296px chart at 360px — so one starting
  * later would run off the panel. Its gridline is still drawn.

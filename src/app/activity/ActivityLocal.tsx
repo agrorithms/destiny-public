@@ -5,6 +5,7 @@ import type { RaidsInProgressPoint } from '@/lib/db/queries';
 import { ChartHover, type SlotLocator } from '@/components/chart/ChartHover';
 import {
     CHART_HEIGHT,
+    GRIDLINE_STROKE,
     axisTicks,
     describeBeforeData,
     peakCaption,
@@ -86,9 +87,7 @@ export function LocalGridlines({ from, to, range }: { from: number; to: number; 
                     x2={`${tick.percent}%`}
                     y1={0}
                     y2={CHART_HEIGHT}
-                    stroke="var(--ui-border-subtle)"
-                    strokeWidth={1}
-                    vectorEffect="non-scaling-stroke"
+                    {...GRIDLINE_STROKE}
                 />
             ))}
         </>

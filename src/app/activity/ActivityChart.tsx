@@ -3,6 +3,7 @@ import { rangeOfSeries } from './activity-range';
 import {
     CHART_HEIGHT,
     CHART_WIDTH,
+    GRIDLINE_STROKE,
     beforeData,
     busiestStep,
     linePaths,
@@ -110,9 +111,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                                     x2={CHART_WIDTH}
                                     y1={tick.y}
                                     y2={tick.y}
-                                    stroke="var(--ui-border-subtle)"
-                                    strokeWidth={1}
-                                    vectorEffect="non-scaling-stroke"
+                                    {...GRIDLINE_STROKE}
                                 />
                             ))}
                             <LocalGridlines from={from} to={to} range={range} />

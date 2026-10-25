@@ -87,11 +87,16 @@ describe('the tooltip for a step', () => {
         expect(tooltipText(slot, KATHMANDU)).toBe('12 average raids in progress, Fri 16 Oct, 21:45–Sat 00:45');
     });
 
-    it('hands the browser only plain data', () => {
-        const slots: ActivitySlot[] = activitySlots([point(MIDNIGHT, HOUR, 3.2, true)]);
+    it('says the same once the slots have crossed to the browser as JSON', () => {
+        // The server hands the slots to a client component, which serialises them: a slot that
+        // carried anything JSON drops (a Date, a function) would finish a different sentence.
+        const slots = activitySlots([point(MIDNIGHT, HOUR, 3.2, true), point(MIDNIGHT + HOUR, HOUR, 1828.4)]);
+        const sent: ActivitySlot[] = JSON.parse(JSON.stringify(slots));
 
-        expect(JSON.parse(JSON.stringify(slots))).toEqual([
-            { start: MIDNIGHT, end: MIDNIGHT + HOUR, value: '3 average raids in progress', estimate: true },
+        expect(sent.map((slot) => tooltipText(slot, KATHMANDU))).toEqual(slots.map((slot) => tooltipText(slot, KATHMANDU)));
+        expect(sent.map((slot) => tooltipText(slot, null))).toEqual([
+            '3 average raids in progress, Sat 17 Oct, 00:00–01:00 UTC · estimate, still arriving',
+            '1,828 average raids in progress, Sat 17 Oct, 01:00–02:00 UTC',
         ]);
     });
 });

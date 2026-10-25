@@ -257,7 +257,7 @@ describe('the tallest step', () => {
 describe('the busiest step', () => {
     it('names the busiest step, the earliest on a tie', () => {
         // The caption under the chart reads it: the hour with the most raids in progress,
-        // the earliest one on a tie, and its window spelled out as a reader would say it.
+        // the earliest one on a tie.
         const points = [
             { start: 1792195200, end: 1792198800, total: 4, provisional: false },
             { start: 1792198800, end: 1792202400, total: 7.4, provisional: false },

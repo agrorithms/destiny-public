@@ -1,4 +1,6 @@
 import type { RaidsInProgressPoint } from '@/lib/db/queries';
+// Type only: this module is server-safe, and no client component code may land in it.
+import type { RaidOption } from '@/components/RaidMultiSelect';
 import { formatRaidCount, raidNoun, stepCentrePercent } from './activity-geometry';
 import { formatStepWindow, type OffsetOf } from './activity-time';
 
@@ -37,7 +39,7 @@ export interface ActivitySlot {
  * One slot per point, in the series' order. `raids` are the ones the bottom panel draws, in
  * its order: each counted slot carries a line for each, and a Provisional one none.
  */
-export function activitySlots(points: RaidsInProgressPoint[], raids: ReadonlyArray<{ key: string; name: string }> = []): ActivitySlot[] {
+export function activitySlots(points: RaidsInProgressPoint[], raids: readonly RaidOption[] = []): ActivitySlot[] {
     return points.map((point) => {
         const count = formatRaidCount(point.total);
         return {

@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-interface RaidOption {
+/** A raid as the raid pickers list it: its key, and the name shown for it. */
+export interface RaidOption {
     key: string;
     name: string;
 }

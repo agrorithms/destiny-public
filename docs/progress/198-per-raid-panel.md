@@ -43,8 +43,8 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 9. Review fixes — fix loop 1 (P1 declined)
    - [x] S1 `e2e/activity.spec.ts` — the bottom panel's tooltip seen on a counted step before the count of 0 over the estimate (deliberate break: `countedOnly` forced off in `ActivityLocal.tsx`, red at the new `toHaveCount(0)`)
    - [x] S2 `tests/db/raids-in-progress.test.ts` — the zero-activity test also seeds a raid wholly in the uncounted steps, so it reaches `topRaids`' `time > 0` filter (hand mutation `.filter(() => true)`: the test fails, receiving `crotas_end`; reverted)
-   - [ ] S3 `RaidOption` exported from `RaidMultiSelect.tsx` and used for every `{ key, name }` raid list
-   - [ ] S4 `ACTIVITY_RAIDS_PARAM` defined in `activity-raids.ts`, imported by `activity-range.ts`
+   - [x] S3 `RaidOption` exported from `RaidMultiSelect.tsx` and used for every `{ key, name }` raid list (`ActivityChart.tsx`, `ActivityRaidPicker.tsx`, `page.tsx`, and `activity-tooltips.ts` by `import type`)
+   - [x] S4 `ACTIVITY_RAIDS_PARAM` defined in `activity-raids.ts`, imported by `activity-range.ts` (`activity-raids.ts` now imports nothing, so no cycle)
    - [ ] S5 `ActivityChart.tsx` — one `Panel` wrapper for both `<svg>`s
    - [x] S6 `RaidMultiSelect.tsx` — the capped picker's `role="status"` region mounted empty with the open list (spec red before the fix: `toBeAttached()` not found)
 

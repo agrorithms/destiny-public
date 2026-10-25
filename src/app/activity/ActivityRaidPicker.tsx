@@ -2,7 +2,7 @@
 
 import { startTransition, useOptimistic } from 'react';
 import { useRouter } from 'next/navigation';
-import RaidMultiSelect from '@/components/RaidMultiSelect';
+import RaidMultiSelect, { type RaidOption } from '@/components/RaidMultiSelect';
 import { MAX_RAIDS } from './activity-raids';
 import { activityRangeHref, type ActivityRangeId } from './activity-range';
 
@@ -26,7 +26,7 @@ export function ActivityRaidPicker({
     picked,
     range,
 }: {
-    raids: Array<{ key: string; name: string }>;
+    raids: RaidOption[];
     picked: string[];
     range: ActivityRangeId;
 }) {

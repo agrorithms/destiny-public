@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
+import type { RaidOption } from '@/components/RaidMultiSelect';
 import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries';
 import { getOrCompute } from '@/lib/cache/swr-cache';
 import { envSeconds } from '@/lib/env';
@@ -103,7 +104,7 @@ export default async function ActivityPage({
  * Every raid the picker offers, in the raid table's order: all of them count, Pantheons
  * included.
  */
-function readRaidOptions(): Array<{ key: string; name: string }> {
+function readRaidOptions(): RaidOption[] {
     return Object.entries(getAllRaidDefinitions()).map(([key, definition]) => ({ key, name: definition.name }));
 }
 

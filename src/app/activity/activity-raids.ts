@@ -1,5 +1,3 @@
-import { ACTIVITY_RAIDS_PARAM } from './activity-range';
-
 /**
  * Which raids the Raid Activity chart's bottom panel draws (#198, parent #51): the ones in
  * `?raids=`, kept to five, and when the URL names none the raids with the most activity in
@@ -9,6 +7,9 @@ import { ACTIVITY_RAIDS_PARAM } from './activity-range';
  * Pure, and takes the known raid keys as an argument rather than importing the definitions:
  * the picker and the chart are client code, and the raid table lives with the Bungie manifest.
  */
+
+/** The URL's spelling of the bottom panel's raids: comma-separated raid keys. */
+export const ACTIVITY_RAIDS_PARAM = 'raids';
 
 /** The most raids the panel draws: past five the lines can no longer be told apart by colour. */
 export const MAX_RAIDS = 5;

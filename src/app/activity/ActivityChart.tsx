@@ -1,4 +1,5 @@
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
+import type { RaidOption } from '@/components/RaidMultiSelect';
 import { rangeOfSeries } from './activity-range';
 import {
     CHART_HEIGHT,
@@ -79,7 +80,7 @@ export function ActivityChart({
 }: {
     series: RaidsInProgressSeries;
     /** Every raid the picker offers, in its order. */
-    raidOptions: Array<{ key: string; name: string }>;
+    raidOptions: RaidOption[];
     /** The raids the bottom panel draws, in the order they are coloured. */
     picked: string[];
 }) {

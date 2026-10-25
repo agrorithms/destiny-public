@@ -230,13 +230,20 @@ function roundStep(atLeast: number): number {
  * The line through every point, as an SVG path in viewBox units: each step drawn at its
  * midpoint, because the value is an average over the whole step rather than a reading at
  * its start or end. Heights are measured down from the top, against the axis's `max`.
- * Written to two decimal places, which is far finer than a pixel at any width.
+ * Written to two decimal places, which is far finer than a pixel at any width. `valueOf`
+ * says what height a point has: its total, unless a caller draws something else through it.
  */
-export function linePath(points: RaidsInProgressPoint[], from: number, to: number, max: number): string {
+export function linePath(
+    points: RaidsInProgressPoint[],
+    from: number,
+    to: number,
+    max: number,
+    valueOf: (point: RaidsInProgressPoint) => number = (point) => point.total
+): string {
     return points
         .map((point, index) => {
             const x = (stepCentrePercent(point.start, point.end, from, to) / 100) * CHART_WIDTH;
-            return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(point.total, max))}`;
+            return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(valueOf(point), max))}`;
         })
         .join('');
 }
@@ -424,25 +431,46 @@ export interface RaidLine {
     path: string;
 }
 
-/** The bottom panel: its own y-axis, and a line for each raid picked. */
+/** The bottom panel (#198): its own y-axis, and a line for each raid picked. */
 export interface RaidPanel {
     axis: ValueAxis;
     lines: RaidLine[];
 }
 
+/**
+ * The bottom panel for the picked raids, in the picked order. **Its y-axis is the picked raids'
+ * alone** — the tallest value any of them reaches over the counted steps — and never the
+ * total's, so a quiet raid keeps its shape instead of lying flat under the total's scale, and
+ * the two panels are never read against one scale. A line has a point for each counted step
+ * and none for a Provisional one: per-raid lines stop where counting does. A counted step with
+ * no value for a raid is a quiet one. The x positions are the total's, from the same
+ * {@link stepCentrePercent}, so a moment lines up in both panels.
+ */
 export function raidPanel(
-    _points: RaidsInProgressPoint[],
-    _keys: readonly string[],
-    _from: number,
-    _to: number
+    points: RaidsInProgressPoint[],
+    keys: readonly string[],
+    from: number,
+    to: number
 ): RaidPanel {
-    throw new Error('not implemented');
+    const counted = points.filter((point) => !point.provisional);
+    const valueIn = (key: string) => (point: RaidsInProgressPoint) => point.raids?.[key] ?? 0;
+    const axis = valueAxis(Math.max(0, ...keys.flatMap((key) => counted.map(valueIn(key)))));
+    return {
+        axis,
+        lines: keys.map((key) => ({ key, path: linePath(counted, from, to, axis.max, valueIn(key)) })),
+    };
 }
 
-export function notCounted(_series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>): ShadedSpan {
-    throw new Error('not implemented');
+/**
+ * The span the per-raid panel shades: from where counting ends (`countedUntil`) to "now". The
+ * per-raid lines stop there, because a per-raid estimate is not drawn (#199), so this is the
+ * stretch the total's dashed line and shade cover that the bottom panel leaves bare.
+ */
+export function notCounted(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>): ShadedSpan {
+    return tooRecent({ ...series, provisionalUntil: series.countedUntil });
 }
 
-export function notCountedLegend(_stepSeconds: number): string {
-    throw new Error('not implemented');
+/** The legend for {@link notCounted}'s shade: how wide it can be at this step, as {@link provisionalLegend} says its start. */
+export function notCountedLegend(stepSeconds: number): string {
+    return `Shaded: the last ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)}, not counted yet.`;
 }

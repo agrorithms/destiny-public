@@ -15,12 +15,12 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
    - [x] `tests/db/raids-in-progress.test.ts` — per-raid split, sums, top 3, requested keys
    - [x] `src/lib/db/queries.ts` — `raidKeys`, `point.raids`, `series.topRaids`
 2. Raid selection, red then green (S2)
-   - [ ] `src/app/activity/activity-raids.test.ts` (new)
-   - [ ] `src/app/activity/activity-raids.ts` (new)
-   - [ ] `src/app/activity/activity-range.ts` / `.test.ts` — `activityRangeHref` carries raids
+   - [x] `src/app/activity/activity-raids.test.ts` (new)
+   - [x] `src/app/activity/activity-raids.ts` (new)
+   - [x] `src/app/activity/activity-range.ts` / `.test.ts` — `activityRangeHref` carries raids
 3. Geometry and tooltip copy, red then green (S3)
-   - [ ] `src/app/activity/activity-geometry.test.ts`, `activity-tooltips.test.ts`
-   - [ ] `src/app/activity/activity-geometry.ts`, `activity-tooltips.ts`
+   - [x] `src/app/activity/activity-geometry.test.ts`, `activity-tooltips.test.ts`
+   - [x] `src/app/activity/activity-geometry.ts`, `activity-tooltips.ts`
 4. The browser suite, red (S4, S5)
    - [ ] `e2e/support/seed-world.ts` — six raids with a known ranking
    - [ ] `e2e/activity.spec.ts` — per-raid specs

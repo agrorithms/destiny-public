@@ -30,8 +30,11 @@ export interface ActivitySlot {
     raids: string[];
 }
 
-/** One slot per point, in the series' order. */
-export function activitySlots(points: RaidsInProgressPoint[], _raids: ReadonlyArray<{ key: string; name: string }> = []): ActivitySlot[] {
+/**
+ * One slot per point, in the series' order. `raids` are the ones the bottom panel draws, in
+ * its order: each counted slot carries a line for each, and a Provisional one none.
+ */
+export function activitySlots(points: RaidsInProgressPoint[], raids: ReadonlyArray<{ key: string; name: string }> = []): ActivitySlot[] {
     return points.map((point) => {
         const count = formatRaidCount(point.total);
         return {
@@ -39,29 +42,31 @@ export function activitySlots(points: RaidsInProgressPoint[], _raids: ReadonlyAr
             end: point.end,
             value: `${count} average ${raidNoun(count)} in progress`,
             estimate: point.provisional,
-            raids: [],
+            raids: point.provisional ? [] : raids.map(({ key, name }) => `${name}: ${formatRaidCount(point.raids?.[key] ?? 0)}`),
         };
     });
 }
 
 /**
- * The tooltip's text: the average, the step's window and, on an estimate, that it is one.
- * In UTC, with the suffix, when there is no offset.
+ * The tooltip's text: the average, the step's window and, on an estimate, that it is one,
+ * then a line for each raid the bottom panel draws (#198). In UTC, with the suffix, when
+ * there is no offset.
  */
 export function tooltipText(slot: ActivitySlot, offsetOf: OffsetOf): string {
     const text = `${slot.value}, ${formatStepWindow(slot.start, slot.end, offsetOf)}`;
-    return slot.estimate ? `${text} · ${ESTIMATE_TAIL}` : text;
+    return [slot.estimate ? `${text} · ${ESTIMATE_TAIL}` : text, ...slot.raids].join('\n');
 }
 
 /**
  * The step a pointer `fraction` of the way across the chart is over, or null where there is
  * none: the bare part-step at the left, the shaded spans at either end, anywhere past the
- * last step. By time, not by an equal share of the width, because the chart's axis is the
+ * last step. On the per-raid panel (`countedOnly`) a Provisional step is shaded too, so there
+ * is none there either (#198). By time, not by an equal share of the width, because the chart's axis is the
  * window `[from, to]`, which neither starts on a step boundary nor ends on one.
  */
-export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[], from: number, to: number, _countedOnly = false): number | null {
+export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[], from: number, to: number, countedOnly = false): number | null {
     const at = from + fraction * (to - from);
-    const index = slots.findIndex((slot) => slot.start <= at && at < slot.end);
+    const index = slots.findIndex((slot) => slot.start <= at && at < slot.end && !(countedOnly && slot.estimate));
     return index === -1 ? null : index;
 }
 

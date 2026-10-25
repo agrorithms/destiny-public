@@ -21,11 +21,9 @@ interface RaidMultiSelectProps {
     maxSelected?: number;
     /** Said, in the open list, when a pick is refused for the cap. */
     limitMessage?: string;
-    /** The trigger's text when nothing is picked and there is a cap. */
-    emptyLabel?: string;
 }
 
-export default function RaidMultiSelect({ raids, selected, onChange, maxSelected, limitMessage, emptyLabel }: RaidMultiSelectProps) {
+export default function RaidMultiSelect({ raids, selected, onChange, maxSelected, limitMessage }: RaidMultiSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     // Whether the last pick was refused for the cap, so the message stays until the next change.
     const [refused, setRefused] = useState(false);
@@ -93,15 +91,11 @@ export default function RaidMultiSelect({ raids, selected, onChange, maxSelected
     const atCap = maxSelected !== undefined && selected.length >= maxSelected;
 
     function toggleRaid(raidKey: string) {
-        if (selected.includes(raidKey)) {
-            setRefused(false);
-            onChange(selected.filter((k) => k !== raidKey));
-        } else if (atCap) {
-            setRefused(true);
-        } else {
-            setRefused(false);
-            onChange([...selected, raidKey]);
-        }
+        const isSelected = selected.includes(raidKey);
+        const refuse = atCap && !isSelected;
+        setRefused(refuse);
+        if (refuse) return;
+        onChange(isSelected ? selected.filter((k) => k !== raidKey) : [...selected, raidKey]);
     }
 
     function selectAll() {
@@ -152,7 +146,7 @@ export default function RaidMultiSelect({ raids, selected, onChange, maxSelected
 
     let label: string;
     if (maxSelected !== undefined && selected.length === 0) {
-        label = emptyLabel ?? 'No raids picked';
+        label = 'No raids picked';
     } else if (selected.length === 0 || selected.length === raids.length) {
         label = 'All Raids';
     } else if (selected.length === 1) {
@@ -190,7 +184,7 @@ export default function RaidMultiSelect({ raids, selected, onChange, maxSelected
             {isOpen && (
                 <div className="absolute z-50 mt-1 w-full min-w-[260px] ui-input rounded-lg shadow-xl overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2 border-b ui-divider">
-                        {maxSelected === undefined ? (
+                        {maxSelected === undefined && (
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -200,15 +194,13 @@ export default function RaidMultiSelect({ raids, selected, onChange, maxSelected
                             >
                                 Select All
                             </button>
-                        ) : (
-                            <span />
                         )}
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 clearFilter();
                             }}
-                            className="text-xs text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-300"
+                            className="ml-auto text-xs text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-300"
                         >
                             Clear Filter
                         </button>

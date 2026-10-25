@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { startTransition, useOptimistic } from 'react';
 import { useRouter } from 'next/navigation';
 import RaidMultiSelect from '@/components/RaidMultiSelect';
 import { MAX_RAIDS } from './activity-raids';
@@ -31,12 +31,14 @@ export function ActivityRaidPicker({
     range: ActivityRangeId;
 }) {
     const router = useRouter();
-    const [isPending, startTransition] = useTransition();
-    const [chosen, setChosen] = useState(picked);
+    // The reader's pick while the navigation is in flight, then the server's `picked` again.
+    const [shown, setShown] = useOptimistic(picked);
 
     function pick(next: string[]) {
-        setChosen(next);
-        startTransition(() => router.replace(activityRangeHref(range, next), { scroll: false }));
+        startTransition(() => {
+            setShown(next);
+            router.replace(activityRangeHref(range, next), { scroll: false });
+        });
     }
 
     return (
@@ -44,11 +46,10 @@ export function ActivityRaidPicker({
             <label className="block text-xs ui-text-muted mb-1">Raids</label>
             <RaidMultiSelect
                 raids={raids}
-                selected={isPending ? chosen : picked}
+                selected={shown}
                 onChange={pick}
                 maxSelected={MAX_RAIDS}
                 limitMessage="Pick up to five raids — remove one to add another."
-                emptyLabel="No raids picked"
             />
         </div>
     );

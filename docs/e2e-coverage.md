@@ -2771,6 +2771,18 @@ Specs 1 (the default), 8 (colours) and 12 (the shade), and the tap half of 14, s
 their own: the red run failed them only on the panel's absence. Vitest holds what they pin
 (`pickRaids`, `raidColour`, `notCounted`). All breaks reverted; green at HEAD.
 
+**Review fix loop 1 (S1, S6).** Two specs changed, no new ones; still 204 tests.
+
+- "over the newest hours…" now hovers the bottom panel's last counted step and sees the tooltip
+  before moving to the estimate and expecting none, so the count of 0 is the box going away rather
+  than a check that could pass before React drew anything. Deliberate break, one build: the
+  per-raid panel's `countedOnly` forced off in `ActivityLocal.tsx` — the spec failed at that
+  `toHaveCount(0)`. Reverted.
+- "refuses a sixth raid…" now expects the `raid-limit-message` live region attached, empty and
+  hidden before the refusal (it is mounted empty with the open list so screen readers announce the
+  text put into it). Red before the fix, against the build of `92472c9`: `toBeAttached()` found no
+  element. Green after.
+
 ### What is still NOT covered
 
 - The picker's keyboard path (Space on a focused option, arrow keys): the shared component's, and

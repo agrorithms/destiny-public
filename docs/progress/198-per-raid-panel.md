@@ -47,6 +47,7 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
    - [x] S4 `ACTIVITY_RAIDS_PARAM` defined in `activity-raids.ts`, imported by `activity-range.ts` (`activity-raids.ts` now imports nothing, so no cycle)
    - [x] S5 `ActivityChart.tsx` — one `Panel` wrapper for both `<svg>`s (every `data-testid` and `data-timeline-part` unchanged; the axis column's coupling to the panel heights left for the cleanup issue)
    - [x] S6 `RaidMultiSelect.tsx` — the capped picker's `role="status"` region mounted empty with the open list (spec red before the fix: `toBeAttached()` not found)
+   - [x] Fix-loop suite at `ad5d02e`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 839/839, e2e 204/204, visual:check 68/68. Mutation `92472c9...ad5d02e --typecheck`: 2 mutants, 0 scored (1 static, ignored; 1 compile error) — threshold not applied, no survivors
 
 ## Sweep timing
 

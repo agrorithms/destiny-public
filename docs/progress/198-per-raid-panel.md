@@ -55,6 +55,7 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 11. Handoff mutation (mutation loop 2 of 3)
    - [x] `queries.ts:1860` ConditionalExpression → false (`topRaids`' `place()`: an unnamed key placed before the named ones) — killed by `tests/db/raids-in-progress.test.ts` "puts a tied raid key the raid list does not name after the raids it does"
    - [x] `queries.ts:1860` UnaryOperator → +1 (same line, same test) — killed
+   - [x] Full run `f33d26c...31f14fe --typecheck`: 100.0% overall (135/135), covered 100.0%, PASS; no survivors. Suite at `31f14fe`: lint 0 errors (29 warnings), tsc app and scripts, vitest 840/840 (test-only change: no build, e2e or visual:check rerun)
 
 ## Sweep timing
 

@@ -3,6 +3,7 @@ import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries
 import { getOrCompute } from '@/lib/cache/swr-cache';
 import { envSeconds } from '@/lib/env';
 import { ActivityChart } from './ActivityChart';
+import { LocalZoneNote } from './ActivityLocal';
 import { ActivityRangeControl } from './ActivityRangeControl';
 import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activity-range';
 
@@ -17,7 +18,9 @@ import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activit
  * panel — each through the query's options and the geometry module, not a new read.
  *
  * **Server-rendered, with no new endpoint**: the page calls the Tracker query module
- * directly, and the chart is hand-made SVG with no client JavaScript.
+ * directly, and the chart is hand-made SVG. The one client step (#197,
+ * ./ActivityLocal.tsx) puts the labels and tooltips in the reader's time zone after
+ * hydration; the server's render, and a reader's with JavaScript off, is UTC and says so.
  *
  * **Cached on the analytics cache lifetime.** `force-dynamic` so a build never reads the
  * Tracker, and the series itself is held in the in-process stale-while-revalidate cache
@@ -62,7 +65,7 @@ export default async function ActivityPage({
                 <p className="ui-text-secondary">
                     How many raids were in progress across every raid, averaged over every{' '}
                     {described.step} of the last {described.span}. Every raid instance counts,
-                    checkpoint runs and unfinished ones included. Times are UTC.
+                    checkpoint runs and unfinished ones included. <LocalZoneNote />
                 </p>
                 <ActivityRangeControl range={range.id} />
             </header>

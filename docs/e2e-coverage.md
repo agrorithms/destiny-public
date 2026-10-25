@@ -2602,3 +2602,97 @@ assertion were seen failing before the code existed.
   accepted by the spec; neither is forced (the grid depends on the clock).
 - The legend's prose after its first sentence, and the dashed swatch.
 - Later tickets: tooltips in local time (#197), the per-raid panel (#198, #199).
+
+## 2026-10-24 — #197 the Raid Activity tooltips in local time
+
+`e2e/activity.spec.ts`, **eleven new specs**: six under "the tooltips" and five under "in the reader's
+time zone". The suite is now **thirty-one flows, 190 tests including the two canary setups**.
+`e2e/visual.spec.ts` and the rest of `activity.spec.ts` now pin `timezoneId: 'UTC'` with
+`test.use` (the config is unchanged), because the chart's labels follow the browser's zone: the
+JavaScript-on specs read the reader's clock without a " UTC" suffix, and the JavaScript-off ones
+read UTC with it (`expectRangeDrawn` and `expectChartDrawn` take a `zone`).
+
+**What the page gained:** hover and tap tooltips (`activity-tooltip`, from the shared
+`ChartHover`, given a `locate` mapping for this chart's uneven slots), and a client step
+(`ActivityLocal.tsx`) that moves the gridlines, tick labels, the peak caption, the before-data
+legend and the intro line (`activity-zone`) onto the reader's clock after hydration. The figure
+carries `data-window-from` / `data-window-to` so a spec can turn a label's position into the
+instant it marks. No seed change.
+
+1. **Hovering a counted step.** The busiest hour's tooltip repeats the caption's number and window
+   (`3 average raids in progress, <window>`); the last counted step's has no estimate tail; the
+   tooltip leaves with the mouse.
+2. **Hovering the dashed line.** At 24h a dashed step's tooltip ends `· estimate, still
+   arriving`, its window is 10 minutes wide, and the dashed line's first vertex (the last counted
+   step) has no tail.
+3. **A shaded span has no tooltip.** At 30d, a tooltip over the line goes away when the mouse
+   moves into the span before the data starts, and again into the last 15 minutes' shade.
+4. **Tap, and a tap elsewhere** (360×780, touch): at 24h and 30d a tap on the chart shows the tooltip
+   inside the viewport, `expectNoOverflow` with it open, a second tap on the chart moves it, a tap
+   on the heading dismisses it.
+5. **A tap on the dashed line** reads "estimate, still arriving", inside the viewport, without overflow.
+6. **A swipe scrolls** (360×480, touch, CDP touch events): the page scrolls and no tooltip opens.
+7. **Ticks on the reader's clock** (Asia/Kathmandu, UTC+5:45): at 24h, 7d and 30d every label
+   marks the instant its position says, by `Intl` for that zone (`HH:MM` for an hour mark, `Sat 17`
+   at exactly midnight), a gridline sits under each, and the intro reads "Times are in your time
+   zone (Asia/Katmandu)." (Chromium's older spelling of the name).
+8. **A tooltip and the caption are 5 h 45 m ahead of the chart's UTC name:** the SVG's accessible
+   name stays UTC; the tooltip's and the caption's windows are that window plus 345 minutes, and
+   neither says UTC.
+9. **The 30-day legend** names where the data starts on the reader's clock (`:45`, a quarter to the
+   hour, since counting starts on a 3-hour UTC boundary), with no UTC.
+10. **JavaScript off, in Kathmandu:** the intro reads "Times are UTC.", the caption ends " UTC.", and
+    the tick labels sit on UTC instants.
+11. **A browser that names no zone, in Kathmandu** (`resolvedOptions().timeZone` stubbed to `''`
+    by an init script): once hydrated (a tooltip shows), the tooltip ends " UTC", the intro reads
+    "Times are UTC.", the caption ends " UTC.", and the tick labels sit on UTC instants, though
+    the browser's offset is still Kathmandu's. Added in fix loop 1 and seen red first (`0b32180`):
+    the tooltip read `2 average raids in progress, Sun 25 Oct, 02:45–02:55`, Kathmandu's clock with
+    no zone named.
+
+The existing JavaScript-off specs also check the ticks sit on UTC instants.
+
+**Bite proof — the red run.** Specs committed (`db312cd`) before the client step existed: of the 23
+tests (21 activity specs and the two canary setups), **18 failed and 5 passed**: the canaries, the
+nav link, the 24-hour estimate's baseline, and the JavaScript-off presets spec, which already read
+UTC. Every new spec failed, but most failed first on the page not yet saying
+"your time zone" (`waitForClientStep`), which says nothing of their later assertions, so the later
+assertions were each broken on purpose in one build (`npm run e2e`, 11 failed, 12 passed):
+
+| Break | Spec that failed |
+| --- | --- |
+| `slotAtFraction` clamps to the end slots instead of returning none | "a shaded span has no tooltip" (`toHaveCount(0)`) |
+| `tooltipText` leaves off the estimate tail | "hovering the dashed line…", "a tap on the dashed line…" |
+| `LocalGridlines` and `LocalTickLabels` ignore the reader's offset | the Kathmandu ticks spec |
+| `LocalPeak` ignores the offset | "a tooltip and the caption are 5 hours 45 minutes ahead…" |
+| `LocalBeforeData` ignores the offset | "the 30-day legend names where the data starts…" |
+| `ChartHover` shows on `pointerdown` for touch as well | "a finger swiped across the chart…" |
+| the tooltip loses `max-w-full` | "a tap shows the tooltip…" (at 24h: "the tooltip on 24h ends inside the viewport", 377 > 360) |
+| the UTC suffix dropped | both JavaScript-off specs of the file and the Kathmandu JavaScript-off spec |
+
+The tap spec failed first on the overflow break, which hid its dismissal assertion, so that one
+was broken alone in a second build (the document's `pointerdown` listener removed): the spec failed
+with the tooltip still open (`toHaveCount(0)`, received 1). All reverted; green at HEAD.
+
+"Hovering a counted step" had failed only on `waitForClientStep` in the red run, and no break in
+the table above reached its later assertions, so fix loop 1 broke it alone in a third build:
+
+| Break | Spec that failed |
+| --- | --- |
+| `tooltipText` names the next step's window (`slot.end` to one step after it) | "hovering a counted step shows its average and its window" (expected `3 average raids in progress, Fri 23 Oct, 03:00–04:00`, received `…04:00–05:00`) |
+
+Reverted; green at HEAD.
+
+### What is still NOT covered
+
+- A tooltip's position against the line (centred on the step, sliding inward at either end) is
+  `tooltipLeft`'s, unit-tested in `src/lib/chart/pointer.test.ts`; no spec measures it.
+- A real clock change inside a 30-day window: the per-instant offset is pinned in Vitest
+  (`activity-time.test.ts`, `activity-geometry.test.ts`, London on 25 October 2026); the browser
+  spec uses a zone with no clock change.
+- A zone whose midnight does not exist on a day (a spring-forward at midnight): that tick is
+  skipped. A fall-back onto midnight (the Azores, last
+  Sunday of October) reads 00:00 twice and is ticked once, at the first: Vitest's
+  (`activity-geometry.test.ts`), not a spec's.
+- The y-axis, the legends' prose and the aria-label's wording beyond "UTC".
+- Later tickets: the per-raid panel (#198, #199) and its second part for the hover.

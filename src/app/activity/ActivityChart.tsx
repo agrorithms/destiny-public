@@ -3,12 +3,11 @@ import { rangeOfSeries } from './activity-range';
 import {
     CHART_HEIGHT,
     CHART_WIDTH,
-    axisTicks,
+    GRIDLINE_STROKE,
     beforeData,
     busiestStep,
-    describeBeforeData,
-    describePeak,
     linePaths,
+    peakAriaLabel,
     provisionalLegend,
     tallestStep,
     tooRecent,
@@ -16,6 +15,8 @@ import {
     valueAxis,
     type ShadedSpan,
 } from './activity-geometry';
+import { activitySlots } from './activity-tooltips';
+import { ActivityHover, LocalBeforeData, LocalGridlines, LocalPeak, LocalTickLabels } from './ActivityLocal';
 
 /**
  * The shades' fill, shared by both shaded spans and their keys in the caption. One look
@@ -41,16 +42,19 @@ const LINE_STROKE = {
 } as const;
 
 /**
- * The Raid Activity chart (#194–#196): one line of total Raids in Progress, one point per
+ * The Raid Activity chart (#194–#197): one line of total Raids in Progress, one point per
  * step of the chosen range. Counted steps are drawn solid; the steps too recent to count
  * but old enough to estimate (the Provisional estimate, ADR 0009) continue it dashed from
  * the last counted point; the last 15 minutes or so, too recent to estimate, are shaded at
  * the right-hand edge. When the stored PGCRs start inside the window, the span before
  * them is shaded at the left.
  *
- * A server component drawing hand-made SVG, with no chart library and no client
- * JavaScript, so it draws exactly the same with JavaScript off. Every position comes from
- * ./activity-geometry.ts; this file only draws what it is handed.
+ * A server component drawing hand-made SVG, with no chart library, so it draws exactly the
+ * same with JavaScript off. Every position comes from ./activity-geometry.ts; this file only
+ * draws what it is handed. The one client step (./ActivityLocal.tsx, #197) puts the gridlines,
+ * the labels and the sentences that name a time into the reader's time zone, and adds the
+ * hover and tap tooltips; the line, the dashed line and the shades are never touched by it,
+ * and with JavaScript off the chart is labelled in UTC and says so.
  *
  * The range — the ticks and the caption's wording — is read off the series itself
  * ({@link rangeOfSeries}) rather than handed in beside it, so the step the shades are
@@ -66,14 +70,16 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     const range = rangeOfSeries(series);
     const busiest = busiestStep(points);
     const axis = valueAxis(tallestStep(points));
-    const ticks = axisTicks(from, to, range);
     const { solid, dashed } = linePaths(points, from, to, axis.max);
     const shade = tooRecent(series);
     const missing = beforeData(series);
-    const peak = describePeak(busiest, range);
 
+    // `data-window-from` / `data-window-to` are for e2e/activity.spec.ts and nothing in the
+    // app reads them. The window is request-time state ("now" at render), which the seed
+    // cannot reproduce, so the spec reads it here to turn a label's position into the instant
+    // that label marks.
     return (
-        <figure data-testid="activity-chart" className="ui-card space-y-3 p-4">
+        <figure data-testid="activity-chart" data-window-from={from} data-window-to={to} className="ui-card space-y-3 p-4">
             <div className="flex gap-2">
                 {/* The y-axis labels, each centred on its gridline. */}
                 <div className="relative w-9 shrink-0 select-none" aria-hidden>
@@ -88,64 +94,44 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                     ))}
                 </div>
 
-                <div className="min-w-0 flex-1 space-y-1">
-                    <svg
-                        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                        preserveAspectRatio="none"
-                        role="img"
-                        aria-label={peak.ariaLabel}
-                        className="block h-48 w-full sm:h-64"
-                    >
-                        {axis.ticks.map((tick) => (
-                            <line
-                                key={`y${tick.value}`}
-                                x1={0}
-                                x2={CHART_WIDTH}
-                                y1={tick.y}
-                                y2={tick.y}
-                                stroke="var(--ui-border-subtle)"
-                                strokeWidth={1}
-                                vectorEffect="non-scaling-stroke"
-                            />
-                        ))}
-                        {ticks.map((tick) => (
-                            <line
-                                key={`x${tick.percent}`}
-                                x1={`${tick.percent}%`}
-                                x2={`${tick.percent}%`}
-                                y1={0}
-                                y2={CHART_HEIGHT}
-                                stroke="var(--ui-border-subtle)"
-                                strokeWidth={1}
-                                vectorEffect="non-scaling-stroke"
-                            />
-                        ))}
-                        {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
-                        <ShadeRect testId="activity-too-recent" span={shade} />
-                        <path data-testid="activity-line" d={solid} {...LINE_STROKE} />
-                        {dashed === null ? null : (
-                            <path data-testid="activity-provisional-line" d={dashed} {...LINE_STROKE} strokeDasharray="6 4" />
-                        )}
-                    </svg>
+                <div className="min-w-0 flex-1">
+                    <ActivityHover slots={activitySlots(points)} from={from} to={to}>
+                        <svg
+                            data-timeline-part="total"
+                            viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+                            preserveAspectRatio="none"
+                            role="img"
+                            aria-label={peakAriaLabel(busiest, range)}
+                            className="block h-48 w-full sm:h-64"
+                        >
+                            {axis.ticks.map((tick) => (
+                                <line
+                                    key={`y${tick.value}`}
+                                    x1={0}
+                                    x2={CHART_WIDTH}
+                                    y1={tick.y}
+                                    y2={tick.y}
+                                    {...GRIDLINE_STROKE}
+                                />
+                            ))}
+                            <LocalGridlines from={from} to={to} range={range} />
+                            {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
+                            <ShadeRect testId="activity-too-recent" span={shade} />
+                            <path data-testid="activity-line" d={solid} {...LINE_STROKE} />
+                            {dashed === null ? null : (
+                                <path data-testid="activity-provisional-line" d={dashed} {...LINE_STROKE} strokeDasharray="6 4" />
+                            )}
+                        </svg>
 
-                    <div className="relative h-4 select-none" aria-hidden>
-                        {ticks.map((tick) =>
-                            tick.label === null ? null : (
-                                <span
-                                    key={tick.percent}
-                                    className={`ui-text-secondary absolute top-0 whitespace-nowrap pl-0.5 text-[10px] tabular-nums ${tick.phone ? '' : 'max-sm:hidden'}`}
-                                    style={{ left: `${tick.percent}%` }}
-                                >
-                                    {tick.label}
-                                </span>
-                            )
-                        )}
-                    </div>
+                        <LocalTickLabels from={from} to={to} range={range} />
+                    </ActivityHover>
                 </div>
             </div>
 
             <figcaption className="ui-text-secondary space-y-1 text-xs leading-5">
-                <p data-testid="activity-peak">{peak.caption}</p>
+                <p data-testid="activity-peak">
+                    <LocalPeak busiest={busiest} range={range} />
+                </p>
                 {dashed === null ? null : (
                     <p className="flex items-start gap-2">
                         <DashKey />
@@ -167,7 +153,7 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
                 {missing === null ? null : (
                     <p className="flex items-start gap-2">
                         <ShadeKey />
-                        <span data-testid="activity-before-data-legend">{describeBeforeData(series.countedFrom)}</span>
+                        <span data-testid="activity-before-data-legend"><LocalBeforeData countedFrom={series.countedFrom} /></span>
                     </p>
                 )}
             </figcaption>

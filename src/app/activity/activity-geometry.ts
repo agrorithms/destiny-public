@@ -1,5 +1,6 @@
 import type { RaidsInProgressPoint, RaidsInProgressSeries } from '@/lib/db/queries';
 import { DAY, HOUR, MINUTE, type ActivityRange } from './activity-range';
+import { clock, dayLabel, formatInstant, formatStepWindow, localSeconds, type OffsetOf } from './activity-time';
 
 /**
  * Where things sit on the Raid Activity chart (#194, #195): the time ticks and their
@@ -12,9 +13,12 @@ import { DAY, HOUR, MINUTE, type ActivityRange } from './activity-range';
  * position is a percentage of that window, so the line, the gridlines, the labels and the
  * shade are all placed by one calculation ({@link xPercent}).
  *
- * **Labels are UTC** in this ticket. #197 rewrites them into the reader's local time on
- * the client, so this module takes only types from the query module: anything on its
- * import path reaches the browser, and `@/lib/db/queries` opens better-sqlite3.
+ * **Ticks and labels are in the reader's time zone, or UTC.** The server draws them in UTC
+ * (`offsetOf` null); a small client step (./ActivityLocal.tsx) calls the same functions with
+ * the browser's offset (./activity-time.ts), so the gridlines move to the reader's midnights.
+ * The shapes — the line, the shades — are the same either way. This module takes only types
+ * from the query module: anything on its import path reaches the browser, and
+ * `@/lib/db/queries` opens better-sqlite3.
  *
  * Pure and free of any clock read: "now" arrives as the series' `to`.
  */
@@ -24,14 +28,23 @@ export const CHART_WIDTH = 1000;
 export const CHART_HEIGHT = 200;
 
 /**
+ * The stroke every gridline shares, x and y: the y gridlines are drawn by the server
+ * (./ActivityChart.tsx) and the x ones by the client step (./ActivityLocal.tsx), so the look
+ * lives here, where both can import it. `vector-effect` keeps them a pixel wide under the
+ * chart's non-uniform stretch.
+ */
+export const GRIDLINE_STROKE = {
+    stroke: 'var(--ui-border-subtle)',
+    strokeWidth: 1,
+    vectorEffect: 'non-scaling-stroke',
+} as const;
+
+/**
  * No day label starts past this point. A label runs rightwards from its midnight, and the
  * widest (`Wed 21`) is about 33px — 11% of the ~296px chart at 360px — so one starting
  * later would run off the panel. Its gridline is still drawn.
  */
 export const LAST_LABELLED_TICK_PERCENT = 88;
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** A gridline on the x-axis, and its label, or null where the label would not fit. */
 export interface ActivityTick {
@@ -65,23 +78,46 @@ export function xPercent(at: number, from: number, to: number): number {
     return ((at - from) / (to - from)) * 100;
 }
 
+/**
+ * Where a step's window is centred across `[from, to]`, as a percentage of its width: where
+ * the line draws the step's vertex, and where its tooltip is anchored.
+ */
+export function stepCentrePercent(start: number, end: number, from: number, to: number): number {
+    return xPercent((start + end) / 2, from, to);
+}
+
 /** Which midnights a day axis marks, and how many of its labels a phone keeps. */
 export interface DayTickOptions {
-    /** A tick on every UTC midnight whose day number since the epoch is a multiple of this. */
+    /** A tick on every midnight whose day number since the epoch is a multiple of this. */
     everyDays: number;
     /** On a phone, every this-many ticks keeps its label, from the first. */
     phoneEvery: number;
 }
 
+/** The 7-day range's day ticks: every midnight, every other label kept on a phone. */
+const DAILY_TICKS: DayTickOptions = { everyDays: 1, phoneEvery: 2 };
+
 /**
- * One tick per UTC midnight inside the window, labelled with the weekday and day of the
- * month it begins (`Sat 17`). A 7-day window has seven; a label past
+ * One tick per midnight (the zone's, or UTC) inside the window, labelled with the weekday
+ * and day of the month it begins (`Sat 17`). A 7-day window has seven; a label past
  * {@link LAST_LABELLED_TICK_PERCENT} is dropped and its gridline kept, and on a phone only
  * every other label shows ({@link ActivityTick.phone}). The 30-day range thins them with
  * `options` ({@link axisTicks}).
  */
-export function dayTicks(from: number, to: number, options: DayTickOptions = { everyDays: 1, phoneEvery: 2 }): ActivityTick[] {
-    return ticksEvery(from, to, options.everyDays * DAY, dayLabel, (_, index) => index % options.phoneEvery === 0);
+export function dayTicks(
+    from: number,
+    to: number,
+    options: DayTickOptions = DAILY_TICKS,
+    offsetOf: OffsetOf = null
+): ActivityTick[] {
+    return ticksEvery(
+        from,
+        to,
+        options.everyDays * DAY,
+        offsetOf,
+        (at) => dayLabel(at, offsetOf),
+        (index) => index % options.phoneEvery === 0
+    );
 }
 
 /** The 24-hour range's tick spacing, and the spacing of the labels a phone keeps. */
@@ -89,40 +125,58 @@ const HOUR_TICK_SECONDS = 3 * HOUR;
 const PHONE_HOUR_TICK_SECONDS = 6 * HOUR;
 
 /**
- * One tick every 3 UTC hours inside the window, labelled with its hour (`21:00`), except
- * midnight, which is labelled with the day it begins (`Sat 17`) so a day's chart still
- * shows where one day ends. On a phone only the ticks on a 6-hour boundary keep their
- * label: three hours is ~37px of chart at 360px, and a label ~30px.
+ * One tick every 3 hours on the zone's clock inside the window, labelled with its hour
+ * (`21:00`), except midnight, which is labelled with the day it begins (`Sat 17`) so a day's
+ * chart still shows where one day ends. On a phone only the ticks on a 6-hour boundary keep
+ * their label: three hours is ~37px of chart at 360px, and a label ~30px.
  */
-export function hourTicks(from: number, to: number): ActivityTick[] {
+export function hourTicks(from: number, to: number, offsetOf: OffsetOf = null): ActivityTick[] {
     return ticksEvery(
         from,
         to,
         HOUR_TICK_SECONDS,
-        (at) => (at % DAY === 0 ? dayLabel(at) : clock(at)),
-        (at) => at % PHONE_HOUR_TICK_SECONDS === 0
+        offsetOf,
+        (at, local) => (local % DAY === 0 ? dayLabel(at, offsetOf) : clock(at, offsetOf)),
+        (_, local) => local % PHONE_HOUR_TICK_SECONDS === 0
     );
 }
 
 /**
- * A tick on every multiple of `every` seconds since the epoch inside the window, labelled
- * by `label` unless it starts past {@link LAST_LABELLED_TICK_PERCENT}, and kept on a phone
- * where `phone` says so, given the instant and the tick's place from the first.
+ * How finely {@link ticksEvery} looks for a boundary. Every zone's offset from UTC is a
+ * whole number of quarter hours, so a boundary on the zone's clock is always on this grid.
+ */
+const TICK_SCAN_SECONDS = 15 * MINUTE;
+
+/**
+ * A tick on every multiple of `every` seconds on the zone's clock inside the window, found
+ * by looking at each quarter hour and asking the zone what time it reads there — so a clock
+ * change in the window moves the ticks after it, rather than one offset being assumed for
+ * all of them. A clock that goes back reads some times twice (the Azores read 00:00 twice on
+ * the last Sunday of October): a boundary is ticked once, at the first instant that reads it,
+ * so a tick never reads the same as or earlier than the one before it. Labelled by `label`
+ * unless it starts past {@link LAST_LABELLED_TICK_PERCENT}, and kept on a phone where `phone`
+ * says so. `label` is given the instant and the zone's seconds at it; `phone`, the tick's
+ * place from the first and the zone's seconds.
  */
 function ticksEvery(
     from: number,
     to: number,
     every: number,
-    label: (at: number) => string,
-    phone: (at: number, index: number) => boolean
+    offsetOf: OffsetOf,
+    label: (at: number, local: number) => string,
+    phone: (index: number, local: number) => boolean
 ): ActivityTick[] {
     const ticks: ActivityTick[] = [];
-    for (let at = Math.ceil(from / every) * every; at <= to; at += every) {
+    let lastTicked = -Infinity;
+    for (let at = Math.ceil(from / TICK_SCAN_SECONDS) * TICK_SCAN_SECONDS; at <= to; at += TICK_SCAN_SECONDS) {
+        const local = localSeconds(at, offsetOf);
+        if (local % every !== 0 || local <= lastTicked) continue;
+        lastTicked = local;
         const percent = xPercent(at, from, to);
         ticks.push({
             percent,
-            label: percent <= LAST_LABELLED_TICK_PERCENT ? label(at) : null,
-            phone: phone(at, ticks.length),
+            label: percent <= LAST_LABELLED_TICK_PERCENT ? label(at, local) : null,
+            phone: phone(ticks.length, local),
         });
     }
     return ticks;
@@ -134,10 +188,10 @@ function ticksEvery(
  * whenever the window crosses a midnight. At 30 days two days is ~20px of chart on a
  * phone, so a phone keeps every third label, six days apart.
  */
-export function axisTicks(from: number, to: number, range: ActivityRange): ActivityTick[] {
-    if (range.id === '24h') return hourTicks(from, to);
-    if (range.id === '30d') return dayTicks(from, to, { everyDays: 2, phoneEvery: 3 });
-    return dayTicks(from, to);
+export function axisTicks(from: number, to: number, range: ActivityRange, offsetOf: OffsetOf = null): ActivityTick[] {
+    if (range.id === '24h') return hourTicks(from, to, offsetOf);
+    if (range.id === '30d') return dayTicks(from, to, { everyDays: 2, phoneEvery: 3 }, offsetOf);
+    return dayTicks(from, to, DAILY_TICKS, offsetOf);
 }
 
 /**
@@ -181,7 +235,7 @@ function roundStep(atLeast: number): number {
 export function linePath(points: RaidsInProgressPoint[], from: number, to: number, max: number): string {
     return points
         .map((point, index) => {
-            const x = (xPercent((point.start + point.end) / 2, from, to) / 100) * CHART_WIDTH;
+            const x = (stepCentrePercent(point.start, point.end, from, to) / 100) * CHART_WIDTH;
             return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(point.total, max))}`;
         })
         .join('');
@@ -242,9 +296,9 @@ export function beforeData(
     return { startPercent: 0, endPercent, widthPercent: endPercent };
 }
 
-/** The legend line for {@link beforeData}'s shade, naming where the data starts in UTC. */
-export function describeBeforeData(countedFrom: number): string {
-    return `Shaded at the left: no data before ${formatInstant(countedFrom)}. Older raid reports are no longer stored.`;
+/** The legend line for {@link beforeData}'s shade, naming where the data starts (in UTC when there is no offset). */
+export function describeBeforeData(countedFrom: number, offsetOf: OffsetOf = null): string {
+    return `Shaded at the left: no data before ${formatInstant(countedFrom, offsetOf)}. Older raid reports are no longer stored.`;
 }
 
 /**
@@ -278,21 +332,31 @@ export function provisionalLegend(stepSeconds: number): string {
 }
 
 /**
- * The sentence naming the busiest step, for the caption and the chart's accessible name,
- * worded for the range: "Busiest 10 minutes" over the last 24 hours, "Busiest hour" over 7
- * days, "Busiest 3 hours" over 30. A step that rounds to one raid says "1 raid".
+ * The sentence naming the busiest step under the chart, worded for the range: "Busiest 10
+ * minutes" over the last 24 hours, "Busiest hour" over 7 days, "Busiest 3 hours" over 30. A
+ * step that rounds to one raid says "1 raid". The window is on the reader's clock, or UTC
+ * with no offset.
  */
-export function describePeak(
-    busiest: RaidsInProgressPoint | null,
-    range: ActivityRange
-): { caption: string; ariaLabel: string } {
+export function peakCaption(busiest: RaidsInProgressPoint | null, range: ActivityRange, offsetOf: OffsetOf = null): string {
+    if (busiest === null) return `No raids counted in the last ${range.span} yet.`;
+    return `Busiest ${range.step}: ${peakRaids(busiest)}, ${formatStepWindow(busiest.start, busiest.end, offsetOf)}.`;
+}
+
+/**
+ * The chart's accessible name: what it measures and, as in {@link peakCaption}, its busiest
+ * step. Always UTC: the name is read before any script runs, and must not change under a
+ * screen reader.
+ */
+export function peakAriaLabel(busiest: RaidsInProgressPoint | null, range: ActivityRange): string {
     const measure = `Raids in progress per ${range.step} over the last ${range.span}`;
-    if (busiest === null) {
-        return { caption: `No raids counted in the last ${range.span} yet.`, ariaLabel: `${measure}: none counted yet` };
-    }
+    if (busiest === null) return `${measure}: none counted yet`;
+    return `${measure}, peaking at ${peakRaids(busiest)}, ${formatStepWindow(busiest.start, busiest.end)}`;
+}
+
+/** `1,828 raids in progress`: the busiest step's average, rounded. */
+function peakRaids(busiest: RaidsInProgressPoint): string {
     const count = formatRaidCount(busiest.total);
-    const peak = `${count} ${count === '1' ? 'raid' : 'raids'} in progress, ${formatStepWindow(busiest.start, busiest.end)}`;
-    return { caption: `Busiest ${range.step}: ${peak}.`, ariaLabel: `${measure}, peaking at ${peak}` };
+    return `${count} ${raidNoun(count)} in progress`;
 }
 
 /**
@@ -310,16 +374,6 @@ export function busiestStep(points: RaidsInProgressPoint[]): RaidsInProgressPoin
 /** The highest total of any step, estimates included, so the axis never clips the dashed line. */
 export function tallestStep(points: RaidsInProgressPoint[]): number {
     return Math.max(0, ...points.map((point) => point.total));
-}
-
-/** A step's window as a reader would say it: `Sat 17 Oct, 20:00–21:00 UTC`. */
-export function formatStepWindow(start: number, end: number): string {
-    return `${dateLabel(start)}, ${clock(start)}–${clock(end)} UTC`;
-}
-
-/** An instant as a reader would say it: `Sat 26 Sep, 06:00 UTC`. */
-function formatInstant(at: number): string {
-    return `${dateLabel(at)}, ${clock(at)} UTC`;
 }
 
 /**
@@ -350,25 +404,14 @@ function ageSpan(shortest: number, stepSeconds: number): string {
         : `${formatDuration(shortest)} to ${formatDuration(longest)}`;
 }
 
+/** `raid` for a count that reads "1", else `raids`: the count as {@link formatRaidCount} wrote it. */
+export function raidNoun(count: string): string {
+    return count === '1' ? 'raid' : 'raids';
+}
+
 /** A count of raids as the chart labels it: whole, with thousands separated (`1,828`). */
 export function formatRaidCount(value: number): string {
     return Math.round(value).toLocaleString('en-GB');
-}
-
-/** The UTC weekday and day of the month an instant falls on: `Sat 17`. */
-function dayLabel(at: number): string {
-    const date = new Date(at * 1000);
-    return `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()}`;
-}
-
-/** The UTC weekday, day and month an instant falls on: `Sat 17 Oct`. */
-function dateLabel(at: number): string {
-    return `${dayLabel(at)} ${MONTHS[new Date(at * 1000).getUTCMonth()]}`;
-}
-
-/** `HH:MM` in UTC. */
-function clock(at: number): string {
-    return new Date(at * 1000).toISOString().slice(11, 16);
 }
 
 function round(value: number): number {

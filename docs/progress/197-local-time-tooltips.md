@@ -54,6 +54,7 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] S5 `src/app/activity/activity-geometry.ts` — one `stepCentrePercent` for the line and the tooltips
    - [x] S6 `GRIDLINE_STROKE` shared by the x and y gridlines
    - [x] S7 `src/app/activity/activity-tooltips.test.ts` — a JSON round trip leaves the tooltip's text unchanged
+   - [x] `npm run mutate:diff -- 8f892c9...HEAD --typecheck` at `abf90be` — 100.0% overall (18/18 scored), 100.0% covered, 2 compile errors discarded, loops 0, no survivors; suite at `abf90be`: lint 0 errors (29 warnings), tsc, build, 797 vitest, 190 e2e, visual:check 68
 
 ## Notes
 

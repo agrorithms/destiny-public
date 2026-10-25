@@ -825,6 +825,9 @@ test.describe('the per-raid panel', () => {
 
         await expect.poll(() => raidsParam(page)).toBeNull();
         expect(await drawnRaids(page)).toEqual(keys(DEFAULT_PICKS));
+        // The picker shows what is drawn: the top raids come back ticked, the raid unpicked is not.
+        for (const pick of DEFAULT_PICKS) await expect(option(page, pick.name)).toHaveAttribute('aria-selected', 'true');
+        await expect(option(page, LAST_WISH.name)).toHaveAttribute('aria-selected', 'false');
     });
 
     test('refuses a sixth raid and says why', async ({ page }) => {

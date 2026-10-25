@@ -46,7 +46,7 @@ export function parseActivityRange(searchParams: Record<string, string | string[
  * The link to a preset. The range is always spelled out, 7 days included, so every URL
  * the control writes says which chart it is.
  */
-export function activityRangeHref(id: ActivityRangeId): string {
+export function activityRangeHref(id: ActivityRangeId, raids: readonly string[] = []): string {
     return `/activity?${new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id })}`;
 }
 

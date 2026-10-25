@@ -417,3 +417,32 @@ export function formatRaidCount(value: number): string {
 function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
+
+/** One raid's line on the bottom panel. */
+export interface RaidLine {
+    key: string;
+    path: string;
+}
+
+/** The bottom panel: its own y-axis, and a line for each raid picked. */
+export interface RaidPanel {
+    axis: ValueAxis;
+    lines: RaidLine[];
+}
+
+export function raidPanel(
+    _points: RaidsInProgressPoint[],
+    _keys: readonly string[],
+    _from: number,
+    _to: number
+): RaidPanel {
+    throw new Error('not implemented');
+}
+
+export function notCounted(_series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>): ShadedSpan {
+    throw new Error('not implemented');
+}
+
+export function notCountedLegend(_stepSeconds: number): string {
+    throw new Error('not implemented');
+}

@@ -26,10 +26,12 @@ export interface ActivitySlot {
     value: string;
     /** True for a Provisional step, whose number can still change. */
     estimate: boolean;
+    /** One line per raid picked, `Last Wish: 4`, in the picked order. Empty on a Provisional step. */
+    raids: string[];
 }
 
 /** One slot per point, in the series' order. */
-export function activitySlots(points: RaidsInProgressPoint[]): ActivitySlot[] {
+export function activitySlots(points: RaidsInProgressPoint[], _raids: ReadonlyArray<{ key: string; name: string }> = []): ActivitySlot[] {
     return points.map((point) => {
         const count = formatRaidCount(point.total);
         return {
@@ -37,6 +39,7 @@ export function activitySlots(points: RaidsInProgressPoint[]): ActivitySlot[] {
             end: point.end,
             value: `${count} average ${raidNoun(count)} in progress`,
             estimate: point.provisional,
+            raids: [],
         };
     });
 }
@@ -56,7 +59,7 @@ export function tooltipText(slot: ActivitySlot, offsetOf: OffsetOf): string {
  * last step. By time, not by an equal share of the width, because the chart's axis is the
  * window `[from, to]`, which neither starts on a step boundary nor ends on one.
  */
-export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[], from: number, to: number): number | null {
+export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[], from: number, to: number, _countedOnly = false): number | null {
     const at = from + fraction * (to - from);
     const index = slots.findIndex((slot) => slot.start <= at && at < slot.end);
     return index === -1 ? null : index;

@@ -15,9 +15,12 @@ import {
     hourTicks,
     linePath,
     linePaths,
+    notCounted,
+    notCountedLegend,
     peakAriaLabel,
     peakCaption,
     provisionalLegend,
+    raidPanel,
     tallestStep,
     tooRecent,
     tooRecentLegend,
@@ -617,5 +620,91 @@ describe('the sentences in a reader\'s time zone', () => {
         expect(describeBeforeData(1792195200 - 21 * DAY + 6 * HOUR, KATHMANDU)).toBe(
             'Shaded at the left: no data before Sat 26 Sep, 11:45. Older raid reports are no longer stored.'
         );
+    });
+});
+
+describe('the per-raid panel (#198)', () => {
+    // A 4-hour window of 1-hour steps. Each step's vertex is at its midpoint, so the first
+    // three sit 12.5%, 37.5% and 62.5% across a 1,000-unit chart: x = 125, 375, 625. The
+    // fourth step is a Provisional one with a total of 99, which no raid line may reach.
+    const from = 0;
+    const to = 4 * HOUR;
+    const counted = (index: number, total: number, raids?: Record<string, number>) => ({
+        start: index * HOUR,
+        end: (index + 1) * HOUR,
+        total,
+        provisional: false,
+        raids,
+    });
+    const points = [
+        counted(0, 50, { alpha: 1, beta: 0, gamma: 40 }),
+        counted(1, 60, { alpha: 2, beta: 1, gamma: 40 }),
+        counted(2, 70, { alpha: 4, beta: 2, gamma: 40 }),
+        { start: 3 * HOUR, end: 4 * HOUR, total: 99, provisional: true },
+    ];
+
+    it('draws one line per picked raid, in the picked order, each at its own heights', () => {
+        // The panel's axis tops out at 4 (alpha's busiest step), so a height of v sits at
+        // y = 200 * (1 - v / 4): alpha 150, 100, 0; beta 200, 150, 100.
+        const panel = raidPanel(points, ['alpha', 'beta'], from, to);
+
+        expect(panel.lines).toEqual([
+            { key: 'alpha', path: 'M125,150L375,100L625,0' },
+            { key: 'beta', path: 'M125,200L375,150L625,100' },
+        ]);
+    });
+
+    it('scales the y-axis from the picked raids alone, whatever the total or any other raid did', () => {
+        // The total peaks at 99 and gamma holds 40, but only alpha and beta are picked, so the
+        // axis is the one a 4 needs: a quiet raid is not flattened under the total's scale.
+        const panel = raidPanel(points, ['alpha', 'beta'], from, to);
+
+        expect(panel.axis).toEqual(valueAxis(4));
+        expect(panel.axis.max).toBe(4);
+    });
+
+    it('stops each line at the last counted step', () => {
+        // The Provisional step is not drawn for any raid, whatever raid values it might hold.
+        const estimated = [...points.slice(0, 3), { ...points[3], raids: { alpha: 80, beta: 80 } }];
+
+        const panel = raidPanel(estimated, ['alpha', 'beta'], from, to);
+
+        expect(panel.lines.map((line) => line.path.split('L').length)).toEqual([3, 3]);
+        expect(panel.axis.max).toBe(4);
+    });
+
+    it('reads a raid a counted step has no value for as quiet', () => {
+        const sparse = [counted(0, 5, { alpha: 4 }), counted(1, 5)];
+
+        const [alpha] = raidPanel(sparse, ['alpha'], from, to).lines;
+
+        // x = 125 and 375; the second step has no record, so it is on the floor, y = 200.
+        expect(alpha.path).toBe('M125,0L375,200');
+    });
+
+    it('has an axis to the floor and a bare line when nothing is counted', () => {
+        const panel = raidPanel([points[3]], ['alpha'], from, to);
+
+        expect(panel.axis).toEqual(valueAxis(0));
+        expect(panel.lines).toEqual([{ key: 'alpha', path: '' }]);
+        expect(raidPanel(points, [], from, to).lines).toEqual([]);
+    });
+});
+
+describe('the span the per-raid panel shades (#198)', () => {
+    it('runs from where counting ends to now, so the newest hours are bare', () => {
+        // Per-raid lines stop where counting does. A window of 1,000 s counted until 750 s
+        // shades the last quarter.
+        expect(notCounted({ from: 0, to: 1000, countedUntil: 750 })).toEqual({
+            startPercent: 75,
+            endPercent: 100,
+            widthPercent: 25,
+        });
+    });
+
+    it('is worded for the step, from the 2-hour mark', () => {
+        expect(notCountedLegend(HOUR)).toBe('Shaded: the last 2 to 3 hours, not counted yet.');
+        expect(notCountedLegend(10 * 60)).toBe('Shaded: the last 2 hours to 2 hours 10 minutes, not counted yet.');
+        expect(notCountedLegend(3 * HOUR)).toBe('Shaded: the last 2 to 5 hours, not counted yet.');
     });
 });

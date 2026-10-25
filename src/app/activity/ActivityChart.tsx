@@ -73,6 +73,10 @@ export function ActivityChart({ series }: { series: RaidsInProgressSeries }) {
     const shade = tooRecent(series);
     const missing = beforeData(series);
 
+    // `data-window-from` / `data-window-to` are for e2e/activity.spec.ts and nothing in the
+    // app reads them. The window is request-time state ("now" at render), which the seed
+    // cannot reproduce, so the spec reads it here to turn a label's position into the instant
+    // that label marks.
     return (
         <figure data-testid="activity-chart" data-window-from={from} data-window-to={to} className="ui-card space-y-3 p-4">
             <div className="flex gap-2">

@@ -48,7 +48,7 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [x] P1 `src/app/activity/activity-time.test.ts` — a real half-hour case (India, +5:30); the Kathmandu case named a quarter-hour one; `e2e/activity.spec.ts` header
    - [ ] P2 `docs/e2e-coverage.md` — a deliberate break the counted-step hover spec catches, in the break table
    - [x] P3 + S8 `src/app/activity/activity-geometry.ts` — a midnight the clock reads twice (the Azores fall-back) is ticked once, at the first; tests for 7d and 24h, red first (two `Sun 25` ticks)
-   - [ ] P4 + S2 `src/app/activity/ActivityLocal.tsx` — no zone name, no offset: UTC everywhere
+   - [x] P4 + S2 `src/app/activity/ActivityLocal.tsx`, `activity-time.ts` (`readerOffsetOf`) — no zone name, no offset: UTC everywhere; spec red first at `0b32180`
    - [x] S3 `src/app/activity/activity-geometry.test.ts` — the busiest-step comment's stale clause
    - [x] S4 `src/app/activity/activity-time.ts` — `dateLabel` private, tested through `formatInstant`
    - [x] S5 `src/app/activity/activity-geometry.ts` — one `stepCentrePercent` for the line and the tooltips

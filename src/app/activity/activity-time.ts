@@ -74,6 +74,16 @@ export function formatInstant(at: number, offsetOf: OffsetOf = null): string {
     return `${dateLabel(at, offsetOf)}, ${clock(at, offsetOf)}${suffix(offsetOf)}`;
 }
 
+/**
+ * The offset every label on the page is read with, given the zone the browser names: the
+ * browser's own when it names one, and none — UTC — when it does not. The intro says
+ * "Times are UTC." for a zone it cannot name ({@link describeTimeZone}), so the labels must
+ * be UTC too, even though the browser's clock still has an offset.
+ */
+export function readerOffsetOf(zone: string | null, browserOffsetOf: (at: number) => number): OffsetOf {
+    return zone === null ? null : browserOffsetOf;
+}
+
 /** The intro's sentence naming the zone every time on the page is in. */
 export function describeTimeZone(zone: string | null): string {
     return zone === null ? 'Times are UTC.' : `Times are in your time zone (${zone}).`;

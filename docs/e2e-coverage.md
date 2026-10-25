@@ -2605,8 +2605,8 @@ assertion were seen failing before the code existed.
 
 ## 2026-10-24 — #197 the Raid Activity tooltips in local time
 
-`e2e/activity.spec.ts`, **ten new specs**: six under "the tooltips" and four under "in the reader's
-time zone". The suite is now **thirty-one flows, 189 tests including the two canary setups**.
+`e2e/activity.spec.ts`, **eleven new specs**: six under "the tooltips" and five under "in the reader's
+time zone". The suite is now **thirty-one flows, 190 tests including the two canary setups**.
 `e2e/visual.spec.ts` and the rest of `activity.spec.ts` now pin `timezoneId: 'UTC'` with
 `test.use` (the config is unchanged), because the chart's labels follow the browser's zone: the
 JavaScript-on specs read the reader's clock without a " UTC" suffix, and the JavaScript-off ones
@@ -2643,6 +2643,12 @@ instant it marks. No seed change.
    hour, since counting starts on a 3-hour UTC boundary), with no UTC.
 10. **JavaScript off, in Kathmandu:** the intro reads "Times are UTC.", the caption ends " UTC.", and
     the tick labels sit on UTC instants.
+11. **A browser that names no zone, in Kathmandu** (`resolvedOptions().timeZone` stubbed to `''`
+    by an init script): once hydrated (a tooltip shows), the tooltip ends " UTC", the intro reads
+    "Times are UTC.", the caption ends " UTC.", and the tick labels sit on UTC instants, though
+    the browser's offset is still Kathmandu's. Added in fix loop 1 and seen red first (`0b32180`):
+    the tooltip read `2 average raids in progress, Sun 25 Oct, 02:45–02:55`, Kathmandu's clock with
+    no zone named.
 
 The existing JavaScript-off specs also check the ticks sit on UTC instants.
 
@@ -2675,8 +2681,8 @@ with the tooltip still open (`toHaveCount(0)`, received 1). All reverted; green 
 - A real clock change inside a 30-day window: the per-instant offset is pinned in Vitest
   (`activity-time.test.ts`, `activity-geometry.test.ts`, London on 25 October 2026); the browser
   spec uses a zone with no clock change.
-- A zone whose offset the browser cannot name, or one whose midnight does not exist on a day (a
-  spring-forward at midnight): that tick is skipped. A fall-back onto midnight (the Azores, last
+- A zone whose midnight does not exist on a day (a spring-forward at midnight): that tick is
+  skipped. A fall-back onto midnight (the Azores, last
   Sunday of October) reads 00:00 twice and is ticked once, at the first: Vitest's
   (`activity-geometry.test.ts`), not a spec's.
 - The y-axis, the legends' prose and the aria-label's wording beyond "UTC".

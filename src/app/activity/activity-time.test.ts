@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clock, dayLabel, describeTimeZone, formatInstant, formatStepWindow, type OffsetOf } from './activity-time';
+import { clock, dayLabel, describeTimeZone, formatInstant, formatStepWindow, readerOffsetOf, type OffsetOf } from './activity-time';
 
 /**
  * The Raid Activity chart's clock labels in a reader's time zone (#197), or in UTC when there
@@ -98,6 +98,19 @@ describe('the pieces a tick label is made of', () => {
         expect(clock(MIDNIGHT + 21 * HOUR, null)).toBe('21:00');
         expect(clock(MIDNIGHT + 21 * HOUR, KATHMANDU)).toBe('02:45');
         expect(clock(MIDNIGHT + 21 * HOUR, PACIFIC)).toBe('13:00');
+    });
+});
+
+describe('the offset the page reads its labels with', () => {
+    // The intro names the zone or says "Times are UTC."; the labels must agree with it.
+    const browser = () => 345;
+
+    it('is the browser\'s when the browser names its zone', () => {
+        expect(formatInstant(MIDNIGHT, readerOffsetOf('Asia/Kathmandu', browser))).toBe('Sat 17 Oct, 05:45');
+    });
+
+    it('is none, so every label is UTC and says so, when the browser names no zone', () => {
+        expect(formatInstant(MIDNIGHT, readerOffsetOf(null, browser))).toBe('Sat 17 Oct, 00:00 UTC');
     });
 });
 

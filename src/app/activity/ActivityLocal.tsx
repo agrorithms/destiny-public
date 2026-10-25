@@ -11,7 +11,7 @@ import {
     peakCaption,
 } from './activity-geometry';
 import type { ActivityRange } from './activity-range';
-import { describeTimeZone, type OffsetOf } from './activity-time';
+import { describeTimeZone, readerOffsetOf, type OffsetOf } from './activity-time';
 import { slotAtFraction, slotCentreFraction, tooltipText, type ActivitySlot } from './activity-tooltips';
 
 /**
@@ -21,10 +21,11 @@ import { slotAtFraction, slotCentreFraction, tooltipText, type ActivitySlot } fr
  *
  * **Each piece renders in UTC first.** The server cannot know the reader's zone, so it
  * renders every one of these with no offset — what a reader with JavaScript off sees, and
- * what hydration must match — and the browser's offset arrives afterwards through
- * {@link useOffsetOf}: `useSyncExternalStore` with a server snapshot of null, so there is no
- * hydration mismatch and no flash of anything but UTC. The zone name works the same way
- * ({@link LocalZoneNote}).
+ * what hydration must match — and the reader's zone arrives afterwards through
+ * {@link useZoneName}: `useSyncExternalStore` with a server snapshot of null, so there is no
+ * hydration mismatch and no flash of anything but UTC. The offset follows the zone name
+ * ({@link useOffsetOf}), so a browser that names no zone reads UTC everywhere, as its intro
+ * says.
  *
  * **What it changes:** the x gridlines and their labels (the zone's midnights and 3-hour
  * marks are not UTC's), the hover and tap tooltips, and the sentences that name a time. What
@@ -42,15 +43,6 @@ function browserOffsetOf(at: number): number {
     return -new Date(at * 1000).getTimezoneOffset();
 }
 
-/** The reader's offset, or null — UTC — until the browser has taken over from the server's render. */
-function useOffsetOf(): OffsetOf {
-    return useSyncExternalStore(
-        subscribe,
-        () => browserOffsetOf,
-        () => null
-    );
-}
-
 /** The reader's IANA zone (`Asia/Kathmandu`), or null on the server and where the browser will not say. */
 function useZoneName(): string | null {
     return useSyncExternalStore(
@@ -58,6 +50,11 @@ function useZoneName(): string | null {
         () => Intl.DateTimeFormat().resolvedOptions().timeZone || null,
         () => null
     );
+}
+
+/** The reader's offset, or null — UTC — on the server's render and where the browser names no zone. */
+function useOffsetOf(): OffsetOf {
+    return readerOffsetOf(useZoneName(), browserOffsetOf);
 }
 
 /** The intro's sentence about the zone every time on the page is in. */

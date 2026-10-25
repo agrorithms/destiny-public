@@ -40,6 +40,14 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 8. Simplify
    - [x] /simplify pass — `48a1e54` (raid picker: `useOptimistic`, one refusal path, no `emptyLabel`), `0e5c937` (shared `Gridlines` and `shadeToNow`, raid keys derived once, doc comments rewrapped); no test files changed; suite green at `0e5c937` (vitest 839/839, e2e 204/204, visual:check 68/68)
 
+9. Review fixes — fix loop 1 (P1 declined)
+   - [x] S1 `e2e/activity.spec.ts` — the bottom panel's tooltip seen on a counted step before the count of 0 over the estimate (deliberate break: `countedOnly` forced off in `ActivityLocal.tsx`, red at the new `toHaveCount(0)`)
+   - [ ] S2 `tests/db/raids-in-progress.test.ts` — the zero-activity test reaches `topRaids`' `time > 0` filter
+   - [ ] S3 `RaidOption` exported from `RaidMultiSelect.tsx` and used for every `{ key, name }` raid list
+   - [ ] S4 `ACTIVITY_RAIDS_PARAM` defined in `activity-raids.ts`, imported by `activity-range.ts`
+   - [ ] S5 `ActivityChart.tsx` — one `Panel` wrapper for both `<svg>`s
+   - [x] S6 `RaidMultiSelect.tsx` — the capped picker's `role="status"` region mounted empty with the open list (spec red before the fix: `toBeAttached()` not found)
+
 ## Sweep timing
 
 `getRaidsInProgress` on a copy of `data/raid-tracker.backup-2026-10-25.db` (the backup itself opened by nothing; copied

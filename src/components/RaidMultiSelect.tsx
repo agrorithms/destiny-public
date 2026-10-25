@@ -252,13 +252,17 @@ export default function RaidMultiSelect({ raids, selected, onChange, maxSelected
                         })}
                     </div>
 
-                    {refused && limitMessage && (
+                    {/* A live region mounted empty with the open list, and the text put in on a
+                        refusal: many screen readers only announce a change to a region they
+                        already know, not one that arrives with its text. Empty, it takes no
+                        space. Only with a cap and a message, so the uncapped uses add nothing. */}
+                    {maxSelected !== undefined && limitMessage && (
                         <p
                             role="status"
                             data-testid="raid-limit-message"
-                            className="px-3 py-2 border-t ui-divider text-xs ui-text-primary"
+                            className={refused ? 'px-3 py-2 border-t ui-divider text-xs ui-text-primary' : undefined}
                         >
-                            {limitMessage}
+                            {refused ? limitMessage : null}
                         </p>
                     )}
 

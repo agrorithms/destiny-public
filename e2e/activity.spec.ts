@@ -834,7 +834,11 @@ test.describe('the per-raid panel', () => {
         const five = [...DEFAULT_PICKS, LAST_WISH, CROTAS];
         await page.goto(`/activity?raids=${keys(five).join(',')}`);
         await openPicker(page);
-        await expect(page.getByTestId('raid-limit-message')).toHaveCount(0);
+        // The live region is there, empty, before any refusal: a screen reader announces text
+        // put into a region it already knows, and often misses one mounted with its text.
+        await expect(page.getByTestId('raid-limit-message')).toBeAttached();
+        await expect(page.getByTestId('raid-limit-message')).toBeEmpty();
+        await expect(page.getByTestId('raid-limit-message')).toBeHidden();
 
         await clickRefused(page, QUIET_PICKS[0].name);
 
@@ -939,7 +943,11 @@ test.describe('the per-raid panel', () => {
             await waitForClientStep(page);
             const [lastCounted, firstEstimate] = await dashedFractions(page);
 
-            // The bottom panel shades what is not counted yet, and says nothing there.
+            // The bottom panel shades what is not counted yet, and says nothing there. The tooltip
+            // is seen first on a counted step of the same panel, so the count of 0 below is the
+            // box going away, not a check made before React has drawn anything.
+            await hoverAt(page, lastCounted, 'raids');
+            await expect(tooltip(page)).toBeVisible();
             await hoverAt(page, firstEstimate, 'raids');
             await expect(tooltip(page)).toHaveCount(0);
 

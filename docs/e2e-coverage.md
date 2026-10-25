@@ -2759,7 +2759,7 @@ e2e -- e2e/activity.spec.ts`: 11 failed, 27 passed):
 | Break | Spec that failed |
 | --- | --- |
 | the cap never reached (`atCap = false`) | "refuses a sixth raid…" (no message), the 360px spec (no message) |
-| the panel's axis scaled from the total | "the panel has a y-axis of its own…" (axis `0 1 2 3 4 6`-like, not `0 1`) |
+| the panel's axis scaled from the total | "the panel has a y-axis of its own…" (the axis read the total's, not `0 1`) |
 | the per-raid panel finds a slot over the estimate | "over the newest hours…" (a tooltip where none is expected) |
 | the marker not spanning the panels | "draws one marker through both panels" |
 | `isRaidsParamClean` always true (no redirect) | "cleans up a ?raids=…", the JavaScript-off spec |
@@ -2767,10 +2767,9 @@ e2e -- e2e/activity.spec.ts`: 11 failed, 27 passed):
 | the picker shows its own pick, not what is drawn | "unpicking the last raid…" (the default raids not ticked) |
 | the tooltip carries no raid lines | "shows the total and each raid for the same moment…" |
 
-The break table shows the specs that did not fail first on a missing element: "the default",
-"colours", "the shade" and "the range links" had passed or failed only on the panel's absence in
-the red run, and the default, colour and shade specs saw no break of their own (Vitest holds them:
-`raidColour`, `pickRaids`, `notCounted`). All reverted; green at HEAD.
+Specs 1 (the default), 8 (colours) and 12 (the shade), and the tap half of 14, saw no break of
+their own: the red run failed them only on the panel's absence. Vitest holds what they pin
+(`pickRaids`, `raidColour`, `notCounted`). All breaks reverted; green at HEAD.
 
 ### What is still NOT covered
 

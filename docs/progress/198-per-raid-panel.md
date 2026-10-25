@@ -12,8 +12,8 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 - The cap on `RaidMultiSelect` is opt-in props only; the three existing uses pass none.
 
 1. Query, red then green (S1)
-   - [ ] `tests/db/raids-in-progress.test.ts` — per-raid split, sums, top 3, requested keys
-   - [ ] `src/lib/db/queries.ts` — `raidKeys`, `point.raids`, `series.topRaids`
+   - [x] `tests/db/raids-in-progress.test.ts` — per-raid split, sums, top 3, requested keys
+   - [x] `src/lib/db/queries.ts` — `raidKeys`, `point.raids`, `series.topRaids`
 2. Raid selection, red then green (S2)
    - [ ] `src/app/activity/activity-raids.test.ts` (new)
    - [ ] `src/app/activity/activity-raids.ts` (new)
@@ -40,7 +40,19 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 
 ## Sweep timing
 
-(filled in when S1 is green)
+`getRaidsInProgress` on a copy of `data/raid-tracker.backup-2026-10-25.db` (the backup itself opened by nothing; copied
+into the scratchpad and `RAID_TRACKER_DB_PATH` pointed at the copy), x86 WSL2, uncached, median of 3 warm runs,
+with 13 raid keys requested. Before = `f33d26c`, after = this branch at the S1 commit:
+
+| range | before | after |
+|---|---|---|
+| 24h (10 min steps) | 267 ms | 300 ms |
+| 7d (1 h steps) | 412 ms | 515 ms |
+| 30d (3 h steps) | 1050 ms | 1340 ms |
+
+Asking for no raid keys costs the same: the per-raid arrays are filled either way, because the top 3 needs them.
+The extra is the third column and a map lookup per row. Behind the 300 s cache and, with D1, one entry per range,
+so a visitor never pays it once warm.
 
 ## Surviving mutants
 

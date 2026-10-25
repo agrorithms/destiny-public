@@ -12,8 +12,7 @@
  *
  * Pure, and free of anything that touches a database or Node, so the client steps that
  * rewrite labels (./ActivityLocal.tsx) can import it. The pieces (`dayLabel`, `clock`,
- * `localSeconds`) are exported for the tick labels in ./activity-geometry.ts, and `dateLabel`
- * for its own test.
+ * `localSeconds`) are exported for the tick labels in ./activity-geometry.ts.
  */
 
 /** Minutes east of UTC at an instant (unix seconds), or null for UTC. */
@@ -42,7 +41,7 @@ export function dayLabel(at: number, offsetOf: OffsetOf): string {
 }
 
 /** The weekday, day and month an instant falls on in the zone: `Sat 17 Oct`. */
-export function dateLabel(at: number, offsetOf: OffsetOf): string {
+function dateLabel(at: number, offsetOf: OffsetOf): string {
     return `${dayLabel(at, offsetOf)} ${MONTHS[wallClock(at, offsetOf).getUTCMonth()]}`;
 }
 

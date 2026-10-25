@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clock, dateLabel, dayLabel, describeTimeZone, formatInstant, formatStepWindow, type OffsetOf } from './activity-time';
+import { clock, dayLabel, describeTimeZone, formatInstant, formatStepWindow, type OffsetOf } from './activity-time';
 
 /**
  * The Raid Activity chart's clock labels in a reader's time zone (#197), or in UTC when there
@@ -71,6 +71,12 @@ describe('an instant', () => {
         expect(formatInstant(at, KATHMANDU)).toBe('Sat 26 Sep, 11:45');
     });
 
+    it('names the date the zone is on: the second before midnight is the day before', () => {
+        expect(formatInstant(MIDNIGHT, null)).toBe('Sat 17 Oct, 00:00 UTC');
+        expect(formatInstant(MIDNIGHT - 1, null)).toBe('Fri 16 Oct, 23:59 UTC');
+        expect(formatInstant(MIDNIGHT, KATHMANDU)).toBe('Sat 17 Oct, 05:45');
+    });
+
     it('carries into the next month in a zone east of UTC', () => {
         // 20:00 UTC on Saturday 31 Oct is 01:45 on Sunday 1 Nov in Kathmandu.
         expect(formatInstant(1793476800, KATHMANDU)).toBe('Sun 1 Nov, 01:45');
@@ -86,9 +92,6 @@ describe('the pieces a tick label is made of', () => {
     it('names the day and the date as the zone sees them', () => {
         expect(dayLabel(MIDNIGHT, null)).toBe('Sat 17');
         expect(dayLabel(MIDNIGHT, PACIFIC)).toBe('Fri 16');
-        expect(dateLabel(MIDNIGHT, null)).toBe('Sat 17 Oct');
-        expect(dateLabel(MIDNIGHT, KATHMANDU)).toBe('Sat 17 Oct');
-        expect(dateLabel(MIDNIGHT - 1, null)).toBe('Fri 16 Oct');
     });
 
     it('reads the hour and minute in the zone', () => {

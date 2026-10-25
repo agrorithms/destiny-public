@@ -2696,3 +2696,88 @@ Reverted; green at HEAD.
   (`activity-geometry.test.ts`), not a spec's.
 - The y-axis, the legends' prose and the aria-label's wording beyond "UTC".
 - Later tickets: the per-raid panel (#198, #199) and its second part for the hover.
+
+## 2026-10-25 — #198 the Raid Activity per-raid panel and its raid picker
+
+`e2e/activity.spec.ts`, **fourteen new specs** in one block, "the per-raid panel". The suite is now
+**thirty-two flows, 204 tests including the two canary setups**. Two existing specs changed because
+a counted step's tooltip now has raid lines under the total's: "hovering a counted step…" and the
+no-zone spec's UTC check read the tooltip's *first line* through a new `totalLine()` helper (the
+whole box was compared before, and now holds the raid lines too). Every other existing assertion is
+as it was.
+
+**What the page gained:** a second panel under the total (`data-timeline-part="raids"`) with a line
+per picked raid (`activity-raid-line`, `data-raid`), its own y-axis (`activity-raid-axis`), a shade
+over the steps not counted yet (`activity-not-counted`) and a legend of swatch plus name
+(`activity-raid-legend`); the raid picker (`activity-raid-picker`), the site's multi-select capped
+at five (`raid-limit-message` says why a sixth is refused); one tooltip box over both panels with
+a named line per raid and one marker through both (`activity-tooltip-marker`); `?raids=` in the
+URL, cleaned by a redirect. Five series colours, `--ui-series-1` to `-5` in `globals.css`.
+
+**Seed:** `seedActivityRuns` gained `ACTIVITY_OTHER_RAIDS` (King's Fall 4 raid-hours, Vault of
+Glass 3, Last Wish 2, Crota's End 1), appended after the existing runs so their instance ids are
+unchanged, each start at least 4 hours from any other run and 36 hours back or more. **No existing
+`activity.spec.ts` constant changed:** the hourly peak is still 3 (only the three Salvation's Edge
+runs overlap), the 30-day peak still 1 (no two runs share a 3-hour step), and nothing lands in the
+last 24 hours. Over 7 and 30 days the three busiest raids are Salvation's Edge, King's Fall and
+Vault of Glass; over 24 hours only Salvation's Edge has run.
+
+1. **The default.** On a first visit the panel draws the three busiest raids in that order, with a
+   legend naming them, and the URL has no `raids`; at `?range=24h` it draws Salvation's Edge alone.
+2. **A y-axis of its own.** With only King's Fall picked the bottom axis reads 0, 1 while the total's
+   reaches at least the seeded peak of 3.
+3. **Picking and unpicking.** Picking Last Wish writes the four keys to `?raids=`, in order, and the
+   panel and legend follow; a reload keeps them; unpicking King's Fall writes three and a reload keeps those.
+4. **Unpicking the last raid** drops `raids`, draws the top three and shows them ticked in the picker.
+5. **A sixth raid is refused** with "Pick up to five raids", the option stays unselected, the URL and
+   the panel are unchanged; unpicking one lets the same pick through.
+6. **Cleanup.** `?raids=nope,kings_fall` becomes `?raids=kings_fall`; six valid keys become the first
+   five with `range=30d` kept; `?raids=nope` loses the parameter and draws the top three.
+7. **The range links** carry `raids` only when the URL named some.
+8. **Colours.** Three different line colours in light and in dark, the legend's swatches equal to the
+   lines', and the dark ones not the light ones.
+9. **One hover, both panels.** At the seeded peak the box reads the total's line then `Salvation's
+   Edge: 3`, `King's Fall: 0`, `Vault of Glass: 0`, the same on either panel; on the first King's Fall
+   step, found from that raid's own line, `1 average raid in progress` and `King's Fall: 1`.
+10. **One marker** from the top of the total panel to the bottom of the per-raid one.
+11. **The newest hours.** At 24h a hover on the bottom panel over the estimate shows nothing, on the
+    top panel the estimate with no raid lines, and on the last counted step both.
+12. **The shade** over the bottom panel is wider than the total's too-recent shade, and its key reads
+    "Shaded: the last 2 to 3 hours, not counted yet."
+13. **JavaScript off:** the default raids drawn, and `?raids=nope,last_wish` redirected to
+    `?raids=last_wish` with that line drawn.
+14. **At 360px (touch):** the page, the open picker, the refused-sixth message, a tap on the bottom
+    panel (a five-raid, six-line box) and the legend of five names, with `expectNoOverflow` after each
+    and the picker, message and tooltip inside the viewport.
+
+**Bite proof — the red run.** The specs (and the seed) were committed first (`eb005c4`) against the
+page as it was: of 16 tests (14 new specs and the two canary setups) **14 failed and 2 passed**, the
+canaries. Every new spec failed, but most on the picker or the panel not being there, which says
+nothing of their later assertions, so eight of those were broken on purpose in one build (`npm run
+e2e -- e2e/activity.spec.ts`: 11 failed, 27 passed):
+
+| Break | Spec that failed |
+| --- | --- |
+| the cap never reached (`atCap = false`) | "refuses a sixth raid…" (no message), the 360px spec (no message) |
+| the panel's axis scaled from the total | "the panel has a y-axis of its own…" (axis `0 1 2 3 4 6`-like, not `0 1`) |
+| the per-raid panel finds a slot over the estimate | "over the newest hours…" (a tooltip where none is expected) |
+| the marker not spanning the panels | "draws one marker through both panels" |
+| `isRaidsParamClean` always true (no redirect) | "cleans up a ?raids=…", the JavaScript-off spec |
+| the range link drops the raids | "the range links carry the raids…" and "picking and unpicking…" (a pick writes no `raids`) |
+| the picker shows its own pick, not what is drawn | "unpicking the last raid…" (the default raids not ticked) |
+| the tooltip carries no raid lines | "shows the total and each raid for the same moment…" |
+
+The break table shows the specs that did not fail first on a missing element: "the default",
+"colours", "the shade" and "the range links" had passed or failed only on the panel's absence in
+the red run, and the default, colour and shade specs saw no break of their own (Vitest holds them:
+`raidColour`, `pickRaids`, `notCounted`). All reverted; green at HEAD.
+
+### What is still NOT covered
+
+- The picker's keyboard path (Space on a focused option, arrow keys): the shared component's, and
+  the cap goes through the same `toggleRaid` the click does.
+- A raid whose line is all zeros beyond "it is drawn": no spec reads a flat line's height.
+- Which raid is which colour past three (the specs pick up to five but only compare three colours;
+  `raidColour` is Vitest's).
+- The per-raid y-axis's labels beyond the King's Fall case (`valueAxis` is Vitest's).
+- Per-raid estimates: #199.

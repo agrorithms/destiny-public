@@ -1,6 +1,6 @@
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
 import type { RaidOption } from '@/components/RaidMultiSelect';
-import { rangeOfSeries } from './activity-range';
+import { rangeOfSeries, type ActivityRange } from './activity-range';
 import {
     CHART_HEIGHT,
     CHART_WIDTH,
@@ -95,6 +95,7 @@ export function ActivityChart({
     const pickedRaids = picked.map((key) => ({ key, name: raidOptions.find((raid) => raid.key === key)?.name ?? key }));
     const panel = raidPanel(points, picked, from, to);
     const uncounted = notCounted(series);
+    const frame: PanelFrame = { from, to, range, missing };
 
     // `data-window-from` / `data-window-to` are for e2e/activity.spec.ts and nothing in the
     // app reads them. The window is request-time state ("now" at render), which the seed
@@ -115,36 +116,30 @@ export function ActivityChart({
 
                 <div className="min-w-0 flex-1">
                     <ActivityHover slots={activitySlots(points, pickedRaids)} from={from} to={to}>
-                        <svg
-                            data-timeline-part="total"
-                            viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                            preserveAspectRatio="none"
-                            role="img"
-                            aria-label={peakAriaLabel(busiest, range)}
-                            className={`block w-full ${TOTAL_HEIGHT}`}
+                        <Panel
+                            part="total"
+                            className={TOTAL_HEIGHT}
+                            ariaLabel={peakAriaLabel(busiest, range)}
+                            axis={axis}
+                            frame={frame}
+                            beforeDataTestId="activity-before-data"
                         >
-                            <Gridlines axis={axis} />
-                            <LocalGridlines from={from} to={to} range={range} />
-                            {missing === null ? null : <ShadeRect testId="activity-before-data" span={missing} />}
                             <ShadeRect testId="activity-too-recent" span={shade} />
                             <path data-testid="activity-line" d={solid} {...LINE_STROKE} />
                             {dashed === null ? null : (
                                 <path data-testid="activity-provisional-line" d={dashed} {...LINE_STROKE} strokeDasharray="6 4" />
                             )}
-                        </svg>
+                        </Panel>
 
                         {pickedRaids.length === 0 ? null : (
-                            <svg
-                                data-timeline-part="raids"
-                                viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
-                                preserveAspectRatio="none"
-                                role="img"
-                                aria-label={raidPanelAriaLabel(pickedRaids.map((raid) => raid.name), range)}
-                                className={`block w-full ${RAID_HEIGHT} ${PANEL_GAP}`}
+                            <Panel
+                                part="raids"
+                                className={`${RAID_HEIGHT} ${PANEL_GAP}`}
+                                ariaLabel={raidPanelAriaLabel(pickedRaids.map((raid) => raid.name), range)}
+                                axis={panel.axis}
+                                frame={frame}
+                                beforeDataTestId="activity-raid-before-data"
                             >
-                                <Gridlines axis={panel.axis} />
-                                <LocalGridlines from={from} to={to} range={range} />
-                                {missing === null ? null : <ShadeRect testId="activity-raid-before-data" span={missing} />}
                                 <ShadeRect testId="activity-not-counted" span={uncounted} />
                                 {panel.lines.map((line, index) => (
                                     <path
@@ -156,7 +151,7 @@ export function ActivityChart({
                                         stroke={raidColour(index)}
                                     />
                                 ))}
-                            </svg>
+                            </Panel>
                         )}
 
                         <LocalTickLabels from={from} to={to} range={range} />
@@ -277,6 +272,54 @@ const RAID_HEIGHT = 'h-32 sm:h-40';
  * panels read as two.
  */
 const PANEL_GAP = 'mt-4';
+
+/** What both panels share: the window, the range its gridlines are drawn for, and the before-data span. */
+interface PanelFrame {
+    from: number;
+    to: number;
+    range: ActivityRange;
+    missing: ShadedSpan | null;
+}
+
+/**
+ * One of the chart's two panels: the stretched SVG with its gridlines and its before-data shade,
+ * under whatever the panel draws on top. `part` is what the hover reads to tell the panels apart
+ * (ActivityLocal.tsx), so its values, like the shade's test id, stay as the specs know them.
+ */
+function Panel({
+    part,
+    className,
+    ariaLabel,
+    axis,
+    frame,
+    beforeDataTestId,
+    children,
+}: {
+    part: 'total' | 'raids';
+    className: string;
+    ariaLabel: string;
+    axis: ValueAxis;
+    frame: PanelFrame;
+    beforeDataTestId: string;
+    children: React.ReactNode;
+}) {
+    const { from, to, range, missing } = frame;
+    return (
+        <svg
+            data-timeline-part={part}
+            viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+            preserveAspectRatio="none"
+            role="img"
+            aria-label={ariaLabel}
+            className={`block w-full ${className}`}
+        >
+            <Gridlines axis={axis} />
+            <LocalGridlines from={from} to={to} range={range} />
+            {missing === null ? null : <ShadeRect testId={beforeDataTestId} span={missing} />}
+            {children}
+        </svg>
+    );
+}
 
 /** A panel's horizontal gridlines, one per y-axis tick. */
 function Gridlines({ axis }: { axis: ValueAxis }) {

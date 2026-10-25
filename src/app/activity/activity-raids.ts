@@ -44,3 +44,10 @@ export function pickRaids(urlKeys: readonly string[], topRaids: readonly string[
 export function raidColour(index: number): string {
     return `var(--ui-series-${(index % MAX_RAIDS) + 1})`;
 }
+
+export function isRaidsParamClean(
+    _searchParams: Record<string, string | string[] | undefined>,
+    _raids: readonly string[]
+): boolean {
+    throw new Error('not implemented');
+}

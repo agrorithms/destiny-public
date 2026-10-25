@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_RAIDS, parseActivityRaids, pickRaids, raidColour } from './activity-raids';
+import { MAX_RAIDS, isRaidsParamClean, parseActivityRaids, pickRaids, raidColour } from './activity-raids';
 import { activityRangeHref } from './activity-range';
 
 /**
@@ -75,5 +75,29 @@ describe('the link to a range with raids', () => {
 
     it('is the range alone when it is given none', () => {
         expect(activityRangeHref('24h', [])).toBe('/activity?range=24h');
+    });
+});
+
+describe('isRaidsParamClean', () => {
+    // The page redirects a link whose `raids` is not what it reads, so the address bar and a
+    // shared link say what is drawn.
+    it('is clean when there is no raids parameter at all', () => {
+        expect(isRaidsParamClean({ range: '30d' }, [])).toBe(true);
+    });
+
+    it('is clean when the value is exactly the raids read from it', () => {
+        expect(isRaidsParamClean({ raids: 'kings_fall,last_wish' }, ['kings_fall', 'last_wish'])).toBe(true);
+    });
+
+    it('is not clean when keys were dropped, repeated, cut or reordered away', () => {
+        expect(isRaidsParamClean({ raids: 'nope,kings_fall' }, ['kings_fall'])).toBe(false);
+        expect(isRaidsParamClean({ raids: 'kings_fall,kings_fall' }, ['kings_fall'])).toBe(false);
+        expect(isRaidsParamClean({ raids: 'a,b,c,d,e,f' }, ['a', 'b', 'c', 'd', 'e'])).toBe(false);
+    });
+
+    it('is not clean when the value names nothing it knows, or the key is empty or repeated', () => {
+        expect(isRaidsParamClean({ raids: 'nope' }, [])).toBe(false);
+        expect(isRaidsParamClean({ raids: '' }, [])).toBe(false);
+        expect(isRaidsParamClean({ raids: ['kings_fall', 'last_wish'] }, [])).toBe(false);
     });
 });

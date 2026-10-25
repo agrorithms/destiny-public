@@ -1,5 +1,5 @@
 import type { RaidsInProgressPoint } from '@/lib/db/queries';
-import { formatRaidCount, raidNoun, xPercent } from './activity-geometry';
+import { formatRaidCount, raidNoun, stepCentrePercent } from './activity-geometry';
 import { formatStepWindow, type OffsetOf } from './activity-time';
 
 /**
@@ -64,9 +64,9 @@ export function slotAtFraction(fraction: number, slots: readonly ActivitySlot[],
 
 /**
  * How far across the chart step `index`'s window is centred: where the line draws its
- * vertex, placed by the same {@link xPercent} as the line.
+ * vertex, placed by the same {@link stepCentrePercent} as the line.
  */
 export function slotCentreFraction(index: number, slots: readonly ActivitySlot[], from: number, to: number): number {
     const { start, end } = slots[index];
-    return xPercent((start + end) / 2, from, to) / 100;
+    return stepCentrePercent(start, end, from, to) / 100;
 }

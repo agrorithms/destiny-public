@@ -51,7 +51,7 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
    - [ ] P4 + S2 `src/app/activity/ActivityLocal.tsx` — no zone name, no offset: UTC everywhere
    - [ ] S3 `src/app/activity/activity-geometry.test.ts` — the busiest-step comment's stale clause
    - [ ] S4 `src/app/activity/activity-time.ts` — `dateLabel` private, tested through `formatInstant`
-   - [ ] S5 `src/app/activity/activity-geometry.ts` — one `stepCentrePercent` for the line and the tooltips
+   - [x] S5 `src/app/activity/activity-geometry.ts` — one `stepCentrePercent` for the line and the tooltips
    - [ ] S6 `GRIDLINE_STROKE` shared by the x and y gridlines
    - [ ] S7 `src/app/activity/activity-tooltips.test.ts` — a JSON round trip leaves the tooltip's text unchanged
 

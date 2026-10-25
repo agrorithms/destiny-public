@@ -66,6 +66,14 @@ export function xPercent(at: number, from: number, to: number): number {
     return ((at - from) / (to - from)) * 100;
 }
 
+/**
+ * Where a step's window is centred across `[from, to]`, as a percentage of its width: where
+ * the line draws the step's vertex, and where its tooltip is anchored.
+ */
+export function stepCentrePercent(start: number, end: number, from: number, to: number): number {
+    return xPercent((start + end) / 2, from, to);
+}
+
 /** Which midnights a day axis marks, and how many of its labels a phone keeps. */
 export interface DayTickOptions {
     /** A tick on every midnight whose day number since the epoch is a multiple of this. */
@@ -215,7 +223,7 @@ function roundStep(atLeast: number): number {
 export function linePath(points: RaidsInProgressPoint[], from: number, to: number, max: number): string {
     return points
         .map((point, index) => {
-            const x = (xPercent((point.start + point.end) / 2, from, to) / 100) * CHART_WIDTH;
+            const x = (stepCentrePercent(point.start, point.end, from, to) / 100) * CHART_WIDTH;
             return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(point.total, max))}`;
         })
         .join('');

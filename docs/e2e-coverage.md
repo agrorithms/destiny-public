@@ -2676,6 +2676,8 @@ with the tooltip still open (`toHaveCount(0)`, received 1). All reverted; green 
   (`activity-time.test.ts`, `activity-geometry.test.ts`, London on 25 October 2026); the browser
   spec uses a zone with no clock change.
 - A zone whose offset the browser cannot name, or one whose midnight does not exist on a day (a
-  spring-forward at midnight): that tick is skipped.
+  spring-forward at midnight): that tick is skipped. A fall-back onto midnight (the Azores, last
+  Sunday of October) reads 00:00 twice and is ticked once, at the first: Vitest's
+  (`activity-geometry.test.ts`), not a spec's.
 - The y-axis, the legends' prose and the aria-label's wording beyond "UTC".
 - Later tickets: the per-raid panel (#198, #199) and its second part for the hover.

@@ -562,6 +562,38 @@ describe('ticks in a reader\'s time zone', () => {
         expect(ticks[6].percent).toBeCloseTo(92.8571, 3);
     });
 
+    // The Azores go back an hour at 01:00 UTC on Sun 25 Oct 2026, from UTC+0 to UTC-1, so their
+    // clock reads 00:00 twice: at 00:00 UTC and again at 01:00 UTC. One midnight is one tick,
+    // the first, or the chart would draw two `Sun 25` gridlines an hour apart.
+    const AZORES: OffsetOf = (at) => (at < 1792890000 ? 0 : -60);
+
+    it('marks a midnight the clock reads twice once, at the first of the two', () => {
+        // The 7 days to Mon 26 Oct 12:00 UTC, opening Mon 19 at 12:00. Local Tue 20 began at
+        // 00:00 UTC, 43,200 s in (7.1429%); local Sun 25 at 00:00 UTC, 475,200 s in (78.5714%),
+        // and not again at 01:00 UTC; local Mon 26 at 01:00 UTC, 565,200 s in (93.4524%,
+        // unlabelled).
+        const now = 1793016000;
+        const ticks = axisTicks(now - 7 * DAY, now, range('7d'), AZORES);
+
+        expect(ticks.map((tick) => tick.label)).toEqual(['Tue 20', 'Wed 21', 'Thu 22', 'Fri 23', 'Sat 24', 'Sun 25', null]);
+        expect(ticks[0].percent).toBeCloseTo(7.1429, 3);
+        expect(ticks[5].percent).toBeCloseTo(78.5714, 3);
+        expect(ticks[6].percent).toBeCloseTo(93.4524, 3);
+        expect(ticks.map((tick) => tick.phone)).toEqual([true, false, true, false, true, false, true]);
+    });
+
+    it('marks the repeated midnight once in the 24-hour range too, and the 3-hour marks after it on the new clock', () => {
+        // The 24 hours to Sun 25 Oct 12:00 UTC. Every 3 hours from the window's start to local
+        // midnight at 00:00 UTC (50%); not again at 01:00 UTC; then local 03:00 at 04:00 UTC
+        // (66.6667%), 06:00 at 07:00 UTC (79.1667%) and 09:00 at 10:00 UTC (91.6667%, unlabelled).
+        const now = 1792929600;
+        const ticks = axisTicks(now - DAY, now, range('24h'), AZORES);
+
+        expect(ticks.map((tick) => tick.label)).toEqual(['12:00', '15:00', '18:00', '21:00', 'Sun 25', '03:00', '06:00', null]);
+        expect(ticks.map((tick) => tick.percent)).toEqual([0, 12.5, 25, 37.5, 50, expect.closeTo(66.6667, 3), expect.closeTo(79.1667, 3), expect.closeTo(91.6667, 3)]);
+        expect(ticks.map((tick) => tick.phone)).toEqual([true, false, true, false, true, false, true, false]);
+    });
+
     it('is the UTC axis when there is no offset', () => {
         expect(axisTicks(FROM, NOW, range('7d'), null)).toEqual(axisTicks(FROM, NOW, range('7d')));
     });

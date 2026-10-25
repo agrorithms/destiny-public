@@ -44,6 +44,17 @@ Seams S1–S7 approved 2026-10-24 with every recommended option. Settled decisio
 8. Simplify
    - [x] /simplify pass — tooltip steps placed from the slots and `xPercent` (the locator record and the second `SlotLocator` gone), `describePeak` split into `peakCaption` / `peakAriaLabel`, tick-helper tidy; boundary test kills the two survivors (`mutate:diff --incremental`: activity files 132/132); suite at 0b8ccdb: lint 0 errors, tsc, build, 791 vitest, 189 e2e, visual:check 68
 
+9. Fix loop 1 (review findings P1–P4, S2–S8)
+   - [ ] P1 `src/app/activity/activity-time.test.ts` — a real half-hour case (India, +5:30); the Kathmandu case named a quarter-hour one; `e2e/activity.spec.ts` header
+   - [ ] P2 `docs/e2e-coverage.md` — a deliberate break the counted-step hover spec catches, in the break table
+   - [x] P3 + S8 `src/app/activity/activity-geometry.ts` — a midnight the clock reads twice (the Azores fall-back) is ticked once, at the first; tests for 7d and 24h, red first (two `Sun 25` ticks)
+   - [ ] P4 + S2 `src/app/activity/ActivityLocal.tsx` — no zone name, no offset: UTC everywhere
+   - [ ] S3 `src/app/activity/activity-geometry.test.ts` — the busiest-step comment's stale clause
+   - [ ] S4 `src/app/activity/activity-time.ts` — `dateLabel` private, tested through `formatInstant`
+   - [ ] S5 `src/app/activity/activity-geometry.ts` — one `stepCentrePercent` for the line and the tooltips
+   - [ ] S6 `GRIDLINE_STROKE` shared by the x and y gridlines
+   - [ ] S7 `src/app/activity/activity-tooltips.test.ts` — a JSON round trip leaves the tooltip's text unchanged
+
 ## Notes
 
 - Red run: `db312cd`, 18 of 21 activity specs failed (the two canaries passed with 3 others). Deliberate breaks in one build, plus the dismissal break alone: `docs/e2e-coverage.md`.

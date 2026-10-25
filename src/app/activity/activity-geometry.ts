@@ -131,9 +131,12 @@ const TICK_SCAN_SECONDS = 15 * MINUTE;
  * A tick on every multiple of `every` seconds on the zone's clock inside the window, found
  * by looking at each quarter hour and asking the zone what time it reads there — so a clock
  * change in the window moves the ticks after it, rather than one offset being assumed for
- * all of them. Labelled by `label` unless it starts past {@link LAST_LABELLED_TICK_PERCENT},
- * and kept on a phone where `phone` says so. `label` is given the instant and the zone's
- * seconds at it; `phone`, the tick's place from the first and the zone's seconds.
+ * all of them. A clock that goes back reads some times twice (the Azores read 00:00 twice on
+ * the last Sunday of October): a boundary is ticked once, at the first instant that reads it,
+ * so a tick never reads the same as or earlier than the one before it. Labelled by `label`
+ * unless it starts past {@link LAST_LABELLED_TICK_PERCENT}, and kept on a phone where `phone`
+ * says so. `label` is given the instant and the zone's seconds at it; `phone`, the tick's
+ * place from the first and the zone's seconds.
  */
 function ticksEvery(
     from: number,
@@ -144,9 +147,11 @@ function ticksEvery(
     phone: (index: number, local: number) => boolean
 ): ActivityTick[] {
     const ticks: ActivityTick[] = [];
+    let lastTicked = -Infinity;
     for (let at = Math.ceil(from / TICK_SCAN_SECONDS) * TICK_SCAN_SECONDS; at <= to; at += TICK_SCAN_SECONDS) {
         const local = localSeconds(at, offsetOf);
-        if (local % every !== 0) continue;
+        if (local % every !== 0 || local <= lastTicked) continue;
+        lastTicked = local;
         const percent = xPercent(at, from, to);
         ticks.push({
             percent,

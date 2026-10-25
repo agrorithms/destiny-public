@@ -1636,6 +1636,13 @@ export interface RaidsInProgressPoint {
      * ones first.
      */
     provisional: boolean;
+    /**
+     * Raids in Progress per raid (#198), averaged over the step, for exactly the keys the
+     * series was asked for ({@link RaidsInProgressOptions.raidKeys}), zero where a raid ran
+     * nothing. Absent when no keys were asked for, and on Provisional steps, which have no
+     * per-raid estimate until #199.
+     */
+    raids?: Record<string, number>;
 }
 
 export interface RaidsInProgressSeries {
@@ -1671,6 +1678,12 @@ export interface RaidsInProgressSeries {
      */
     provisionalUntil: number;
     points: RaidsInProgressPoint[];
+    /**
+     * The up to 3 raids with the most raid time over the counted steps, most first; ties in
+     * `RAID_DEFINITIONS` order. A raid with none is not listed, so fewer than 3 is possible.
+     * Returned whatever {@link RaidsInProgressOptions.raidKeys} asked for.
+     */
+    topRaids: string[];
 }
 
 export interface RaidsInProgressOptions {
@@ -1678,6 +1691,8 @@ export interface RaidsInProgressOptions {
     stepSeconds: number;
     /** Unix seconds. Passed in, never read from the clock here, so a test can pin it. */
     now: number;
+    /** Raids to return per-raid values for (#198). Omitted, no point carries any. */
+    raidKeys?: readonly string[];
 }
 
 /**
@@ -1781,7 +1796,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
 
     const lastPoint = points.at(-1);
     const provisionalUntil = lastPoint?.provisional ? lastPoint.end : countedUntil;
-    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil, points };
+    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil, points, topRaids: [] };
 }
 
 /**

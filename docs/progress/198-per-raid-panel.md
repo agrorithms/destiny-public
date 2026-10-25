@@ -37,6 +37,8 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
    - [x] `npm run mutate:diff -- f33d26c...HEAD --typecheck` at `315f28c` — 100.0% overall (131/131 scored), 100.0% covered, 54 compile errors discarded, 1 kill-and-rerun loop (one survivor at the first run, `raidPanelAriaLabel`'s `join('')`, simplified away), no `Stryker disable` comments
    - [x] `npm run visual:check`
    - [x] lint, build, test, e2e at HEAD
+8. Simplify
+   - [x] /simplify pass — `48a1e54` (raid picker: `useOptimistic`, one refusal path, no `emptyLabel`), `0e5c937` (shared `Gridlines` and `shadeToNow`, raid keys derived once, doc comments rewrapped); no test files changed; suite green at `0e5c937` (vitest 839/839, e2e 204/204, visual:check 68/68)
 
 ## Sweep timing
 

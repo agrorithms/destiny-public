@@ -645,6 +645,16 @@ describe('the top raids in range (#198)', () => {
         expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['salvations_edge', 'vault_of_glass', 'last_wish']);
     });
 
+    it('puts a tied raid key the raid list does not name after the raids it does', () => {
+        // A key no RAID_DEFINITIONS entry names (a raid stored before manifest.ts learned it).
+        // Stored first and alphabetically first, so only the "unnamed keys go last" rule puts
+        // it behind last_wish on the same raid time.
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'aaa_unlisted_raid' });
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'last_wish' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'aaa_unlisted_raid']);
+    });
+
     it('ranks by the time inside the counted window, not the length of the run', () => {
         // A long run that mostly began before the window has the shorter overlap.
         const firstStep = NOW - 7 * 24 * HOUR;

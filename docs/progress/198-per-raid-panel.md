@@ -52,6 +52,10 @@ Seams S1–S6 and decisions D1–D7 approved 2026-10-25:
 10. Review fixes — fix loop 2 (S7 a follow-up issue)
    - [x] O1 `e2e/activity.spec.ts` — "over the newest hours…": the last counted step's two-line check is an `expect.poll` over `innerText()`, so it waits for the box to redraw instead of reading the estimate's one line once (deliberate break, one build: `activitySlots` gives every slot no raid lines — red at the polled `toHaveLength(2)`, "Received length: 1", the counted step's own text; reverted)
 
+11. Handoff mutation (mutation loop 2 of 3)
+   - [x] `queries.ts:1860` ConditionalExpression → false (`topRaids`' `place()`: an unnamed key placed before the named ones) — killed by `tests/db/raids-in-progress.test.ts` "puts a tied raid key the raid list does not name after the raids it does"
+   - [x] `queries.ts:1860` UnaryOperator → +1 (same line, same test) — killed
+
 ## Sweep timing
 
 `getRaidsInProgress` on a copy of `data/raid-tracker.backup-2026-10-25.db` (the backup itself opened by nothing; copied

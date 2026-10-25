@@ -45,9 +45,15 @@ export function raidColour(index: number): string {
     return `var(--ui-series-${(index % MAX_RAIDS) + 1})`;
 }
 
+/**
+ * Whether the URL's `raids` is exactly `raids` — what {@link parseActivityRaids} read from
+ * it — or absent. The page redirects a link that is not, so a bad link is cleaned up: the
+ * address bar, a copy of it and the next reload all say what is drawn.
+ */
 export function isRaidsParamClean(
-    _searchParams: Record<string, string | string[] | undefined>,
-    _raids: readonly string[]
+    searchParams: Record<string, string | string[] | undefined>,
+    raids: readonly string[]
 ): boolean {
-    throw new Error('not implemented');
+    const value = searchParams[ACTIVITY_RAIDS_PARAM];
+    return value === undefined || value === raids.join(',');
 }

@@ -31,7 +31,7 @@ import { boxOf, expectInsideViewport, expectNoOverflow } from './support/viewpor
  * The tooltips and local time (#197) are asserted at the end of the file. Every test here runs
  * in a pinned UTC zone ({@link test.use} below) so a developer's own zone cannot change what
  * the JavaScript-on tests read; the local-time tests pin a zone of their own, Asia/Kathmandu
- * (UTC+5:45), whose half-hour offset puts every 3-hour mark a quarter past on the UTC clock
+ * (UTC+5:45), whose quarter-hour offset puts every 3-hour mark a quarter past on the UTC clock
  * and so cannot be mistaken for the UTC chart. What they expect is worked out with `Intl`,
  * which shares nothing with the app's formatter.
  */

@@ -16,6 +16,7 @@ const HOUR = 3600;
 // Sat 17 Oct 2026, 00:00 UTC.
 const MIDNIGHT = 1792195200;
 
+const INDIA: OffsetOf = () => 5 * 60 + 30;
 const KATHMANDU: OffsetOf = () => 5 * 60 + 45;
 const PACIFIC: OffsetOf = () => -8 * 60;
 // London on 25 Oct 2026, when summer time ends at 01:00 UTC: the clock reads 01:00 twice.
@@ -34,6 +35,11 @@ describe('a step window', () => {
     });
 
     it('moves by a half-hour offset, with no suffix', () => {
+        // India is UTC+5:30: the UTC hour 23:00–00:00 on Friday is 04:30–05:30 on Saturday.
+        expect(formatStepWindow(MIDNIGHT - HOUR, MIDNIGHT, INDIA)).toBe('Sat 17 Oct, 04:30–05:30');
+    });
+
+    it('moves by a quarter-hour offset, with no suffix', () => {
         // Kathmandu is UTC+5:45: the UTC hour 23:00–00:00 on Friday is 04:45–05:45 on Saturday.
         expect(formatStepWindow(MIDNIGHT - HOUR, MIDNIGHT, KATHMANDU)).toBe('Sat 17 Oct, 04:45–05:45');
     });

@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { ACTIVITY_RANGES } from '../src/app/activity/activity-range';
 import { CHART_HEIGHT, CHART_WIDTH, TOO_RECENT_AGE_SECONDS } from '../src/app/activity/activity-geometry';
-import { ACTIVITY_PEAK_RAIDS, ACTIVITY_RECENT_PEAK_RAIDS } from './support/seed-world';
+import { ACTIVITY_OTHER_RAIDS, ACTIVITY_PEAK_RAIDS, ACTIVITY_RECENT_PEAK_RAIDS, RAID_A } from './support/seed-world';
 import { boxOf, expectInsideViewport, expectNoOverflow } from './support/viewport';
 
 /**
@@ -28,7 +28,12 @@ import { boxOf, expectInsideViewport, expectNoOverflow } from './support/viewpor
  * suite runs in, which the unit tests pin — only its structure and, at 24 hours, that the
  * seeded recent run lifts it off the baseline.
  *
- * The tooltips and local time (#197) are asserted at the end of the file. Every test here runs
+ * The per-raid panel and its picker (#198) are asserted in the last block. The seeded world
+ * (`ACTIVITY_OTHER_RAIDS`) ranks Salvation's Edge, King's Fall and Vault of Glass as the top
+ * three over 7 and 30 days and has only Salvation's Edge run in the last 24 hours; the
+ * picker is a client component, so what a pick does is read from the URL and the legend.
+ *
+ * The tooltips and local time (#197) are asserted before it. Every test here runs
  * in a pinned UTC zone ({@link test.use} below) so a developer's own zone cannot change what
  * the JavaScript-on tests read; the local-time tests pin a zone of their own, Asia/Kathmandu
  * (UTC+5:45), whose quarter-hour offset puts every 3-hour mark a quarter past on the UTC clock
@@ -376,12 +381,21 @@ const TOOLTIP = new RegExp(
 const ESTIMATE = / · estimate, still arriving$/;
 
 /** The chart's graphic, the part src/components/chart/ChartHover.tsx puts the pointer over. */
-function chartSvg(page: Page) {
-    return page.getByTestId('activity-chart').locator('[data-timeline-part="total"]');
+function chartSvg(page: Page, part: 'total' | 'raids' = 'total') {
+    return page.getByTestId('activity-chart').locator(`[data-timeline-part="${part}"]`);
 }
 
 function tooltip(page: Page) {
     return page.getByTestId('activity-tooltip');
+}
+
+/**
+ * The tooltip's first line: the total's average and window. Below it, on a counted step, come
+ * a line for each raid the bottom panel draws (#198), so a spec about the total reads this
+ * rather than the whole box.
+ */
+async function totalLine(page: Page): Promise<string> {
+    return (await tooltip(page).innerText()).split('\n')[0];
 }
 
 /** How far across the chart each vertex of a path is, from 0 to 1. */
@@ -407,15 +421,15 @@ async function peakFraction(page: Page): Promise<number> {
 }
 
 /** Points the mouse `fraction` of the way across the chart, halfway up. */
-async function hoverAt(page: Page, fraction: number): Promise<void> {
-    const svg = chartSvg(page);
+async function hoverAt(page: Page, fraction: number, part: 'total' | 'raids' = 'total'): Promise<void> {
+    const svg = chartSvg(page, part);
     const box = await boxOf(svg);
     await svg.hover({ position: { x: box.width * fraction, y: box.height / 2 } });
 }
 
 /** {@link hoverAt} for a finger. */
-async function tapAt(page: Page, fraction: number): Promise<void> {
-    const svg = chartSvg(page);
+async function tapAt(page: Page, fraction: number, part: 'total' | 'raids' = 'total'): Promise<void> {
+    const svg = chartSvg(page, part);
     const box = await boxOf(svg);
     await svg.tap({ position: { x: box.width * fraction, y: box.height / 2 } });
 }
@@ -491,7 +505,7 @@ test.describe('the tooltips', () => {
         await hoverAt(page, await peakFraction(page));
         const caption = (await page.getByTestId('activity-peak').textContent()) ?? '';
         const window = /in progress, (.+)\.$/.exec(caption)![1];
-        await expect(tooltip(page)).toHaveText(`${ACTIVITY_PEAK_RAIDS} average raids in progress, ${window}`);
+        await expect.poll(() => totalLine(page)).toBe(`${ACTIVITY_PEAK_RAIDS} average raids in progress, ${window}`);
 
         // The last counted step is a count, not an estimate.
         await hoverAt(page, (await solidFractions(page)).at(-1)!);
@@ -677,7 +691,7 @@ test.describe('in the reader\'s time zone', () => {
 
             // A tooltip shows only once the page has hydrated, so what follows is the client's render.
             await hoverAt(page, await peakFraction(page));
-            await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source} UTC$`));
+            await expect.poll(() => totalLine(page)).toMatch(new RegExp(`${TOOLTIP.source} UTC$`));
 
             await expect(page.getByTestId('activity-zone')).toHaveText('Times are UTC.');
             await expect(page.getByTestId('activity-peak')).toContainText(' UTC.');
@@ -694,6 +708,294 @@ test.describe('in the reader\'s time zone', () => {
             await expect(page.getByTestId('activity-zone')).toHaveText('Times are UTC.');
             await expect(page.getByTestId('activity-peak')).toContainText(' UTC.');
             await expectTicksOn(page, 'UTC');
+        });
+    });
+});
+
+/**
+ * The per-raid panel (#198): the second panel under the total, one line for each raid the
+ * reader picks, on a y-axis of its own. The seeded world's ranking is in the header above.
+ */
+const ALL_PICKS = [
+    { key: RAID_A.key, name: RAID_A.name },
+    ...ACTIVITY_OTHER_RAIDS.map(({ key, name }) => ({ key, name })),
+];
+const DEFAULT_PICKS = ALL_PICKS.slice(0, 3);
+const [SALVATIONS, KINGS_FALL, VAULT] = DEFAULT_PICKS;
+const LAST_WISH = ALL_PICKS[3];
+const CROTAS = ALL_PICKS[4];
+/** A raid nobody ran in the seeded world, to take the picker past five. */
+const QUIET_PICKS = [{ key: 'deep_stone_crypt', name: 'Deep Stone Crypt' }];
+
+function raidLines(page: Page) {
+    return page.getByTestId('activity-raid-line');
+}
+
+/** The raid keys the bottom panel draws, in the order it draws them. */
+async function drawnRaids(page: Page): Promise<string[]> {
+    return raidLines(page).evaluateAll((lines) => lines.map((line) => line.getAttribute('data-raid') ?? ''));
+}
+
+function legend(page: Page) {
+    return page.getByTestId('activity-raid-legend').getByRole('listitem');
+}
+
+function picker(page: Page) {
+    return page.getByTestId('activity-raid-picker');
+}
+
+async function openPicker(page: Page): Promise<void> {
+    await waitForClientStep(page);
+    const trigger = picker(page).locator('button[aria-haspopup="listbox"]');
+    if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+    await expect(page.getByRole('listbox')).toBeVisible();
+}
+
+function option(page: Page, name: string) {
+    return page.getByRole('option', { name, exact: true });
+}
+
+/** The URL's `raids`, or null. Polled, because a pick lands through a navigation. */
+function raidsParam(page: Page): Promise<string | null> {
+    return Promise.resolve(new URL(page.url()).searchParams.get('raids'));
+}
+
+const keys = (picks: ReadonlyArray<{ key: string }>) => picks.map((pick) => pick.key);
+
+test.describe('the per-raid panel', () => {
+    test('draws the range\'s three busiest raids on a first visit, and leaves the URL alone', async ({ page }) => {
+        await page.goto('/activity');
+
+        expect(await drawnRaids(page)).toEqual(keys(DEFAULT_PICKS));
+        await expect(legend(page)).toHaveText(DEFAULT_PICKS.map((pick) => pick.name));
+        expect(await raidsParam(page)).toBeNull();
+        await expect(chartSvg(page, 'raids')).toBeVisible();
+
+        // The default follows the range: over the last 24 hours only Salvation's Edge has run.
+        await page.goto('/activity?range=24h');
+        expect(await drawnRaids(page)).toEqual([SALVATIONS.key]);
+        await expect(legend(page)).toHaveText([SALVATIONS.name]);
+    });
+
+    test('the panel has a y-axis of its own, scaled to the raids picked', async ({ page }) => {
+        // The total tops out at 3 raids (the seeded peak); King's Fall never runs more than one.
+        await page.goto(`/activity?raids=${KINGS_FALL.key}`);
+
+        await expect(page.getByTestId('activity-axis').locator('span')).toHaveText(['0', '1', '2', '3']);
+        await expect(page.getByTestId('activity-raid-axis').locator('span')).toHaveText(['0', '1']);
+    });
+
+    test('picking and unpicking raids updates ?raids=, and a reload keeps them', async ({ page }) => {
+        await page.goto('/activity');
+        await openPicker(page);
+
+        await option(page, LAST_WISH.name).click();
+        await expect.poll(() => raidsParam(page)).toBe(keys([...DEFAULT_PICKS, LAST_WISH]).join(','));
+        expect(await drawnRaids(page)).toEqual(keys([...DEFAULT_PICKS, LAST_WISH]));
+        await expect(legend(page)).toHaveText([...DEFAULT_PICKS, LAST_WISH].map((pick) => pick.name));
+
+        await page.reload();
+        expect(await drawnRaids(page)).toEqual(keys([...DEFAULT_PICKS, LAST_WISH]));
+
+        await openPicker(page);
+        await option(page, KINGS_FALL.name).click();
+        const afterUnpick = [SALVATIONS, VAULT, LAST_WISH];
+        await expect.poll(() => raidsParam(page)).toBe(keys(afterUnpick).join(','));
+        await page.reload();
+        expect(await drawnRaids(page)).toEqual(keys(afterUnpick));
+        await expect(legend(page)).toHaveText(afterUnpick.map((pick) => pick.name));
+    });
+
+    test('unpicking the last raid goes back to the range\'s top raids', async ({ page }) => {
+        await page.goto(`/activity?raids=${LAST_WISH.key}`);
+        await openPicker(page);
+
+        await option(page, LAST_WISH.name).click();
+
+        await expect.poll(() => raidsParam(page)).toBeNull();
+        expect(await drawnRaids(page)).toEqual(keys(DEFAULT_PICKS));
+    });
+
+    test('refuses a sixth raid and says why', async ({ page }) => {
+        const five = [...DEFAULT_PICKS, LAST_WISH, CROTAS];
+        await page.goto(`/activity?raids=${keys(five).join(',')}`);
+        await openPicker(page);
+        await expect(page.getByTestId('activity-raid-limit')).toHaveCount(0);
+
+        await option(page, QUIET_PICKS[0].name).click();
+
+        await expect(page.getByTestId('activity-raid-limit')).toContainText('Pick up to five raids');
+        await expect(option(page, QUIET_PICKS[0].name)).toHaveAttribute('aria-selected', 'false');
+        expect(await raidsParam(page)).toBe(keys(five).join(','));
+        expect(await drawnRaids(page)).toEqual(keys(five));
+
+        // Making room lets the same pick through.
+        await option(page, CROTAS.name).click();
+        await option(page, QUIET_PICKS[0].name).click();
+        await expect.poll(() => raidsParam(page)).toBe(keys([...DEFAULT_PICKS, LAST_WISH, QUIET_PICKS[0]]).join(','));
+    });
+
+    test('cleans up a ?raids= with unknown keys or more than five', async ({ page }) => {
+        await page.goto(`/activity?raids=nope,${KINGS_FALL.key}`);
+        await expect.poll(() => raidsParam(page)).toBe(KINGS_FALL.key);
+        expect(await drawnRaids(page)).toEqual([KINGS_FALL.key]);
+
+        const six = [...DEFAULT_PICKS, LAST_WISH, CROTAS, QUIET_PICKS[0]];
+        await page.goto(`/activity?range=30d&raids=${keys(six).join(',')}`);
+        await expect.poll(() => raidsParam(page)).toBe(keys(six.slice(0, 5)).join(','));
+        expect(await drawnRaids(page)).toEqual(keys(six.slice(0, 5)));
+        expect(new URL(page.url()).searchParams.get('range')).toBe('30d');
+
+        // Nothing valid: the parameter goes, and the top raids are drawn.
+        await page.goto('/activity?raids=nope');
+        await expect.poll(() => raidsParam(page)).toBeNull();
+        expect(await drawnRaids(page)).toEqual(keys(DEFAULT_PICKS));
+    });
+
+    test('the range links carry the raids only when the URL named some', async ({ page }) => {
+        await page.goto(`/activity?range=7d&raids=${KINGS_FALL.key},${LAST_WISH.key}`);
+        await expect(rangeLink(page, '30d')).toHaveAttribute('href', `/activity?range=30d&raids=${KINGS_FALL.key},${LAST_WISH.key}`);
+
+        await page.goto('/activity?range=7d');
+        await expect(rangeLink(page, '30d')).toHaveAttribute('href', '/activity?range=30d');
+    });
+
+    test('gives each raid its own colour, in light and dark', async ({ page }) => {
+        const strokes = async () => raidLines(page).evaluateAll((lines) => lines.map((line) => getComputedStyle(line).stroke));
+        const swatches = async () =>
+            page.getByTestId('activity-raid-legend').locator('[data-swatch]').evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
+
+        await page.emulateMedia({ colorScheme: 'light' });
+        await page.goto('/activity');
+        const light = await strokes();
+        expect(new Set(light).size, 'three different light colours').toBe(3);
+        expect(await swatches(), 'the legend\'s swatches are the lines\' colours').toEqual(light);
+
+        await page.emulateMedia({ colorScheme: 'dark' });
+        await page.reload();
+        const dark = await strokes();
+        expect(new Set(dark).size, 'three different dark colours').toBe(3);
+        expect(await swatches()).toEqual(dark);
+        expect(dark.some((colour, index) => colour !== light[index]), 'dark has its own palette').toBe(true);
+    });
+
+    test.describe('one hover over both panels', () => {
+        test('shows the total and each raid for the same moment, whichever panel the mouse is on', async ({ page }) => {
+            await page.goto('/activity');
+            await waitForClientStep(page);
+
+            // The seeded peak: three Salvation's Edge runs, and nothing from the other two raids.
+            const fraction = await peakFraction(page);
+            await hoverAt(page, fraction, 'total');
+            const onTotal = await tooltip(page).innerText();
+            expect(onTotal.split('\n')).toEqual([
+                expect.stringMatching(new RegExp(`^${ACTIVITY_PEAK_RAIDS} average raids in progress, `)),
+                `${SALVATIONS.name}: 3`,
+                `${KINGS_FALL.name}: 0`,
+                `${VAULT.name}: 0`,
+            ]);
+
+            await hoverAt(page, fraction, 'raids');
+            expect(await tooltip(page).innerText()).toBe(onTotal);
+
+            // A King's Fall step: the first one the raid ran in. Its line leaves the floor there.
+            const d = (await raidLines(page).nth(1).getAttribute('d')) ?? '';
+            const first = vertices(d).map((vertex) => vertex.split(',').map(parseFloat)).find(([, y]) => y < CHART_HEIGHT - 0.5)!;
+            await hoverAt(page, first[0] / CHART_WIDTH, 'raids');
+            const lines = (await tooltip(page).innerText()).split('\n');
+            expect(lines.slice(1)).toEqual([`${SALVATIONS.name}: 0`, `${KINGS_FALL.name}: 1`, `${VAULT.name}: 0`]);
+            expect(lines[0]).toMatch(/^1 average raid in progress, /);
+        });
+
+        test('draws one marker through both panels', async ({ page }) => {
+            await page.goto('/activity');
+            await waitForClientStep(page);
+
+            await hoverAt(page, await peakFraction(page), 'raids');
+
+            const marker = await boxOf(page.getByTestId('activity-tooltip-marker'));
+            const top = await boxOf(chartSvg(page, 'total'));
+            const bottom = await boxOf(chartSvg(page, 'raids'));
+            expect(marker.y).toBeCloseTo(top.y, 0);
+            expect(marker.y + marker.height).toBeCloseTo(bottom.y + bottom.height, 0);
+        });
+
+        test('over the newest hours shows the total\'s estimate on the top panel and nothing on the bottom', async ({ page }) => {
+            await page.goto('/activity?range=24h');
+            await waitForClientStep(page);
+            const [lastCounted, firstEstimate] = await dashedFractions(page);
+
+            // The bottom panel shades what is not counted yet, and says nothing there.
+            await hoverAt(page, firstEstimate, 'raids');
+            await expect(tooltip(page)).toHaveCount(0);
+
+            // The top panel's estimate has no per-raid lines to go with it.
+            await hoverAt(page, firstEstimate, 'total');
+            await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
+            expect((await tooltip(page).innerText()).split('\n')).toHaveLength(1);
+
+            // The last counted step has both.
+            await hoverAt(page, lastCounted, 'total');
+            expect((await tooltip(page).innerText()).split('\n')).toHaveLength(2);
+        });
+
+        test('shades the newest hours of the bottom panel, with a key for it', async ({ page }) => {
+            await page.goto('/activity');
+
+            const shade = page.getByTestId('activity-not-counted');
+            await expect(shade).toBeAttached();
+            // Wider than the total\'s too-recent shade, which the estimate lets start later.
+            const notCounted = parseFloat((await shade.getAttribute('width')) ?? '');
+            const tooRecentWidth = parseFloat((await page.getByTestId('activity-too-recent').getAttribute('width')) ?? '');
+            expect(notCounted).toBeGreaterThan(tooRecentWidth);
+            await expect(page.getByTestId('activity-not-counted-legend')).toHaveText(
+                'Shaded: the last 2 to 3 hours, not counted yet.'
+            );
+        });
+    });
+
+    test.describe('with JavaScript disabled', () => {
+        test.use({ javaScriptEnabled: false });
+
+        test('draws the URL\'s raids, or the top three, and cleans up a bad link', async ({ page }) => {
+            await page.goto('/activity');
+            expect(await drawnRaids(page)).toEqual(keys(DEFAULT_PICKS));
+
+            await page.goto(`/activity?raids=nope,${LAST_WISH.key}`);
+            expect(await drawnRaids(page)).toEqual([LAST_WISH.key]);
+            expect(await raidsParam(page)).toBe(LAST_WISH.key);
+        });
+    });
+
+    test.describe('at phone width', () => {
+        test.use({ viewport: { width: 360, height: 780 }, hasTouch: true });
+
+        test('the picker open, a refused sixth raid and a tap on the panel overflow nothing', async ({ page }) => {
+            const five = [...DEFAULT_PICKS, LAST_WISH, CROTAS];
+            await page.goto(`/activity?raids=${keys(five).join(',')}`);
+            await expectNoOverflow(page);
+
+            await openPicker(page);
+            await expectInsideViewport(page.getByRole('listbox'), 'the open picker');
+            await expectNoOverflow(page);
+
+            await option(page, QUIET_PICKS[0].name).click();
+            await expect(page.getByTestId('activity-raid-limit')).toBeVisible();
+            await expectInsideViewport(page.getByTestId('activity-raid-limit'), 'the limit message');
+            await expectNoOverflow(page);
+
+            // Close it, then tap the bottom panel: five named lines is the widest tooltip.
+            await page.keyboard.press('Escape');
+            await expect(page.getByRole('listbox')).toHaveCount(0);
+            await tapAt(page, await peakFraction(page), 'raids');
+            await expect(tooltip(page)).toBeVisible();
+            expect((await tooltip(page).innerText()).split('\n')).toHaveLength(6);
+            await expectInsideViewport(tooltip(page), 'the five-raid tooltip');
+            await expectNoOverflow(page);
+
+            // The legend of five names stays in the column.
+            await expect(legend(page)).toHaveCount(5);
+            await expectNoOverflow(page);
         });
     });
 });

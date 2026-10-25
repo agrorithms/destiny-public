@@ -107,7 +107,7 @@ export function ActivityChart({
                 <div className="w-9 shrink-0 select-none space-y-1" aria-hidden>
                     <AxisLabels testId="activity-axis" axis={axis} className={TOTAL_HEIGHT} />
                     {pickedRaids.length === 0 ? null : (
-                        <AxisLabels testId="activity-raid-axis" axis={panel.axis} className={RAID_HEIGHT} />
+                        <AxisLabels testId="activity-raid-axis" axis={panel.axis} className={`${RAID_HEIGHT} ${PANEL_GAP}`} />
                     )}
                 </div>
 
@@ -147,7 +147,7 @@ export function ActivityChart({
                                 preserveAspectRatio="none"
                                 role="img"
                                 aria-label={raidPanelAriaLabel(pickedRaids.map((raid) => raid.name), range)}
-                                className={`block w-full ${RAID_HEIGHT}`}
+                                className={`block w-full ${RAID_HEIGHT} ${PANEL_GAP}`}
                             >
                                 {panel.axis.ticks.map((tick) => (
                                     <line
@@ -284,6 +284,9 @@ function DashKey() {
 /** The two panels' heights. The axis column uses the same classes, so labels sit on their gridlines. */
 const TOTAL_HEIGHT = 'h-48 sm:h-64';
 const RAID_HEIGHT = 'h-32 sm:h-40';
+
+/** The space above the second panel, on the panel and on its axis block alike, so the two panels read as two. */
+const PANEL_GAP = 'mt-4';
 
 /** A panel's y-axis labels, each centred on its gridline. */
 function AxisLabels({ testId, axis, className }: { testId: string; axis: ReturnType<typeof valueAxis>; className: string }) {

@@ -15,13 +15,13 @@ import {
     hourTicks,
     linePath,
     linePaths,
-    notCounted,
-    notCountedLegend,
+    noEstimateNote,
     peakAriaLabel,
     peakCaption,
     provisionalLegend,
     raidPanel,
     raidPanelAriaLabel,
+    raidsWithoutEstimate,
     tallestStep,
     tooRecent,
     tooRecentLegend,
@@ -624,12 +624,13 @@ describe('the sentences in a reader\'s time zone', () => {
     });
 });
 
-describe('the per-raid panel (#198)', () => {
-    // A 4-hour window of 1-hour steps. Each step's vertex is at its midpoint, so the first
-    // three sit 12.5%, 37.5% and 62.5% across a 1,000-unit chart: x = 125, 375, 625. The
-    // fourth step is a Provisional one with a total of 99, which no raid line may reach.
+describe('the per-raid panel (#198, #199)', () => {
+    // A 6-hour window of 1-hour steps. Each step's vertex is at its midpoint, so the first
+    // three sit 8.33%, 25% and 41.67% across a 1,000-unit chart: x = 83.33, 250, 416.67. The
+    // fourth and fifth are Provisional steps (x = 583.33 and 750) with a total of 99 that no
+    // raid line may follow. Alpha has an estimate on both, beta on none.
     const from = 0;
-    const to = 4 * HOUR;
+    const to = 6 * HOUR;
     const counted = (index: number, total: number, raids?: Record<string, number>) => ({
         start: index * HOUR,
         end: (index + 1) * HOUR,
@@ -637,21 +638,28 @@ describe('the per-raid panel (#198)', () => {
         provisional: false,
         raids,
     });
-    const points = [
+    const estimated = (index: number, raids?: Record<string, number>) => ({
+        start: index * HOUR,
+        end: (index + 1) * HOUR,
+        total: 99,
+        provisional: true,
+        raids,
+    });
+    const counts = [
         counted(0, 50, { alpha: 1, beta: 0, gamma: 40 }),
         counted(1, 60, { alpha: 2, beta: 1, gamma: 40 }),
         counted(2, 70, { alpha: 4, beta: 2, gamma: 40 }),
-        { start: 3 * HOUR, end: 4 * HOUR, total: 99, provisional: true },
     ];
+    const points = [...counts, estimated(3, { alpha: 3, gamma: 90 }), estimated(4, { alpha: 2 })];
 
     it('draws one line per picked raid, in the picked order, each at its own heights', () => {
         // The panel's axis tops out at 4 (alpha's busiest step), so a height of v sits at
         // y = 200 * (1 - v / 4): alpha 150, 100, 0; beta 200, 150, 100.
-        const panel = raidPanel(points, ['alpha', 'beta'], from, to);
+        const panel = raidPanel(counts, ['alpha', 'beta'], from, to);
 
         expect(panel.lines).toEqual([
-            { key: 'alpha', path: 'M125,150L375,100L625,0' },
-            { key: 'beta', path: 'M125,200L375,150L625,100' },
+            { key: 'alpha', path: 'M83.33,150L250,100L416.67,0', dashed: null },
+            { key: 'beta', path: 'M83.33,200L250,150L416.67,100', dashed: null },
         ]);
     });
 
@@ -664,14 +672,48 @@ describe('the per-raid panel (#198)', () => {
         expect(panel.axis.max).toBe(4);
     });
 
-    it('stops each line at the last counted step', () => {
-        // The Provisional step is not drawn for any raid, whatever raid values it might hold.
-        const estimated = [...points.slice(0, 3), { ...points[3], raids: { alpha: 80, beta: 80 } }];
+    it('draws a raid\'s estimate dashed, starting on its last counted point', () => {
+        // Alpha's estimates are 3 and 2 (y = 50 and 100). The dashed path begins at the solid
+        // one's last vertex so the line is continuous and only the style changes.
+        const [alpha] = raidPanel(points, ['alpha'], from, to).lines;
 
-        const panel = raidPanel(estimated, ['alpha', 'beta'], from, to);
+        expect(alpha.path).toBe('M83.33,150L250,100L416.67,0');
+        expect(alpha.dashed).toBe('M416.67,0L583.33,50L750,100');
+    });
 
-        expect(panel.lines.map((line) => line.path.split('L').length)).toEqual([3, 3]);
-        expect(panel.axis.max).toBe(4);
+    it('draws no dashed line for a raid the estimated steps carry no value for', () => {
+        // Beta has no estimate: its line stops at the last counted step, which is what the
+        // chart shows for a raid with too little history.
+        const [beta] = raidPanel(points, ['beta'], from, to).lines;
+
+        expect(beta.dashed).toBeNull();
+        // Its own axis tops out at 2, so 0, 1, 2 sit at y = 200, 100, 0.
+        expect(beta.path).toBe('M83.33,200L250,100L416.67,0');
+    });
+
+    it('lets the axis grow to a raid\'s estimate, so the dashed line is never clipped', () => {
+        const high = [...counts, estimated(3, { alpha: 9 })];
+
+        const panel = raidPanel(high, ['alpha'], from, to);
+
+        expect(panel.axis).toEqual(valueAxis(9));
+    });
+
+    it('takes an estimate of one picked raid into the axis only if that raid is picked', () => {
+        const high = [...counts, estimated(3, { alpha: 3, gamma: 90 })];
+
+        expect(raidPanel(high, ['alpha'], from, to).axis.max).toBe(4);
+        expect(raidPanel(high, ['alpha', 'gamma'], from, to).axis.max).toBeGreaterThanOrEqual(90);
+    });
+
+    it('stops a raid\'s dashed line at its last estimate, one step short of another raid\'s', () => {
+        // Alpha is estimated on both Provisional steps and delta on the first only.
+        const mixed = [...counts, estimated(3, { alpha: 3, delta: 1 }), estimated(4, { alpha: 2 })];
+
+        const [alpha, delta] = raidPanel(mixed, ['alpha', 'delta'], from, to).lines;
+
+        expect(alpha.dashed?.split('L')).toHaveLength(3);
+        expect(delta.dashed?.split('L')).toHaveLength(2);
     });
 
     it('reads a raid a counted step has no value for as quiet', () => {
@@ -679,34 +721,55 @@ describe('the per-raid panel (#198)', () => {
 
         const [alpha] = raidPanel(sparse, ['alpha'], from, to).lines;
 
-        // x = 125 and 375; the second step has no record, so it is on the floor, y = 200.
-        expect(alpha.path).toBe('M125,0L375,200');
+        // x = 83.33 and 250; the second step has no record, so it is on the floor, y = 200.
+        expect(alpha.path).toBe('M83.33,0L250,200');
     });
 
-    it('has an axis to the floor and a bare line when nothing is counted', () => {
+    it('has a bare line when nothing is counted or estimated, and no line for no raid', () => {
         const panel = raidPanel([points[3]], ['alpha'], from, to);
 
-        expect(panel.axis).toEqual(valueAxis(0));
-        expect(panel.lines).toEqual([{ key: 'alpha', path: '' }]);
+        // Nothing counted to join to: the dashed line starts at its own first point, the 3
+        // that the axis tops out at.
+        expect(panel.axis).toEqual(valueAxis(3));
+        expect(panel.lines).toEqual([{ key: 'alpha', path: '', dashed: 'M583.33,0' }]);
         expect(raidPanel(points, [], from, to).lines).toEqual([]);
+        expect(raidPanel([], ['alpha'], from, to)).toEqual({ axis: valueAxis(0), lines: [{ key: 'alpha', path: '', dashed: null }] });
     });
 });
 
-describe('the span the per-raid panel shades (#198)', () => {
-    it('runs from where counting ends to now, so the newest hours are bare', () => {
-        // Per-raid lines stop where counting does. A window of 1,000 s counted until 750 s
-        // shades the last quarter.
-        expect(notCounted({ from: 0, to: 1000, countedUntil: 750 })).toEqual({
-            startPercent: 75,
-            endPercent: 100,
-            widthPercent: 25,
-        });
+describe('the raids with no estimate (#199)', () => {
+    const counted = { start: 0, end: HOUR, total: 5, provisional: false, raids: { alpha: 1, beta: 2 } };
+    const estimated = (raids: Record<string, number>) => ({ start: HOUR, end: 2 * HOUR, total: 5, provisional: true, raids });
+
+    it('lists the picked raids no estimated step carries a value for, in the picked order', () => {
+        const points = [counted, estimated({ alpha: 1 })];
+
+        expect(raidsWithoutEstimate(points, ['beta', 'alpha', 'gamma'])).toEqual(['beta', 'gamma']);
     });
 
-    it('is worded for the step, from the 2-hour mark', () => {
-        expect(notCountedLegend(HOUR)).toBe('Shaded: the last 2 to 3 hours, not counted yet.');
-        expect(notCountedLegend(10 * 60)).toBe('Shaded: the last 2 hours to 2 hours 10 minutes, not counted yet.');
-        expect(notCountedLegend(3 * HOUR)).toBe('Shaded: the last 2 to 5 hours, not counted yet.');
+    it('lists none when every picked raid has an estimate', () => {
+        expect(raidsWithoutEstimate([counted, estimated({ alpha: 1, beta: 0 })], ['alpha', 'beta'])).toEqual([]);
+    });
+
+    it('counts an estimate of 0 as an estimate', () => {
+        expect(raidsWithoutEstimate([counted, estimated({ alpha: 0 })], ['alpha'])).toEqual([]);
+    });
+
+    it('lists none when nothing is estimated at all, since there is no dashed line for a note to explain', () => {
+        expect(raidsWithoutEstimate([counted], ['alpha', 'beta'])).toEqual([]);
+        expect(raidsWithoutEstimate([], ['alpha'])).toEqual([]);
+    });
+
+    it('is worded for one raid and for several', () => {
+        expect(noEstimateNote(["King's Fall"])).toBe(
+            "King's Fall: too few runs in the past week to estimate, so its line stops where counting does."
+        );
+        expect(noEstimateNote(['Last Wish', "King's Fall"])).toBe(
+            "Last Wish and King's Fall: too few runs in the past week to estimate, so their lines stop where counting does."
+        );
+        expect(noEstimateNote(['A', 'B', 'C'])).toBe(
+            'A, B and C: too few runs in the past week to estimate, so their lines stop where counting does.'
+        );
     });
 });
 

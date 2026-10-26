@@ -434,6 +434,8 @@ function round(value: number): number {
 export interface RaidLine {
     key: string;
     path: string;
+    /** The estimated stretch, or null for a raid with no estimate. */
+    dashed: string | null;
 }
 
 /** The bottom panel (#198): its own y-axis, and a line for each raid picked. */
@@ -462,7 +464,7 @@ export function raidPanel(
     const axis = valueAxis(Math.max(0, ...keys.flatMap((key) => counted.map(valueIn(key)))));
     return {
         axis,
-        lines: keys.map((key) => ({ key, path: linePath(counted, from, to, axis.max, valueIn(key)) })),
+        lines: keys.map((key) => ({ key, path: linePath(counted, from, to, axis.max, valueIn(key)), dashed: null })),
     };
 }
 
@@ -491,4 +493,17 @@ export function raidPanelAriaLabel(names: readonly string[], range: ActivityRang
     const last = names[names.length - 1];
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${last}` : last;
     return `Raids in progress per ${range.step} for ${list} over the last ${range.span}.`;
+}
+
+/** The picked raids no estimated step carries a value for. */
+export function raidsWithoutEstimate(points: RaidsInProgressPoint[], keys: readonly string[]): string[] {
+    void points;
+    void keys;
+    return [];
+}
+
+/** The note naming the raids with no estimate. */
+export function noEstimateNote(names: readonly string[]): string {
+    void names;
+    return '';
 }

@@ -50,6 +50,9 @@ const LINE_STROKE = {
     vectorEffect: 'non-scaling-stroke',
 } as const;
 
+/** {@link LINE_STROKE} dashed: the estimated stretch of the total's line and of each raid's. */
+const DASHED_STROKE = { ...LINE_STROKE, strokeDasharray: '6 4' } as const;
+
 /**
  * The Raid Activity chart (#194–#197): one line of total Raids in Progress, one point per
  * step of the chosen range. Counted steps are drawn solid; the steps too recent to count
@@ -128,7 +131,7 @@ export function ActivityChart({
                             <ShadeRect testId="activity-too-recent" span={shade} />
                             <path data-testid="activity-line" d={solid} {...LINE_STROKE} />
                             {dashed === null ? null : (
-                                <path data-testid="activity-provisional-line" d={dashed} {...LINE_STROKE} strokeDasharray="6 4" />
+                                <path data-testid="activity-provisional-line" d={dashed} {...DASHED_STROKE} />
                             )}
                         </Panel>
 
@@ -156,9 +159,8 @@ export function ActivityChart({
                                                 data-testid="activity-raid-provisional-line"
                                                 data-raid={line.key}
                                                 d={line.dashed}
-                                                {...LINE_STROKE}
+                                                {...DASHED_STROKE}
                                                 stroke={raidColour(index)}
-                                                strokeDasharray="6 4"
                                             />
                                         )}
                                     </Fragment>
@@ -204,7 +206,7 @@ export function ActivityChart({
                             A raid still running has no report yet, so the count of raids that have ended is scaled up by
                             the share usually reported by then. The counted steps beside it are still being filled in, so
                             the line can step up where it turns dashed.
-                            {pickedRaids.length === 0 ? null : ' Each raid below is scaled by the share its own runs usually report.'}
+                            {noEstimate.length < pickedRaids.length ? ' Each raid below is scaled by the share its own runs usually report.' : null}
                         </span>
                     </p>
                 )}

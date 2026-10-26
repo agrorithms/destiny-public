@@ -32,9 +32,9 @@ Seams and decisions approved 2026-10-26:
    - [x] `docs/e2e-coverage.md` — flow entry and journal
    - [x] this file
 7. Bite proofs
-   - [ ] `npm run mutate:diff -- 7070e76...HEAD --typecheck`
-   - [ ] `npm run visual:check`
-   - [ ] lint, build, test, e2e at HEAD
+   - [x] `npm run mutate:diff -- 7070e76...HEAD --typecheck` — full run at `ec36c09`: 100.0% overall (92/92), 100.0% covered, 47 compile errors discarded, PASS; first run (at `999686f`) 97.8% (91/93) with two survivors, killed in loop 1 (`activity-geometry.ts:489` `every`→`some`, test: a raid whose estimate ends early still counts as estimated; `queries.ts:1940` the `raidKeys = []` default, an equivalent mutant, removed by deriving a `Set` instead); 1 loop, no `Stryker disable` comments
+   - [x] `npm run visual:check` — 68/68, overflow gate passed
+   - [x] lint, build, test, e2e at `ec36c09`: lint 0 errors (29 warnings), tsc app and scripts, build (inside `npm run e2e` and `visual:check`), vitest 885/885, e2e 212/212
 
 ## Backtest
 
@@ -143,4 +143,10 @@ training pass instead of one in total (the total's tally is their sum, so each r
 
 ## Surviving mutants
 
-(none yet)
+none. (Loop 1's two are above; the `queries.ts:1940` one was equivalent, so the code was simplified rather than disabled.)
+
+## Notes
+
+- Red runs: Vitest commits `0c34c30` and `905e72f` (red-first); Playwright 10 of 46 failed against the #198 chart, then four deliberate breaks, all recorded in `docs/e2e-coverage.md`, "#199".
+- `getCompletenessCurve` is kept as a one-line wrapper over `getCompletenessCurves(...).total`; `envSeconds` and `envMs` now call the new `envCount`.
+- Local only: `docs/handoffs/` was left alone. The backtest scripts and the 1.9 GB `bench.db` copy are in the session scratchpad, not the repo.

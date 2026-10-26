@@ -632,13 +632,18 @@ describe('the per-raid Provisional estimate (#199)', () => {
         }
     }
 
+    /** The two raids' training weeks described above, whose hour-10 shares are 1 and 0.8. */
+    function seedTwoCurves(): void {
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+    }
+
     function raidsAt(series: RaidsInProgressSeries, start: number) {
         return provisionalAt(series, start)?.raids;
     }
 
     it('scales each raid by its own curve, so raids with different run lengths differ as theirs predict', () => {
-        seedWeekOf('last_wish', [[10, 0, HOUR]]);
-        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+        seedTwoCurves();
         // The same half hour of each raid in the 10:00 step, read 30 minutes after it ends.
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
@@ -657,8 +662,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
     it('gives a raid below the history threshold counted values only, and the raids above it their estimates', () => {
         // Last Wish has 6 training runs (one a day), Vault of Glass 12. At a minimum of 7 the
         // first is too thinly evidenced to scale up and the second is not.
-        seedWeekOf('last_wish', [[10, 0, HOUR]]);
-        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+        seedTwoCurves();
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
 
@@ -736,8 +740,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
     });
 
     it('does not change the total\'s estimate or the counted values', () => {
-        seedWeekOf('last_wish', [[10, 0, HOUR]]);
-        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+        seedTwoCurves();
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(8), 30 * MINUTE, { raidKey: 'vault_of_glass' });
 

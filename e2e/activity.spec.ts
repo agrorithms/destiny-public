@@ -404,6 +404,20 @@ async function totalLine(page: Page): Promise<string> {
     return (await tooltip(page).innerText()).split('\n')[0];
 }
 
+/** The tooltip's text, a line at a time: the total's, then one for each raid drawn. */
+async function tooltipLines(page: Page): Promise<string[]> {
+    return (await tooltip(page).innerText()).split('\n');
+}
+
+/** The tooltip's marker runs from the top of the total's panel to the foot of the raids'. */
+async function expectMarkerThroughBothPanels(page: Page): Promise<void> {
+    const marker = await boxOf(page.getByTestId('activity-tooltip-marker'));
+    const top = await boxOf(chartSvg(page, 'total'));
+    const bottom = await boxOf(chartSvg(page, 'raids'));
+    expect(marker.y).toBeCloseTo(top.y, 0);
+    expect(marker.y + marker.height).toBeCloseTo(bottom.y + bottom.height, 0);
+}
+
 /** How far across the chart each vertex of a path is, from 0 to 1. */
 function fractions(d: string): number[] {
     return vertices(d).map((vertex) => parseFloat(vertex.split(',')[0]) / CHART_WIDTH);
@@ -936,12 +950,7 @@ test.describe('the per-raid panel', () => {
             await waitForClientStep(page);
 
             await hoverAt(page, await peakFraction(page), 'raids');
-
-            const marker = await boxOf(page.getByTestId('activity-tooltip-marker'));
-            const top = await boxOf(chartSvg(page, 'total'));
-            const bottom = await boxOf(chartSvg(page, 'raids'));
-            expect(marker.y).toBeCloseTo(top.y, 0);
-            expect(marker.y + marker.height).toBeCloseTo(bottom.y + bottom.height, 0);
+            await expectMarkerThroughBothPanels(page);
         });
 
         test('over the newest hours shows the total\'s estimate on the top panel and the raid\'s own on the bottom', async ({ page }) => {
@@ -954,7 +963,7 @@ test.describe('the per-raid panel', () => {
             for (const part of ['total', 'raids'] as const) {
                 await hoverAt(page, firstEstimate, part);
                 await expect.poll(() => totalLine(page), part).toMatch(ESTIMATED_TOTAL);
-                const lines = (await tooltip(page).innerText()).split('\n');
+                const lines = await tooltipLines(page);
                 expect(lines, part).toHaveLength(2);
                 expect(lines[1], part).toMatch(new RegExp(`^${SALVATIONS.name}: [\\d,]+${ESTIMATE.source}`));
             }
@@ -962,7 +971,7 @@ test.describe('the per-raid panel', () => {
             // The last counted step is a count with a count beside it. Polled: the box still holds
             // the estimate's lines until React redraws it, and a single read could catch that.
             await hoverAt(page, lastCounted, 'raids');
-            await expect.poll(async () => (await tooltip(page).innerText()).split('\n')[1]).toMatch(/^Salvation's Edge: [\d,]+$/);
+            await expect.poll(async () => (await tooltipLines(page))[1]).toMatch(/^Salvation's Edge: [\d,]+$/);
             await expect(tooltip(page)).not.toHaveText(ESTIMATE);
         });
 
@@ -1042,7 +1051,7 @@ function raidDashed(page: Page, key: string) {
 }
 
 function raidSolid(page: Page, key: string) {
-    return page.locator(`[data-testid="activity-raid-line"][data-raid="${key}"]`);
+    return raidLines(page).and(page.locator(`[data-raid="${key}"]`));
 }
 
 const NO_ESTIMATE_NOTE = `${KINGS_FALL.name}: too few runs in the past week to estimate, so its line stops where counting does.`;
@@ -1056,13 +1065,14 @@ test.describe('the per-raid Provisional estimate', () => {
             // total's does, in the raid's own colour, and runs through the same estimated steps.
             const solid = vertices((await raidSolid(page, SALVATIONS.key).getAttribute('d')) ?? '');
             const dashed = raidDashed(page, SALVATIONS.key);
-            const estimate = vertices((await dashed.getAttribute('d')) ?? '');
+            const dashedD = (await dashed.getAttribute('d')) ?? '';
+            const estimate = vertices(dashedD);
             expect(estimate[0], `${id}: starts on the last counted point`).toBe(solid.at(-1));
             await expect(dashed).toHaveAttribute('stroke-dasharray', /\d/);
             await expect(dashed).toHaveAttribute('stroke', (await raidSolid(page, SALVATIONS.key).getAttribute('stroke')) ?? '');
             await expect(raidSolid(page, SALVATIONS.key)).not.toHaveAttribute('stroke-dasharray');
             expect(estimate.length, `${id}: has estimated steps`).toBeGreaterThan(1);
-            expect((await dashedFractions(page)).map((x) => x.toFixed(3))).toEqual(estimate.map((v) => (parseFloat(v) / CHART_WIDTH).toFixed(3)));
+            expect((await dashedFractions(page)).map((x) => x.toFixed(3))).toEqual(fractions(dashedD).map((x) => x.toFixed(3)));
 
             // King's Fall has 4 runs in the training week against a minimum of 6: counted, and
             // no dashed segment.
@@ -1077,8 +1087,10 @@ test.describe('the per-raid Provisional estimate', () => {
     test('the dashed segment stops before the shade it shares with the total', async ({ page }) => {
         await page.goto(`/activity?range=24h&raids=${SALVATIONS.key}`);
 
-        const estimate = vertices((await raidDashed(page, SALVATIONS.key).getAttribute('d')) ?? '');
-        const lastX = parseFloat(estimate.at(-1)!.split(',')[0]) / 10;
+        const dashedD = (await raidDashed(page, SALVATIONS.key).getAttribute('d')) ?? '';
+        const estimate = vertices(dashedD);
+        // The path's x as a percent across, as the shade's is.
+        const lastX = fractions(dashedD).at(-1)! * 100;
         const shadeX = parseFloat((await page.getByTestId('activity-raid-too-recent').getAttribute('x')) ?? '');
         expect(lastX).toBeLessThan(shadeX);
         // The seeded recent run puts the raid's estimate off the floor.
@@ -1100,13 +1112,13 @@ test.describe('the per-raid Provisional estimate', () => {
 
         await hoverAt(page, firstEstimate, 'raids');
         await expect.poll(() => totalLine(page)).toMatch(ESTIMATED_TOTAL);
-        const lines = (await tooltip(page).innerText()).split('\n');
+        const lines = await tooltipLines(page);
         expect(lines[1]).toMatch(new RegExp(`^${SALVATIONS.name}: [\\d,]+${ESTIMATE.source}`));
         expect(lines[2]).toBe(`${KINGS_FALL.name}: no estimate`);
 
         // A counted step has a plain count for both, King's Fall's a real 0.
         await hoverAt(page, lastCounted, 'raids');
-        await expect.poll(async () => (await tooltip(page).innerText()).split('\n')[2]).toBe(`${KINGS_FALL.name}: 0`);
+        await expect.poll(async () => (await tooltipLines(page))[2]).toBe(`${KINGS_FALL.name}: 0`);
     });
 
     test('draws one marker through both panels over an estimated step', async ({ page }) => {
@@ -1114,12 +1126,7 @@ test.describe('the per-raid Provisional estimate', () => {
         await waitForClientStep(page);
 
         await hoverAt(page, (await dashedFractions(page))[1], 'raids');
-
-        const marker = await boxOf(page.getByTestId('activity-tooltip-marker'));
-        const top = await boxOf(chartSvg(page, 'total'));
-        const bottom = await boxOf(chartSvg(page, 'raids'));
-        expect(marker.y).toBeCloseTo(top.y, 0);
-        expect(marker.y + marker.height).toBeCloseTo(bottom.y + bottom.height, 0);
+        await expectMarkerThroughBothPanels(page);
     });
 
     test.describe('with JavaScript disabled', () => {
@@ -1151,8 +1158,8 @@ test.describe('the per-raid Provisional estimate', () => {
             await expectNoOverflow(page);
 
             await tapAt(page, (await dashedFractions(page))[1], 'raids');
-            await expect.poll(async () => (await tooltip(page).innerText()).split('\n').length).toBe(6);
-            expect((await tooltip(page).innerText()).split('\n').slice(2)).toEqual(
+            await expect.poll(async () => (await tooltipLines(page)).length).toBe(6);
+            expect((await tooltipLines(page)).slice(2)).toEqual(
                 [KINGS_FALL, VAULT, LAST_WISH, CROTAS].map((raid) => `${raid.name}: no estimate`)
             );
             await expectInsideViewport(tooltip(page), 'the five-raid estimate tooltip');

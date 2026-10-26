@@ -10,7 +10,7 @@ import {
 } from './completeness-curve';
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
-import { getHashesWithDifficulty } from '../bungie/manifest';
+import { getAllRaidDefinitions, getHashesWithDifficulty } from '../bungie/manifest';
 import type { Difficulty } from '../bungie/difficulty';
 
 /**
@@ -1636,6 +1636,13 @@ export interface RaidsInProgressPoint {
      * ones first.
      */
     provisional: boolean;
+    /**
+     * Raids in Progress per raid (#198), averaged over the step, for exactly the keys the
+     * series was asked for ({@link RaidsInProgressOptions.raidKeys}), zero where a raid ran
+     * nothing. Absent when no keys were asked for, and on Provisional steps, which have no
+     * per-raid estimate until #199.
+     */
+    raids?: Record<string, number>;
 }
 
 export interface RaidsInProgressSeries {
@@ -1671,6 +1678,12 @@ export interface RaidsInProgressSeries {
      */
     provisionalUntil: number;
     points: RaidsInProgressPoint[];
+    /**
+     * The up to 3 raids with the most raid time over the counted steps, most first; ties in
+     * `RAID_DEFINITIONS` order. A raid with none is not listed, so fewer than 3 is possible.
+     * Returned whatever {@link RaidsInProgressOptions.raidKeys} asked for.
+     */
+    topRaids: string[];
 }
 
 export interface RaidsInProgressOptions {
@@ -1678,6 +1691,8 @@ export interface RaidsInProgressOptions {
     stepSeconds: number;
     /** Unix seconds. Passed in, never read from the clock here, so a test can pin it. */
     now: number;
+    /** Raids to return per-raid values for (#198). Omitted, no point carries any. */
+    raidKeys?: readonly string[];
 }
 
 /**
@@ -1714,6 +1729,13 @@ export interface RaidsInProgressOptions {
  * read, in either case: the estimate is of what the counted version will say, from what
  * has ended.
  *
+ * **Per raid, from the same sweep** (#198). Each run is also added to its raid's own overlap
+ * arrays, so the per-raid values of a counted step add up to its total and the cost is the
+ * same pass plus a few small arrays. `raidKeys` picks which raids' values the points carry
+ * (zero for one that never ran, nothing for a Provisional step: a per-raid estimate is
+ * #199's); {@link RaidsInProgressSeries.topRaids} is ranked over the counted steps,
+ * whichever were asked for.
+ *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
  * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step
  * start`), and each adds its overlap in O(1): the partial first and last steps it touches
@@ -1741,47 +1763,107 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
     // One slot past the last step in each, for a run ending exactly at the cutoff: its
-    // last piece lands there, and is zero seconds long.
-    const partialSeconds = new Float64Array(steps + 1);
-    const wholeStepsDelta = new Float64Array(steps + 1);
+    // last piece lands there, and is zero seconds long. The total has one pair, and each raid
+    // its own (#198), filled by the same pass.
+    const total = newOverlap(steps);
+    const perRaid = new Map<string, Overlap>();
 
-    for (const [period, endedAt] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
+    for (const [period, endedAt, raidKey] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
         const start = Math.max(period, firstStart);
         const end = Math.min(endedAt, cutoff);
-        const first = Math.floor((start - firstStart) / stepSeconds);
-        const last = Math.floor((end - firstStart) / stepSeconds);
-        // The run's piece of its first step, its piece of its last, and +1 for every whole
-        // step between them. A run inside a single step takes the same path: its two
-        // pieces then overlap and add up to one step more than the run, and the -1 at
-        // `last` (which is `first`) takes that step back.
-        partialSeconds[first] += firstStart + (first + 1) * stepSeconds - start;
-        partialSeconds[last] += end - (firstStart + last * stepSeconds);
-        wholeStepsDelta[first + 1] += 1;
-        wholeStepsDelta[last] -= 1;
+        let raid = perRaid.get(raidKey);
+        if (raid === undefined) {
+            raid = newOverlap(steps);
+            perRaid.set(raidKey, raid);
+        }
+        addOverlap(total, firstStart, stepSeconds, start, end);
+        addOverlap(raid, firstStart, stepSeconds, start, end);
     }
 
+    const requested = options.raidKeys;
+    const raidTime = new Map<string, number>();
+    const wholeRunsOf = new Map<string, number>();
     const points: RaidsInProgressPoint[] = [];
     let wholeRuns = 0;
     for (let index = 0; index < steps; index++) {
-        wholeRuns += wholeStepsDelta[index];
+        wholeRuns += total.wholeStepsDelta[index];
         const start = firstStart + index * stepSeconds;
         const end = start + stepSeconds;
-        const observed = wholeRuns + partialSeconds[index] / stepSeconds;
+        const observed = wholeRuns + total.partialSeconds[index] / stepSeconds;
         if (index < countedSteps) {
-            points.push({ start, end, total: observed, provisional: false });
+            const byRaid: Record<string, number> = {};
+            for (const [key, raid] of perRaid) {
+                const whole = (wholeRunsOf.get(key) ?? 0) + raid.wholeStepsDelta[index];
+                wholeRunsOf.set(key, whole);
+                const value = whole + raid.partialSeconds[index] / stepSeconds;
+                raidTime.set(key, (raidTime.get(key) ?? 0) + value);
+                byRaid[key] = value;
+            }
+            const point: RaidsInProgressPoint = { start, end, total: observed, provisional: false };
+            if (requested !== undefined) {
+                point.raids = Object.fromEntries(requested.map((key) => [key, byRaid[key] ?? 0]));
+            }
+            points.push(point);
             continue;
         }
         // The estimate stops at the first step it can't make, so it is one unbroken run
         // and `provisionalUntil` is where it ends: shares are per hour of the day, and a
         // later step with a share would otherwise be drawn joined across the gap.
-        const total = curve === null ? null : estimateTotal(observed, shareAt(curve, hourOfStep(start, stepSeconds), now - end));
-        if (total === null) break;
-        points.push({ start, end, total, provisional: true });
+        const estimate = curve === null ? null : estimateTotal(observed, shareAt(curve, hourOfStep(start, stepSeconds), now - end));
+        if (estimate === null) break;
+        points.push({ start, end, total: estimate, provisional: true });
     }
 
     const lastPoint = points.at(-1);
     const provisionalUntil = lastPoint?.provisional ? lastPoint.end : countedUntil;
-    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil, points };
+    return { from, to: now, stepSeconds, countedFrom: firstStart, countedUntil, provisionalUntil, points, topRaids: topRaids(raidTime) };
+}
+
+/** The seconds of raid time a set of runs puts in each step, built by {@link addOverlap}. */
+interface Overlap {
+    partialSeconds: Float64Array;
+    wholeStepsDelta: Float64Array;
+}
+
+function newOverlap(steps: number): Overlap {
+    return { partialSeconds: new Float64Array(steps + 1), wholeStepsDelta: new Float64Array(steps + 1) };
+}
+
+/**
+ * Adds one run, clipped to `[start, end]` inside the window, to an {@link Overlap}: its piece
+ * of its first step, its piece of its last, and +1 for every whole step between them. A run
+ * inside a single step takes the same path: its two pieces then overlap and add up to one
+ * step more than the run, and the -1 at `last` (which is `first`) takes that step back.
+ */
+function addOverlap(overlap: Overlap, firstStart: number, stepSeconds: number, start: number, end: number): void {
+    const first = Math.floor((start - firstStart) / stepSeconds);
+    const last = Math.floor((end - firstStart) / stepSeconds);
+    overlap.partialSeconds[first] += firstStart + (first + 1) * stepSeconds - start;
+    overlap.partialSeconds[last] += end - (firstStart + last * stepSeconds);
+    overlap.wholeStepsDelta[first + 1] += 1;
+    overlap.wholeStepsDelta[last] -= 1;
+}
+
+/** How many raids {@link RaidsInProgressSeries.topRaids} lists. */
+const TOP_RAID_COUNT = 3;
+
+/**
+ * The raids with the most raid time (#198), most first, at most {@link TOP_RAID_COUNT}, none
+ * with no time at all. Ties go in `RAID_DEFINITIONS` order, so which raid is listed does not
+ * depend on the order the PGCRs happen to have been stored in; a key no definition names
+ * comes after those that do.
+ */
+function topRaids(raidTime: ReadonlyMap<string, number>): string[] {
+    const listed = Object.keys(getAllRaidDefinitions());
+    const place = (key: string) => {
+        const index = listed.indexOf(key);
+        return index === -1 ? listed.length : index;
+    };
+    return [...raidTime]
+        .filter(([, time]) => time > 0)
+        .sort(([keyA, a], [keyB, b]) => b - a || place(keyA) - place(keyB) || keyA.localeCompare(keyB))
+        .slice(0, TOP_RAID_COUNT)
+        .map(([key]) => key);
 }
 
 /**
@@ -1817,16 +1899,16 @@ export function getCompletenessCurve(options: { now: number; stepSeconds: number
  * same population it was learned from. Raids only, through the covering
  * `idx_pgcrs_ended_period_raid`. A run that has not ended by `now` is not a report yet.
  */
-function endedRaidRuns(bounds: { endedAfter: number; now: number; startedBefore: number }): IterableIterator<[number, number]> {
+function endedRaidRuns(bounds: { endedAfter: number; now: number; startedBefore: number }): IterableIterator<[number, number, string]> {
     const { endedAfter, now, startedBefore } = bounds;
     return getDb().prepare(`
-    SELECT p.period, p.ended_at
+    SELECT p.period, p.ended_at, p.raid_key
     FROM pgcrs p
     WHERE p.ended_at > ?
       AND p.ended_at <= ?
       AND p.period < ?
       AND p.raid_key IS NOT NULL
-  `).raw().iterate(endedAfter, now, startedBefore) as IterableIterator<[number, number]>;
+  `).raw().iterate(endedAfter, now, startedBefore) as IterableIterator<[number, number, string]>;
 }
 
 // =====================

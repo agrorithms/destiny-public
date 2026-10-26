@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-interface RaidOption {
+/** A raid as the raid pickers list it: its key, and the name shown for it. */
+export interface RaidOption {
     key: string;
     name: string;
 }
@@ -11,10 +12,22 @@ interface RaidMultiSelectProps {
     raids: RaidOption[];
     selected: string[];
     onChange: (selected: string[]) => void;
+    /**
+     * Opt-in cap on how many raids can be picked (#198). Left out — every use but the Raid
+     * Activity chart's — the select behaves as it always has: no cap, and an empty selection
+     * means all raids. With a cap, an empty selection is a picker with nothing picked, so
+     * Select All goes (it would pick past the cap), the footer counts against the cap, and a
+     * pick past it is refused with {@link RaidMultiSelectProps.limitMessage}.
+     */
+    maxSelected?: number;
+    /** Said, in the open list, when a pick is refused for the cap. */
+    limitMessage?: string;
 }
 
-export default function RaidMultiSelect({ raids, selected, onChange }: RaidMultiSelectProps) {
+export default function RaidMultiSelect({ raids, selected, onChange, maxSelected, limitMessage }: RaidMultiSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
+    // Whether the last pick was refused for the cap, so the message stays until the next change.
+    const [refused, setRefused] = useState(false);
     const [focusedIndex, setFocusedIndex] = useState(-1);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -27,6 +40,7 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
     }, []);
 
     const open = useCallback(() => {
+        setRefused(false);
         setIsOpen(true);
         setFocusedIndex(0);
     }, []);
@@ -75,12 +89,14 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
         return () => el?.removeEventListener('focusout', handleFocusOut);
     }, [isOpen]);
 
+    const atCap = maxSelected !== undefined && selected.length >= maxSelected;
+
     function toggleRaid(raidKey: string) {
-        if (selected.includes(raidKey)) {
-            onChange(selected.filter((k) => k !== raidKey));
-        } else {
-            onChange([...selected, raidKey]);
-        }
+        const isSelected = selected.includes(raidKey);
+        const refuse = atCap && !isSelected;
+        setRefused(refuse);
+        if (refuse) return;
+        onChange(isSelected ? selected.filter((k) => k !== raidKey) : [...selected, raidKey]);
     }
 
     function selectAll() {
@@ -88,6 +104,7 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
     }
 
     function clearFilter() {
+        setRefused(false);
         onChange([]);
     }
 
@@ -129,7 +146,9 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
     }, [focusedIndex, isOpen, raids]);
 
     let label: string;
-    if (selected.length === 0 || selected.length === raids.length) {
+    if (maxSelected !== undefined && selected.length === 0) {
+        label = 'No raids picked';
+    } else if (selected.length === 0 || selected.length === raids.length) {
         label = 'All Raids';
     } else if (selected.length === 1) {
         const raid = raids.find((r) => r.key === selected[0]);
@@ -166,21 +185,23 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
             {isOpen && (
                 <div className="absolute z-50 mt-1 w-full min-w-[260px] ui-input rounded-lg shadow-xl overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2 border-b ui-divider">
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                selectAll();
-                            }}
-                            className="text-xs ui-accent-text transition-colors"
-                        >
-                            Select All
-                        </button>
+                        {maxSelected === undefined && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    selectAll();
+                                }}
+                                className="text-xs ui-accent-text transition-colors"
+                            >
+                                Select All
+                            </button>
+                        )}
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 clearFilter();
                             }}
-                            className="text-xs text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-300"
+                            className="ml-auto text-xs text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-300"
                         >
                             Clear Filter
                         </button>
@@ -204,6 +225,7 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
                                     id={`raid-option-${raid.key}`}
                                     role="option"
                                     aria-selected={isSelected}
+                                    aria-disabled={atCap && !isSelected ? true : undefined}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         toggleRaid(raid.key);
@@ -231,10 +253,26 @@ export default function RaidMultiSelect({ raids, selected, onChange }: RaidMulti
                         })}
                     </div>
 
+                    {/* A live region mounted empty with the open list, and the text put in on a
+                        refusal: many screen readers only announce a change to a region they
+                        already know, not one that arrives with its text. Empty, it takes no
+                        space. Only with a cap and a message, so the uncapped uses add nothing. */}
+                    {maxSelected !== undefined && limitMessage && (
+                        <p
+                            role="status"
+                            data-testid="raid-limit-message"
+                            className={refused ? 'px-3 py-2 border-t ui-divider text-xs ui-text-primary' : undefined}
+                        >
+                            {refused ? limitMessage : null}
+                        </p>
+                    )}
+
                     <div className="px-3 py-2 border-t ui-divider text-xs ui-text-muted">
-                        {selected.length === 0
-                            ? 'No filter — showing all raids'
-                            : `${selected.length} of ${raids.length} raids selected`}
+                        {maxSelected !== undefined
+                            ? `${selected.length} of ${maxSelected} raids picked`
+                            : selected.length === 0
+                              ? 'No filter — showing all raids'
+                              : `${selected.length} of ${raids.length} raids selected`}
                     </div>
                 </div>
             )}

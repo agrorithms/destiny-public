@@ -8,9 +8,11 @@ import { ACTIVITY_RANGES, activityRangeHref, type ActivityRangeId } from './acti
  * URL (`?range=`), so a reload or a shared link shows the same chart, and with JavaScript
  * off each one is a plain link the browser follows. With it on, Next's client navigation
  * re-renders the server component without a full reload, and `scroll={false}` keeps the
- * reader where they were. Why the range is in the URL: ./activity-range.ts.
+ * reader where they were. Why the range is in the URL: ./activity-range.ts. The links carry the
+ * raids the URL named (#198), so a range switch keeps the reader's comparison; with none named
+ * they carry none, and each range picks its own top raids.
  */
-export function ActivityRangeControl({ range }: { range: ActivityRangeId }) {
+export function ActivityRangeControl({ range, raids }: { range: ActivityRangeId; raids: readonly string[] }) {
     return (
         <nav aria-label="Range" data-testid="activity-range">
             {/* No wrap and no scroll: three short labels fit a 360px phone on one row, and
@@ -21,7 +23,7 @@ export function ActivityRangeControl({ range }: { range: ActivityRangeId }) {
                     return (
                         <li key={id} className="border-l ui-divider first:border-l-0">
                             <Link
-                                href={activityRangeHref(id)}
+                                href={activityRangeHref(id, raids)}
                                 scroll={false}
                                 aria-current={active ? 'page' : undefined}
                                 // The leaderboard's View toggle's warm tokens: the chosen preset

@@ -554,3 +554,121 @@ describe('the Provisional estimate', () => {
         expect(valueAt(withCurve, clock(7))).toBe(0.5);
     });
 });
+
+describe('the per-raid split (#198)', () => {
+    const ALL = ['last_wish', 'vault_of_glass', 'salvations_edge'];
+
+    it('splits each step between the raids that ran in it, and the parts add up to the total', () => {
+        // Three raids overlapping at different depths, so a split that credited every run to
+        // one raid, or lost a partial step, would disagree with the literals below.
+        seedRaid(hoursBeforeNow(10), HOUR, { raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(10) + 15 * 60, HOUR / 2, { raidKey: 'vault_of_glass' });
+        seedRaid(hoursBeforeNow(10), 2 * HOUR, { raidKey: 'vault_of_glass' });
+        seedRaid(hoursBeforeNow(9), HOUR / 4, { raidKey: 'salvations_edge' });
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ALL });
+
+        const at = (hours: number) => series.points.find((point) => point.start === hoursBeforeNow(hours))!;
+        expect(at(10).raids).toEqual({ last_wish: 1, vault_of_glass: 1.5, salvations_edge: 0 });
+        expect(at(9).raids).toEqual({ last_wish: 0, vault_of_glass: 1, salvations_edge: 0.25 });
+        expect(at(8).raids).toEqual({ last_wish: 0, vault_of_glass: 0, salvations_edge: 0 });
+        for (const point of countedPoints(series)) {
+            const sum = Object.values(point.raids!).reduce((a, b) => a + b, 0);
+            expect(sum, `step at ${point.start}`).toBeCloseTo(point.total, 9);
+        }
+    });
+
+    it('returns exactly the raids asked for, a raid that never ran as 0, and none when none are asked for', () => {
+        seedRaid(hoursBeforeNow(10), HOUR, { raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(10), HOUR, { raidKey: 'vault_of_glass' });
+
+        const asked = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ['vault_of_glass', 'kings_fall'] });
+        const none = getRaidsInProgress(SEVEN_DAYS);
+
+        const step = asked.points.find((point) => point.start === hoursBeforeNow(10))!;
+        expect(step.raids).toEqual({ vault_of_glass: 1, kings_fall: 0 });
+        expect(step.total, 'the total still counts the raid not asked for').toBe(2);
+        expect(none.points.every((point) => point.raids === undefined)).toBe(true);
+    });
+
+    it('carries no per-raid values on a Provisional step', () => {
+        // A week of a raid to learn a curve from, so the newest steps are estimated.
+        for (let day = 2; day <= 7; day++) seedRaid(hoursBeforeNow(day * 24 + 3), HOUR, { raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(1), HOUR / 2, { raidKey: 'last_wish' });
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ALL });
+
+        const estimated = series.points.filter((point) => point.provisional);
+        expect(estimated.length, 'the fixture has an estimated step').toBeGreaterThan(0);
+        expect(estimated.every((point) => point.raids === undefined)).toBe(true);
+        expect(countedPoints(series).every((point) => point.raids !== undefined)).toBe(true);
+    });
+});
+
+describe('the top raids in range (#198)', () => {
+    it('lists up to 3 raids by raid time, most first', () => {
+        seedRaid(hoursBeforeNow(20), 3 * HOUR, { raidKey: 'vault_of_glass' });
+        seedRaid(hoursBeforeNow(30), 2 * HOUR, { raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(40), 5 * HOUR, { raidKey: 'kings_fall' });
+        seedRaid(hoursBeforeNow(50), HOUR / 2, { raidKey: 'crotas_end' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['kings_fall', 'vault_of_glass', 'last_wish']);
+    });
+
+    it('is returned whichever raids were asked for', () => {
+        seedRaid(hoursBeforeNow(20), 3 * HOUR, { raidKey: 'vault_of_glass' });
+
+        const asked = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ['last_wish'] });
+
+        expect(asked.topRaids).toEqual(['vault_of_glass']);
+    });
+
+    it('leaves out a raid with no counted time in range, so there can be fewer than 3', () => {
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'vault_of_glass' });
+        // Ended before the window opened: the query never reads it.
+        seedRaid(NOW - 7 * 24 * HOUR - 5 * HOUR, HOUR, { raidKey: 'kings_fall' });
+        // Inside the window but wholly in the steps not counted yet: read and swept, so the
+        // raid reaches the ranking with zero counted time, and only the "no time at all" rule
+        // keeps it off the list.
+        seedRaid(hoursBeforeNow(2), HOUR, { raidKey: 'crotas_end' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['vault_of_glass', 'last_wish']);
+    });
+
+    it('breaks a tie in the raid list\'s order, not the order the runs were stored in', () => {
+        // last_wish is stored first but listed after salvations_edge and vault_of_glass.
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'vault_of_glass' });
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'salvations_edge' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['salvations_edge', 'vault_of_glass', 'last_wish']);
+    });
+
+    it('puts a tied raid key the raid list does not name after the raids it does', () => {
+        // A key no RAID_DEFINITIONS entry names (a raid stored before manifest.ts learned it).
+        // Stored first and alphabetically first, so only the "unnamed keys go last" rule puts
+        // it behind last_wish on the same raid time.
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'aaa_unlisted_raid' });
+        seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'last_wish' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'aaa_unlisted_raid']);
+    });
+
+    it('ranks by the time inside the counted window, not the length of the run', () => {
+        // A long run that mostly began before the window has the shorter overlap.
+        const firstStep = NOW - 7 * 24 * HOUR;
+        seedRaid(firstStep - 3 * HOUR, 4 * HOUR, { raidKey: 'kings_fall' });
+        seedRaid(hoursBeforeNow(20), 2 * HOUR, { raidKey: 'last_wish' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'kings_fall']);
+    });
+
+    it('does not rank by raid time that is not counted yet', () => {
+        // Ended within the last 2 hours: a Provisional step's time, which no per-raid line shows.
+        seedRaid(hoursBeforeNow(2), HOUR + HOUR / 2, { raidKey: 'kings_fall' });
+        seedRaid(hoursBeforeNow(20), HOUR / 2, { raidKey: 'last_wish' });
+
+        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish']);
+    });
+});

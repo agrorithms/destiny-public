@@ -157,6 +157,15 @@ shipped-code replay rest on 2, 2 and 7 steps (20, 37 and 79 in the fetched run):
   line, the dashed line, the shades — are positions in the UTC window and do not move; the
   gridlines do, to the reader's midnights and 3-hour marks. With JavaScript off the page stays
   UTC and says so. The SVG's accessible name is UTC in both.
+- **The per-raid panel draws counted steps only.** *2026-10-25 (#198):* the second panel's lines
+  stop where counting does — a per-raid estimate would need a completeness curve per raid, which
+  is #199 — and the span after it is shaded "not counted yet", wider than the total's own shade.
+  The per-raid values come out of the same sweep as the total's (each run is added to its raid's
+  arrays as well), so a counted step's raids add up to its total; measured on the 2026-10-25 prod
+  backup that is +33 ms, +103 ms and +290 ms on the 24 h, 7 d and 30 d sweeps (267, 412 and
+  1,050 ms before). The series is cached per range with *every* raid's values and the page picks
+  the ones in `?raids=` (at most five, default the three busiest raids by counted raid time in the
+  range), so the cache holds one entry per range however many raid sets URLs name.
 - **The chart moves only when raiding does.** Retuning the crawler's poll budget changes Session
   Snapshots and leaves Raids in Progress alone.
 - **The range is bounded by PGCR retention** (`CRAWLER_CLEANUP_MAX_AGE_HOURS`, 720 h on prod). The

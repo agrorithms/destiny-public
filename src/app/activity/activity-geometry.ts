@@ -230,13 +230,20 @@ function roundStep(atLeast: number): number {
  * The line through every point, as an SVG path in viewBox units: each step drawn at its
  * midpoint, because the value is an average over the whole step rather than a reading at
  * its start or end. Heights are measured down from the top, against the axis's `max`.
- * Written to two decimal places, which is far finer than a pixel at any width.
+ * Written to two decimal places, which is far finer than a pixel at any width. `valueOf`
+ * says what height a point has: its total, unless a caller draws something else through it.
  */
-export function linePath(points: RaidsInProgressPoint[], from: number, to: number, max: number): string {
+export function linePath(
+    points: RaidsInProgressPoint[],
+    from: number,
+    to: number,
+    max: number,
+    valueOf: (point: RaidsInProgressPoint) => number = (point) => point.total
+): string {
     return points
         .map((point, index) => {
             const x = (stepCentrePercent(point.start, point.end, from, to) / 100) * CHART_WIDTH;
-            return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(point.total, max))}`;
+            return `${index === 0 ? 'M' : 'L'}${round(x)},${round(yAt(valueOf(point), max))}`;
         })
         .join('');
 }
@@ -275,7 +282,12 @@ export function linePaths(
  * step wide ({@link tooRecentLegend}).
  */
 export function tooRecent(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'provisionalUntil'>): ShadedSpan {
-    const startPercent = xPercent(series.provisionalUntil, series.from, series.to);
+    return shadeToNow(series.provisionalUntil, series.from, series.to);
+}
+
+/** A span shaded from the instant `start` to "now" at the right-hand edge of `[from, to]`. */
+function shadeToNow(start: number, from: number, to: number): ShadedSpan {
+    const startPercent = xPercent(start, from, to);
     const endPercent = 100;
     return { startPercent, endPercent, widthPercent: endPercent - startPercent };
 }
@@ -416,4 +428,67 @@ export function formatRaidCount(value: number): string {
 
 function round(value: number): number {
     return Math.round(value * 100) / 100;
+}
+
+/** One raid's line on the bottom panel. */
+export interface RaidLine {
+    key: string;
+    path: string;
+}
+
+/** The bottom panel (#198): its own y-axis, and a line for each raid picked. */
+export interface RaidPanel {
+    axis: ValueAxis;
+    lines: RaidLine[];
+}
+
+/**
+ * The bottom panel for the picked raids, in the picked order. **Its y-axis is the picked raids'
+ * alone** — the tallest value any of them reaches over the counted steps — and never the
+ * total's, so a quiet raid keeps its shape instead of lying flat under the total's scale, and
+ * the two panels are never read against one scale. A line has a point for each counted step
+ * and none for a Provisional one: per-raid lines stop where counting does. A counted step with
+ * no value for a raid is a quiet one. The x positions are the total's, from the same
+ * {@link stepCentrePercent}, so a moment lines up in both panels.
+ */
+export function raidPanel(
+    points: RaidsInProgressPoint[],
+    keys: readonly string[],
+    from: number,
+    to: number
+): RaidPanel {
+    const counted = points.filter((point) => !point.provisional);
+    const valueIn = (key: string) => (point: RaidsInProgressPoint) => point.raids?.[key] ?? 0;
+    const axis = valueAxis(Math.max(0, ...keys.flatMap((key) => counted.map(valueIn(key)))));
+    return {
+        axis,
+        lines: keys.map((key) => ({ key, path: linePath(counted, from, to, axis.max, valueIn(key)) })),
+    };
+}
+
+/**
+ * The span the per-raid panel shades: from where counting ends (`countedUntil`) to "now". The
+ * per-raid lines stop there, because a per-raid estimate is not drawn (#199), so this is the
+ * stretch the total's dashed line and shade cover that the bottom panel leaves bare.
+ */
+export function notCounted(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>): ShadedSpan {
+    return shadeToNow(series.countedUntil, series.from, series.to);
+}
+
+/**
+ * The legend for {@link notCounted}'s shade: how wide it can be at this step, as
+ * {@link provisionalLegend} says its start.
+ */
+export function notCountedLegend(stepSeconds: number): string {
+    return `Shaded: the last ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)}, not counted yet.`;
+}
+
+/**
+ * The bottom panel's accessible name: its step, the raids it draws, and the range. Given at
+ * least one name: the panel is not drawn for none.
+ */
+export function raidPanelAriaLabel(names: readonly string[], range: ActivityRange): string {
+    const last = names[names.length - 1];
+    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${last}` : last;
+    return `Raids in progress per ${range.step} for ${list} over the last ${range.span}.`;
 }

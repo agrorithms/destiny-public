@@ -152,3 +152,64 @@ describe('which step a pointer is over', () => {
         expect(slotCentreFraction(2, slots, FROM, NOW)).toBeCloseTo(21404 / 604800, 6);
     });
 });
+
+describe('the per-raid lines of a tooltip (#198)', () => {
+    const names = [
+        { key: 'last_wish', name: 'Last Wish' },
+        { key: 'kings_fall', name: "King's Fall" },
+    ];
+    const counted = (raids: Record<string, number>, total = 9) => ({ ...point(MIDNIGHT, HOUR, total), raids });
+
+    it('follows the total with a named line for each picked raid, in the picked order', () => {
+        const [slot] = activitySlots([counted({ kings_fall: 2.4, last_wish: 1234.6 })], names);
+
+        expect(tooltipText(slot, null)).toBe(
+            '9 average raids in progress, Sat 17 Oct, 00:00–01:00 UTC\nLast Wish: 1,235\nKing\'s Fall: 2'
+        );
+    });
+
+    it('reads a picked raid the step has no value for as 0', () => {
+        const [slot] = activitySlots([counted({ last_wish: 3 })], names);
+
+        expect(slot.raids).toEqual(['Last Wish: 3', "King's Fall: 0"]);
+    });
+
+    it('has no raid lines for a Provisional step, which has no per-raid estimate', () => {
+        const [slot] = activitySlots([point(MIDNIGHT, HOUR, 9, true)], names);
+
+        expect(slot.raids).toEqual([]);
+        expect(tooltipText(slot, null)).toBe('9 average raids in progress, Sat 17 Oct, 00:00–01:00 UTC · estimate, still arriving');
+    });
+
+    it('has no raid lines when no raid is picked', () => {
+        const [slot] = activitySlots([counted({ last_wish: 3 })]);
+
+        expect(tooltipText(slot, null)).toBe('9 average raids in progress, Sat 17 Oct, 00:00–01:00 UTC');
+    });
+
+    it('survives being sent to the browser as JSON', () => {
+        const slots = activitySlots([counted({ last_wish: 3, kings_fall: 1 })], names);
+
+        expect(tooltipText(JSON.parse(JSON.stringify(slots[0])), KATHMANDU)).toBe(tooltipText(slots[0], KATHMANDU));
+    });
+});
+
+describe('the step a pointer is over, on the per-raid panel (#198)', () => {
+    // Three 1-hour steps over a 3-hour window, the last one an estimate.
+    const slots = activitySlots([
+        point(MIDNIGHT, HOUR, 1),
+        point(MIDNIGHT + HOUR, HOUR, 2),
+        point(MIDNIGHT + 2 * HOUR, HOUR, 3, true),
+    ]);
+
+    it('finds a Provisional step on the total panel but not on the per-raid one, which shades it', () => {
+        const at = 5 / 6; // the middle of the estimated step
+        expect(slotAtFraction(at, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR)).toBe(2);
+        expect(slotAtFraction(at, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR, true)).toBeNull();
+    });
+
+    it('finds a counted step on either panel', () => {
+        expect(slotAtFraction(0.5, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR, true)).toBe(1);
+        expect(slotAtFraction(0.5, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR, false)).toBe(1);
+    });
+});

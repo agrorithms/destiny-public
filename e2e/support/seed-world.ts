@@ -285,6 +285,13 @@ export function difficultyPlayerName(player: keyof typeof DIFFICULTY_PLAYERS): s
  *   so the Provisional estimate has a raid to scale up (it is the only run of these that is
  *   not counted, and so the only one the dashed line can show).
  *
+ * - **the other raids** (#198): hour-long runs of {@link ACTIVITY_OTHER_RAIDS}, each starting
+ *   at least 4 hours from any other run and 36 hours back or more, so they lift neither the
+ *   hourly peak nor any 3-hour step past the peaks above and touch nothing in the last 24
+ *   hours. Over 7 or 30 days, King's Fall has 4 raid-hours, Vault of Glass 3, Last Wish 2 and
+ *   Crota's End 1, behind Salvation's Edge's 12 and a bit, so the per-raid panel's default
+ *   is those three in that order; over 24 hours only Salvation's Edge has run at all.
+ *
  * All of them are Checkpoint Runs nobody finished, by members no `players` row names, so
  * no leaderboard, Fastest Clears board, player page or player search can see them: the
  * chart counts every raid instance (All Attempts), and nothing else on the site counts
@@ -293,6 +300,18 @@ export function difficultyPlayerName(player: keyof typeof DIFFICULTY_PLAYERS): s
  * lists them), so they collide with no spec's players or runs.
  */
 export const ACTIVITY_PEAK_RAIDS = 3;
+
+/**
+ * The raids that run besides RAID_A in the Raid Activity world (#198), most active first, and
+ * the hours back from the seed's clock hour that each one's hour-long runs start. The names are
+ * what the raid picker and the legend show.
+ */
+export const ACTIVITY_OTHER_RAIDS: ReadonlyArray<FixtureRaid & { hoursBack: readonly number[] }> = [
+    { key: 'kings_fall', hash: 1374392663, name: "King's Fall", hoursBack: [36, 60, 84, 108] },
+    { key: 'vault_of_glass', hash: 3881495763, name: 'Vault of Glass', hoursBack: [40, 64, 88] },
+    { key: 'last_wish', hash: 2122313384, name: 'Last Wish', hoursBack: [44, 68] },
+    { key: 'crotas_end', hash: 1566480315, name: "Crota's End", hoursBack: [72] },
+];
 
 /** How many runs make the 24-hour range's busiest 10 minutes. */
 export const ACTIVITY_RECENT_PEAK_RAIDS = 2;
@@ -304,7 +323,7 @@ function seedActivityRuns(): void {
     const hour = 3600;
     const nowSeconds = Math.floor(Date.now() / 1000);
     const thisHour = Math.floor(nowSeconds / hour) * hour;
-    const runs: Array<{ start: number; seconds: number }> = [
+    const runs: Array<{ start: number; seconds: number; raid?: FixtureRaid }> = [
         ...Array.from({ length: ACTIVITY_PEAK_RAIDS }, () => ({ start: thisHour - 48 * hour, seconds: hour })),
         { start: thisHour - 100 * hour, seconds: 2.5 * hour },
         ...Array.from({ length: 6 }, (_, day) => ({ start: thisHour - ((day + 1) * 24 + 6) * hour, seconds: hour })),
@@ -315,13 +334,17 @@ function seedActivityRuns(): void {
         // from the clock rather than the clock hour so it stays under 2 hours old for the 80
         // minutes after seeding that the suite needs.
         { start: nowSeconds - hour, seconds: hour / 3 },
+        // Appended, so the instance and member ids above are what they were before #198.
+        ...ACTIVITY_OTHER_RAIDS.flatMap((raid) =>
+            raid.hoursBack.map((back) => ({ start: thisHour - back * hour, seconds: hour, raid }))
+        ),
     ];
 
     runs.forEach((run, index) => {
         seedRun({
             instanceId: `9200${index + 1}`,
-            activityHash: RAID_A.hash,
-            raidKey: RAID_A.key,
+            activityHash: (run.raid ?? RAID_A).hash,
+            raidKey: (run.raid ?? RAID_A).key,
             incompleteBy: [`92000000000000${String(index + 1).padStart(2, '0')}`],
             startedFromBeginning: false,
             period: run.start,

@@ -12,6 +12,8 @@
  * it without pulling the database onto a client path.
  */
 
+import { ACTIVITY_RAIDS_PARAM } from './activity-raids';
+
 /** The URL's spelling of the range. Absent means 7 days. */
 const ACTIVITY_RANGE_PARAM = 'range';
 
@@ -44,10 +46,14 @@ export function parseActivityRange(searchParams: Record<string, string | string[
 
 /**
  * The link to a preset. The range is always spelled out, 7 days included, so every URL
- * the control writes says which chart it is.
+ * the control writes says which chart it is. `raids` (#198) are the bottom panel's, written
+ * as `?raids=` in the order given — and only when there are some, so a link written without
+ * any leaves the panel on the range's own top raids. The keys are percent-encoded but not
+ * their commas, so a shared link stays readable.
  */
-export function activityRangeHref(id: ActivityRangeId): string {
-    return `/activity?${new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id })}`;
+export function activityRangeHref(id: ActivityRangeId, raids: readonly string[] = []): string {
+    const range = `/activity?${new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id })}`;
+    return raids.length === 0 ? range : `${range}&${ACTIVITY_RAIDS_PARAM}=${raids.map(encodeURIComponent).join(',')}`;
 }
 
 /** What {@link rangeOfSeries} reads off a series: its window and its step, both in seconds. */

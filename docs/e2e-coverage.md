@@ -2801,4 +2801,74 @@ their own: the red run failed them only on the panel's absence. Vitest holds wha
 - Which raid is which colour past three (the specs pick up to five but only compare three colours;
   `raidColour` is Vitest's).
 - The per-raid y-axis's labels beyond the King's Fall case (`valueAxis` is Vitest's).
-- Per-raid estimates: #199.
+- Per-raid estimates: #199, below.
+
+## 2026-10-26 — #199 the Raid Activity per-raid Provisional estimate
+
+`e2e/activity.spec.ts`, **eight new specs** in a block "the per-raid Provisional estimate", and two
+rewritten ones in "the per-raid panel". The suite is now **thirty-three flows, 212 tests including the
+two canary setups**. Two existing tooltip specs ("hovering the dashed line…", "a tap on the dashed
+line…") read the tooltip's *first line* through `totalLine()`, because an estimated step's box now
+holds the raid lines under the total's, as a counted step's already did.
+
+**What the page gained:** each picked raid with an estimate has a dashed segment
+(`activity-raid-provisional-line`, `data-raid`) joined on to its last counted point; the bottom panel
+shades the total's too-recent span (`activity-raid-too-recent`, replacing `activity-not-counted`, whose
+wider "not counted yet" shade and key are gone); a note (`activity-no-estimate-note`) names the picked
+raids with no estimate; a tooltip line over an estimated step reads `Name: n · estimate, still arriving`,
+or `Name: no estimate`.
+
+**Seed and server:** no run was added. The e2e server sets `ACTIVITY_MIN_RAID_RUNS=6`
+(`playwright.config.ts`): Salvation's Edge (RAID_A) has 9 or 10 runs in the training week (the 3 peak
+runs, the one 100 hours back, the 6 daily), King's Fall 4, Vault of Glass 3, Last Wish 2, Crota's End 1.
+So Salvation's Edge has an estimate and every other seeded raid has none, with 2 runs of margin below and
+3 above. Over 24 hours and 7 days Salvation's Edge always has a share to divide by (its seeded runs are
+whole hours), so the dashed segment does not depend on the hour of day the suite runs in.
+
+1. **A dashed segment for a raid with history, none for one without** (`?range=24h` and `?range=7d`, picks
+   Salvation's Edge and King's Fall): the dashed path begins on the solid line's last vertex, is dashed
+   in the solid line's colour, runs through the same steps as the total's dashed line, and King's Fall has
+   a solid line, no dashed one, and the note.
+2. **The segment stops before the shade it shares with the total** and rises off the floor at 24 hours
+   (the seeded recent run).
+3. **No note** when every raid picked has an estimate.
+4. **The tooltip** over an estimated step on the bottom panel: the total's line with its tail, then
+   `Salvation's Edge: n · estimate, still arriving` and `King's Fall: no estimate`; a counted step reads
+   King's Fall as a plain `0`.
+5. **One marker** through both panels over an estimated step.
+6. **JavaScript off:** the dashed segment, King's Fall's absence and the note are in the server's HTML.
+7. **At 360px (touch):** five raids picked, four with no estimate: the note names them inside the
+   viewport, a tap on an estimated step opens a six-line box with four `no estimate` lines inside the
+   viewport, `expectNoOverflow` after each.
+
+Rewritten: "over the newest hours…" now expects the estimate's two lines on either panel and a plain
+count on the last counted step (`expect.poll`, for the redraw); "shades the newest hours of the bottom
+panel" became "shades the same newest span in both panels, under one key" (same `x` and `width` as the
+total's, no `activity-not-counted`).
+
+**Bite proof — the red run.** The specs were written against the new server code and the #198 chart
+(`ActivityChart.tsx`, `ActivityLocal.tsx`, `activity-geometry.ts` and `activity-tooltips.ts` as of
+`0c34c30`, the red commit): of 46 tests in the file **10 failed and 36 passed**; every failure is one of
+the eight new specs (the 24h/7d one counts twice) or the two rewritten ones, and all 36 others,
+the two edited tooltip specs among them, still passed. Failing on the dashed segment's absence says
+nothing of the later assertions, so four breaks were made on purpose in one build (`npx playwright test
+e2e/activity.spec.ts`: 6 failed, 40 passed):
+
+| Break | Spec that failed |
+| --- | --- |
+| the dashed path starts at its first estimate, not the last counted point | "over 24h…" and "over 7d a raid with history is dashed from its last counted point…" (`Expected "980.92,200"`, received `"986.87,200"` at the join) |
+| `raidsWithoutEstimate` always empty (no note) | the JavaScript-off spec and the 360px spec (the note not found); the 24h/7d spec after the join |
+| a raid with no estimate reads `Name: 0` | "the tooltip marks a raid's estimate, and says a raid without one has none" |
+| the raid line drops its estimate tail | the same spec, and "over the newest hours…" |
+
+The env wiring has no break of its own: with `ACTIVITY_MIN_RAID_RUNS` unset the default 5,000 gives
+the seeded Salvation's Edge no estimate, and every dashed-segment spec fails. All breaks reverted;
+green at HEAD.
+
+### What is still NOT covered
+
+- A raid whose estimate ends part-way (its curve gives no share for a later step): Vitest's
+  (`raids-in-progress.test.ts`), the seed's raids all have shares.
+- The threshold's boundary (exactly the minimum): Vitest's. The browser sees 4 against 9 or 10 runs.
+- The 30-day range's per-raid estimates: the 3-hour grid can leave no whole Provisional step.
+- The values of the per-raid estimates: hour-of-day dependent; Vitest pins them.

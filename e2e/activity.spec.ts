@@ -972,7 +972,7 @@ test.describe('the per-raid panel', () => {
             // the estimate's lines until React redraws it, and a single read could catch that.
             await hoverAt(page, lastCounted, 'raids');
             await expect.poll(async () => (await tooltipLines(page))[1]).toMatch(/^Salvation's Edge: [\d,]+$/);
-            await expect(tooltip(page)).not.toHaveText(ESTIMATE);
+            await expect.poll(() => totalLine(page)).not.toMatch(ESTIMATE);
         });
 
         test('shades the same newest span in both panels, under one key', async ({ page }) => {
@@ -1103,6 +1103,20 @@ test.describe('the per-raid Provisional estimate', () => {
 
         await expect(raidDashed(page, SALVATIONS.key)).toBeAttached();
         await expect(page.getByTestId('activity-no-estimate-note')).toHaveCount(0);
+    });
+
+    test('the legend says each raid is scaled by its own share only when a raid picked has an estimate', async ({ page }) => {
+        // The total is dashed either way, so its legend is drawn; the sentence about the raids
+        // below follows the raids. King's Fall alone has no estimate to speak of.
+        const raidSentence = (p: Page) => p.getByTestId('activity-chart').getByText('Each raid below is scaled by the share its own runs usually report.');
+
+        await page.goto(`/activity?range=7d&raids=${KINGS_FALL.key}`);
+        await expect(page.getByTestId('activity-provisional-legend')).toBeVisible();
+        await expect(page.getByTestId('activity-no-estimate-note')).toHaveText(NO_ESTIMATE_NOTE);
+        await expect(raidSentence(page)).toHaveCount(0);
+
+        await page.goto(`/activity?range=7d&${WITH_AND_WITHOUT}`);
+        await expect(raidSentence(page)).toBeVisible();
     });
 
     test('the tooltip marks a raid\'s estimate, and says a raid without one has none', async ({ page }) => {

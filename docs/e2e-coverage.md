@@ -2865,6 +2865,29 @@ The env wiring has no break of its own: with `ACTIVITY_MIN_RAID_RUNS` unset the 
 the seeded Salvation's Edge no estimate, and every dashed-segment spec fails. All breaks reverted;
 green at HEAD.
 
+### Review fixes (loop 1)
+
+One spec added and one assertion replaced; the file now has 47 tests and the suite 213.
+
+- **New: "the legend says each raid is scaled by its own share only when a raid picked has an
+  estimate"** (P1). `?range=7d&raids=kings_fall`: the total's Provisional legend is drawn, King's Fall's
+  no-estimate note is drawn, and the sentence "Each raid below is scaled by the share its own runs
+  usually report." is not; with Salvation's Edge picked as well, it is.
+- **Replaced: the last assertion of "over the newest hours…"** (S1). `not.toHaveText(ESTIMATE)` on the
+  whole box could not fail: `ESTIMATE` is end-anchored, so it read only the box's last line, the raid
+  line the poll before had already proved counted. It is now `expect.poll(() => totalLine(page))
+  .not.toMatch(ESTIMATE)`, the total's own line.
+
+**Bite proof, one build** (`npm run e2e -- e2e/activity.spec.ts -g …`, the two specs: 2 failed, the two
+canaries passed):
+
+| Break | Result |
+| --- | --- |
+| P1 seen red before its fix: the sentence shown whenever any raid is picked (the old condition) | the new spec failed at `toHaveCount(0)`: 1 found |
+| every slot's `estimate: true` in `activitySlots`, so a counted step's total line carries the estimate's tail | "over the newest hours…" failed at the new assertion, received `0 average raids in progress, Mon 26 Oct, 21:00–21:10 · estimate, still arriving`; the raid-line poll above it passed, which is what the old assertion read |
+
+Both reverted; green at HEAD.
+
 ### What is still NOT covered
 
 - A raid whose estimate ends part-way (its curve gives no share for a later step): Vitest's

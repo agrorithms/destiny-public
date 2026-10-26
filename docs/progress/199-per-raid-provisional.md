@@ -118,7 +118,9 @@ At 1 h the figures are about half those at 15 min, and at 1 h 45 min a third.
 the total: two to three times the total's error, which is what a single raid's thinner week costs. Below it the p90 passes 40% and a
 dashed line would look like a measurement it is not. 10,000 was rejected because it would drop both Pantheon raids and Deep Stone
 Crypt, whose own curves are no worse than the total's applied to them; 2,500 because the p90 at 15 minutes passes 40%. Counted in
-runs, not raid-seconds, because runs are what the thinning varied and what the ticket calls history.
+runs, not raid-seconds, because runs are what the thinning varied and what the ticket calls history. Tuned on the 1-hour step (7d) only: the same 5,000 also gates the
+10-minute (24h) and 3-hour (30d) ranges, whose run counts come from their own training windows (edges rounded to each range's step),
+so a raid near 5,000 runs can be estimated on one range and not on another.
 
 **What 5,000 does not catch (the weekly-reset bias).** On this backup every raid has at least 5,936 runs in its training week, so all 13
 raids have an estimate and the threshold removes none. The table's worst rows are not the thinnest raids: they are the ones the weekly

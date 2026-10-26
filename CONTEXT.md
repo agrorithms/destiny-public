@@ -50,7 +50,7 @@ A Raids in Progress figure for a moment so recent that some of its raids have no
 is an estimate scaled up from the raids that have, not a count. Runs from where counted steps end,
 two to three hours back on a 1-hour step, down to 15 minutes old; nothing is shown for a newer
 moment. Stops being provisional once its step is counted. A single raid's figure is estimated the same
-way from that raid's own runs, if it has enough of them in the past week (5,000); a raid with fewer
+way from that raid's own runs, if it has a minimum number of runs in the past week; a raid with fewer
 is shown counted and not estimated.
 _Avoid_: live, real-time, projected
 

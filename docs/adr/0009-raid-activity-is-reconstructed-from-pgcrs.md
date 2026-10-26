@@ -166,7 +166,10 @@ minutes stays at or under about 10% (p90 about 28%) down to about 5,000 training
 8.4% for the total; at 2,800–4,000 it is 10–18% (p90 about 40–50%), and at 300–1,200 over 30%. All 13
 raids on this backup have more than 5,900, so the threshold removes none today; it exists so that a raid
 the weekly rotation leaves nearly unplayed is never drawn with a confident-looking guess. Full tables:
-`docs/progress/199-per-raid-provisional.md`.
+`docs/progress/199-per-raid-provisional.md`. The figure was tuned on the 1-hour step (the 7-day range)
+only, but the same threshold also gates the 24-hour range's 10-minute steps and the 30-day range's 3-hour
+steps, and each range counts a raid's runs over its own training window (its edges rounded to that
+range's step), so a raid near 5,000 runs can be estimated on one range and not on another.
 
 **What it does not fix: the weekly reset.** The worst rows above are the raids the rotation moves, not
 the thinnest. After the 20 October reset Vow of the Disciple fell from 5–8k runs and an 11–13 minute

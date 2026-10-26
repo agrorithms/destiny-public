@@ -1,12 +1,16 @@
 import {
+    MIN_RAID_CURVE_RUNS,
     curveFromTally,
     estimateTotal,
     hourOfStep,
     newTally,
+    raidCurveFromTally,
     shareAt,
+    sumTallies,
     tallyRun,
     trainingWindow,
     type CompletenessCurve,
+    type CurveTally,
 } from './completeness-curve';
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
@@ -1639,8 +1643,10 @@ export interface RaidsInProgressPoint {
     /**
      * Raids in Progress per raid (#198), averaged over the step, for exactly the keys the
      * series was asked for ({@link RaidsInProgressOptions.raidKeys}), zero where a raid ran
-     * nothing. Absent when no keys were asked for, and on Provisional steps, which have no
-     * per-raid estimate until #199.
+     * nothing. Absent when no keys were asked for. On a Provisional step (#199) these are
+     * estimates, and only for the raids that have one: a raid with too few runs in the
+     * training week to learn a curve from ({@link RaidsInProgressOptions.minRaidRuns}) is
+     * left out, and so is a raid from the first step its own curve gives no share for on.
      */
     raids?: Record<string, number>;
 }
@@ -1737,9 +1743,15 @@ export interface RaidsInProgressOptions {
  * **Per raid, from the same sweep** (#198). Each run is also added to its raid's own overlap
  * arrays, so the per-raid values of a counted step add up to its total and the cost is the
  * same pass plus a few small arrays. `raidKeys` picks which raids' values the points carry
- * (zero for one that never ran, nothing for a Provisional step: a per-raid estimate is
- * #199's); {@link RaidsInProgressSeries.topRaids} is ranked over the counted steps,
- * whichever were asked for.
+ * (zero for one that never ran); {@link RaidsInProgressSeries.topRaids} is ranked over the
+ * counted steps, whichever were asked for.
+ *
+ * **Per-raid estimates** (#199). A Provisional step's `raids` holds, for each raid asked for
+ * with a curve of its own, that raid's partial count over the share *its* runs report by then
+ * ({@link getCompletenessCurves}), so a raid whose runs are short is not scaled by a long
+ * one's curve. A raid needs {@link RaidsInProgressOptions.minRaidRuns} runs in the training
+ * week to have one; below that it is counted and not estimated. Like the total's, a raid's
+ * estimate ends at the first step it can't make.
  *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
  * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step
@@ -1763,7 +1775,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     );
     const countedSteps = (countedUntil - firstStart) / stepSeconds;
     const steps = (cutoff - firstStart) / stepSeconds;
-    const curve = getCompletenessCurve({ now, stepSeconds });
+    const curves = getCompletenessCurves({ now, stepSeconds, raidKeys: options.raidKeys, minRaidRuns: options.minRaidRuns });
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
@@ -1788,6 +1800,9 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     const requested = options.raidKeys;
     const raidTime = new Map<string, number>();
     const wholeRunsOf = new Map<string, number>();
+    // The raids still being estimated: one that can't make a step's estimate leaves, so its
+    // estimate, like the total's, is one unbroken run.
+    const estimating = new Set(curves.raids.keys());
     const points: RaidsInProgressPoint[] = [];
     let wholeRuns = 0;
     for (let index = 0; index < steps; index++) {
@@ -1795,15 +1810,14 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         const start = firstStart + index * stepSeconds;
         const end = start + stepSeconds;
         const observed = wholeRuns + total.partialSeconds[index] / stepSeconds;
+        const byRaid: Record<string, number> = {};
+        for (const [key, raid] of perRaid) {
+            const whole = (wholeRunsOf.get(key) ?? 0) + raid.wholeStepsDelta[index];
+            wholeRunsOf.set(key, whole);
+            byRaid[key] = whole + raid.partialSeconds[index] / stepSeconds;
+        }
         if (index < countedSteps) {
-            const byRaid: Record<string, number> = {};
-            for (const [key, raid] of perRaid) {
-                const whole = (wholeRunsOf.get(key) ?? 0) + raid.wholeStepsDelta[index];
-                wholeRunsOf.set(key, whole);
-                const value = whole + raid.partialSeconds[index] / stepSeconds;
-                raidTime.set(key, (raidTime.get(key) ?? 0) + value);
-                byRaid[key] = value;
-            }
+            for (const [key, value] of Object.entries(byRaid)) raidTime.set(key, (raidTime.get(key) ?? 0) + value);
             const point: RaidsInProgressPoint = { start, end, total: observed, provisional: false };
             if (requested !== undefined) {
                 point.raids = Object.fromEntries(requested.map((key) => [key, byRaid[key] ?? 0]));
@@ -1814,9 +1828,21 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         // The estimate stops at the first step it can't make, so it is one unbroken run
         // and `provisionalUntil` is where it ends: shares are per hour of the day, and a
         // later step with a share would otherwise be drawn joined across the gap.
-        const estimate = curve === null ? null : estimateTotal(observed, shareAt(curve, hourOfStep(start, stepSeconds), now - end));
+        const hour = hourOfStep(start, stepSeconds);
+        const estimate = curves.total === null ? null : estimateTotal(observed, shareAt(curves.total, hour, now - end));
         if (estimate === null) break;
-        points.push({ start, end, total: estimate, provisional: true });
+        const point: RaidsInProgressPoint = { start, end, total: estimate, provisional: true };
+        if (requested !== undefined) {
+            point.raids = {};
+            for (const key of requested) {
+                const curve = curves.raids.get(key);
+                if (curve === undefined || !estimating.has(key)) continue;
+                const raidEstimate = estimateTotal(byRaid[key] ?? 0, shareAt(curve, hour, now - end));
+                if (raidEstimate === null) estimating.delete(key);
+                else point.raids[key] = raidEstimate;
+            }
+        }
+        points.push(point);
     }
 
     const lastPoint = points.at(-1);
@@ -1884,16 +1910,10 @@ function topRaids(raidTime: ReadonlyMap<string, number>): string[] {
  * `now` is not a report yet, as in {@link getRaidsInProgress}.
  *
  * A second pass over the same index as the sweep: about 230 ms on the prod backup, once
- * per cache refresh of a range.
+ * per cache refresh of a range. The same pass learns the per-raid curves (#199).
  */
 export function getCompletenessCurve(options: { now: number; stepSeconds: number }): CompletenessCurve | null {
-    const { now, stepSeconds } = options;
-    const window = trainingWindow(now, stepSeconds);
-    const tally = newTally();
-    for (const [period, endedAt] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
-        tallyRun(tally, window, stepSeconds, period, endedAt);
-    }
-    return curveFromTally(tally);
+    return getCompletenessCurves(options).total;
 }
 
 /** The completeness curves a range's estimates scale by (#199): the total's, and each asked-for raid's own. */
@@ -1903,13 +1923,38 @@ export interface CompletenessCurves {
     raids: Map<string, CompletenessCurve>;
 }
 
+/**
+ * The curves for a range's step size, learned in the one pass over the training week (#199).
+ * Each run is tallied into its own raid's tally, so a raid's curve is learned from that raid's
+ * runs alone, and the total's curve is the sum of every raid's tally — what tallying all of
+ * them together would give, at the cost of the pass that was already being made. A raid in
+ * `raidKeys` gets a curve of its own only if it has at least `minRaidRuns` runs in the week
+ * (default {@link MIN_RAID_CURVE_RUNS}); asked for none, none is built.
+ */
 export function getCompletenessCurves(options: {
     now: number;
     stepSeconds: number;
     raidKeys?: readonly string[];
     minRaidRuns?: number;
 }): CompletenessCurves {
-    throw new Error('not implemented');
+    const { now, stepSeconds, raidKeys = [], minRaidRuns = MIN_RAID_CURVE_RUNS } = options;
+    const window = trainingWindow(now, stepSeconds);
+    const tallies = new Map<string, CurveTally>();
+    for (const [period, endedAt, raidKey] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
+        let tally = tallies.get(raidKey);
+        if (tally === undefined) {
+            tally = newTally();
+            tallies.set(raidKey, tally);
+        }
+        tallyRun(tally, window, stepSeconds, period, endedAt);
+    }
+    const raids = new Map<string, CompletenessCurve>();
+    for (const key of raidKeys) {
+        const tally = tallies.get(key);
+        const curve = tally === undefined ? null : raidCurveFromTally(tally, minRaidRuns);
+        if (curve !== null) raids.set(key, curve);
+    }
+    return { total: curveFromTally(sumTallies([...tallies.values()])), raids };
 }
 
 /**

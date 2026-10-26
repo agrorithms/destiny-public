@@ -11,11 +11,11 @@ Seams and decisions approved 2026-10-26:
 - Deviation noted: `CompletenessCurve` itself gains no `runs` field (only `CurveTally` does); the threshold is applied to the tally, so a curve needs nothing more.
 
 1. Pure module, red then green
-   - [ ] `src/lib/db/completeness-curve.test.ts` — run counts, `sumTallies`, `raidCurveFromTally`, the 5,000
-   - [ ] `src/lib/db/completeness-curve.ts` — `CurveTally.runs`, `sumTallies`, `raidCurveFromTally`, `MIN_RAID_CURVE_RUNS`
+   - [x] `src/lib/db/completeness-curve.test.ts` — run counts, `sumTallies`, `raidCurveFromTally`, the 5,000
+   - [x] `src/lib/db/completeness-curve.ts` — `CurveTally.runs`, `sumTallies`, `raidCurveFromTally`, `MIN_RAID_CURVE_RUNS`
 2. Query, red then green
-   - [ ] `tests/db/completeness-curve.test.ts`, `tests/db/raids-in-progress.test.ts` — per-raid curves and estimates
-   - [ ] `src/lib/db/queries.ts` — `getCompletenessCurves`, per-raid estimates on Provisional points, `minRaidRuns`
+   - [x] `tests/db/completeness-curve.test.ts`, `tests/db/raids-in-progress.test.ts` — per-raid curves and estimates
+   - [x] `src/lib/db/queries.ts` — `getCompletenessCurves`, per-raid estimates on Provisional points, `minRaidRuns`
 3. Geometry and tooltips, red then green
    - [ ] `src/app/activity/activity-geometry.test.ts`, `activity-tooltips.test.ts`
    - [ ] `src/app/activity/activity-geometry.ts`, `activity-tooltips.ts`

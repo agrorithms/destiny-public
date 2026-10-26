@@ -1937,7 +1937,8 @@ export function getCompletenessCurves(options: {
     raidKeys?: readonly string[];
     minRaidRuns?: number;
 }): CompletenessCurves {
-    const { now, stepSeconds, raidKeys = [], minRaidRuns = MIN_RAID_CURVE_RUNS } = options;
+    const { now, stepSeconds, minRaidRuns = MIN_RAID_CURVE_RUNS } = options;
+    const asked = new Set(options.raidKeys);
     const window = trainingWindow(now, stepSeconds);
     const tallies = new Map<string, CurveTally>();
     for (const [period, endedAt, raidKey] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
@@ -1949,9 +1950,8 @@ export function getCompletenessCurves(options: {
         tallyRun(tally, window, stepSeconds, period, endedAt);
     }
     const raids = new Map<string, CompletenessCurve>();
-    for (const key of raidKeys) {
-        const tally = tallies.get(key);
-        const curve = tally === undefined ? null : raidCurveFromTally(tally, minRaidRuns);
+    for (const [key, tally] of tallies) {
+        const curve = asked.has(key) ? raidCurveFromTally(tally, minRaidRuns) : null;
         if (curve !== null) raids.set(key, curve);
     }
     return { total: curveFromTally(sumTallies([...tallies.values()])), raids };

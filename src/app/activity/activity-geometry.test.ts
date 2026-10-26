@@ -751,6 +751,14 @@ describe('the raids with no estimate (#199)', () => {
         expect(raidsWithoutEstimate([counted, estimated({ alpha: 1, beta: 0 })], ['alpha', 'beta'])).toEqual([]);
     });
 
+    it('does not list a raid whose estimate stops before the last estimated step', () => {
+        // It has an estimate, a shorter one than the others': the note is about raids that
+        // have none at all.
+        const points = [counted, estimated({ alpha: 1, beta: 1 }), { ...estimated({ beta: 1 }), start: 2 * HOUR, end: 3 * HOUR }];
+
+        expect(raidsWithoutEstimate(points, ['alpha', 'beta'])).toEqual([]);
+    });
+
     it('counts an estimate of 0 as an estimate', () => {
         expect(raidsWithoutEstimate([counted, estimated({ alpha: 0 })], ['alpha'])).toEqual([]);
     });

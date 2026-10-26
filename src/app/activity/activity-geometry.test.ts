@@ -12,6 +12,7 @@ import {
     busiestStep,
     dayTicks,
     describeBeforeData,
+    hasEstimate,
     hourTicks,
     linePath,
     linePaths,
@@ -740,6 +741,16 @@ describe('the per-raid panel (#198, #199)', () => {
 describe('the raids with no estimate (#199)', () => {
     const counted = { start: 0, end: HOUR, total: 5, provisional: false, raids: { alpha: 1, beta: 2 } };
     const estimated = (raids: Record<string, number>) => ({ start: HOUR, end: 2 * HOUR, total: 5, provisional: true, raids });
+
+    it('says a Provisional step carries a raid\'s estimate exactly when it holds a value for it, 0 included', () => {
+        const step = estimated({ alpha: 3, beta: 0 });
+
+        expect(hasEstimate(step, 'alpha')).toBe(true);
+        expect(hasEstimate(step, 'beta')).toBe(true);
+        expect(hasEstimate(step, 'gamma')).toBe(false);
+        // A series asked for no raids has no per-raid values at all.
+        expect(hasEstimate({ start: HOUR, end: 2 * HOUR, total: 5, provisional: true }, 'alpha')).toBe(false);
+    });
 
     it('lists the picked raids no estimated step carries a value for, in the picked order', () => {
         const points = [counted, estimated({ alpha: 1 })];

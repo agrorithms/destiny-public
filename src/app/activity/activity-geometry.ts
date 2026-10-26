@@ -428,6 +428,16 @@ function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
 
+/**
+ * Whether a Provisional step carries raid `key`'s estimate (#199): it does unless the raid has
+ * no curve of its own, or its curve gives no share that far back. The one place that rule is
+ * written. On a counted step every raid asked for has a value, a count, so ask only of a
+ * Provisional one.
+ */
+export function hasEstimate(point: RaidsInProgressPoint, key: string): boolean {
+    return point.raids?.[key] !== undefined;
+}
+
 /** One raid's line on the bottom panel. */
 export interface RaidLine {
     key: string;
@@ -467,7 +477,7 @@ export function raidPanel(
     const raids = keys.map((key) => ({
         key,
         valueOf: valueIn(key),
-        points: points.filter((point) => !point.provisional || point.raids?.[key] !== undefined),
+        points: points.filter((point) => !point.provisional || hasEstimate(point, key)),
     }));
     const axis = valueAxis(Math.max(0, ...raids.flatMap((raid) => raid.points.map(raid.valueOf))));
     return {
@@ -488,7 +498,7 @@ export function raidPanel(
 export function raidsWithoutEstimate(points: RaidsInProgressPoint[], keys: readonly string[]): string[] {
     const estimated = points.filter((point) => point.provisional);
     if (estimated.length === 0) return [];
-    return keys.filter((key) => estimated.every((point) => point.raids?.[key] === undefined));
+    return keys.filter((key) => !estimated.some((point) => hasEstimate(point, key)));
 }
 
 /** `A`, `A and B`, `A, B and C`. */

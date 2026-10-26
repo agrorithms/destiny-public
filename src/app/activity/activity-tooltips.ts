@@ -1,7 +1,7 @@
 import type { RaidsInProgressPoint } from '@/lib/db/queries';
 // Type only: this module is server-safe, and no client component code may land in it.
 import type { RaidOption } from '@/components/RaidMultiSelect';
-import { formatRaidCount, raidNoun, stepCentrePercent } from './activity-geometry';
+import { formatRaidCount, hasEstimate, raidNoun, stepCentrePercent } from './activity-geometry';
 import { formatStepWindow, type OffsetOf } from './activity-time';
 
 /**
@@ -48,15 +48,16 @@ export function activitySlots(points: RaidsInProgressPoint[], raids: readonly Ra
             end: point.end,
             value: `${count} average ${raidNoun(count)} in progress`,
             estimate: point.provisional,
-            raids: raids.map(({ key, name }) => raidLine(name, point.provisional, point.raids?.[key])),
+            raids: raids.map(({ key, name }) => raidLine(name, point, key)),
         };
     });
 }
 
 /** One raid's tooltip line: its value, and on a Provisional step that it is an estimate or that there is none. */
-function raidLine(name: string, estimate: boolean, value: number | undefined): string {
-    if (!estimate) return `${name}: ${formatRaidCount(value ?? 0)}`;
-    return value === undefined ? `${name}: no estimate` : `${name}: ${formatRaidCount(value)} · ${ESTIMATE_TAIL}`;
+function raidLine(name: string, point: RaidsInProgressPoint, key: string): string {
+    const value = `${name}: ${formatRaidCount(point.raids?.[key] ?? 0)}`;
+    if (!point.provisional) return value;
+    return hasEstimate(point, key) ? `${value} · ${ESTIMATE_TAIL}` : `${name}: no estimate`;
 }
 
 /**

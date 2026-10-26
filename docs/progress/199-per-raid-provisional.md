@@ -17,12 +17,12 @@ Seams and decisions approved 2026-10-26:
    - [x] `tests/db/completeness-curve.test.ts`, `tests/db/raids-in-progress.test.ts` — per-raid curves and estimates
    - [x] `src/lib/db/queries.ts` — `getCompletenessCurves`, per-raid estimates on Provisional points, `minRaidRuns`
 3. Geometry and tooltips, red then green
-   - [ ] `src/app/activity/activity-geometry.test.ts`, `activity-tooltips.test.ts`
-   - [ ] `src/app/activity/activity-geometry.ts`, `activity-tooltips.ts`
+   - [x] `src/app/activity/activity-geometry.test.ts`, `activity-tooltips.test.ts`
+   - [x] `src/app/activity/activity-geometry.ts`, `activity-tooltips.ts`
 4. Env knob
-   - [ ] `src/lib/env.ts` (+ test) — count helper
-   - [ ] `src/app/activity/page.tsx` — reads `ACTIVITY_MIN_RAID_RUNS`
-   - [ ] `playwright.config.ts` — sets it for the e2e server
+   - [x] `src/lib/env.ts` (+ `env.test.ts`) — `envCount`; `envSeconds` and `envMs` now call it
+   - [x] `src/app/activity/page.tsx` — reads `ACTIVITY_MIN_RAID_RUNS`
+   - [x] `playwright.config.ts` — sets it to 6 for the e2e server. Margin: RAID_A has 9 or 10 training-week runs in the seed (3 peak + 1 at 100 h + 6 daily), King's Fall 4, Vault of Glass 3, Last Wish 2, Crota's End 1; 6 clears the highest below it by 2 and the lowest above it by 3
 5. Browser suite, red then green
    - [ ] `e2e/activity.spec.ts` — new and rewritten specs
    - [ ] `src/app/activity/ActivityChart.tsx`, `ActivityLocal.tsx` — dashed paths, shared shade, note

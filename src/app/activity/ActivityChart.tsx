@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
 import type { RaidOption } from '@/components/RaidMultiSelect';
 import { rangeOfSeries, type ActivityRange } from './activity-range';
@@ -8,12 +9,12 @@ import {
     beforeData,
     busiestStep,
     linePaths,
-    notCounted,
-    notCountedLegend,
+    noEstimateNote,
     peakAriaLabel,
     provisionalLegend,
     raidPanel,
     raidPanelAriaLabel,
+    raidsWithoutEstimate,
     tallestStep,
     tooRecent,
     tooRecentLegend,
@@ -94,7 +95,7 @@ export function ActivityChart({
     // The bottom panel (#198): a line for each picked raid, on a y-axis of its own.
     const pickedRaids = picked.map((key) => ({ key, name: raidOptions.find((raid) => raid.key === key)?.name ?? key }));
     const panel = raidPanel(points, picked, from, to);
-    const uncounted = notCounted(series);
+    const noEstimate = raidsWithoutEstimate(points, picked).map((key) => pickedRaids.find((raid) => raid.key === key)!.name);
     const frame: PanelFrame = { from, to, range, missing };
 
     // `data-window-from` / `data-window-to` are for e2e/activity.spec.ts and nothing in the
@@ -140,16 +141,27 @@ export function ActivityChart({
                                 frame={frame}
                                 beforeDataTestId="activity-raid-before-data"
                             >
-                                <ShadeRect testId="activity-not-counted" span={uncounted} />
+                                <ShadeRect testId="activity-raid-too-recent" span={shade} />
                                 {panel.lines.map((line, index) => (
-                                    <path
-                                        key={line.key}
-                                        data-testid="activity-raid-line"
-                                        data-raid={line.key}
-                                        d={line.path}
-                                        {...LINE_STROKE}
-                                        stroke={raidColour(index)}
-                                    />
+                                    <Fragment key={line.key}>
+                                        <path
+                                            data-testid="activity-raid-line"
+                                            data-raid={line.key}
+                                            d={line.path}
+                                            {...LINE_STROKE}
+                                            stroke={raidColour(index)}
+                                        />
+                                        {line.dashed === null ? null : (
+                                            <path
+                                                data-testid="activity-raid-provisional-line"
+                                                data-raid={line.key}
+                                                d={line.dashed}
+                                                {...LINE_STROKE}
+                                                stroke={raidColour(index)}
+                                                strokeDasharray="6 4"
+                                            />
+                                        )}
+                                    </Fragment>
                                 ))}
                             </Panel>
                         )}
@@ -192,6 +204,7 @@ export function ActivityChart({
                             A raid still running has no report yet, so the count of raids that have ended is scaled up by
                             the share usually reported by then. The counted steps beside it are still being filled in, so
                             the line can step up where it turns dashed.
+                            {pickedRaids.length === 0 ? null : ' Each raid below is scaled by the share its own runs usually report.'}
                         </span>
                     </p>
                 )}
@@ -199,18 +212,10 @@ export function ActivityChart({
                     <ShadeKey />
                     <span>
                         <span data-testid="activity-too-recent-legend">{tooRecentLegend(series.stepSeconds)}</span>{' '}
-                        Too few of its raids have a report yet to scale up.
+                        Too few of its raids have a report yet to scale up. Both panels shade it.
                     </span>
                 </p>
-                {pickedRaids.length === 0 ? null : (
-                    <p className="flex items-start gap-2">
-                        <ShadeKey />
-                        <span>
-                            <span data-testid="activity-not-counted-legend">{notCountedLegend(series.stepSeconds)}</span>{' '}
-                            The per-raid lines are drawn from counted steps only, so they stop here.
-                        </span>
-                    </p>
-                )}
+                {noEstimate.length === 0 ? null : <p data-testid="activity-no-estimate-note">{noEstimateNote(noEstimate)}</p>}
                 {missing === null ? null : (
                     <p className="flex items-start gap-2">
                         <ShadeKey />

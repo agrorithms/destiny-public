@@ -182,6 +182,14 @@ export default defineConfig({
             // trimming it. active-sessions-cap.spec.ts proves the cap through the
             // API's own `limit` parameter instead. See the handoff.
 
+            // How many runs a raid needs in the training week to get its own Raid Activity
+            // estimate (#199). Production's default is 5,000, which a seeded world cannot
+            // hold without lifting the chart's peaks. 6 sits between the seed's raids:
+            // Salvation's Edge (RAID_A) has 9 or 10 runs in that week and King's Fall 4, so
+            // the first has an estimate and the second does not, with margin on both sides
+            // (e2e/support/seed-world.ts, ACTIVITY_OTHER_RAIDS).
+            ACTIVITY_MIN_RAID_RUNS: '6',
+
             // Keeps e2e telemetry out of the production Sentry bucket. The DSN is
             // hardcoded in sentry.server.config.ts so it cannot be unset from
             // here; this makes what still ships filterable. Browser-side traffic

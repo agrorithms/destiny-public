@@ -1693,6 +1693,11 @@ export interface RaidsInProgressOptions {
     now: number;
     /** Raids to return per-raid values for (#198). Omitted, no point carries any. */
     raidKeys?: readonly string[];
+    /**
+     * How many runs a raid needs in the training week before it gets its own Provisional
+     * estimate (#199). Defaults to {@link MIN_RAID_CURVE_RUNS}.
+     */
+    minRaidRuns?: number;
 }
 
 /**
@@ -1889,6 +1894,22 @@ export function getCompletenessCurve(options: { now: number; stepSeconds: number
         tallyRun(tally, window, stepSeconds, period, endedAt);
     }
     return curveFromTally(tally);
+}
+
+/** The completeness curves a range's estimates scale by (#199): the total's, and each asked-for raid's own. */
+export interface CompletenessCurves {
+    total: CompletenessCurve | null;
+    /** Only raids asked for that had enough runs in the training week; the others have no entry. */
+    raids: Map<string, CompletenessCurve>;
+}
+
+export function getCompletenessCurves(options: {
+    now: number;
+    stepSeconds: number;
+    raidKeys?: readonly string[];
+    minRaidRuns?: number;
+}): CompletenessCurves {
+    throw new Error('not implemented');
 }
 
 /**

@@ -591,17 +591,163 @@ describe('the per-raid split (#198)', () => {
         expect(none.points.every((point) => point.raids === undefined)).toBe(true);
     });
 
-    it('carries no per-raid values on a Provisional step', () => {
-        // A week of a raid to learn a curve from, so the newest steps are estimated.
+    it('carries per-raid values on a Provisional step only for the raids with an estimate, and none when none are asked for', () => {
+        // A week of a raid to learn a curve from, so the newest steps are estimated. Asked
+        // with a minimum of one run, the raid has an estimate; asked for nothing, no point
+        // carries per-raid values at all, estimated or not.
         for (let day = 2; day <= 7; day++) seedRaid(hoursBeforeNow(day * 24 + 3), HOUR, { raidKey: 'last_wish' });
         seedRaid(hoursBeforeNow(1), HOUR / 2, { raidKey: 'last_wish' });
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ALL });
+        const asked = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ALL, minRaidRuns: 1 });
+        const none = getRaidsInProgress(SEVEN_DAYS);
 
-        const estimated = series.points.filter((point) => point.provisional);
+        const estimated = asked.points.filter((point) => point.provisional);
         expect(estimated.length, 'the fixture has an estimated step').toBeGreaterThan(0);
-        expect(estimated.every((point) => point.raids === undefined)).toBe(true);
-        expect(countedPoints(series).every((point) => point.raids !== undefined)).toBe(true);
+        expect(estimated.every((point) => Object.keys(point.raids ?? {}).join() === 'last_wish')).toBe(true);
+        expect(countedPoints(asked).every((point) => point.raids !== undefined)).toBe(true);
+        expect(none.points.every((point) => point.raids === undefined)).toBe(true);
+    });
+});
+
+/**
+ * The per-raid Provisional estimate (#199): each raid's estimate scales its own partial count
+ * by its own completeness curve, learned from that raid's runs alone. Same clock and shape as
+ * the total's tests above: "now" is 11:30, so the estimated steps are 09:00 (90 minutes old)
+ * and 10:00 (30 minutes old), and every raid has the training week's daily runs.
+ *
+ * The raids' runs differ in length so their curves differ:
+ *
+ * - `last_wish`: 10:00-11:00, a whole step reported at once. Hour 10's share is 1.
+ * - `vault_of_glass`: 10:00-11:00 and 10:45-11:45. Of 4500 s in hour 10, 900 s are reported
+ *   only 45 minutes after the step, so hour 10's share is 0.8 until then.
+ */
+describe('the per-raid Provisional estimate (#199)', () => {
+    const NOW_11_30 = { ...SEVEN_DAYS, now: HALF_PAST_ELEVEN };
+    const ASKED = ['last_wish', 'vault_of_glass', 'kings_fall'];
+
+    /** The training week's daily runs for one raid, as `[hour, minute, seconds]` triples. */
+    function seedWeekOf(raidKey: string, runs: Array<[number, number, number]>): void {
+        for (let day = 2; day <= 7; day++) {
+            for (const [hour, minute, seconds] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds, { raidKey });
+        }
+    }
+
+    function raidsAt(series: RaidsInProgressSeries, start: number) {
+        return provisionalAt(series, start)?.raids;
+    }
+
+    it('scales each raid by its own curve, so raids with different run lengths differ as theirs predict', () => {
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+        // The same half hour of each raid in the 10:00 step, read 30 minutes after it ends.
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 1 });
+
+        const raids = raidsAt(series, clock(10))!;
+        // Last Wish reports all of its hour at once: 0.5 / 1. Vault of Glass only 80% of it
+        // by then: 0.5 / 0.8.
+        expect(raids.last_wish).toBeCloseTo(0.5, 10);
+        expect(raids.vault_of_glass).toBeCloseTo(0.625, 10);
+        // One curve for both would have given them the same number.
+        expect(raids.vault_of_glass).not.toBeCloseTo(raids.last_wish, 3);
+    });
+
+    it('gives a raid below the history threshold counted values only, and the raids above it their estimates', () => {
+        // Last Wish has 6 training runs (one a day), Vault of Glass 12. At a minimum of 7 the
+        // first is too thinly evidenced to scale up and the second is not.
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 7 });
+
+        expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['vault_of_glass']);
+        expect(Object.keys(raidsAt(series, clock(9))!)).toEqual(['vault_of_glass']);
+        const counted = countedPoints(series);
+        expect(counted.every((point) => Object.keys(point.raids!).join() === ASKED.join())).toBe(true);
+        expect(series.points.filter((point) => point.provisional)).toHaveLength(2);
+    });
+
+    it('takes a raid at exactly the minimum', () => {
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 6 });
+
+        expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['last_wish']);
+    });
+
+    it('asks for 5,000 runs by default', () => {
+        // Eighteen training runs are far short of it: the total is estimated, no raid is.
+        seedWeekOf('last_wish', [[9, 0, HOUR], [10, 0, HOUR], [10, 45, HOUR]]);
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'] });
+
+        expect(provisionalAt(series, clock(10))).toBeDefined();
+        expect(raidsAt(series, clock(10))).toEqual({});
+    });
+
+    it('leaves a raid with no runs in the training week without an estimate, whatever the minimum', () => {
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish', 'kings_fall'], minRaidRuns: 0 });
+
+        expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['last_wish']);
+    });
+
+    it('does not learn a raid\'s curve from other raids\' runs', () => {
+        // Vault of Glass's late-reported hour must not leak into Last Wish: its only runs
+        // are whole steps, so its estimate is its partial count whatever else ran.
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+        seedWeekOf('vault_of_glass', [[10, 45, HOUR], [10, 45, HOUR]]);
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 1 });
+
+        expect(raidsAt(series, clock(10))!.last_wish).toBeCloseTo(0.5, 10);
+    });
+
+    it('estimates a raid that ran nothing in the step as 0', () => {
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 1 });
+
+        expect(raidsAt(series, clock(10))!.last_wish).toBe(0);
+    });
+
+    it('ends a raid\'s estimate at its first step with no share, even when a later step has one', () => {
+        // The total keeps estimating (Last Wish reports its 09:00 hour at once). Of the
+        // vault's hour 9 nothing is ever reported by two hours on (a 3.5 hour run), so its
+        // 09:00 step has no share; its 10:00 step has one (half of it is reported at once),
+        // but a dashed line drawn from 10:00 would be joined across the gap, so it is left out.
+        seedWeekOf('last_wish', [[9, 0, HOUR]]);
+        seedWeekOf('vault_of_glass', [[9, 0, 3.5 * HOUR], [10, 0, HOUR]]);
+        seedRaid(clock(9), 30 * MINUTE, { raidKey: 'last_wish' });
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish', 'vault_of_glass'], minRaidRuns: 1 });
+
+        expect(provisionalAt(series, clock(9))).toBeDefined();
+        expect(provisionalAt(series, clock(10))).toBeDefined();
+        expect(Object.keys(raidsAt(series, clock(9))!)).toEqual(['last_wish']);
+        expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['last_wish']);
+    });
+
+    it('does not change the total\'s estimate or the counted values', () => {
+        seedWeekOf('last_wish', [[10, 0, HOUR]]);
+        seedWeekOf('vault_of_glass', [[10, 0, HOUR], [10, 45, HOUR]]);
+        seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
+        seedRaid(clock(8), 30 * MINUTE, { raidKey: 'vault_of_glass' });
+
+        const plain = getRaidsInProgress(NOW_11_30);
+        const split = getRaidsInProgress({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 1 });
+
+        const shape = (series: RaidsInProgressSeries) =>
+            series.points.map(({ start, end, total, provisional }) => ({ start, end, total, provisional }));
+        expect(shape(split)).toEqual(shape(plain));
+        expect(split.provisionalUntil).toBe(plain.provisionalUntil);
     });
 });
 

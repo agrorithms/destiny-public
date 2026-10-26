@@ -52,10 +52,15 @@ export interface CompletenessCurve {
     overall: readonly number[];
 }
 
-/** Raid seconds seen per hour of day, and how many of them were known by each age bin. */
+/**
+ * Raid seconds seen per hour of day, how many of them were known by each age bin, and how
+ * many runs overlapped the training steps at all (#199: a raid's curve is only trusted past
+ * {@link MIN_RAID_CURVE_RUNS} of them).
+ */
 export interface CurveTally {
     seconds: number[];
     counted: number[][];
+    runs: number;
 }
 
 /** The training steps: whole steps starting at `from` and ending by `until`. */
@@ -74,6 +79,7 @@ export function newTally(): CurveTally {
     return {
         seconds: new Array<number>(HOURS_IN_DAY).fill(0),
         counted: Array.from({ length: HOURS_IN_DAY }, () => new Array<number>(BINS).fill(0)),
+        runs: 0,
     };
 }
 
@@ -142,4 +148,17 @@ export function shareAt(curve: CompletenessCurve, hour: number, ageSeconds: numb
 /** The count a partial `observed` stands for, or null when the share is nothing to divide by. */
 export function estimateTotal(observed: number, share: number): number | null {
     return share > 0 ? observed / share : null;
+}
+
+/** The tallies of several sets of runs, added up as if one set had been tallied. */
+export function sumTallies(tallies: readonly CurveTally[]): CurveTally {
+    throw new Error('not implemented');
+}
+
+/** The default for {@link raidCurveFromTally}: how many runs a raid needs in the training week. */
+export const MIN_RAID_CURVE_RUNS = 5000;
+
+/** A raid's curve, or null when its tally holds fewer than `minRuns` runs to learn from. */
+export function raidCurveFromTally(tally: CurveTally, minRuns: number): CompletenessCurve | null {
+    throw new Error('not implemented');
 }

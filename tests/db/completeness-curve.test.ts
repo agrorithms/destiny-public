@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getDb } from '@/lib/db';
-import { getCompletenessCurve } from '@/lib/db/queries';
+import { getCompletenessCurve, getCompletenessCurves } from '@/lib/db/queries';
 import { hourOfStep, shareAt } from '@/lib/db/completeness-curve';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
@@ -23,7 +23,7 @@ const MIDNIGHT = Math.floor(NOW / DAY) * DAY;
 const ONE_HOUR = { now: NOW, stepSeconds: HOUR };
 
 let nextInstance = 1;
-function seedRaid(start: number, seconds: number, extra: { activityHash?: number } = {}): void {
+function seedRaid(start: number, seconds: number, extra: { activityHash?: number; raidKey?: string } = {}): void {
     seedRun({ instanceId: String(nextInstance++), period: start, activityDurationSeconds: seconds, completedBy: ['p1'], ...extra });
 }
 
@@ -152,5 +152,62 @@ describe('each step size', () => {
         expect(shareAt(curve, 4, 55 * MINUTE)).toBe(0);
         expect(shareAt(curve, 4, HOUR)).toBe(1);
         expect(shareAt(curve, 7, 0)).toBe(1);
+    });
+});
+
+describe('the curves of single raids (#199)', () => {
+    /** One run a day for six days at `offset`, of `raidKey`. */
+    function seedDailyOf(raidKey: string, offset: number, seconds: number): void {
+        for (let day = 2; day <= 7; day++) seedRaid(MIDNIGHT - day * DAY + offset, seconds, { raidKey });
+    }
+
+    it('learns each asked-for raid from that raid\'s runs alone', () => {
+        // Last Wish: a 60-minute run from 03:45, so hour 3 is known 45 minutes late. Vault
+        // of Glass: 30 minutes at 03:00, known at once. Each curve says only what its own raid does.
+        seedDailyOf('last_wish', 3 * HOUR + 45 * MINUTE, HOUR);
+        seedDailyOf('vault_of_glass', 3 * HOUR, 30 * MINUTE);
+
+        const { raids } = getCompletenessCurves({ ...ONE_HOUR, raidKeys: ['last_wish', 'vault_of_glass'], minRaidRuns: 1 });
+
+        expect(shareAt(raids.get('last_wish')!, 3, 0)).toBe(0);
+        expect(shareAt(raids.get('last_wish')!, 3, 45 * MINUTE)).toBe(1);
+        expect(shareAt(raids.get('vault_of_glass')!, 3, 0)).toBe(1);
+    });
+
+    it('keeps the total\'s curve what it was, learned from every raid, asked for or not', () => {
+        seedDailyOf('last_wish', 3 * HOUR + 45 * MINUTE, HOUR);
+        seedDailyOf('vault_of_glass', 3 * HOUR, 30 * MINUTE);
+        const total = getCompletenessCurve(ONE_HOUR);
+
+        expect(getCompletenessCurves(ONE_HOUR).total).toEqual(total);
+        expect(getCompletenessCurves({ ...ONE_HOUR, raidKeys: ['vault_of_glass'], minRaidRuns: 1 }).total).toEqual(total);
+        expect(total).not.toBeNull();
+    });
+
+    it('builds no raid curves when none are asked for', () => {
+        seedDailyOf('last_wish', 3 * HOUR, HOUR);
+
+        expect(getCompletenessCurves({ ...ONE_HOUR, minRaidRuns: 1 }).raids.size).toBe(0);
+    });
+
+    it('leaves out a raid with fewer runs than the minimum, and a raid with no runs', () => {
+        seedDailyOf('last_wish', 3 * HOUR, HOUR);
+
+        const asked = ['last_wish', 'kings_fall'];
+
+        expect([...getCompletenessCurves({ ...ONE_HOUR, raidKeys: asked, minRaidRuns: 6 }).raids.keys()]).toEqual(['last_wish']);
+        expect(getCompletenessCurves({ ...ONE_HOUR, raidKeys: asked, minRaidRuns: 7 }).raids.size).toBe(0);
+        expect(getCompletenessCurves({ ...ONE_HOUR, raidKeys: asked }).raids.size).toBe(0);
+    });
+
+    it('counts only runs in the training week toward the minimum', () => {
+        // Six runs, but three are in the last 24 hours (not complete, not training) and
+        // one is more than 8 days old: two count.
+        for (let day = 2; day <= 3; day++) seedRaid(MIDNIGHT - day * DAY + 3 * HOUR, HOUR, { raidKey: 'last_wish' });
+        for (let hours = 1; hours <= 3; hours++) seedRaid(NOW - hours * 3 * HOUR, HOUR, { raidKey: 'last_wish' });
+        seedRaid(NOW - 9 * DAY, HOUR, { raidKey: 'last_wish' });
+
+        expect(getCompletenessCurves({ ...ONE_HOUR, raidKeys: ['last_wish'], minRaidRuns: 2 }).raids.size).toBe(1);
+        expect(getCompletenessCurves({ ...ONE_HOUR, raidKeys: ['last_wish'], minRaidRuns: 3 }).raids.size).toBe(0);
     });
 });

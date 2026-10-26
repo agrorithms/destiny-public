@@ -35,6 +35,8 @@ Seams and decisions approved 2026-10-26:
    - [x] `npm run mutate:diff -- 7070e76...HEAD --typecheck` — full run at `ec36c09`: 100.0% overall (92/92), 100.0% covered, 47 compile errors discarded, PASS; first run (at `999686f`) 97.8% (91/93) with two survivors, killed in loop 1 (`activity-geometry.ts:489` `every`→`some`, test: a raid whose estimate ends early still counts as estimated; `queries.ts:1940` the `raidKeys = []` default, an equivalent mutant, removed by deriving a `Set` instead); 1 loop, no `Stryker disable` comments
    - [x] `npm run visual:check` — 68/68, overflow gate passed
    - [x] lint, build, test, e2e at `ec36c09`: lint 0 errors (29 warnings), tsc app and scripts, build (inside `npm run e2e` and `visual:check`), vitest 885/885, e2e 212/212
+8. /simplify pass
+   - [x] /simplify pass (4 cleanup agents) — `d44e206` source: `raidPanel` draws each raid through `linePaths` (which now takes `linePath`'s `valueOf`) instead of its own solid/dashed join; `getRaidsInProgress` keeps one `estimating` Map of curves; `raidLine` takes the provisional flag. `f5d7be4` tests: `tooltipLines`, `expectMarkerThroughBothPanels`, `raidSolid` via `raidLines`, `fractions()` for the dashed path in `e2e/activity.spec.ts`; `seedTwoCurves` in `tests/db/raids-in-progress.test.ts` (assertions unchanged). Bite proof for the changed spec assertions: one build with three deliberate breaks (raid dashed path one vertex short; counted raid tooltip line `Name:: n`; a five-raid tooltip one line short), 5 of 5 targeted tests red, reverted. Suite at `f5d7be4`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 885/885, e2e 212/212, visual:check 68/68
 
 ## Backtest
 

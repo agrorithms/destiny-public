@@ -259,19 +259,21 @@ export interface ShadedSpan {
  * The line as two SVG paths: the counted steps solid, and the estimated ones dashed. The
  * dashed path starts on the last counted point, so the two meet and only the style changes
  * at the boundary; with nothing counted it starts at its own first point. It is null when no
- * step is estimated, and the solid one is empty when no step is counted.
+ * step is estimated, and the solid one is empty when no step is counted. `valueOf` is
+ * {@link linePath}'s: the total's line by default, a raid's on the bottom panel.
  */
 export function linePaths(
     points: RaidsInProgressPoint[],
     from: number,
     to: number,
-    max: number
+    max: number,
+    valueOf?: (point: RaidsInProgressPoint) => number
 ): { solid: string; dashed: string | null } {
     const counted = points.filter((point) => !point.provisional);
     const estimated = points.filter((point) => point.provisional);
     return {
-        solid: linePath(counted, from, to, max),
-        dashed: estimated.length === 0 ? null : linePath([...counted.slice(-1), ...estimated], from, to, max),
+        solid: linePath(counted, from, to, max, valueOf),
+        dashed: estimated.length === 0 ? null : linePath([...counted.slice(-1), ...estimated], from, to, max, valueOf),
     };
 }
 
@@ -460,19 +462,19 @@ export function raidPanel(
     from: number,
     to: number
 ): RaidPanel {
-    const counted = points.filter((point) => !point.provisional);
     const valueIn = (key: string) => (point: RaidsInProgressPoint) => point.raids?.[key] ?? 0;
-    const estimatedIn = (key: string) => points.filter((point) => point.provisional && point.raids?.[key] !== undefined);
-    const axis = valueAxis(Math.max(0, ...keys.flatMap((key) => [...counted, ...estimatedIn(key)].map(valueIn(key)))));
+    // A raid's line: every counted step, and the Provisional ones that carry its estimate.
+    const raids = keys.map((key) => ({
+        key,
+        valueOf: valueIn(key),
+        points: points.filter((point) => !point.provisional || point.raids?.[key] !== undefined),
+    }));
+    const axis = valueAxis(Math.max(0, ...raids.flatMap((raid) => raid.points.map(raid.valueOf))));
     return {
         axis,
-        lines: keys.map((key) => {
-            const estimated = estimatedIn(key);
-            return {
-                key,
-                path: linePath(counted, from, to, axis.max, valueIn(key)),
-                dashed: estimated.length === 0 ? null : linePath([...counted.slice(-1), ...estimated], from, to, axis.max, valueIn(key)),
-            };
+        lines: raids.map((raid) => {
+            const { solid, dashed } = linePaths(raid.points, from, to, axis.max, raid.valueOf);
+            return { key: raid.key, path: solid, dashed };
         }),
     };
 }

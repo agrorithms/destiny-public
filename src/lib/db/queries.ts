@@ -1800,9 +1800,9 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     const requested = options.raidKeys;
     const raidTime = new Map<string, number>();
     const wholeRunsOf = new Map<string, number>();
-    // The raids still being estimated: one that can't make a step's estimate leaves, so its
-    // estimate, like the total's, is one unbroken run.
-    const estimating = new Set(curves.raids.keys());
+    // The raids still being estimated, by curve: one that can't make a step's estimate leaves,
+    // so its estimate, like the total's, is one unbroken run.
+    const estimating = new Map(curves.raids);
     const points: RaidsInProgressPoint[] = [];
     let wholeRuns = 0;
     for (let index = 0; index < steps; index++) {
@@ -1835,8 +1835,8 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
         if (requested !== undefined) {
             point.raids = {};
             for (const key of requested) {
-                const curve = curves.raids.get(key);
-                if (curve === undefined || !estimating.has(key)) continue;
+                const curve = estimating.get(key);
+                if (curve === undefined) continue;
                 const raidEstimate = estimateTotal(byRaid[key] ?? 0, shareAt(curve, hour, now - end));
                 if (raidEstimate === null) estimating.delete(key);
                 else point.raids[key] = raidEstimate;

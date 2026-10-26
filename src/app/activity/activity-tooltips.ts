@@ -48,14 +48,14 @@ export function activitySlots(points: RaidsInProgressPoint[], raids: readonly Ra
             end: point.end,
             value: `${count} average ${raidNoun(count)} in progress`,
             estimate: point.provisional,
-            raids: raids.map(({ key, name }) => raidLine(name, point, point.raids?.[key])),
+            raids: raids.map(({ key, name }) => raidLine(name, point.provisional, point.raids?.[key])),
         };
     });
 }
 
 /** One raid's tooltip line: its value, and on a Provisional step that it is an estimate or that there is none. */
-function raidLine(name: string, point: RaidsInProgressPoint, value: number | undefined): string {
-    if (!point.provisional) return `${name}: ${formatRaidCount(value ?? 0)}`;
+function raidLine(name: string, estimate: boolean, value: number | undefined): string {
+    if (!estimate) return `${name}: ${formatRaidCount(value ?? 0)}`;
     return value === undefined ? `${name}: no estimate` : `${name}: ${formatRaidCount(value)} · ${ESTIMATE_TAIL}`;
 }
 

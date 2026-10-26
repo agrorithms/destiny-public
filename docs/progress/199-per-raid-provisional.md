@@ -24,8 +24,8 @@ Seams and decisions approved 2026-10-26:
    - [x] `src/app/activity/page.tsx` — reads `ACTIVITY_MIN_RAID_RUNS`
    - [x] `playwright.config.ts` — sets it to 6 for the e2e server. Margin: RAID_A has 9 or 10 training-week runs in the seed (3 peak + 1 at 100 h + 6 daily), King's Fall 4, Vault of Glass 3, Last Wish 2, Crota's End 1; 6 clears the highest below it by 2 and the lowest above it by 3
 5. Browser suite, red then green
-   - [ ] `e2e/activity.spec.ts` — new and rewritten specs
-   - [ ] `src/app/activity/ActivityChart.tsx`, `ActivityLocal.tsx` — dashed paths, shared shade, note
+   - [x] `e2e/activity.spec.ts` — new and rewritten specs (red run: 10 of 46 failed against the #198 chart, the 36 others passed; green 46/46)
+   - [x] `src/app/activity/ActivityChart.tsx`, `ActivityLocal.tsx` — dashed paths, shared shade, note
 6. Bookkeeping
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — dated #199 amendment
    - [ ] `CONTEXT.md` — Provisional entry

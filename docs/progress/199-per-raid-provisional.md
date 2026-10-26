@@ -38,6 +38,18 @@ Seams and decisions approved 2026-10-26:
 8. /simplify pass
    - [x] /simplify pass (4 cleanup agents) — `d44e206` source: `raidPanel` draws each raid through `linePaths` (which now takes `linePath`'s `valueOf`) instead of its own solid/dashed join; `getRaidsInProgress` keeps one `estimating` Map of curves; `raidLine` takes the provisional flag. `f5d7be4` tests: `tooltipLines`, `expectMarkerThroughBothPanels`, `raidSolid` via `raidLines`, `fractions()` for the dashed path in `e2e/activity.spec.ts`; `seedTwoCurves` in `tests/db/raids-in-progress.test.ts` (assertions unchanged). Bite proof for the changed spec assertions: one build with three deliberate breaks (raid dashed path one vertex short; counted raid tooltip line `Name:: n`; a five-raid tooltip one line short), 5 of 5 targeted tests red, reverted. Suite at `f5d7be4`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 885/885, e2e 212/212, visual:check 68/68
 
+## Review fixes (loop 1)
+
+- [x] P1 — `ActivityChart.tsx`: "Each raid below is scaled by the share its own runs usually report." only when a picked raid has an estimate (`noEstimate.length < pickedRaids.length`) — `07799e7`; e2e spec "the legend says each raid is scaled by its own share only when a raid picked has an estimate" (`?range=7d&raids=kings_fall` and with Salvation's Edge), seen red before the fix — `eb2c1e3`
+- [x] P3 — ADR 0009's #199 amendment and "Choosing the threshold" above: tuned on the 1-hour step, it gates all three ranges, each counting runs over its own training window — `7553262`
+- [x] S1 — "over the newest hours…": `expect.poll(() => totalLine(page)).not.toMatch(ESTIMATE)` in place of the whole box's `not.toHaveText(ESTIMATE)`; deliberate break (`estimate: true` in `activitySlots`) red, reverted; recorded in `docs/e2e-coverage.md` — `eb2c1e3`
+- [x] S2 — CLAUDE.md, by the orchestrator — `05bbbb0`
+- [x] S3 — `DASHED_STROKE` beside `LINE_STROKE`, used by the total's and each raid's dashed path — `07799e7`
+- [x] S4 — `hasEstimate(point, key)` in `activity-geometry.ts`, used by `raidPanel`, `raidsWithoutEstimate` and the tooltip's `raidLine` (which now takes the point and key); tested directly — `418bb07`
+- [x] S5 — the page no longer names `MIN_RAID_CURVE_RUNS`: it passes `envCount('ACTIVITY_MIN_RAID_RUNS', undefined)` and `getCompletenessCurves`'s default is the one owner; `envCount` takes an `undefined` fallback, tested — `a54414c`
+- [x] O1 — CONTEXT.md's Provisional entry: "a minimum number of runs in the past week", no figure — `7553262`
+- [x] Suite at `7553262`: lint 0 errors (29 warnings), tsc app and scripts, build (inside `npm run e2e`), vitest 888/888, e2e 213/213, visual:check 68/68 (`--nobuild` on that build); `npm run mutate:diff -- 7070e76...HEAD --typecheck`, full run: 100.0% overall (91/91), 100.0% covered, PASS, no survivors, no new loop spent
+
 ## Backtest
 
 Prod copy `data/raid-tracker.backup-2026-10-26.db` (1,884,407 raid runs, newest `ended_at` 2026-10-26 20:29 UTC), read through

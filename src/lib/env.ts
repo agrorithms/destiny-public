@@ -1,5 +1,9 @@
-/** A positive whole number from the environment, or `fallback` when it is unset, empty or not one. */
-export function envCount(name: string, fallback: number): number {
+/**
+ * A positive whole number from the environment, or `fallback` when it is unset, empty or not
+ * one. `fallback` may be `undefined`, for a knob whose default belongs to the code it is handed
+ * to rather than to the caller reading it.
+ */
+export function envCount<F extends number | undefined>(name: string, fallback: F): number | F {
     const raw = process.env[name];
     if (!raw) return fallback;
     const parsed = parseInt(raw, 10);

@@ -4,7 +4,6 @@ import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import type { RaidOption } from '@/components/RaidMultiSelect';
 import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries';
 import { getOrCompute } from '@/lib/cache/swr-cache';
-import { MIN_RAID_CURVE_RUNS } from '@/lib/db/completeness-curve';
 import { envCount, envSeconds } from '@/lib/env';
 import { ActivityChart } from './ActivityChart';
 import { LocalZoneNote } from './ActivityLocal';
@@ -122,7 +121,8 @@ async function readSeries(range: ActivityRange, raidKeys: readonly string[]): Pr
             stepSeconds: range.stepSeconds,
             now: Math.floor(Date.now() / 1000),
             raidKeys,
-            minRaidRuns: envCount('ACTIVITY_MIN_RAID_RUNS', MIN_RAID_CURVE_RUNS),
+            // Unset, the query's own default (`MIN_RAID_CURVE_RUNS`), so the default has one owner.
+            minRaidRuns: envCount('ACTIVITY_MIN_RAID_RUNS', undefined),
         })
     );
     return value;

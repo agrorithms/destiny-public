@@ -41,3 +41,24 @@ describe.each([
         expect(read(NAME, 5000)).toBe(12);
     });
 });
+
+/**
+ * The Raid Activity page reads `ACTIVITY_MIN_RAID_RUNS` with no fallback of its own, so the
+ * query's `MIN_RAID_CURVE_RUNS` stays the threshold's one default (#199): unset or unreadable
+ * must come back `undefined`, never a number the page made up.
+ */
+describe('envCount with no fallback of its own', () => {
+    it('reads the variable when it is a positive integer', () => {
+        vi.stubEnv(NAME, '6');
+
+        expect(envCount(NAME, undefined)).toBe(6);
+    });
+
+    it('leaves the default to the code it is handed to when the variable is unset or unreadable', () => {
+        expect(envCount(NAME, undefined)).toBeUndefined();
+        for (const value of ['', '0', 'many']) {
+            vi.stubEnv(NAME, value);
+            expect(envCount(NAME, undefined), value).toBeUndefined();
+        }
+    });
+});

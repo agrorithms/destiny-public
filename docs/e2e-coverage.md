@@ -2565,8 +2565,11 @@ all-hours curve.
 - the **dashed line** (`activity-provisional-line`) is present at 24h and 7d with 11–12 and 2–3
   vertices (the estimated steps plus the counted point it starts from), and at 30d is absent or
   has 2 (the 3-hour grid can leave no whole step between the counted boundary and the cutoff),
-  with its legend (`activity-provisional-legend`, "Dashed: an estimate for recent activity.",
-  the same at every range) present exactly when the line is;
+  with its legend (`activity-provisional-legend`) present exactly when the line is. *As first
+  written* the legend carried the range's start: "Dashed: an estimate, from 2 hours to 2 hours 10
+  minutes ago up to the shaded stretch." / "from 2 to 3 hours ago …" / "from 2 to 5 hours ago …".
+  *Since the #199 follow-up (`d5729f9`)* it is the same at every range, "Dashed: an estimate for
+  recent activity.", so the spec asserts that one string;
 - the solid line's vertex count is still the counted steps only (131–132, 165–166, 150–160).
 
 1. **The dashed line continues the counted one and stops 15 minutes short of now.** At 24h and 7d:
@@ -2600,7 +2603,12 @@ assertion were seen failing before the code existed.
   are 1 for most hours, because its runs are whole hours); Vitest pins the division.
 - The dashed line at 30d when it exists, and its absence when the grid leaves no step, are both
   accepted by the spec; neither is forced (the grid depends on the clock).
-- The legend's prose after its first sentence, and the dashed swatch.
+- The legend's prose after its first sentence, and the dashed swatch. (That prose was reworded in
+  `d5729f9`: the dashed legend's long explanation of the scaling became "Raid instances are being
+  filled in as they complete, so the line can step up where it turns dashed.", and the shaded
+  legend's second sentence, "Too few of its raids have a report yet to scale up. Both panels shade
+  it.", was dropped. The shaded legend's first sentence, the width asserted above, is unchanged.
+  Still unasserted.)
 - Later tickets: tooltips in local time (#197), the per-raid panel (#198, #199).
 
 ## 2026-10-24 — #197 the Raid Activity tooltips in local time
@@ -2694,7 +2702,9 @@ Reverted; green at HEAD.
   skipped. A fall-back onto midnight (the Azores, last
   Sunday of October) reads 00:00 twice and is ticked once, at the first: Vitest's
   (`activity-geometry.test.ts`), not a spec's.
-- The y-axis, the legends' prose and the aria-label's wording beyond "UTC".
+- The y-axis, the legends' prose and the aria-label's wording beyond "UTC". (The Provisional and
+  too-recent legends' prose changed after this entry, in `d5729f9`; see #196. The specs here
+  assert neither, and the 30-day data-start legend they do assert is unchanged.)
 - Later tickets: the per-raid panel (#198, #199) and its second part for the hover.
 
 ## 2026-10-25 — #198 the Raid Activity per-raid panel and its raid picker

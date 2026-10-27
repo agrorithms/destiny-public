@@ -161,6 +161,15 @@ training pass instead of one in total (the total's tally is their sum, so each r
 
 none. (Loop 1's two are above; the `queries.ts:1940` one was equivalent, so the code was simplified rather than disabled.)
 
+## After the handoff: legend shortened
+
+The Provisional legend was cut down by hand once the PR was open: the dashed legend is now the fixed
+"Dashed: an estimate for recent activity." plus "Raid instances are being filled in as they complete, so
+the line can step up where it turns dashed."; the shaded legend keeps its width (15 to 25 minutes, and so
+on) but loses its second sentence. The P1 sentence ("Each raid below is scaled by …") and its e2e spec were
+removed, so the file has 46 tests and the suite 212; `provisionalLegend(stepSeconds)` became the constant
+`PROVISIONAL_LEGEND`, and the page's intro line was made more concise. The checks above predate it.
+
 ## Notes
 
 - Red runs: Vitest commits `0c34c30` and `905e72f` (red-first); Playwright 10 of 46 failed against the #198 chart, then four deliberate breaks, all recorded in `docs/e2e-coverage.md`, "#199".

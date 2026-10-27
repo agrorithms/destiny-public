@@ -333,13 +333,8 @@ export function tooRecentLegend(stepSeconds: number): string {
     return `Shaded: the last ${ageSpan(TOO_RECENT_AGE_SECONDS, stepSeconds)}, too recent to estimate.`;
 }
 
-/**
- * The dashed line's legend: where it starts. It begins where counting ends, at the last
- * whole step 2 hours old — 2 hours plus up to one step back.
- */
-export function provisionalLegend(stepSeconds: number): string {
-    return `Dashed: an estimate, from ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)} ago up to the shaded stretch.`;
-}
+/** The dashed line's legend. */
+export const PROVISIONAL_LEGEND = 'Dashed: an estimate for recent activity.';
 
 /**
  * The sentence naming the busiest step under the chart, worded for the range: "Busiest 10

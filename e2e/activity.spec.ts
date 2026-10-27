@@ -72,7 +72,6 @@ const RANGES = {
         estimateVertices: [11, 12],
         estimateAlways: true,
         tooRecentLegend: 'Shaded: the last 15 to 25 minutes, too recent to estimate.',
-        provisionalLegend: 'Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.',
         beforeData: false,
     },
     '7d': {
@@ -84,7 +83,6 @@ const RANGES = {
         estimateVertices: [2, 3],
         estimateAlways: true,
         tooRecentLegend: 'Shaded: the last 15 minutes to 1 hour 15 minutes, too recent to estimate.',
-        provisionalLegend: 'Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.',
         beforeData: false,
     },
     '30d': {
@@ -97,7 +95,6 @@ const RANGES = {
         estimateVertices: [2, 2],
         estimateAlways: false,
         tooRecentLegend: 'Shaded: the last 15 minutes to 3 hours 15 minutes, too recent to estimate.',
-        provisionalLegend: 'Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.',
         beforeData: true,
     },
 } as const;
@@ -163,7 +160,7 @@ async function expectRangeDrawn(page: Page, id: RangeId, zone: Zone = 'local'): 
         const estimateVertices = vertices((await dashed.getAttribute('d')) ?? '').length;
         expect(estimateVertices, `${id} dashed vertex count`).toBeGreaterThanOrEqual(range.estimateVertices[0]);
         expect(estimateVertices, `${id} dashed vertex count`).toBeLessThanOrEqual(range.estimateVertices[1]);
-        await expect(page.getByTestId('activity-provisional-legend')).toHaveText(range.provisionalLegend);
+        await expect(page.getByTestId('activity-provisional-legend')).toHaveText('Dashed: an estimate for recent activity.');
     } else {
         await expect(page.getByTestId('activity-provisional-legend')).toHaveCount(0);
     }
@@ -1103,20 +1100,6 @@ test.describe('the per-raid Provisional estimate', () => {
 
         await expect(raidDashed(page, SALVATIONS.key)).toBeAttached();
         await expect(page.getByTestId('activity-no-estimate-note')).toHaveCount(0);
-    });
-
-    test('the legend says each raid is scaled by its own share only when a raid picked has an estimate', async ({ page }) => {
-        // The total is dashed either way, so its legend is drawn; the sentence about the raids
-        // below follows the raids. King's Fall alone has no estimate to speak of.
-        const raidSentence = (p: Page) => p.getByTestId('activity-chart').getByText('Each raid below is scaled by the share its own runs usually report.');
-
-        await page.goto(`/activity?range=7d&raids=${KINGS_FALL.key}`);
-        await expect(page.getByTestId('activity-provisional-legend')).toBeVisible();
-        await expect(page.getByTestId('activity-no-estimate-note')).toHaveText(NO_ESTIMATE_NOTE);
-        await expect(raidSentence(page)).toHaveCount(0);
-
-        await page.goto(`/activity?range=7d&${WITH_AND_WITHOUT}`);
-        await expect(raidSentence(page)).toBeVisible();
     });
 
     test('the tooltip marks a raid\'s estimate, and says a raid without one has none', async ({ page }) => {

@@ -11,7 +11,7 @@ import {
     linePaths,
     noEstimateNote,
     peakAriaLabel,
-    provisionalLegend,
+    PROVISIONAL_LEGEND,
     raidPanel,
     raidPanelAriaLabel,
     raidsWithoutEstimate,
@@ -202,20 +202,14 @@ export function ActivityChart({
                     <p className="flex items-start gap-2">
                         <DashKey />
                         <span>
-                            <span data-testid="activity-provisional-legend">{provisionalLegend(series.stepSeconds)}</span>{' '}
-                            A raid still running has no report yet, so the count of raids that have ended is scaled up by
-                            the share usually reported by then. The counted steps beside it are still being filled in, so
-                            the line can step up where it turns dashed.
-                            {noEstimate.length < pickedRaids.length ? ' Each raid below is scaled by the share its own runs usually report.' : null}
+                            <span data-testid="activity-provisional-legend">{PROVISIONAL_LEGEND}</span>{' '}
+                            Raid instances are being filled in as they complete, so the line can step up where it turns dashed.
                         </span>
                     </p>
                 )}
                 <p className="flex items-start gap-2">
                     <ShadeKey />
-                    <span>
-                        <span data-testid="activity-too-recent-legend">{tooRecentLegend(series.stepSeconds)}</span>{' '}
-                        Too few of its raids have a report yet to scale up. Both panels shade it.
-                    </span>
+                    <span data-testid="activity-too-recent-legend">{tooRecentLegend(series.stepSeconds)}</span>
                 </p>
                 {noEstimate.length === 0 ? null : <p data-testid="activity-no-estimate-note">{noEstimateNote(noEstimate)}</p>}
                 {missing === null ? null : (

@@ -19,7 +19,6 @@ import {
     noEstimateNote,
     peakAriaLabel,
     peakCaption,
-    provisionalLegend,
     raidPanel,
     raidPanelAriaLabel,
     raidsWithoutEstimate,
@@ -460,18 +459,10 @@ describe('the legends for the estimate and the shade', () => {
         expect(tooRecentLegend(3 * HOUR)).toBe('Shaded: the last 15 minutes to 3 hours 15 minutes, too recent to estimate.');
     });
 
-    it('says where the dashed line starts at each range\'s step', () => {
-        // It starts where counting ends: 2 hours back plus up to one step.
-        expect(provisionalLegend(HOUR)).toBe('Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.');
-        expect(provisionalLegend(600)).toBe('Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.');
-        expect(provisionalLegend(3 * HOUR)).toBe('Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.');
-    });
-
     it('words any step size, not only the three ranges\'', () => {
         // A step that makes the longest end exactly an hour: "15 minutes to 1 hour", each end
         // with its own unit, not "0.25 to 1 hour" or "15 to 1 hour".
         expect(tooRecentLegend(45 * 60)).toBe('Shaded: the last 15 minutes to 1 hour, too recent to estimate.');
-        expect(provisionalLegend(30 * 60)).toBe('Dashed: an estimate, from 2 hours to 2 hours 30 minutes ago up to the shaded stretch.');
     });
 
     it('keeps a copy of the query\'s counted age', () => {

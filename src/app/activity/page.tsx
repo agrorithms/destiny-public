@@ -81,9 +81,9 @@ export default async function ActivityPage({
             <header className="space-y-2">
                 <h1 className="text-3xl font-bold ui-text-primary">Raid Activity</h1>
                 <p className="ui-text-secondary">
-                    How many raids were in progress across every raid, averaged over every{' '}
+                    How many raids were in progress, averaged over every{' '}
                     {described.step} of the last {described.span}. Every raid instance counts,
-                    checkpoint runs and unfinished ones included. <LocalZoneNote />
+                    checkpoints and unfinished runs included. <LocalZoneNote />
                 </p>
                 <ActivityRangeControl range={range.id} raids={urlRaids} />
             </header>

@@ -2565,8 +2565,8 @@ all-hours curve.
 - the **dashed line** (`activity-provisional-line`) is present at 24h and 7d with 11–12 and 2–3
   vertices (the estimated steps plus the counted point it starts from), and at 30d is absent or
   has 2 (the 3-hour grid can leave no whole step between the counted boundary and the cutoff),
-  with its legend (`activity-provisional-legend`, "Dashed: an estimate, from 2 hours to 2 hours
-  10 minutes ago …" per range) present exactly when the line is;
+  with its legend (`activity-provisional-legend`, "Dashed: an estimate for recent activity.",
+  the same at every range) present exactly when the line is;
 - the solid line's vertex count is still the counted steps only (131–132, 165–166, 150–160).
 
 1. **The dashed line continues the counted one and stops 15 minutes short of now.** At 24h and 7d:
@@ -2867,7 +2867,8 @@ green at HEAD.
 
 ### Review fixes (loop 1)
 
-One spec added and one assertion replaced; the file now has 47 tests and the suite 213.
+One spec added and one assertion replaced; the file now has 47 tests and the suite 213. (The new spec
+was removed again after the handoff, when the legend was shortened: see "Legend shortened" below.)
 
 - **New: "the legend says each raid is scaled by its own share only when a raid picked has an
   estimate"** (P1). `?range=7d&raids=kings_fall`: the total's Provisional legend is drawn, King's Fall's

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
 import type { RaidOption } from '@/components/RaidMultiSelect';
 import { rangeOfSeries, type ActivityRange } from './activity-range';
@@ -8,12 +9,12 @@ import {
     beforeData,
     busiestStep,
     linePaths,
-    notCounted,
-    notCountedLegend,
+    noEstimateNote,
     peakAriaLabel,
-    provisionalLegend,
+    PROVISIONAL_LEGEND,
     raidPanel,
     raidPanelAriaLabel,
+    raidsWithoutEstimate,
     tallestStep,
     tooRecent,
     tooRecentLegend,
@@ -48,6 +49,9 @@ const LINE_STROKE = {
     strokeLinejoin: 'round',
     vectorEffect: 'non-scaling-stroke',
 } as const;
+
+/** {@link LINE_STROKE} dashed: the estimated stretch of the total's line and of each raid's. */
+const DASHED_STROKE = { ...LINE_STROKE, strokeDasharray: '6 4' } as const;
 
 /**
  * The Raid Activity chart (#194–#197): one line of total Raids in Progress, one point per
@@ -94,7 +98,7 @@ export function ActivityChart({
     // The bottom panel (#198): a line for each picked raid, on a y-axis of its own.
     const pickedRaids = picked.map((key) => ({ key, name: raidOptions.find((raid) => raid.key === key)?.name ?? key }));
     const panel = raidPanel(points, picked, from, to);
-    const uncounted = notCounted(series);
+    const noEstimate = raidsWithoutEstimate(points, picked).map((key) => pickedRaids.find((raid) => raid.key === key)!.name);
     const frame: PanelFrame = { from, to, range, missing };
 
     // `data-window-from` / `data-window-to` are for e2e/activity.spec.ts and nothing in the
@@ -127,7 +131,7 @@ export function ActivityChart({
                             <ShadeRect testId="activity-too-recent" span={shade} />
                             <path data-testid="activity-line" d={solid} {...LINE_STROKE} />
                             {dashed === null ? null : (
-                                <path data-testid="activity-provisional-line" d={dashed} {...LINE_STROKE} strokeDasharray="6 4" />
+                                <path data-testid="activity-provisional-line" d={dashed} {...DASHED_STROKE} />
                             )}
                         </Panel>
 
@@ -140,16 +144,26 @@ export function ActivityChart({
                                 frame={frame}
                                 beforeDataTestId="activity-raid-before-data"
                             >
-                                <ShadeRect testId="activity-not-counted" span={uncounted} />
+                                <ShadeRect testId="activity-raid-too-recent" span={shade} />
                                 {panel.lines.map((line, index) => (
-                                    <path
-                                        key={line.key}
-                                        data-testid="activity-raid-line"
-                                        data-raid={line.key}
-                                        d={line.path}
-                                        {...LINE_STROKE}
-                                        stroke={raidColour(index)}
-                                    />
+                                    <Fragment key={line.key}>
+                                        <path
+                                            data-testid="activity-raid-line"
+                                            data-raid={line.key}
+                                            d={line.path}
+                                            {...LINE_STROKE}
+                                            stroke={raidColour(index)}
+                                        />
+                                        {line.dashed === null ? null : (
+                                            <path
+                                                data-testid="activity-raid-provisional-line"
+                                                data-raid={line.key}
+                                                d={line.dashed}
+                                                {...DASHED_STROKE}
+                                                stroke={raidColour(index)}
+                                            />
+                                        )}
+                                    </Fragment>
                                 ))}
                             </Panel>
                         )}
@@ -188,29 +202,16 @@ export function ActivityChart({
                     <p className="flex items-start gap-2">
                         <DashKey />
                         <span>
-                            <span data-testid="activity-provisional-legend">{provisionalLegend(series.stepSeconds)}</span>{' '}
-                            A raid still running has no report yet, so the count of raids that have ended is scaled up by
-                            the share usually reported by then. The counted steps beside it are still being filled in, so
-                            the line can step up where it turns dashed.
+                            <span data-testid="activity-provisional-legend">{PROVISIONAL_LEGEND}</span>{' '}
+                            Raid instances are being filled in as they complete, so the line can step up where it turns dashed.
                         </span>
                     </p>
                 )}
                 <p className="flex items-start gap-2">
                     <ShadeKey />
-                    <span>
-                        <span data-testid="activity-too-recent-legend">{tooRecentLegend(series.stepSeconds)}</span>{' '}
-                        Too few of its raids have a report yet to scale up.
-                    </span>
+                    <span data-testid="activity-too-recent-legend">{tooRecentLegend(series.stepSeconds)}</span>
                 </p>
-                {pickedRaids.length === 0 ? null : (
-                    <p className="flex items-start gap-2">
-                        <ShadeKey />
-                        <span>
-                            <span data-testid="activity-not-counted-legend">{notCountedLegend(series.stepSeconds)}</span>{' '}
-                            The per-raid lines are drawn from counted steps only, so they stop here.
-                        </span>
-                    </p>
-                )}
+                {noEstimate.length === 0 ? null : <p data-testid="activity-no-estimate-note">{noEstimateNote(noEstimate)}</p>}
                 {missing === null ? null : (
                     <p className="flex items-start gap-2">
                         <ShadeKey />

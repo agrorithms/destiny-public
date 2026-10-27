@@ -174,11 +174,37 @@ describe('the per-raid lines of a tooltip (#198)', () => {
         expect(slot.raids).toEqual(['Last Wish: 3', "King's Fall: 0"]);
     });
 
-    it('has no raid lines for a Provisional step, which has no per-raid estimate', () => {
+    it('marks a raid\'s line on a Provisional step as an estimate, as the total\'s is (#199)', () => {
+        const [slot] = activitySlots([{ ...point(MIDNIGHT, HOUR, 9, true), raids: { last_wish: 1234.6, kings_fall: 2.4 } }], names);
+
+        expect(slot.raids).toEqual(['Last Wish: 1,235 · estimate, still arriving', "King's Fall: 2 · estimate, still arriving"]);
+        expect(tooltipText(slot, null)).toBe(
+            [
+                '9 average raids in progress, Sat 17 Oct, 00:00–01:00 UTC · estimate, still arriving',
+                'Last Wish: 1,235 · estimate, still arriving',
+                "King's Fall: 2 · estimate, still arriving",
+            ].join('\n')
+        );
+    });
+
+    it('says a raid with no estimate has none, rather than leaving it out or showing a guess', () => {
+        // Last Wish is estimated and King's Fall has too little history to be: its line is
+        // still there, so the reader is not left wondering where it went.
+        const [slot] = activitySlots([{ ...point(MIDNIGHT, HOUR, 9, true), raids: { last_wish: 3 } }], names);
+
+        expect(slot.raids).toEqual(['Last Wish: 3 · estimate, still arriving', "King's Fall: no estimate"]);
+    });
+
+    it('reads a raid estimated at 0 as an estimate of 0, not as no estimate', () => {
+        const [slot] = activitySlots([{ ...point(MIDNIGHT, HOUR, 9, true), raids: { last_wish: 0 } }], names);
+
+        expect(slot.raids[0]).toBe('Last Wish: 0 · estimate, still arriving');
+    });
+
+    it('says no estimate for every raid on a Provisional step that carries none', () => {
         const [slot] = activitySlots([point(MIDNIGHT, HOUR, 9, true)], names);
 
-        expect(slot.raids).toEqual([]);
-        expect(tooltipText(slot, null)).toBe('9 average raids in progress, Sat 17 Oct, 00:00–01:00 UTC · estimate, still arriving');
+        expect(slot.raids).toEqual(['Last Wish: no estimate', "King's Fall: no estimate"]);
     });
 
     it('has no raid lines when no raid is picked', () => {
@@ -194,22 +220,20 @@ describe('the per-raid lines of a tooltip (#198)', () => {
     });
 });
 
-describe('the step a pointer is over, on the per-raid panel (#198)', () => {
-    // Three 1-hour steps over a 3-hour window, the last one an estimate.
+describe('the step a pointer is over, on either panel (#199)', () => {
+    // Three 1-hour steps over a 3-hour window, the last one an estimate. Both panels draw the
+    // estimate now, so a pointer finds it on either; the span after it is shaded on both.
     const slots = activitySlots([
         point(MIDNIGHT, HOUR, 1),
         point(MIDNIGHT + HOUR, HOUR, 2),
         point(MIDNIGHT + 2 * HOUR, HOUR, 3, true),
     ]);
 
-    it('finds a Provisional step on the total panel but not on the per-raid one, which shades it', () => {
-        const at = 5 / 6; // the middle of the estimated step
-        expect(slotAtFraction(at, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR)).toBe(2);
-        expect(slotAtFraction(at, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR, true)).toBeNull();
+    it('finds a Provisional step, which the per-raid panel draws too', () => {
+        expect(slotAtFraction(5 / 6, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR)).toBe(2);
     });
 
-    it('finds a counted step on either panel', () => {
-        expect(slotAtFraction(0.5, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR, true)).toBe(1);
-        expect(slotAtFraction(0.5, slots, MIDNIGHT, MIDNIGHT + 3 * HOUR, false)).toBe(1);
+    it('finds nothing past the last step, where both panels are shaded', () => {
+        expect(slotAtFraction(0.9, slots, MIDNIGHT, MIDNIGHT + 4 * HOUR)).toBeNull();
     });
 });

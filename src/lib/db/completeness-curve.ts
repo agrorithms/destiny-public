@@ -52,10 +52,15 @@ export interface CompletenessCurve {
     overall: readonly number[];
 }
 
-/** Raid seconds seen per hour of day, and how many of them were known by each age bin. */
+/**
+ * Raid seconds seen per hour of day, how many of them were known by each age bin, and how
+ * many runs overlapped the training steps at all (#199: a raid's curve is only trusted past
+ * {@link MIN_RAID_CURVE_RUNS} of them).
+ */
 export interface CurveTally {
     seconds: number[];
     counted: number[][];
+    runs: number;
 }
 
 /** The training steps: whole steps starting at `from` and ending by `until`. */
@@ -74,6 +79,7 @@ export function newTally(): CurveTally {
     return {
         seconds: new Array<number>(HOURS_IN_DAY).fill(0),
         counted: Array.from({ length: HOURS_IN_DAY }, () => new Array<number>(BINS).fill(0)),
+        runs: 0,
     };
 }
 
@@ -87,7 +93,8 @@ export function hourOfStep(start: number, stepSeconds: number): number {
  * raid time in the step is added to that hour's total, and to the age bin at which it
  * became known: the run is reported by the time it ends, so the bin is how long after the
  * step's end that is (0 when it ended inside the step). A run that ends after the curve's
- * longest age never lands in a bin.
+ * longest age never lands in a bin. The tally also counts the run, once, if it overlaps any
+ * training step.
  */
 export function tallyRun(
     tally: CurveTally,
@@ -98,6 +105,7 @@ export function tallyRun(
 ): void {
     const first = Math.max(Math.floor(period / stepSeconds) * stepSeconds, window.from);
     const last = Math.min(Math.ceil(endedAt / stepSeconds) * stepSeconds, window.until);
+    if (first < last) tally.runs++;
     for (let start = first; start < last; start += stepSeconds) {
         const end = start + stepSeconds;
         const overlap = Math.min(endedAt, end) - Math.max(period, start);
@@ -142,4 +150,37 @@ export function shareAt(curve: CompletenessCurve, hour: number, ageSeconds: numb
 /** The count a partial `observed` stands for, or null when the share is nothing to divide by. */
 export function estimateTotal(observed: number, share: number): number | null {
     return share > 0 ? observed / share : null;
+}
+
+/**
+ * The tallies of several sets of runs, added up as if one set had been tallied. The total's
+ * curve is the sum of the raids' tallies (#199), so every run is tallied once, into its own
+ * raid's tally, and the total costs a few small arrays rather than a second pass.
+ */
+export function sumTallies(tallies: readonly CurveTally[]): CurveTally {
+    const sum = newTally();
+    for (const tally of tallies) {
+        sum.runs += tally.runs;
+        tally.seconds.forEach((seconds, hour) => {
+            sum.seconds[hour] += seconds;
+            tally.counted[hour].forEach((value, bin) => (sum.counted[hour][bin] += value));
+        });
+    }
+    return sum;
+}
+
+/**
+ * How many runs a raid needs in the training week before it gets a curve of its own (#199).
+ * Chosen from the per-raid backtest (docs/progress/199-per-raid-provisional.md): thinning
+ * prod's raids to simulate smaller ones, the median error at 15 minutes passed 10% and the
+ * 90th percentile 28% below about 5,000 runs.
+ */
+export const MIN_RAID_CURVE_RUNS = 5000;
+
+/**
+ * A raid's curve, or null when its tally holds fewer than `minRuns` runs: too thin a week
+ * to scale up on, so the raid is shown counted and not estimated.
+ */
+export function raidCurveFromTally(tally: CurveTally, minRuns: number): CompletenessCurve | null {
+    return tally.runs >= minRuns ? curveFromTally(tally) : null;
 }

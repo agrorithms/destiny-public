@@ -259,19 +259,21 @@ export interface ShadedSpan {
  * The line as two SVG paths: the counted steps solid, and the estimated ones dashed. The
  * dashed path starts on the last counted point, so the two meet and only the style changes
  * at the boundary; with nothing counted it starts at its own first point. It is null when no
- * step is estimated, and the solid one is empty when no step is counted.
+ * step is estimated, and the solid one is empty when no step is counted. `valueOf` is
+ * {@link linePath}'s: the total's line by default, a raid's on the bottom panel.
  */
 export function linePaths(
     points: RaidsInProgressPoint[],
     from: number,
     to: number,
-    max: number
+    max: number,
+    valueOf?: (point: RaidsInProgressPoint) => number
 ): { solid: string; dashed: string | null } {
     const counted = points.filter((point) => !point.provisional);
     const estimated = points.filter((point) => point.provisional);
     return {
-        solid: linePath(counted, from, to, max),
-        dashed: estimated.length === 0 ? null : linePath([...counted.slice(-1), ...estimated], from, to, max),
+        solid: linePath(counted, from, to, max, valueOf),
+        dashed: estimated.length === 0 ? null : linePath([...counted.slice(-1), ...estimated], from, to, max, valueOf),
     };
 }
 
@@ -279,15 +281,11 @@ export function linePaths(
  * The span shaded as too recent to estimate: from the end of the last estimated step
  * (`provisionalUntil`) to "now" at the right-hand edge. The line's last vertex is that
  * step's midpoint, so the shade starts half a step right of it. 15 minutes plus up to one
- * step wide ({@link tooRecentLegend}).
+ * step wide ({@link tooRecentLegend}). Both panels shade it (#199): the per-raid lines run
+ * as far as the total's do.
  */
 export function tooRecent(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'provisionalUntil'>): ShadedSpan {
-    return shadeToNow(series.provisionalUntil, series.from, series.to);
-}
-
-/** A span shaded from the instant `start` to "now" at the right-hand edge of `[from, to]`. */
-function shadeToNow(start: number, from: number, to: number): ShadedSpan {
-    const startPercent = xPercent(start, from, to);
+    const startPercent = xPercent(series.provisionalUntil, series.from, series.to);
     const endPercent = 100;
     return { startPercent, endPercent, widthPercent: endPercent - startPercent };
 }
@@ -335,13 +333,8 @@ export function tooRecentLegend(stepSeconds: number): string {
     return `Shaded: the last ${ageSpan(TOO_RECENT_AGE_SECONDS, stepSeconds)}, too recent to estimate.`;
 }
 
-/**
- * The dashed line's legend: where it starts. It begins where counting ends, at the last
- * whole step 2 hours old — 2 hours plus up to one step back.
- */
-export function provisionalLegend(stepSeconds: number): string {
-    return `Dashed: an estimate, from ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)} ago up to the shaded stretch.`;
-}
+/** The dashed line's legend. */
+export const PROVISIONAL_LEGEND = 'Dashed: an estimate for recent activity.';
 
 /**
  * The sentence naming the busiest step under the chart, worded for the range: "Busiest 10
@@ -430,10 +423,26 @@ function round(value: number): number {
     return Math.round(value * 100) / 100;
 }
 
+/**
+ * Whether a Provisional step carries raid `key`'s estimate (#199): it does unless the raid has
+ * no curve of its own, or its curve gives no share that far back. The one place that rule is
+ * written. On a counted step every raid asked for has a value, a count, so ask only of a
+ * Provisional one.
+ */
+export function hasEstimate(point: RaidsInProgressPoint, key: string): boolean {
+    return point.raids?.[key] !== undefined;
+}
+
 /** One raid's line on the bottom panel. */
 export interface RaidLine {
     key: string;
+    /** The counted steps, solid. */
     path: string;
+    /**
+     * The raid's estimated steps (#199), dashed, joined on to the last counted point as the
+     * total's are. Null for a raid with no estimate: its line stops where counting does.
+     */
+    dashed: string | null;
 }
 
 /** The bottom panel (#198): its own y-axis, and a line for each raid picked. */
@@ -444,11 +453,12 @@ export interface RaidPanel {
 
 /**
  * The bottom panel for the picked raids, in the picked order. **Its y-axis is the picked raids'
- * alone** — the tallest value any of them reaches over the counted steps — and never the
- * total's, so a quiet raid keeps its shape instead of lying flat under the total's scale, and
- * the two panels are never read against one scale. A line has a point for each counted step
- * and none for a Provisional one: per-raid lines stop where counting does. A counted step with
- * no value for a raid is a quiet one. The x positions are the total's, from the same
+ * alone** — the tallest value any of them reaches over the counted and estimated steps — and
+ * never the total's, so a quiet raid keeps its shape instead of lying flat under the total's
+ * scale, and the two panels are never read against one scale. Each raid's solid line has a
+ * point for each counted step (one with no value for the raid is a quiet one), and its dashed
+ * line (#199) one for each Provisional step that carries the raid's estimate, so a raid
+ * without an estimate has no dashed line. The x positions are the total's, from the same
  * {@link stepCentrePercent}, so a moment lines up in both panels.
  */
 export function raidPanel(
@@ -457,30 +467,48 @@ export function raidPanel(
     from: number,
     to: number
 ): RaidPanel {
-    const counted = points.filter((point) => !point.provisional);
     const valueIn = (key: string) => (point: RaidsInProgressPoint) => point.raids?.[key] ?? 0;
-    const axis = valueAxis(Math.max(0, ...keys.flatMap((key) => counted.map(valueIn(key)))));
+    // A raid's line: every counted step, and the Provisional ones that carry its estimate.
+    const raids = keys.map((key) => ({
+        key,
+        valueOf: valueIn(key),
+        points: points.filter((point) => !point.provisional || hasEstimate(point, key)),
+    }));
+    const axis = valueAxis(Math.max(0, ...raids.flatMap((raid) => raid.points.map(raid.valueOf))));
     return {
         axis,
-        lines: keys.map((key) => ({ key, path: linePath(counted, from, to, axis.max, valueIn(key)) })),
+        lines: raids.map((raid) => {
+            const { solid, dashed } = linePaths(raid.points, from, to, axis.max, raid.valueOf);
+            return { key: raid.key, path: solid, dashed };
+        }),
     };
 }
 
 /**
- * The span the per-raid panel shades: from where counting ends (`countedUntil`) to "now". The
- * per-raid lines stop there, because a per-raid estimate is not drawn (#199), so this is the
- * stretch the total's dashed line and shade cover that the bottom panel leaves bare.
+ * The picked raids that have no estimate (#199), in the picked order: no Provisional step
+ * carries a value for them, because their runs in the past week were too few to learn a curve
+ * from. Empty when no step is estimated at all, since then no dashed line exists for a note to
+ * explain the absence from.
  */
-export function notCounted(series: Pick<RaidsInProgressSeries, 'from' | 'to' | 'countedUntil'>): ShadedSpan {
-    return shadeToNow(series.countedUntil, series.from, series.to);
+export function raidsWithoutEstimate(points: RaidsInProgressPoint[], keys: readonly string[]): string[] {
+    const estimated = points.filter((point) => point.provisional);
+    if (estimated.length === 0) return [];
+    return keys.filter((key) => !estimated.some((point) => hasEstimate(point, key)));
+}
+
+/** `A`, `A and B`, `A, B and C`. */
+function nameList(names: readonly string[]): string {
+    const last = names[names.length - 1];
+    return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${last}` : last;
 }
 
 /**
- * The legend for {@link notCounted}'s shade: how wide it can be at this step, as
- * {@link provisionalLegend} says its start.
+ * The note under the chart naming the raids with no estimate and why their lines stop early.
+ * Given at least one name.
  */
-export function notCountedLegend(stepSeconds: number): string {
-    return `Shaded: the last ${ageSpan(NOT_YET_COUNTED_AGE_SECONDS, stepSeconds)}, not counted yet.`;
+export function noEstimateNote(names: readonly string[]): string {
+    const lines = names.length > 1 ? 'their lines stop' : 'its line stops';
+    return `${nameList(names)}: too few runs in the past week to estimate, so ${lines} where counting does.`;
 }
 
 /**
@@ -488,7 +516,5 @@ export function notCountedLegend(stepSeconds: number): string {
  * least one name: the panel is not drawn for none.
  */
 export function raidPanelAriaLabel(names: readonly string[], range: ActivityRange): string {
-    const last = names[names.length - 1];
-    const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${last}` : last;
-    return `Raids in progress per ${range.step} for ${list} over the last ${range.span}.`;
+    return `Raids in progress per ${range.step} for ${nameList(names)} over the last ${range.span}.`;
 }

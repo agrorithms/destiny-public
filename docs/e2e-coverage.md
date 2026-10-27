@@ -2565,8 +2565,11 @@ all-hours curve.
 - the **dashed line** (`activity-provisional-line`) is present at 24h and 7d with 11–12 and 2–3
   vertices (the estimated steps plus the counted point it starts from), and at 30d is absent or
   has 2 (the 3-hour grid can leave no whole step between the counted boundary and the cutoff),
-  with its legend (`activity-provisional-legend`, "Dashed: an estimate, from 2 hours to 2 hours
-  10 minutes ago …" per range) present exactly when the line is;
+  with its legend (`activity-provisional-legend`) present exactly when the line is. *As first
+  written* the legend carried the range's start: "Dashed: an estimate, from 2 hours to 2 hours 10
+  minutes ago up to the shaded stretch." / "from 2 to 3 hours ago …" / "from 2 to 5 hours ago …".
+  *Since the #199 follow-up (`d5729f9`)* it is the same at every range, "Dashed: an estimate for
+  recent activity.", so the spec asserts that one string;
 - the solid line's vertex count is still the counted steps only (131–132, 165–166, 150–160).
 
 1. **The dashed line continues the counted one and stops 15 minutes short of now.** At 24h and 7d:
@@ -2600,7 +2603,12 @@ assertion were seen failing before the code existed.
   are 1 for most hours, because its runs are whole hours); Vitest pins the division.
 - The dashed line at 30d when it exists, and its absence when the grid leaves no step, are both
   accepted by the spec; neither is forced (the grid depends on the clock).
-- The legend's prose after its first sentence, and the dashed swatch.
+- The legend's prose after its first sentence, and the dashed swatch. (That prose was reworded in
+  `d5729f9`: the dashed legend's long explanation of the scaling became "Raid instances are being
+  filled in as they complete, so the line can step up where it turns dashed.", and the shaded
+  legend's second sentence, "Too few of its raids have a report yet to scale up. Both panels shade
+  it.", was dropped. The shaded legend's first sentence, the width asserted above, is unchanged.
+  Still unasserted.)
 - Later tickets: tooltips in local time (#197), the per-raid panel (#198, #199).
 
 ## 2026-10-24 — #197 the Raid Activity tooltips in local time
@@ -2694,7 +2702,9 @@ Reverted; green at HEAD.
   skipped. A fall-back onto midnight (the Azores, last
   Sunday of October) reads 00:00 twice and is ticked once, at the first: Vitest's
   (`activity-geometry.test.ts`), not a spec's.
-- The y-axis, the legends' prose and the aria-label's wording beyond "UTC".
+- The y-axis, the legends' prose and the aria-label's wording beyond "UTC". (The Provisional and
+  too-recent legends' prose changed after this entry, in `d5729f9`; see #196. The specs here
+  assert neither, and the 30-day data-start legend they do assert is unchanged.)
 - Later tickets: the per-raid panel (#198, #199) and its second part for the hover.
 
 ## 2026-10-25 — #198 the Raid Activity per-raid panel and its raid picker
@@ -2801,4 +2811,98 @@ their own: the red run failed them only on the panel's absence. Vitest holds wha
 - Which raid is which colour past three (the specs pick up to five but only compare three colours;
   `raidColour` is Vitest's).
 - The per-raid y-axis's labels beyond the King's Fall case (`valueAxis` is Vitest's).
-- Per-raid estimates: #199.
+- Per-raid estimates: #199, below.
+
+## 2026-10-26 — #199 the Raid Activity per-raid Provisional estimate
+
+`e2e/activity.spec.ts`, **eight new specs** in a block "the per-raid Provisional estimate", and two
+rewritten ones in "the per-raid panel". The suite is now **thirty-three flows, 212 tests including the
+two canary setups**. Two existing tooltip specs ("hovering the dashed line…", "a tap on the dashed
+line…") read the tooltip's *first line* through `totalLine()`, because an estimated step's box now
+holds the raid lines under the total's, as a counted step's already did.
+
+**What the page gained:** each picked raid with an estimate has a dashed segment
+(`activity-raid-provisional-line`, `data-raid`) joined on to its last counted point; the bottom panel
+shades the total's too-recent span (`activity-raid-too-recent`, replacing `activity-not-counted`, whose
+wider "not counted yet" shade and key are gone); a note (`activity-no-estimate-note`) names the picked
+raids with no estimate; a tooltip line over an estimated step reads `Name: n · estimate, still arriving`,
+or `Name: no estimate`.
+
+**Seed and server:** no run was added. The e2e server sets `ACTIVITY_MIN_RAID_RUNS=6`
+(`playwright.config.ts`): Salvation's Edge (RAID_A) has 9 or 10 runs in the training week (the 3 peak
+runs, the one 100 hours back, the 6 daily), King's Fall 4, Vault of Glass 3, Last Wish 2, Crota's End 1.
+So Salvation's Edge has an estimate and every other seeded raid has none, with 2 runs of margin below and
+3 above. Over 24 hours and 7 days Salvation's Edge always has a share to divide by (its seeded runs are
+whole hours), so the dashed segment does not depend on the hour of day the suite runs in.
+
+1. **A dashed segment for a raid with history, none for one without** (`?range=24h` and `?range=7d`, picks
+   Salvation's Edge and King's Fall): the dashed path begins on the solid line's last vertex, is dashed
+   in the solid line's colour, runs through the same steps as the total's dashed line, and King's Fall has
+   a solid line, no dashed one, and the note.
+2. **The segment stops before the shade it shares with the total** and rises off the floor at 24 hours
+   (the seeded recent run).
+3. **No note** when every raid picked has an estimate.
+4. **The tooltip** over an estimated step on the bottom panel: the total's line with its tail, then
+   `Salvation's Edge: n · estimate, still arriving` and `King's Fall: no estimate`; a counted step reads
+   King's Fall as a plain `0`.
+5. **One marker** through both panels over an estimated step.
+6. **JavaScript off:** the dashed segment, King's Fall's absence and the note are in the server's HTML.
+7. **At 360px (touch):** five raids picked, four with no estimate: the note names them inside the
+   viewport, a tap on an estimated step opens a six-line box with four `no estimate` lines inside the
+   viewport, `expectNoOverflow` after each.
+
+Rewritten: "over the newest hours…" now expects the estimate's two lines on either panel and a plain
+count on the last counted step (`expect.poll`, for the redraw); "shades the newest hours of the bottom
+panel" became "shades the same newest span in both panels, under one key" (same `x` and `width` as the
+total's, no `activity-not-counted`).
+
+**Bite proof — the red run.** The specs were written against the new server code and the #198 chart
+(`ActivityChart.tsx`, `ActivityLocal.tsx`, `activity-geometry.ts` and `activity-tooltips.ts` as of
+`0c34c30`, the red commit): of 46 tests in the file **10 failed and 36 passed**; every failure is one of
+the eight new specs (the 24h/7d one counts twice) or the two rewritten ones, and all 36 others,
+the two edited tooltip specs among them, still passed. Failing on the dashed segment's absence says
+nothing of the later assertions, so four breaks were made on purpose in one build (`npx playwright test
+e2e/activity.spec.ts`: 6 failed, 40 passed):
+
+| Break | Spec that failed |
+| --- | --- |
+| the dashed path starts at its first estimate, not the last counted point | "over 24h…" and "over 7d a raid with history is dashed from its last counted point…" (`Expected "980.92,200"`, received `"986.87,200"` at the join) |
+| `raidsWithoutEstimate` always empty (no note) | the JavaScript-off spec and the 360px spec (the note not found); the 24h/7d spec after the join |
+| a raid with no estimate reads `Name: 0` | "the tooltip marks a raid's estimate, and says a raid without one has none" |
+| the raid line drops its estimate tail | the same spec, and "over the newest hours…" |
+
+The env wiring has no break of its own: with `ACTIVITY_MIN_RAID_RUNS` unset the default 5,000 gives
+the seeded Salvation's Edge no estimate, and every dashed-segment spec fails. All breaks reverted;
+green at HEAD.
+
+### Review fixes (loop 1)
+
+One spec added and one assertion replaced; the file now has 47 tests and the suite 213. (The new spec
+was removed again after the handoff, when the legend was shortened: see "Legend shortened" below.)
+
+- **New: "the legend says each raid is scaled by its own share only when a raid picked has an
+  estimate"** (P1). `?range=7d&raids=kings_fall`: the total's Provisional legend is drawn, King's Fall's
+  no-estimate note is drawn, and the sentence "Each raid below is scaled by the share its own runs
+  usually report." is not; with Salvation's Edge picked as well, it is.
+- **Replaced: the last assertion of "over the newest hours…"** (S1). `not.toHaveText(ESTIMATE)` on the
+  whole box could not fail: `ESTIMATE` is end-anchored, so it read only the box's last line, the raid
+  line the poll before had already proved counted. It is now `expect.poll(() => totalLine(page))
+  .not.toMatch(ESTIMATE)`, the total's own line.
+
+**Bite proof, one build** (`npm run e2e -- e2e/activity.spec.ts -g …`, the two specs: 2 failed, the two
+canaries passed):
+
+| Break | Result |
+| --- | --- |
+| P1 seen red before its fix: the sentence shown whenever any raid is picked (the old condition) | the new spec failed at `toHaveCount(0)`: 1 found |
+| every slot's `estimate: true` in `activitySlots`, so a counted step's total line carries the estimate's tail | "over the newest hours…" failed at the new assertion, received `0 average raids in progress, Mon 26 Oct, 21:00–21:10 · estimate, still arriving`; the raid-line poll above it passed, which is what the old assertion read |
+
+Both reverted; green at HEAD.
+
+### What is still NOT covered
+
+- A raid whose estimate ends part-way (its curve gives no share for a later step): Vitest's
+  (`raids-in-progress.test.ts`), the seed's raids all have shares.
+- The threshold's boundary (exactly the minimum): Vitest's. The browser sees 4 against 9 or 10 runs.
+- The 30-day range's per-raid estimates: the 3-hour grid can leave no whole Provisional step.
+- The values of the per-raid estimates: hour-of-day dependent; Vitest pins them.

@@ -145,8 +145,8 @@ export function ActivityHover({
     );
     const locate = useMemo<SlotLocator<Part>>(
         () => ({
-            // The per-raid panel shades the steps not counted yet, so it has no slot there.
-            slotAt: (fraction, part) => slotAtFraction(fraction, slots, from, to, part === 'raids'),
+            // Both panels draw the same steps and shade the same spans, so one answer serves either.
+            slotAt: (fraction) => slotAtFraction(fraction, slots, from, to),
             centre: (index, chartWidth) => slotCentreFraction(index, slots, from, to) * chartWidth,
         }),
         [slots, from, to]

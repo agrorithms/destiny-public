@@ -4,7 +4,7 @@ import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import type { RaidOption } from '@/components/RaidMultiSelect';
 import { getRaidsInProgress, type RaidsInProgressSeries } from '@/lib/db/queries';
 import { getOrCompute } from '@/lib/cache/swr-cache';
-import { envSeconds } from '@/lib/env';
+import { envCount, envSeconds } from '@/lib/env';
 import { ActivityChart } from './ActivityChart';
 import { LocalZoneNote } from './ActivityLocal';
 import { ActivityRangeControl } from './ActivityRangeControl';
@@ -20,7 +20,9 @@ import { isRaidsParamClean, parseActivityRaids, pickRaids } from './activity-rai
  * range presets, #196's Provisional estimate (the steps too recent to count, dashed, and
  * the last 15 minutes shaded), #197's tooltips in local time, #198's per-raid panel and its
  * raid picker (`?raids=`) and then #199's per-raid estimate — each through the query's
- * options and the geometry module, not a new read.
+ * options and the geometry module, not a new read. **`ACTIVITY_MIN_RAID_RUNS`** (default 5,000,
+ * `MIN_RAID_CURVE_RUNS`) is how many runs a raid needs in the past week to get an estimate of
+ * its own; the e2e server sets it low because a seed cannot hold 5,000 runs a raid.
  *
  * **Server-rendered, with no new endpoint**: the page calls the Tracker query module
  * directly, and the chart is hand-made SVG. The one client step (#197,
@@ -79,9 +81,9 @@ export default async function ActivityPage({
             <header className="space-y-2">
                 <h1 className="text-3xl font-bold ui-text-primary">Raid Activity</h1>
                 <p className="ui-text-secondary">
-                    How many raids were in progress across every raid, averaged over every{' '}
+                    How many raids were in progress, averaged over every{' '}
                     {described.step} of the last {described.span}. Every raid instance counts,
-                    checkpoint runs and unfinished ones included. <LocalZoneNote />
+                    checkpoints and unfinished runs included. <LocalZoneNote />
                 </p>
                 <ActivityRangeControl range={range.id} raids={urlRaids} />
             </header>
@@ -119,6 +121,8 @@ async function readSeries(range: ActivityRange, raidKeys: readonly string[]): Pr
             stepSeconds: range.stepSeconds,
             now: Math.floor(Date.now() / 1000),
             raidKeys,
+            // Unset, the query's own default (`MIN_RAID_CURVE_RUNS`), so the default has one owner.
+            minRaidRuns: envCount('ACTIVITY_MIN_RAID_RUNS', undefined),
         })
     );
     return value;

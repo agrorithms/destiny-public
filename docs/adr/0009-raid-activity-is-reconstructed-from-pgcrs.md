@@ -124,6 +124,61 @@ the band's younger end: 3.2% at 15–30 minutes against 5.2% at 15 and 3.4% at 3
 minutes against 3.4% and 1.6%; 1.1% at 1–2 hours against 1.6% and 0.8%. The 3-hour rows of the
 shipped-code replay rest on 2, 2 and 7 steps (20, 37 and 79 in the fetched run): too few to compare.
 
+#### Per-raid estimates (#199), 2026-10-26
+
+Each raid is scaled by a completeness curve of its own, learned the way the total's is (whole steps of
+the range's size, per hour of the day, by `ended_at`) but from that raid's runs alone. The total's
+curve is the sum of the raids' tallies, so each run is still tallied once and the total's curve is what
+it was. **A raid needs 5,000 runs in the training week** (`MIN_RAID_CURVE_RUNS`, set by
+`ACTIVITY_MIN_RAID_RUNS`); below that it is counted and not estimated, its line stops where counting
+does, and its tooltip line over a Provisional step reads "no estimate". A raid's estimate, like the
+total's, ends at the first step its curve gives no share for.
+
+**Why a curve per raid.** One curve for every raid is a mixture dominated by the busiest raid, and it is
+biased in opposite directions by run length: over 21–25 October at 15 minutes it ran +19% on Last Wish
+(short runs, the most of them), -20% on King's Fall and -33% on Pantheon: Insurrection Prime. Last
+Wish's median error at 15 minutes fell from 17.9% to 2.5% with its own curve, King's Fall's from 22.7% to
+3.6%, Salvation's Edge's from 23.5% to 12.7% (24–25 October).
+
+Median |error| % (p90) of a raid's Provisional step against its final value, hourly steps, by how old the
+step's end is. Shipped `getRaidsInProgress` replayed at 440 pretend-nows (110 steps from 21 to 25 October,
+each read at 15 minutes, 30 minutes, 1 hour and 1 hour 45 minutes), curves relearned for each from the
+2026-10-26 backup; steps under 1 raid in progress left out; n = 110 per cell:
+
+| Raid | Runs in the training week | 15 min | 30 min | 1 h | 1 h 45 min |
+| --- | --- | --- | --- | --- | --- |
+| Last Wish | 293,328 | 2.9 (6.3) | 2.3 (5.3) | 1.4 (3.3) | 0.8 (1.7) |
+| Vow of the Disciple | 41,153 | 17.4 (39.5) | 13.8 (27.5) | 8.1 (17.6) | 4.5 (8.6) |
+| Vault of Glass | 40,378 | 5.2 (11.3) | 3.6 (8.8) | 2.0 (5.7) | 1.0 (2.5) |
+| Root of Nightmares | 19,558 | 6.4 (16.3) | 6.2 (13.8) | 3.2 (9.1) | 2.0 (5.2) |
+| Pantheon: Morgeth | 19,244 | 17.5 (34.4) | 14.7 (26.7) | 11.1 (23.2) | 8.1 (16.9) |
+| King's Fall | 18,778 | 7.2 (18.8) | 6.9 (16.1) | 5.7 (15.3) | 5.5 (14.6) |
+| Crota's End | 14,801 | 9.7 (23.7) | 8.1 (19.0) | 5.1 (14.2) | 3.3 (8.5) |
+| Salvation's Edge | 13,120 | 10.0 (26.6) | 9.0 (23.4) | 9.4 (19.9) | 6.1 (13.7) |
+| Garden of Salvation | 11,755 | 6.1 (15.6) | 4.7 (11.4) | 2.8 (8.4) | 2.1 (5.6) |
+| The Desert Perpetual | 10,363 | 13.9 (31.9) | 11.5 (29.4) | 10.3 (22.3) | 6.0 (13.0) |
+| Deep Stone Crypt | 9,524 | 8.2 (21.6) | 7.2 (16.2) | 4.8 (11.6) | 2.6 (5.9) |
+| Pantheon: Calus | 6,828 | 17.8 (43.8) | 15.1 (38.0) | 10.2 (28.4) | 8.7 (21.7) |
+| Pantheon: Insurrection Prime | 5,936 | 19.6 (48.2) | 16.1 (49.5) | 15.5 (33.3) | 12.0 (29.7) |
+
+**Why 5,000.** Thinning every raid's runs at random to simulate smaller ones, the median error at 15
+minutes stays at or under about 10% (p90 about 28%) down to about 5,000 training runs, against 3.4% /
+8.4% for the total; at 2,800–4,000 it is 10–18% (p90 about 40–50%), and at 300–1,200 over 30%. All 13
+raids on this backup have more than 5,900, so the threshold removes none today; it exists so that a raid
+the weekly rotation leaves nearly unplayed is never drawn with a confident-looking guess. Full tables:
+`docs/progress/199-per-raid-provisional.md`. The figure was tuned on the 1-hour step (the 7-day range)
+only, but the same threshold also gates the 24-hour range's 10-minute steps and the 30-day range's 3-hour
+steps, and each range counts a raid's runs over its own training window (its edges rounded to that
+range's step), so a raid near 5,000 runs can be estimated on one range and not on another.
+
+**What it does not fix: the weekly reset.** The worst rows above are the raids the rotation moves, not
+the thinnest. After the 20 October reset Vow of the Disciple fell from 5–8k runs and an 11–13 minute
+median a day to about 2k and 7 minutes, and a curve learned from the week before describes the old
+regime: its error at 15 minutes is 17.4% (p90 39.5%) over 21–25 October and 10.8% (19.8%) over 24–25
+October with the same run count. A volume threshold cannot see that; a shorter or recency-weighted
+training window could, and is not built. Expect the Tuesday-to-Thursday estimates for rotating raids to be
+rougher.
+
 ## Alternatives rejected
 
 - **Session Snapshots alone.** r = 0.17. The line would sit flat while raiding varied more than
@@ -166,6 +221,12 @@ shipped-code replay rest on 2, 2 and 7 steps (20, 37 and 79 in the fetched run):
   1,050 ms before). The series is cached per range with *every* raid's values and the page picks
   the ones in `?raids=` (at most five, default the three busiest raids by counted raid time in the
   range), so the cache holds one entry per range however many raid sets URLs name.
+  *2026-10-26 (#199):* superseded for the lines: a raid's line continues dashed through the same
+  Provisional steps, from its own completeness curve, if the raid has the history for one (below).
+  A raid with too little has no estimate and its line stops where counting does; the bottom
+  panel's shade is the total's too-recent shade, 15 minutes plus up to one step wide, and not the
+  wider "not counted yet" one.
+
 - **The chart moves only when raiding does.** Retuning the crawler's poll budget changes Session
   Snapshots and leaves Raids in Progress alone.
 - **The range is bounded by PGCR retention** (`CRAWLER_CLEANUP_MAX_AGE_HOURS`, 720 h on prod). The

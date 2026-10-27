@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
     CURVE_BIN_SECONDS,
     CURVE_MAX_AGE_SECONDS,
+    MIN_RAID_CURVE_RUNS,
     curveFromTally,
     estimateTotal,
     hourOfStep,
     newTally,
+    raidCurveFromTally,
     shareAt,
+    sumTallies,
     tallyRun,
     trainingWindow,
     type CompletenessCurve,
@@ -248,5 +251,93 @@ describe('estimating a total', () => {
     it('estimates nothing from a share of nothing', () => {
         // Dividing by 0 would draw the step at infinity; no estimate is the honest answer.
         expect(estimateTotal(2, 0)).toBeNull();
+    });
+});
+
+describe('counting the runs a tally learned from (#199)', () => {
+    it('counts a run once however many training steps it overlaps', () => {
+        // A three-hour run overlaps three of the one-hour steps: it is one run of history,
+        // not three, or a raid with long runs would look better evidenced than one with short.
+        const tally = newTally();
+
+        tallyRun(tally, WIDE, HOUR, S, S + 3 * HOUR);
+
+        expect(tally.runs).toBe(1);
+    });
+
+    it('counts each run, and not one outside the training steps', () => {
+        const tally = newTally();
+        const window = { from: S, until: S + 2 * HOUR };
+
+        tallyRun(tally, window, HOUR, S, S + 30 * MINUTE);
+        tallyRun(tally, window, HOUR, S + 90 * MINUTE, S + 150 * MINUTE);
+        // Ended before the window began, and started after it ended: neither overlaps a step.
+        tallyRun(tally, window, HOUR, S - 2 * HOUR, S - HOUR);
+        tallyRun(tally, window, HOUR, S + 2 * HOUR, S + 3 * HOUR);
+
+        expect(tally.runs).toBe(2);
+    });
+});
+
+describe('adding tallies together', () => {
+    it('makes the curve the runs would have made tallied as one', () => {
+        // The total's curve is the sum of the raids' tallies, so it must come out as it did
+        // when every run went into one tally: seconds, bins and run counts all add.
+        const runsA: Array<[number, number]> = [[S, S + HOUR], [S + 45 * MINUTE, S + 105 * MINUTE]];
+        const runsB: Array<[number, number]> = [[S + 10 * HOUR, S + 11 * HOUR + 20 * MINUTE]];
+        const a = newTally();
+        const b = newTally();
+        const together = newTally();
+        for (const [period, endedAt] of runsA) {
+            tallyRun(a, WIDE, HOUR, period, endedAt);
+            tallyRun(together, WIDE, HOUR, period, endedAt);
+        }
+        for (const [period, endedAt] of runsB) {
+            tallyRun(b, WIDE, HOUR, period, endedAt);
+            tallyRun(together, WIDE, HOUR, period, endedAt);
+        }
+
+        const sum = sumTallies([a, b]);
+
+        expect(sum).toEqual(together);
+        expect(sum.runs).toBe(3);
+        expect(curveFromTally(sum)).toEqual(curveFromTally(together));
+    });
+
+    it('leaves its inputs as they were', () => {
+        const a = newTally();
+        tallyRun(a, WIDE, HOUR, S, S + HOUR);
+        const before = structuredClone(a);
+
+        sumTallies([a, a]);
+
+        expect(a).toEqual(before);
+    });
+
+    it('is an empty tally for none', () => {
+        expect(sumTallies([])).toEqual(newTally());
+    });
+});
+
+describe('a raid\'s own curve', () => {
+    function tallyOfRuns(count: number) {
+        const tally = newTally();
+        for (let run = 0; run < count; run++) tallyRun(tally, WIDE, HOUR, S, S + HOUR);
+        return tally;
+    }
+
+    it('is learned once the raid has the runs it needs, and not one run short', () => {
+        expect(raidCurveFromTally(tallyOfRuns(3), 4)).toBeNull();
+        expect(raidCurveFromTally(tallyOfRuns(4), 4)).toEqual(curveFromTally(tallyOfRuns(4)));
+    });
+
+    it('is no curve for a raid with no runs, whatever the minimum', () => {
+        expect(raidCurveFromTally(newTally(), 0)).toBeNull();
+    });
+
+    it('asks 5,000 runs of a week of history', () => {
+        // The threshold the backtest chose (docs/progress/199-per-raid-provisional.md): the
+        // value is the spec, so a retune is a deliberate edit to this line.
+        expect(MIN_RAID_CURVE_RUNS).toBe(5000);
     });
 });

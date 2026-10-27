@@ -33,6 +33,10 @@ import { boxOf, expectInsideViewport, expectNoOverflow } from './support/viewpor
  * three over 7 and 30 days and has only Salvation's Edge run in the last 24 hours; the
  * picker is a client component, so what a pick does is read from the URL and the legend.
  *
+ * The per-raid Provisional estimate (#199) is asserted in the block after it: a dashed segment for
+ * a raid with enough history in the seed and none for one without, the tooltip wording on an
+ * estimated step, and the note that names the raids with no estimate.
+ *
  * The tooltips and local time (#197) are asserted before it. Every test here runs
  * in a pinned UTC zone ({@link test.use} below) so a developer's own zone cannot change what
  * the JavaScript-on tests read; the local-time tests pin a zone of their own, Asia/Kathmandu
@@ -68,7 +72,6 @@ const RANGES = {
         estimateVertices: [11, 12],
         estimateAlways: true,
         tooRecentLegend: 'Shaded: the last 15 to 25 minutes, too recent to estimate.',
-        provisionalLegend: 'Dashed: an estimate, from 2 hours to 2 hours 10 minutes ago up to the shaded stretch.',
         beforeData: false,
     },
     '7d': {
@@ -80,7 +83,6 @@ const RANGES = {
         estimateVertices: [2, 3],
         estimateAlways: true,
         tooRecentLegend: 'Shaded: the last 15 minutes to 1 hour 15 minutes, too recent to estimate.',
-        provisionalLegend: 'Dashed: an estimate, from 2 to 3 hours ago up to the shaded stretch.',
         beforeData: false,
     },
     '30d': {
@@ -93,7 +95,6 @@ const RANGES = {
         estimateVertices: [2, 2],
         estimateAlways: false,
         tooRecentLegend: 'Shaded: the last 15 minutes to 3 hours 15 minutes, too recent to estimate.',
-        provisionalLegend: 'Dashed: an estimate, from 2 to 5 hours ago up to the shaded stretch.',
         beforeData: true,
     },
 } as const;
@@ -159,7 +160,7 @@ async function expectRangeDrawn(page: Page, id: RangeId, zone: Zone = 'local'): 
         const estimateVertices = vertices((await dashed.getAttribute('d')) ?? '').length;
         expect(estimateVertices, `${id} dashed vertex count`).toBeGreaterThanOrEqual(range.estimateVertices[0]);
         expect(estimateVertices, `${id} dashed vertex count`).toBeLessThanOrEqual(range.estimateVertices[1]);
-        await expect(page.getByTestId('activity-provisional-legend')).toHaveText(range.provisionalLegend);
+        await expect(page.getByTestId('activity-provisional-legend')).toHaveText('Dashed: an estimate for recent activity.');
     } else {
         await expect(page.getByTestId('activity-provisional-legend')).toHaveCount(0);
     }
@@ -379,6 +380,8 @@ const TOOLTIP = new RegExp(
     `^[\\d,]+ average raids? in progress, ${WEEKDAY} \\d{1,2} [A-Z][a-z]{2}, \\d{2}:\\d{2}–(${WEEKDAY} )?\\d{2}:\\d{2}`
 );
 const ESTIMATE = / · estimate, still arriving$/;
+/** The total's line (the first) on a Provisional step. Below it come the picked raids' own lines (#199). */
+const ESTIMATED_TOTAL = new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`);
 
 /** The chart's graphic, the part src/components/chart/ChartHover.tsx puts the pointer over. */
 function chartSvg(page: Page, part: 'total' | 'raids' = 'total') {
@@ -396,6 +399,20 @@ function tooltip(page: Page) {
  */
 async function totalLine(page: Page): Promise<string> {
     return (await tooltip(page).innerText()).split('\n')[0];
+}
+
+/** The tooltip's text, a line at a time: the total's, then one for each raid drawn. */
+async function tooltipLines(page: Page): Promise<string[]> {
+    return (await tooltip(page).innerText()).split('\n');
+}
+
+/** The tooltip's marker runs from the top of the total's panel to the foot of the raids'. */
+async function expectMarkerThroughBothPanels(page: Page): Promise<void> {
+    const marker = await boxOf(page.getByTestId('activity-tooltip-marker'));
+    const top = await boxOf(chartSvg(page, 'total'));
+    const bottom = await boxOf(chartSvg(page, 'raids'));
+    expect(marker.y).toBeCloseTo(top.y, 0);
+    expect(marker.y + marker.height).toBeCloseTo(bottom.y + bottom.height, 0);
 }
 
 /** How far across the chart each vertex of a path is, from 0 to 1. */
@@ -522,7 +539,7 @@ test.describe('the tooltips', () => {
         const [lastCounted, firstEstimate] = await dashedFractions(page);
 
         await hoverAt(page, firstEstimate);
-        await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
+        await expect.poll(() => totalLine(page)).toMatch(ESTIMATED_TOTAL);
         const [start, end] = windowMinutes((await tooltip(page).textContent()) ?? '');
         expect((end - start + 1440) % 1440, 'a 10-minute step').toBe(10);
 
@@ -588,7 +605,7 @@ test.describe('the tooltips', () => {
 
             await tapAt(page, (await dashedFractions(page))[1]);
 
-            await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
+            await expect.poll(() => totalLine(page)).toMatch(ESTIMATED_TOTAL);
             await expectInsideViewport(tooltip(page), 'the estimate tooltip');
             await expectNoOverflow(page);
         });
@@ -930,50 +947,43 @@ test.describe('the per-raid panel', () => {
             await waitForClientStep(page);
 
             await hoverAt(page, await peakFraction(page), 'raids');
-
-            const marker = await boxOf(page.getByTestId('activity-tooltip-marker'));
-            const top = await boxOf(chartSvg(page, 'total'));
-            const bottom = await boxOf(chartSvg(page, 'raids'));
-            expect(marker.y).toBeCloseTo(top.y, 0);
-            expect(marker.y + marker.height).toBeCloseTo(bottom.y + bottom.height, 0);
+            await expectMarkerThroughBothPanels(page);
         });
 
-        test('over the newest hours shows the total\'s estimate on the top panel and nothing on the bottom', async ({ page }) => {
+        test('over the newest hours shows the total\'s estimate on the top panel and the raid\'s own on the bottom', async ({ page }) => {
             await page.goto('/activity?range=24h');
             await waitForClientStep(page);
             const [lastCounted, firstEstimate] = await dashedFractions(page);
 
-            // The bottom panel shades what is not counted yet, and says nothing there. The tooltip
-            // is seen first on a counted step of the same panel, so the count of 0 below is the
-            // box going away, not a check made before React has drawn anything.
+            // Both panels carry the same tooltip over an estimated step: the total's line with its
+            // tail, then Salvation's Edge's own line, marked as an estimate the same way.
+            for (const part of ['total', 'raids'] as const) {
+                await hoverAt(page, firstEstimate, part);
+                await expect.poll(() => totalLine(page), part).toMatch(ESTIMATED_TOTAL);
+                const lines = await tooltipLines(page);
+                expect(lines, part).toHaveLength(2);
+                expect(lines[1], part).toMatch(new RegExp(`^${SALVATIONS.name}: [\\d,]+${ESTIMATE.source}`));
+            }
+
+            // The last counted step is a count with a count beside it. Polled: the box still holds
+            // the estimate's lines until React redraws it, and a single read could catch that.
             await hoverAt(page, lastCounted, 'raids');
-            await expect(tooltip(page)).toBeVisible();
-            await hoverAt(page, firstEstimate, 'raids');
-            await expect(tooltip(page)).toHaveCount(0);
-
-            // The top panel's estimate has no per-raid lines to go with it.
-            await hoverAt(page, firstEstimate, 'total');
-            await expect(tooltip(page)).toHaveText(new RegExp(`${TOOLTIP.source}${ESTIMATE.source}`));
-            expect((await tooltip(page).innerText()).split('\n')).toHaveLength(1);
-
-            // The last counted step has both. Polled: the box still holds the one-line estimate
-            // until React redraws it, and a single innerText() read could catch that.
-            await hoverAt(page, lastCounted, 'total');
-            await expect.poll(async () => (await tooltip(page).innerText()).split('\n')).toHaveLength(2);
+            await expect.poll(async () => (await tooltipLines(page))[1]).toMatch(/^Salvation's Edge: [\d,]+$/);
+            await expect.poll(() => totalLine(page)).not.toMatch(ESTIMATE);
         });
 
-        test('shades the newest hours of the bottom panel, with a key for it', async ({ page }) => {
+        test('shades the same newest span in both panels, under one key', async ({ page }) => {
             await page.goto('/activity');
 
-            const shade = page.getByTestId('activity-not-counted');
-            await expect(shade).toBeAttached();
-            // Wider than the total\'s too-recent shade, which the estimate lets start later.
-            const notCounted = parseFloat((await shade.getAttribute('width')) ?? '');
-            const tooRecentWidth = parseFloat((await page.getByTestId('activity-too-recent').getAttribute('width')) ?? '');
-            expect(notCounted).toBeGreaterThan(tooRecentWidth);
-            await expect(page.getByTestId('activity-not-counted-legend')).toHaveText(
-                'Shaded: the last 2 to 3 hours, not counted yet.'
-            );
+            // Per-raid lines run as far as the total's now, so there is no wider "not counted" shade.
+            await expect(page.getByTestId('activity-not-counted')).toHaveCount(0);
+            await expect(page.getByTestId('activity-not-counted-legend')).toHaveCount(0);
+            const attributes = async (testId: string) => {
+                const shade = page.getByTestId(testId);
+                return [await shade.getAttribute('x'), await shade.getAttribute('width')];
+            };
+            expect(await attributes('activity-raid-too-recent')).toEqual(await attributes('activity-too-recent'));
+            await expect(page.getByTestId('activity-too-recent-legend')).toHaveText(RANGES['7d'].tooRecentLegend);
         });
     });
 
@@ -1018,6 +1028,138 @@ test.describe('the per-raid panel', () => {
 
             // The legend of five names stays in the column.
             await expect(legend(page)).toHaveCount(5);
+            await expectNoOverflow(page);
+        });
+    });
+});
+
+/**
+ * The per-raid Provisional estimate (#199): each raid's line gets its own dashed segment, from
+ * its own completeness curve, if the raid has the history for one. The e2e server sets the
+ * minimum to 6 runs in the training week (`ACTIVITY_MIN_RAID_RUNS`, playwright.config.ts), which
+ * the seed puts between Salvation's Edge (9 or 10 runs) and King's Fall (4): the first has an
+ * estimate, the second has none. Over 24 hours and 7 days the estimate always has a share to
+ * divide by for Salvation's Edge, whose seeded runs are whole hours.
+ */
+const WITH_AND_WITHOUT = `raids=${SALVATIONS.key},${KINGS_FALL.key}`;
+
+function raidDashed(page: Page, key: string) {
+    return page.locator(`[data-testid="activity-raid-provisional-line"][data-raid="${key}"]`);
+}
+
+function raidSolid(page: Page, key: string) {
+    return raidLines(page).and(page.locator(`[data-raid="${key}"]`));
+}
+
+const NO_ESTIMATE_NOTE = `${KINGS_FALL.name}: too few runs in the past week to estimate, so its line stops where counting does.`;
+
+test.describe('the per-raid Provisional estimate', () => {
+    for (const id of ['24h', '7d'] as const) {
+        test(`over ${id} a raid with history is dashed from its last counted point, and one without is not`, async ({ page }) => {
+            await page.goto(`/activity?range=${id}&${WITH_AND_WITHOUT}`);
+
+            // Salvation's Edge: the dashed path starts on its solid line's last vertex, as the
+            // total's does, in the raid's own colour, and runs through the same estimated steps.
+            const solid = vertices((await raidSolid(page, SALVATIONS.key).getAttribute('d')) ?? '');
+            const dashed = raidDashed(page, SALVATIONS.key);
+            const dashedD = (await dashed.getAttribute('d')) ?? '';
+            const estimate = vertices(dashedD);
+            expect(estimate[0], `${id}: starts on the last counted point`).toBe(solid.at(-1));
+            await expect(dashed).toHaveAttribute('stroke-dasharray', /\d/);
+            await expect(dashed).toHaveAttribute('stroke', (await raidSolid(page, SALVATIONS.key).getAttribute('stroke')) ?? '');
+            await expect(raidSolid(page, SALVATIONS.key)).not.toHaveAttribute('stroke-dasharray');
+            expect(estimate.length, `${id}: has estimated steps`).toBeGreaterThan(1);
+            expect((await dashedFractions(page)).map((x) => x.toFixed(3))).toEqual(fractions(dashedD).map((x) => x.toFixed(3)));
+
+            // King's Fall has 4 runs in the training week against a minimum of 6: counted, and
+            // no dashed segment.
+            await expect(raidSolid(page, KINGS_FALL.key)).toBeAttached();
+            await expect(raidDashed(page, KINGS_FALL.key)).toHaveCount(0);
+            await expect(page.getByTestId('activity-no-estimate-note')).toHaveText(NO_ESTIMATE_NOTE);
+
+            await expectNoOverflow(page);
+        });
+    }
+
+    test('the dashed segment stops before the shade it shares with the total', async ({ page }) => {
+        await page.goto(`/activity?range=24h&raids=${SALVATIONS.key}`);
+
+        const dashedD = (await raidDashed(page, SALVATIONS.key).getAttribute('d')) ?? '';
+        const estimate = vertices(dashedD);
+        // The path's x as a percent across, as the shade's is.
+        const lastX = fractions(dashedD).at(-1)! * 100;
+        const shadeX = parseFloat((await page.getByTestId('activity-raid-too-recent').getAttribute('x')) ?? '');
+        expect(lastX).toBeLessThan(shadeX);
+        // The seeded recent run puts the raid's estimate off the floor.
+        const heights = estimate.map((vertex) => parseFloat(vertex.split(',')[1]));
+        expect(Math.min(...heights), 'an estimated step above zero').toBeLessThan(CHART_HEIGHT);
+    });
+
+    test('says nothing about estimates when every raid picked has one', async ({ page }) => {
+        await page.goto(`/activity?range=24h&raids=${SALVATIONS.key}`);
+
+        await expect(raidDashed(page, SALVATIONS.key)).toBeAttached();
+        await expect(page.getByTestId('activity-no-estimate-note')).toHaveCount(0);
+    });
+
+    test('the tooltip marks a raid\'s estimate, and says a raid without one has none', async ({ page }) => {
+        await page.goto(`/activity?range=24h&${WITH_AND_WITHOUT}`);
+        await waitForClientStep(page);
+        const [lastCounted, firstEstimate] = await dashedFractions(page);
+
+        await hoverAt(page, firstEstimate, 'raids');
+        await expect.poll(() => totalLine(page)).toMatch(ESTIMATED_TOTAL);
+        const lines = await tooltipLines(page);
+        expect(lines[1]).toMatch(new RegExp(`^${SALVATIONS.name}: [\\d,]+${ESTIMATE.source}`));
+        expect(lines[2]).toBe(`${KINGS_FALL.name}: no estimate`);
+
+        // A counted step has a plain count for both, King's Fall's a real 0.
+        await hoverAt(page, lastCounted, 'raids');
+        await expect.poll(async () => (await tooltipLines(page))[2]).toBe(`${KINGS_FALL.name}: 0`);
+    });
+
+    test('draws one marker through both panels over an estimated step', async ({ page }) => {
+        await page.goto(`/activity?range=24h&${WITH_AND_WITHOUT}`);
+        await waitForClientStep(page);
+
+        await hoverAt(page, (await dashedFractions(page))[1], 'raids');
+        await expectMarkerThroughBothPanels(page);
+    });
+
+    test.describe('with JavaScript disabled', () => {
+        test.use({ javaScriptEnabled: false });
+
+        test('still draws the dashed segment, the missing one and the note', async ({ page }) => {
+            await page.goto(`/activity?range=24h&${WITH_AND_WITHOUT}`);
+
+            await expect(raidDashed(page, SALVATIONS.key)).toBeAttached();
+            await expect(raidDashed(page, KINGS_FALL.key)).toHaveCount(0);
+            await expect(page.getByTestId('activity-no-estimate-note')).toHaveText(NO_ESTIMATE_NOTE);
+        });
+    });
+
+    test.describe('at phone width', () => {
+        test.use({ viewport: { width: 360, height: 780 }, hasTouch: true });
+
+        test('the note and a five-raid tooltip over an estimated step overflow nothing', async ({ page }) => {
+            const five = [...DEFAULT_PICKS, LAST_WISH, CROTAS];
+            await page.goto(`/activity?range=24h&raids=${keys(five).join(',')}`);
+            await waitForClientStep(page);
+
+            // Four of the five have no estimate: the note names them, in a column of a phone.
+            const note = page.getByTestId('activity-no-estimate-note');
+            await expect(note).toHaveText(
+                `${KINGS_FALL.name}, ${VAULT.name}, ${LAST_WISH.name} and ${CROTAS.name}: too few runs in the past week to estimate, so their lines stop where counting does.`
+            );
+            await expectInsideViewport(note, 'the no-estimate note');
+            await expectNoOverflow(page);
+
+            await tapAt(page, (await dashedFractions(page))[1], 'raids');
+            await expect.poll(async () => (await tooltipLines(page)).length).toBe(6);
+            expect((await tooltipLines(page)).slice(2)).toEqual(
+                [KINGS_FALL, VAULT, LAST_WISH, CROTAS].map((raid) => `${raid.name}: no estimate`)
+            );
+            await expectInsideViewport(tooltip(page), 'the five-raid estimate tooltip');
             await expectNoOverflow(page);
         });
     });

@@ -165,7 +165,9 @@ with the same Clear Time, including one who joined at the final encounter, so a 
 tie. Some Full Clears carry a Clear Time no legitimate run could reach — two-minute clears of
 raids that take far longer, believed cheated — and they are ranked like any other rather than
 filtered; Last Wish is the exception that looks like one, since it has a legitimate route to a
-full completion in a few minutes.
+full completion in a few minutes. A Clear Time exists only for a Full Clear — the duration of a
+run nobody finished is how long someone stayed, not a Clear Time — so every statistic over Clear
+Times describes Full Clears whatever scope the reader has chosen.
 _Avoid_: speedrun, run time, duration
 
 **Heartbeat**:
@@ -402,3 +404,12 @@ across every Player-Run in scope. Weighted by activity — the busiest runs move
 answers what the population as a whole did, not what any one player is likely to do. Routinely
 disagrees with the KDA Quartiles, and the disagreement is the point.
 _Avoid_: average KDA, total KDA, KDA
+
+**Clear Time Quartiles**:
+The spread of Clear Time across a raid's Full Clears: the 25th, 50th and 75th percentile, each one
+a Clear Time some run actually had. The unit is the **instance**, not the Player-Run — every
+player in a run shares one Clear Time, so counting players would weight a run by its fireteam
+size. Answers how long a typical clear of this raid takes, where the **Fastest Clear** answers
+how long the quickest took. Reported beside **KDA Quartiles** but never narrowed by the scope that
+narrows them.
+_Avoid_: average clear time, median time, typical time

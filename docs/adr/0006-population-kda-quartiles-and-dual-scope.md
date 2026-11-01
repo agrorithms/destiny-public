@@ -121,3 +121,39 @@ Attempts scope.
 These timings scale with retained data. `CRAWLER_CLEANUP_BATCH_SIZE` and the PGCR retention window
 set how many Player-Runs a 168h query ranks; a retention increase moves the All Attempts number
 first.
+
+## Amendment (2026-11-01): the board that reads this endpoint (#200)
+
+The first reader of `getRaidStats` is the Raid Stats tab on the Raid Activity page (#200), and
+building it changes three things this ADR said.
+
+- **There will be three scopes, not two.** #204 puts one choice on the Raid Activity page: All
+  Attempts, Fresh Runs, Full Clears, each a subset of the one before. `getRaidStats` gains a Fresh
+  Runs scope between the existing two. The nesting rule above still holds: the response nests the
+  scope-sensitive metrics, and the nesting is the documentation. Fresh Runs is a statement about
+  how a run *began*, so a Fresh Run nobody finished is in it.
+- **Clear Time Quartiles join `fastestClearSeconds` outside the toggle**, for the reason that
+  put it there: a duration means something only for a Full Clear. Narrowing them to Fresh Runs or
+  All Attempts would publish a typical clear time that includes runs nobody cleared. The datum is
+  the instance, not the Player-Run, and the method is the same nearest rank.
+- **`dnfRate` is not displayed.** On this site most instances are Checkpoint Runs, so it reads
+  as "this raid is hard" and means something else. The API keeps it. A rate over Fresh Runs only,
+  which is the Reset share, is a separate ticket.
+
+**The "non-event" reasoning above no longer holds at 30 days.** The board offers 24h, 7d and 30d.
+Measured 2026-11-01 on a copy of that day's backup (2.09 GB, 13 raids), x86, `getRaidStats` end to
+end, three runs each:
+
+| window | Player-Runs (All Attempts) | ms |
+|---|---|---|
+| 24h | 175k | 1386 / 717 / 613 |
+| 7d | 1.08M | 5133 / 4760 / 4667 |
+| 30d | 5.20M | 27726 / 24700 / 25876 |
+
+Cost tracks Player-Runs, so 30d is about 5x 7d. On the ARM box the earlier ~2x factor puts a 30d
+cold miss near 50 s of blocked event loop; that is an estimate, not a measurement. It stays well
+under the 10-minute active-session watchdog (ADR 0005), but a worker that cannot answer for 50 s
+looks hung. The "cheap next move" above is therefore taken before the board ships: a separate
+ticket adds the stored generated KDA column and index, and #200 is blocked on it.
+Success is a 30d All Attempts miss near the 7d figure above; if the index does not get there, the
+fallback is to drop 30d on this tab.

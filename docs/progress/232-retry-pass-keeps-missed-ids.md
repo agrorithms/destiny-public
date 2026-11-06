@@ -21,3 +21,5 @@ Seams and decisions approved 2026-11-06:
    - Seam 4's bite, a temporary uncommitted hand break: `retryRaidsFound > 0` to `>= 0` at `f14d2a1` failed `logs nothing for a retry pass that recovers no raid`, plus the cut-short test and the pinned retry line (3 of 32). Reverted with `git checkout`; the tree was clean afterwards.
    - The cut-short test can't tell a count taken from `nextIndex` here, because the top guard breaks before the claim with one worker. The pinned `of 2 retried` line is what catches that.
    - The throw path comes from reading the code: not reproduced, no test. The queue rule covers it with no code of its own.
+4. Quality
+   - [x] /simplify pass — `retryMissedIds` takes its own snapshot and checks before it claims an index, so `attempted` is `nextIndex` and the separate counter is gone. This replaces the `nextIndex` caveats above: the pinned `of 2 retried` line now guards a count that does come from `nextIndex`. `importScannerWithEnv` replaces the hole-batch helper and the cap test's copy of it. No `expect` line changed.

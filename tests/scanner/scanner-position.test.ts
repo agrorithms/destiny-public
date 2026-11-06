@@ -482,7 +482,7 @@ describe('crossing an Id Hole', () => {
             stubBungie((id) => id <= start + BigInt(BATCH_SIZE));
 
             await scanner.startScanner(SCANNER_CONFIG);
-            await waitForResumeAfterLanding();
+            await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * BATCH_SIZE), WAIT);
 
             expect(requested.slice(0, 3 * BATCH_SIZE)).toEqual([
                 ...idRange(start + BigInt(1), 2 * BATCH_SIZE),

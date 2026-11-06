@@ -35,6 +35,8 @@ Seams and decisions approved 2026-11-05:
    - [x] P2 `tests/scanner/scanner-position.test.ts` — `takes the empty-batch count from SCANNER_HOLE_EMPTY_BATCHES`, through `vi.stubEnv` before a fresh import. Hand bite, reverted: the name misspelt in the source failed it, `expected 5 to be 2`. The fresh imports also put line 108 in the mutation run: its two compiling mutants are killed.
    - `npm run mutate:diff -- aa310055...HEAD --typecheck`, full run at `9e06645`: 100.0% overall (31/31), 100.0% covered, 10 compile errors discarded, 4 ignored, PASS. No survivors, so no kill loop was spent here.
    - Lint, build and vitest at `9e06645`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 911/911.
+6. Review fixes (loop 2)
+   - [x] S4 `tests/scanner/scanner-position.test.ts` — `reads a SCANNER_HOLE_EMPTY_BATCHES of %s as 1` waits for `3 * BATCH_SIZE` requests before reading that slice, not for `landing + 1`, the batch's first id. The race didn't reproduce in 24 runs, so the bite forced it. A temporary 200ms stub delay for ids past `landing + 1`, not committed: the old wait failed both rows, the slice stopping at `17000009799`, and the new wait passed both with the same delay.
 
 ## Surviving mutants
 

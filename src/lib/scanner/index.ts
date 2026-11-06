@@ -38,7 +38,6 @@ type ScannerClientSlot = {
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 // Global set for missed IDs (deduped, capped)
 const missedIdsSet = new Set<string>();
-const RETRY_THRESHOLD = 50; // Retry when 50 missed IDs are collected
 const MAX_MISSED_IDS = parseInt(process.env.SCANNER_MAX_MISSED_IDS || '20000', 10);
 // Delay before re-entering the scan loop after an unexpected iteration error
 // (e.g. transient SQLITE_BUSY) so the scanner rides out DB contention instead
@@ -873,12 +872,11 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             writeScannerStats();
         }
 
-        // At the Leading Edge — pause then retry missed IDs
+        // Catch-up pause: the batch ended on misses, so wait, then retry missed IDs
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
-                `[SCANNER] Reached the Leading Edge (${state.consecutiveMisses} consecutive misses). ` +
-                `${missedIdsSet.size} missed IDs to retry. ` +
-                `Pausing for ${config.pauseOnCatchupMs / 1000}s...`
+                `[SCANNER] ${state.consecutiveMisses} consecutive misses, ` +
+                `pausing ${config.pauseOnCatchupMs / 1000}s`
             );
             state.consecutiveMisses = 0;
             writeScannerStats();
@@ -887,8 +885,8 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             // guarded iteration, so it needs its own error guard.
             setTimeout(async () => {
                 try {
-                    if (missedIdsSet.size >= RETRY_THRESHOLD) {
-                        console.log(`[SCANNER] 🔄 Missed IDs set reached ${missedIdsSet.size}. Retrying...`);
+                    // Stryker disable next-line ConditionalExpression,EqualityOperator: an empty pass starts no workers and logs nothing
+                    if (missedIdsSet.size > 0) {
                         const idsToRetry = Array.from(missedIdsSet);
                         missedIdsSet.clear();
                         const retryResult = await retryMissedIds(clientPool, idsToRetry, config.workers);
@@ -896,11 +894,13 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
                         state.totalRaidsFound += retryResult.retryRaidsFound;
                         addMissedIds(retryResult.stillMissingIds);
 
-                        console.log(
-                            `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found. ` +
-                            `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
+                        if (retryResult.retryRaidsFound > 0) {
+                            console.log(
+                                `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found of ${idsToRetry.length} retried. ` +
+                                `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
                                 `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}`
-                        );
+                            );
+                        }
 
                         if (retryResult.systemDisabled) {
                             await waitForBungieMaintenancePause('scanner', () => state.shouldStop);

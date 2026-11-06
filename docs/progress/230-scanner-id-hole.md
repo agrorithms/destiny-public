@@ -11,8 +11,8 @@ Seams and decisions approved 2026-11-05:
 - CLAUDE.md's knob entry was approved; the orchestrator makes that edit.
 
 1. Retry after every catch-up pause, red then green
-   - [ ] `tests/scanner/scanner-position.test.ts` — `describe('missed ids')` rewritten, log tests, `stubBungie` per-id answers, console spy
-   - [ ] `src/lib/scanner/index.ts` — `RETRY_THRESHOLD` gone, pause and retry log lines
+   - [x] `tests/scanner/scanner-position.test.ts` — `describe('missed ids')` rewritten, log tests, `stubBungie` per-id answers, console spy (red run: 5 of 10 failed at `443ef95`. The AC8 rewrite passes at base, so its bite was a temporary break, the queue loop bound set to `results.length`: it failed, reverted)
+   - [x] `src/lib/scanner/index.ts` — `RETRY_THRESHOLD` gone, pause and retry log lines
 2. Crossing an Id Hole, red then green
    - [ ] `tests/scanner/scanner-position.test.ts` — `describe('crossing an Id Hole')`
    - [ ] `src/lib/scanner/index.ts` — `holeEmptyBatches`, the banner line, the count, `warnedAtPosition`, the crossing, comments

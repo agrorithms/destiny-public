@@ -24,6 +24,10 @@ Seams and decisions approved 2026-11-05:
    - The approved comment ignores all four mutants on its line, including the two killable ones (`false`, `<= 0`). Hand bite, reverted: `size < 0` failed four retry tests.
    - Prod-shape reproduction from the diagnosis session: green, position +10498 past the hole, and a queue of 45 retried.
    - Lint, build and vitest at `6f7984b`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 908/908.
+4. /simplify pass
+   - [x] `/simplify pass` — four cleanup agents. `src/lib/scanner/index.ts`: a crossing ends the miss run in `crossIdHole`, replacing the `crossedIdHole` flag. `tests/scanner/scanner-position.test.ts`: `pgcrResponse`, `pauseLines`, a module-level `start`, `beforeEach` setup, the maintenance case as an `it.each` row.
+   - `saveScannerPosition(to)` survived the incremental run, and the test file from before the pass missed the same hand break 6 runs of 6: `storedWhenResumed` was overwritten by later asks for `landing + 1`. It now keeps the first read, and the hand break fails 3 of 3.
+   - `npm run mutate:diff -- aa31005...HEAD --incremental` at `7769517`, changed lines only: 100.0% overall (40/40), 100.0% covered, 4 ignored; one loop. The tool's own 91.0% includes old results for other files, so it isn't this range's score.
 
 ## Surviving mutants
 

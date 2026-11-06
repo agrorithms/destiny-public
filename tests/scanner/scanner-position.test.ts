@@ -122,6 +122,15 @@ function readScannerPosition(): bigint | null {
     return row ? BigInt(row.value) : null;
 }
 
+/**
+ * For a knob read once, as the module loads: the env has to be set before a fresh import.
+ */
+async function importScannerWithEnv(name: string, value: string): Promise<void> {
+    vi.stubEnv(name, value);
+    vi.resetModules();
+    scanner = await import('@/lib/scanner');
+}
+
 /** `count` consecutive instance ids starting at `first`. */
 function idRange(first: bigint, count: number): bigint[] {
     return Array.from({ length: count }, (_, i) => first + BigInt(i));
@@ -404,12 +413,9 @@ describe('catch-up pause log lines', () => {
     });
 
     // A stall should read as the same Position: pause after pause, so the position
-    // stays last on the line even when a cap count is printed before it. The cap is
-    // read once, as the module loads, so the env has to be set before a fresh import.
+    // stays last on the line even when a cap count is printed before it.
     it('puts the position after the cap count', async () => {
-        vi.stubEnv('SCANNER_MAX_MISSED_IDS', '1');
-        vi.resetModules();
-        scanner = await import('@/lib/scanner');
+        await importScannerWithEnv('SCANNER_MAX_MISSED_IDS', '1');
         writeScannerPosition(start);
         // The queue holds one id: the first gap takes it and the second is dropped.
         stubBungie(
@@ -541,16 +547,9 @@ describe('crossing an Id Hole', () => {
             expect(loggedLines()).toContain(`  Hole batches:  ${expected}`);
         });
 
-        // The knob is read once, as the module loads, so the env has to be set before a
-        // fresh import. The configs below have no holeEmptyBatches to override it with.
-        async function importScannerWithHoleBatches(value: string): Promise<void> {
-            vi.stubEnv('SCANNER_HOLE_EMPTY_BATCHES', value);
-            vi.resetModules();
-            scanner = await import('@/lib/scanner');
-        }
-
+        // The configs below have no holeEmptyBatches to override the knob with.
         it('takes the empty-batch count from SCANNER_HOLE_EMPTY_BATCHES', async () => {
-            await importScannerWithHoleBatches('2');
+            await importScannerWithEnv('SCANNER_HOLE_EMPTY_BATCHES', '2');
             stubBungie(() => false);
 
             await scanner.startScanner(SCANNER_CONFIG);
@@ -562,7 +561,7 @@ describe('crossing an Id Hole', () => {
         // Below 1 the count would be met after every batch, hits included, and the scanner
         // would hop over every id between the position and the next stored one.
         it.each(['0', '-3'])('reads a SCANNER_HOLE_EMPTY_BATCHES of %s as 1', async (value) => {
-            await importScannerWithHoleBatches(value);
+            await importScannerWithEnv('SCANNER_HOLE_EMPTY_BATCHES', value);
             // Every id in the first batch exists, and none in the second.
             stubBungie((id) => id <= start + BigInt(BATCH_SIZE));
 

@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { resetTestDb, testDb } from '../helpers/db';
 import { bungieEnvelope } from '../helpers/bungie-profile-builder';
-import { buildPGCR, NON_RAID_HASH } from '../helpers/pgcr-builder';
+import { buildPGCR, NON_RAID_HASH, RAID_HASH } from '../helpers/pgcr-builder';
 import { seedRun } from '../helpers/seed';
 
 type Scanner = typeof import('@/lib/scanner');
@@ -36,12 +36,22 @@ let scanner: Scanner;
 /** Every instance id the scanner asked Bungie for, in request order. */
 let requested: bigint[];
 
+/** Records what the scanner prints and still prints it. The log wording is part of the spec. */
+let consoleLog: MockInstance<typeof console.log>;
+
+function loggedLines(): string[] {
+    return consoleLog.mock.calls.map(([line]) => String(line));
+}
+
 /**
  * Answers the PGCR endpoint the way Bungie does: a PGCR for an id that exists
  * (a non-raid one, so nothing is written to the database) and DestinyPGCRNotFound
- * for anything else.
+ * for anything else. `answer` replaces that for the ids it returns a response for.
  */
-function stubBungie(exists: (instanceId: bigint) => boolean): void {
+function stubBungie(
+    exists: (instanceId: bigint) => boolean,
+    answer: (instanceId: bigint) => Response | undefined = () => undefined
+): void {
     vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
         const match = url.match(/\/PostGameCarnageReport\/(\d+)\//);
@@ -51,6 +61,11 @@ function stubBungie(exists: (instanceId: bigint) => boolean): void {
 
         const instanceId = BigInt(match[1]);
         requested.push(instanceId);
+
+        const answered = answer(instanceId);
+        if (answered) {
+            return answered;
+        }
 
         const body = exists(instanceId)
             ? bungieEnvelope(buildPGCR({ instanceId: match[1], activityHash: NON_RAID_HASH }))
@@ -62,6 +77,17 @@ function stubBungie(exists: (instanceId: bigint) => boolean): void {
 
         return new Response(JSON.stringify(body), { status: 200 });
     });
+}
+
+/** The raid PGCR Bungie would send for an id; the scanner stores it. */
+function raidResponse(instanceId: bigint): Response {
+    const pgcr = buildPGCR({ instanceId: instanceId.toString(), activityHash: RAID_HASH });
+    return new Response(JSON.stringify(bungieEnvelope(pgcr)), { status: 200 });
+}
+
+/** How many times the scanner has asked for an id, this request included. */
+function timesRequested(instanceId: bigint): number {
+    return requested.filter((id) => id === instanceId).length;
 }
 
 /** Writes the stored Scanner Position the way scripts/discover.ts does. */
@@ -92,6 +118,7 @@ beforeEach(async () => {
     vi.resetModules();
     scanner = await import('@/lib/scanner');
     requested = [];
+    consoleLog = vi.spyOn(console, 'log');
 });
 
 afterEach(async () => {
@@ -99,6 +126,7 @@ afterEach(async () => {
     // to the database the next test is about to reset.
     scanner.stopScanner();
     await vi.waitFor(() => expect(scanner.isScannerRunning()).toBe(false), WAIT);
+    vi.restoreAllMocks();
 });
 
 describe('scanner position', () => {
@@ -213,52 +241,110 @@ describe('scanner position at the leading edge', () => {
 // scans it again anyway. Queuing those as well is what grew the set by a full batch
 // per cycle at the Leading Edge.
 //
-// Both tests observe the set through the ids fetch is asked for, using the fact that
-// only the retry pass ever asks for an id below the Scanner Position: the forward
-// batches start just past it. So a gap id requested a second time was retried, and
-// a gap id never requested again means the retry pass never fired. That only holds
-// once the position has moved past the gap, so each test asserts that first. A miss
-// past the confirmed id can't be watched directly, because the forward rescan and a
-// retry would ask for it in the same order; the second test infers it from the set's
-// size.
+// These tests observe the set through the ids fetch is asked for. Every catch-up
+// pause retries whatever is queued, before the next forward batch, so a queued id
+// shows up as a request out of forward order. Each test has one confirmed id in its
+// first batch, so the forward batches after it start just past that id.
 describe('missed ids', () => {
-    // One batch big enough to hold RETRY_THRESHOLD (50, in src/lib/scanner/index.ts)
-    // gap ids. The catch-up pause still fires on the misses at the end of the batch,
-    // and the retry pass runs there.
-    const WIDE_BATCH = 60;
-    const wideConfig = { ...SCANNER_CONFIG, batchSize: WIDE_BATCH, maxConsecutiveMisses: 5 };
+    const start = BigInt('17000000000');
 
-    it('retries misses below the last id that exists', async () => {
-        const start = BigInt('17000000000');
-        // start+1..start+50 missing, start+51 exists, start+52..start+60 missing.
-        const gap = idRange(start + BigInt(1), 50);
-        const confirmed = start + BigInt(51);
+    // Five-id batches of: gap, confirmed, then misses. The first batch ends on three
+    // misses, so its catch-up pause fires.
+    const gapId = start + BigInt(1);
+    const confirmed = start + BigInt(2);
+    const pauseAfterThreeMisses = { ...SCANNER_CONFIG, maxConsecutiveMisses: 3 };
+
+    it('retries a miss below the last id that exists at the next catch-up pause', async () => {
         writeScannerPosition(start);
         stubBungie((id) => id === confirmed);
 
-        await scanner.startScanner(wideConfig);
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(WIDE_BATCH + gap.length), WAIT);
+        await scanner.startScanner(pauseAfterThreeMisses);
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThan(BATCH_SIZE), WAIT);
+
+        expect(requested[BATCH_SIZE]).toBe(gapId);
+    });
+
+    // Nothing is stored past the position here, so it stays put and every batch comes
+    // back empty. A set that only ran when the position moved would never be retried.
+    it('keeps retrying a miss while the position is stopped', async () => {
+        writeScannerPosition(start);
+        stubBungie((id) => id === confirmed);
+
+        await scanner.startScanner(pauseAfterThreeMisses);
+        await vi.waitFor(() => expect(timesRequested(gapId)).toBeGreaterThanOrEqual(3), WAIT);
 
         expect(readScannerPosition()).toBe(confirmed);
-        expect(requested.slice(0, WIDE_BATCH)).toEqual(idRange(start + BigInt(1), WIDE_BATCH));
-        expect(requested.slice(WIDE_BATCH, WIDE_BATCH + gap.length)).toEqual(gap);
     });
 
     it('does not queue misses past the last id that exists', async () => {
-        const start = BigInt('17000000000');
-        // start+1..start+10 missing, start+11 exists, start+12..start+60 missing.
-        // 10 gap ids stay under RETRY_THRESHOLD (src/lib/scanner/index.ts); with the
-        // 49 past start+11 the set would reach 59, the retry pass would fire, and it
-        // would ask for the gap again.
-        const gapEnd = start + BigInt(10);
-        const confirmed = start + BigInt(11);
+        // The first id exists and the four after it don't, so the first catch-up pause
+        // has only those four to queue. Queued, they would be asked for before the
+        // next forward batch, and the forward batches below would no longer line up.
+        const firstId = start + BigInt(1);
         writeScannerPosition(start);
-        stubBungie((id) => id === confirmed);
+        stubBungie((id) => id === firstId);
 
-        await scanner.startScanner(wideConfig);
-        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * WIDE_BATCH), WAIT);
+        await scanner.startScanner({ ...SCANNER_CONFIG, maxConsecutiveMisses: 4 });
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * BATCH_SIZE), WAIT);
 
-        expect(readScannerPosition()).toBe(confirmed);
-        expect(requested.slice(WIDE_BATCH).filter((id) => id <= gapEnd)).toEqual([]);
+        expect(readScannerPosition()).toBe(firstId);
+        const nextBatch = idRange(firstId + BigInt(1), BATCH_SIZE);
+        expect(requested.slice(BATCH_SIZE, 3 * BATCH_SIZE)).toEqual([...nextBatch, ...nextBatch]);
+    });
+});
+
+// A catch-up pause only says the batch ended on misses. That is what an Id Hole looks
+// like too, so the line must not claim the Leading Edge: that wording hid a 55-hour
+// stall. The retry line is there to report raids recovered, so a pass that found none
+// stays quiet.
+describe('catch-up pause log lines', () => {
+    const start = BigInt('17000000000');
+    const firstGap = start + BigInt(1);
+    const secondGap = start + BigInt(2);
+    const confirmed = start + BigInt(3);
+    const pauseAfterTwoMisses = { ...SCANNER_CONFIG, maxConsecutiveMisses: 2 };
+
+    const retryLines = () => loggedLines().filter((line) => line.includes('Retry complete'));
+
+    it('reports the misses and the wait, not the Leading Edge', async () => {
+        writeScannerPosition(start);
+        stubBungie(() => false);
+
+        await scanner.startScanner(SCANNER_CONFIG);
+        await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(2 * BATCH_SIZE), WAIT);
+
+        expect(loggedLines()).toContain('[SCANNER] 5 consecutive misses, pausing 0.005s');
+        expect(loggedLines().filter((line) => line.includes('Leading Edge'))).toEqual([]);
+    });
+
+    it('reports a retry pass that recovers a raid, with how many ids it retried', async () => {
+        writeScannerPosition(start);
+        // Both gaps miss on the first ask. On the second, one is a raid and one still misses.
+        stubBungie(
+            (id) => id === confirmed,
+            (id) => (id === firstGap && timesRequested(id) > 1 ? raidResponse(id) : undefined)
+        );
+
+        await scanner.startScanner(pauseAfterTwoMisses);
+        await vi.waitFor(() => expect(timesRequested(secondGap)).toBeGreaterThanOrEqual(3), WAIT);
+
+        // Only the first pass recovered a raid, so the later ones add no line.
+        expect(retryLines()).toEqual([
+            '[SCANNER] 🔄 Retry complete: 1 raids found of 2 retried. 1 still missing. Set size: 1',
+        ]);
+        expect(scanner.getScannerStats().totalRaidsFound).toBe(1);
+    });
+
+    it('logs nothing for a retry pass that recovers no raid', async () => {
+        writeScannerPosition(start);
+        // One gap keeps missing. The other turns out to exist but isn't a raid, which
+        // settles it and is still no raid recovered.
+        stubBungie((id) => id === confirmed || (id === firstGap && timesRequested(id) > 1));
+
+        await scanner.startScanner(pauseAfterTwoMisses);
+        await vi.waitFor(() => expect(timesRequested(secondGap)).toBeGreaterThanOrEqual(3), WAIT);
+
+        expect(timesRequested(firstGap)).toBe(2);
+        expect(retryLines()).toEqual([]);
     });
 });

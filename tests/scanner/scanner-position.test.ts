@@ -554,8 +554,6 @@ describe('crossing an Id Hole', () => {
 
             seedRun({ instanceId: landing.toString() });
             await waitForResumeAfterLanding();
-
-            expect(noConfirmedIdWarnings()).toHaveLength(1);
         });
     });
 

@@ -6,7 +6,7 @@ import {
 } from '../bungie/maintenance';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
-import { insertFullPGCR, hasPGCR } from '../db/queries';
+import { findNextStoredInstanceId, insertFullPGCR, hasPGCR } from '../db/queries';
 import type { InsertFullPGCRPlayer } from '../db/queries';
 import { readActivityDurationSeconds, readEntryStartSeconds } from '../bungie/pgcr-stats';
 import { isoToUnix } from '../utils/helpers';
@@ -613,8 +613,8 @@ async function scanBatch(
 
     // The Scanner Position only lands on an id confirmed to exist: one Bungie
     // returned, or one already stored (scanSinglePGCR reports those as not_raid).
-    // A batch with none leaves the position where it was, so the scanner can
-    // never run past the Leading Edge.
+    // A batch with none leaves the position where it was: the scanner is at the
+    // Leading Edge or behind an Id Hole, and only a stored id past it can say which.
     let lastConfirmedIndex = -1;
     for (let i = results.length - 1; i >= 0; i--) {
         if (results[i] === 'raid' || results[i] === 'not_raid') {
@@ -624,7 +624,8 @@ async function scanBatch(
     }
 
     // Queue only the misses below the last confirmed id — real gaps. Misses past
-    // it are rescanned by the next batch, which starts just after it.
+    // it are rescanned by the next batch, which starts just after it, unless they
+    // turn out to be an Id Hole: those ids are crossed and never retried.
     let addedThisBatch = 0;
     let droppedThisBatch = 0;
     for (let i = 0; i < lastConfirmedIndex; i++) {
@@ -762,6 +763,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
     console.log(`  Effective:     ${clientPool.totalRequestsPerSecond} req/s total`);
     console.log(`  Batch size:    ${config.batchSize}`);
     console.log(`  Workers:       ${config.workers}`);
+    console.log(`  Hole batches:  ${config.holeEmptyBatches}`);
     console.log(`  Catchup pause: ${config.pauseOnCatchupMs}ms`);
     console.log(`  Max misses:    ${config.maxConsecutiveMisses}`);
     console.log(`  Progress log:  every ${config.progressLogEvery} scanned`);
@@ -781,6 +783,35 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             );
             setTimeout(scanLoop, SCAN_LOOP_ERROR_RETRY_MS);
         }
+    }
+
+    // Evidence of an Id Hole. Per-run, not on `state`: a restart counts from zero.
+    let emptyBatches = 0;
+    // The position the last "no confirmed id" warning was for. The position only
+    // moves forward, so this is one warning per stall with nothing to reset.
+    let warnedAtPosition: bigint | null = null;
+
+    // Moves the position onto the lowest stored id past it. #176's rule still holds:
+    // a stored id came from Bungie, so it exists. With none stored the position stays
+    // put, which is right at the Leading Edge during maintenance.
+    function crossIdHole(): boolean {
+        const from = state.currentInstanceId;
+        const landingId = findNextStoredInstanceId(from.toString());
+
+        if (landingId === null) {
+            if (warnedAtPosition !== from) {
+                console.warn(`[SCANNER] No confirmed id past ${from} after ${emptyBatches} empty batches`);
+                warnedAtPosition = from;
+            }
+            return false;
+        }
+
+        const to = BigInt(landingId);
+        state.currentInstanceId = to;
+        saveScannerPosition(to);
+        emptyBatches = 0;
+        console.log(`[SCANNER] Crossed an Id Hole: ${from} → ${to} (+${to - from} ids)`);
+        return true;
     }
 
     async function scanLoopIteration() {
@@ -810,11 +841,16 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             );
             console.log(`[SCANNER] 📡 Another process updated the position. Jumping ahead...`);
             state.currentInstanceId = dbPosition;
+            emptyBatches = 0;
         }
 
         const batchStart = state.currentInstanceId + BigInt(1);
         const result = await scanBatch(clientPool, batchStart, config.batchSize, config.workers);
         const previousTotalScanned = state.totalScanned;
+
+        // Only every id coming back not_found counts: an error of any kind starts the
+        // count again, so a Bungie error storm can never look like an Id Hole.
+        emptyBatches = result.misses === config.batchSize ? emptyBatches + 1 : 0;
 
         if (result.systemDisabled) {
             state.totalScanned += result.scanned;
@@ -874,8 +910,12 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             writeScannerStats();
         }
 
+        // Before the pause, not inside it: a crossing skips the pause, and a miss
+        // threshold above the batch size means the pause never fires at all.
+        const crossedIdHole = emptyBatches >= config.holeEmptyBatches && crossIdHole();
+
         // Catch-up pause: the batch ended on misses, so wait, then retry missed IDs
-        if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
+        if (!crossedIdHole && state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
                 `[SCANNER] ${state.consecutiveMisses} consecutive misses, ` +
                 `pausing ${config.pauseOnCatchupMs / 1000}s`

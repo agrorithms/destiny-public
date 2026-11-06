@@ -14,9 +14,9 @@ Seams and decisions approved 2026-11-05:
    - [x] `tests/scanner/scanner-position.test.ts` — `describe('missed ids')` rewritten, log tests, `stubBungie` per-id answers, console spy (red run: 5 of 10 failed at `443ef95`. The AC8 rewrite passes at base, so its bite was a temporary break, the queue loop bound set to `results.length`: it failed, reverted)
    - [x] `src/lib/scanner/index.ts` — `RETRY_THRESHOLD` gone, pause and retry log lines
 2. Crossing an Id Hole, red then green
-   - [ ] `tests/scanner/scanner-position.test.ts` — `describe('crossing an Id Hole')`
-   - [ ] `src/lib/scanner/index.ts` — `holeEmptyBatches`, the banner line, the count, `warnedAtPosition`, the crossing, comments
-   - [ ] `src/lib/db/queries.ts` — `findNextStoredInstanceId`
+   - [x] `tests/scanner/scanner-position.test.ts` — `describe('crossing an Id Hole')` (red run at `fe5ca1b`: 15 of 27 failed; the two `does not cross` cases pass at base, so the mutation run is their bite. AC5's bite was a temporary break, queueing the first batch's ids at the crossing: `never asks for the crossed ids again` failed, reverted)
+   - [x] `src/lib/scanner/index.ts` — `holeEmptyBatches`, the banner line, the count, `warnedAtPosition`, the crossing, comments
+   - [x] `src/lib/db/queries.ts` — `findNextStoredInstanceId`
 3. Bite proofs and suite
    - [ ] `docs/progress/230-scanner-id-hole.md` — this file: mutation score, suite numbers
 

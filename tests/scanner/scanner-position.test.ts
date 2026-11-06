@@ -417,7 +417,7 @@ describe('catch-up pause log lines', () => {
     it('puts the position after the cap count', async () => {
         await importScannerWithEnv('SCANNER_MAX_MISSED_IDS', '1');
         writeScannerPosition(start);
-        // The queue holds one id: the first gap takes it and the second is dropped.
+        // The queue holds one id: the first Missed Id takes it and the second is dropped.
         stubBungie(
             (id) => id === confirmed,
             (id) => (id === firstGap && timesRequested(id) > 1 ? pgcrResponse(id, RAID_HASH) : undefined)

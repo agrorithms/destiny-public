@@ -23,3 +23,6 @@ Seams and decisions approved 2026-11-06:
    - The throw path comes from reading the code: not reproduced, no test. The queue rule covers it with no code of its own.
 4. Quality
    - [x] /simplify pass — `retryMissedIds` takes its own snapshot and checks before it claims an index, so `attempted` is `nextIndex` and the separate counter is gone. This replaces the `nextIndex` caveats above: the pinned `of 2 retried` line now guards a count that does come from `nextIndex`. `importScannerWithEnv` replaces the hole-batch helper and the cap test's copy of it. No `expect` line changed.
+5. Review fixes
+   - [x] S1 `tests/scanner/scanner-position.test.ts` — the cap test's comment says Missed Id. `firstGap` keeps its name.
+   - [x] S2 `CONTEXT.md` — the Missed Id entry says "Ids a crossing skips never become Missed Ids.", because `scanBatch` queues the misses of a short Id Hole that has a confirmed id past it in the same batch.

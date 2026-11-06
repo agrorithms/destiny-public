@@ -208,7 +208,7 @@ _Avoid_: gap, id gap, skip
 An instance id below the Scanner Position that Bungie didn't return when the scanner first asked,
 usually because the activity is still in progress. It stays queued until Bungie returns it or it
 turns up stored, so an id Bungie never returns stays queued until a restart. A restart forgets every
-Missed Id. Ids inside an Id Hole never become Missed Ids.
+Missed Id. Ids a crossing skips never become Missed Ids.
 _Avoid_: gap, missed queue entry
 
 **Retry Pass**:

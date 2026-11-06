@@ -13,6 +13,6 @@ Seams and decisions approved 2026-11-06:
 1. Failing tests, red
    - [x] `tests/scanner/scanner-position.test.ts` — seams 1, 2 and 3, `retryLines` moved (red run on the old scanner: 4 of 32 failed. The cut-short test failed on the ids asked for, the two unreached ids never being asked again; the two pinned lines and the cap test failed on the missing suffix)
 2. The queue rule and the log lines, green
-   - [ ] `src/lib/scanner/index.ts` — the pass keeps the queue, ids leave on `raid` or `not_raid`, `attempted`, `Position:` on both lines, `addMissedIds` and `stillMissingIds` gone
+   - [x] `src/lib/scanner/index.ts` — the pass keeps the queue, ids leave on `raid` or `not_raid`, `attempted`, `Position:` on both lines, `addMissedIds` and `stillMissingIds` gone
 3. Bite proofs and suite
    - [ ] `docs/progress/232-retry-pass-keeps-missed-ids.md` — this file

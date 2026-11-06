@@ -38,9 +38,14 @@ let requested: bigint[];
 
 /** Records what the scanner prints and still prints it. The log wording is part of the spec. */
 let consoleLog: MockInstance<typeof console.log>;
+let consoleWarn: MockInstance<typeof console.warn>;
 
 function loggedLines(): string[] {
     return consoleLog.mock.calls.map(([line]) => String(line));
+}
+
+function warnedLines(): string[] {
+    return consoleWarn.mock.calls.map(([line]) => String(line));
 }
 
 /**
@@ -85,6 +90,12 @@ function raidResponse(instanceId: bigint): Response {
     return new Response(JSON.stringify(bungieEnvelope(pgcr)), { status: 200 });
 }
 
+/** A Bungie-level failure on an HTTP 200, the way request() throws a BungieAPIError. */
+function bungieError(ErrorCode: number, ErrorStatus: string): Response {
+    const body = bungieEnvelope(undefined, { ErrorCode, ErrorStatus, Message: 'Stubbed Bungie error' });
+    return new Response(JSON.stringify(body), { status: 200 });
+}
+
 /** How many times the scanner has asked for an id, this request included. */
 function timesRequested(instanceId: bigint): number {
     return requested.filter((id) => id === instanceId).length;
@@ -119,6 +130,7 @@ beforeEach(async () => {
     scanner = await import('@/lib/scanner');
     requested = [];
     consoleLog = vi.spyOn(console, 'log');
+    consoleWarn = vi.spyOn(console, 'warn');
 });
 
 afterEach(async () => {
@@ -127,6 +139,7 @@ afterEach(async () => {
     scanner.stopScanner();
     await vi.waitFor(() => expect(scanner.isScannerRunning()).toBe(false), WAIT);
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
 });
 
 describe('scanner position', () => {
@@ -346,5 +359,294 @@ describe('catch-up pause log lines', () => {
 
         expect(timesRequested(firstGap)).toBe(2);
         expect(retryLines()).toEqual([]);
+    });
+});
+
+// An Id Hole is a run of ids Bungie skipped, so asking for them looks exactly like
+// asking past the Leading Edge. Before this, a hole at least one batch wide left the
+// scanner re-requesting the same batch for good: it stopped for 55.8 hours at
+// 17263546084 until a manual discover jump freed it. What tells a hole from the edge
+// is an id known to exist further on, so after enough empty batches in a row the
+// position moves onto the lowest stored id past it. That keeps #176's rule: a stored
+// id came from Bungie, so the position still only lands on an id that exists.
+describe('crossing an Id Hole', () => {
+    const start = BigInt('17000000000');
+    // As wide as the hole that stopped prod. A stored id inside the batch window frees
+    // the scanner with no crossing at all, so this has to be well past it.
+    const landing = start + BigInt(9798);
+    const firstBatch = idRange(start + BigInt(1), BATCH_SIZE);
+    const crossAfterTwo = { ...SCANNER_CONFIG, holeEmptyBatches: 2 };
+    const crossAfterThree = { ...SCANNER_CONFIG, holeEmptyBatches: 3 };
+
+    const ERROR_ANSWERS: Array<[string, () => Response]> = [
+        ['error', () => bungieError(1618, 'UnhandledException')],
+        ['error_retryable', () => new Response('Bad gateway', { status: 502 })],
+    ];
+
+    /** Inside a stub answer: is this the last id of forward batch `batch`? */
+    const atEndOfBatch = (batch: number) => requested.length === batch * BATCH_SIZE;
+
+    /** Full batches requested before the first id past the landing id. */
+    const batchesBeforeCrossing = () => requested.findIndex((id) => id > landing) / BATCH_SIZE;
+
+    const noConfirmedIdWarnings = () => warnedLines().filter((line) => line.includes('No confirmed id'));
+
+    async function waitForResumeAfterLanding(): Promise<void> {
+        await vi.waitFor(() => expect(requested).toContain(landing + BigInt(1)), WAIT);
+    }
+
+    describe('with a stored id past the hole', () => {
+        it('lands on the lowest one and resumes just after it', async () => {
+            // The position's own row is the realistic case: it landed on an id that
+            // exists, and a raid there is stored. The lookup has to look past it.
+            seedRun({ instanceId: start.toString() });
+            seedRun({ instanceId: landing.toString() });
+            seedRun({ instanceId: (landing + BigInt(500)).toString() });
+            writeScannerPosition(start);
+
+            let storedWhenResumed: bigint | null = null;
+            stubBungie(
+                () => false,
+                (id) => {
+                    if (id === landing + BigInt(1)) {
+                        storedWhenResumed = readScannerPosition();
+                    }
+                    return undefined;
+                }
+            );
+
+            await scanner.startScanner(crossAfterTwo);
+            await waitForResumeAfterLanding();
+            await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(3 * BATCH_SIZE), WAIT);
+
+            expect(storedWhenResumed).toBe(landing);
+            expect(requested.slice(0, 3 * BATCH_SIZE)).toEqual([
+                ...firstBatch,
+                ...firstBatch,
+                ...idRange(landing + BigInt(1), BATCH_SIZE),
+            ]);
+            expect(loggedLines()).toContain(
+                '[SCANNER] Crossed an Id Hole: 17000000000 → 17000009798 (+9798 ids)'
+            );
+        });
+
+        // Everything past the landing id misses too, so catch-up pauses run after the
+        // crossing. A retry pass would ask for anything queued, and the queue has no
+        // eviction, so a hole's ids queued here would stay in it for good.
+        it('never asks for the crossed ids again', async () => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(() => false);
+
+            await scanner.startScanner(crossAfterTwo);
+            await waitForResumeAfterLanding();
+            await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(5 * BATCH_SIZE), WAIT);
+            expect(loggedLines().filter((line) => line.includes('consecutive misses')).length).toBeGreaterThanOrEqual(3);
+
+            expect(requested.slice(2 * BATCH_SIZE).filter((id) => id <= landing)).toEqual([]);
+        });
+
+        it.each([
+            { name: 'the default of 5', holeEmptyBatches: undefined, expected: 5 },
+            { name: 'SCANNER_HOLE_EMPTY_BATCHES of 2', holeEmptyBatches: 2, expected: 2 },
+        ])('stays behind the hole for $name empty batches', async ({ holeEmptyBatches, expected }) => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(() => false);
+
+            await scanner.startScanner(
+                holeEmptyBatches === undefined ? SCANNER_CONFIG : { ...SCANNER_CONFIG, holeEmptyBatches }
+            );
+            await waitForResumeAfterLanding();
+
+            expect(batchesBeforeCrossing()).toBe(expected);
+            expect(requested.slice(0, expected * BATCH_SIZE)).toEqual(
+                Array.from({ length: expected }, () => firstBatch).flat()
+            );
+            expect(loggedLines()).toContain(`  Hole batches:  ${expected}`);
+        });
+
+        // Three holes appeared within hours on Nov 3, so each one needs its own evidence.
+        it('needs a full count of empty batches for the next hole too', async () => {
+            const secondLanding = landing + BigInt(9000);
+            seedRun({ instanceId: landing.toString() });
+            seedRun({ instanceId: secondLanding.toString() });
+            writeScannerPosition(start);
+            stubBungie(() => false);
+
+            await scanner.startScanner(crossAfterTwo);
+            await vi.waitFor(() => expect(requested).toContain(secondLanding + BigInt(1)), WAIT);
+
+            const afterFirstLanding = idRange(landing + BigInt(1), BATCH_SIZE);
+            expect(requested.slice(2 * BATCH_SIZE, 4 * BATCH_SIZE)).toEqual([...afterFirstLanding, ...afterFirstLanding]);
+            expect(requested[4 * BATCH_SIZE]).toBe(secondLanding + BigInt(1));
+        });
+
+        it('goes to the next batch without a catch-up pause', async () => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie((id) => id > landing);
+
+            // The wait below is shorter than the pause, so it only passes if the
+            // crossing skipped the pause.
+            await scanner.startScanner({ ...SCANNER_CONFIG, holeEmptyBatches: 1, pauseOnCatchupMs: 3000 });
+            await vi.waitFor(() => expect(requested).toContain(landing + BigInt(1)), { timeout: 1500 });
+        });
+
+        // The miss count is per batch, so a threshold above the batch size means no
+        // catch-up pause ever fires. A check inside the pause would never run.
+        it('still crosses when no catch-up pause ever fires', async () => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(() => false);
+
+            await scanner.startScanner({ ...crossAfterTwo, maxConsecutiveMisses: BATCH_SIZE + 1 });
+            await waitForResumeAfterLanding();
+
+            expect(loggedLines().filter((line) => line.includes('consecutive misses'))).toEqual([]);
+        });
+    });
+
+    describe('with nothing stored past it', () => {
+        // The Leading Edge during maintenance looks the same, so the position must not
+        // move. An error batch mid-stall resets the count but isn't a move, so the
+        // count reaching 2 again adds no second warning.
+        it('stays put and warns once for the stall', async () => {
+            writeScannerPosition(start);
+            stubBungie(
+                () => false,
+                () => (atEndOfBatch(4) ? bungieError(1618, 'UnhandledException') : undefined)
+            );
+
+            await scanner.startScanner(crossAfterTwo);
+            await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(8 * BATCH_SIZE), WAIT);
+
+            expect(readScannerPosition()).toBe(start);
+            expect(noConfirmedIdWarnings()).toEqual([
+                '[SCANNER] No confirmed id past 17000000000 after 2 empty batches',
+            ]);
+        });
+
+        it('warns again once the position has moved', async () => {
+            const jumpTo = start + BigInt(1000);
+            writeScannerPosition(start);
+            stubBungie(() => false);
+
+            await scanner.startScanner(crossAfterTwo);
+            await vi.waitFor(() => expect(noConfirmedIdWarnings()).toHaveLength(1), WAIT);
+
+            writeScannerPosition(jumpTo);
+            await vi.waitFor(() => expect(noConfirmedIdWarnings()).toHaveLength(2), WAIT);
+
+            expect(noConfirmedIdWarnings()[1]).toBe(
+                '[SCANNER] No confirmed id past 17000001000 after 2 empty batches'
+            );
+        });
+
+        // The crawler stored its first id past the Nov 3 hole 54s after the scanner's
+        // last hit, so the row can arrive after the count has already been reached.
+        it('crosses as soon as a stored id appears', async () => {
+            writeScannerPosition(start);
+            stubBungie(() => false);
+
+            await scanner.startScanner(crossAfterTwo);
+            await vi.waitFor(() => expect(noConfirmedIdWarnings()).toHaveLength(1), WAIT);
+
+            seedRun({ instanceId: landing.toString() });
+            await waitForResumeAfterLanding();
+
+            expect(noConfirmedIdWarnings()).toHaveLength(1);
+        });
+    });
+
+    describe('what starts the count again', () => {
+        it.each(ERROR_ANSWERS)('does not cross on batches that each hold an %s', async (_name, answer) => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(
+                () => false,
+                (id) => (id === start + BigInt(1) ? answer() : undefined)
+            );
+
+            await scanner.startScanner(crossAfterTwo);
+            await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(6 * BATCH_SIZE), WAIT);
+
+            expect(readScannerPosition()).toBe(start);
+            expect(requested.filter((id) => !firstBatch.includes(id))).toEqual([]);
+        });
+
+        it.each(ERROR_ANSWERS)('an %s in one batch', async (_name, answer) => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(
+                () => false,
+                () => (atEndOfBatch(3) ? answer() : undefined)
+            );
+
+            await scanner.startScanner(crossAfterThree);
+            await waitForResumeAfterLanding();
+
+            // Two empty, one with the error, then three more.
+            expect(batchesBeforeCrossing()).toBe(6);
+        });
+
+        it('a maintenance response', async () => {
+            vi.stubEnv('BUNGIE_SYSTEM_DISABLED_PAUSE_MS', '1');
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(
+                () => false,
+                () => (atEndOfBatch(3) ? bungieError(5, 'SystemDisabled') : undefined)
+            );
+
+            await scanner.startScanner(crossAfterThree);
+            await waitForResumeAfterLanding();
+
+            expect(batchesBeforeCrossing()).toBe(6);
+        });
+
+        it('a position jump from discovery', async () => {
+            const jumpTo = start + BigInt(1000);
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(
+                () => false,
+                () => {
+                    if (atEndOfBatch(2)) {
+                        writeScannerPosition(jumpTo);
+                    }
+                    return undefined;
+                }
+            );
+
+            await scanner.startScanner(crossAfterThree);
+            await waitForResumeAfterLanding();
+
+            // Two empty at the old position, then three at the new one.
+            expect(batchesBeforeCrossing()).toBe(5);
+        });
+
+        it('a restart', async () => {
+            seedRun({ instanceId: landing.toString() });
+            writeScannerPosition(start);
+            stubBungie(
+                () => false,
+                () => {
+                    if (atEndOfBatch(2)) {
+                        scanner.stopScanner();
+                    }
+                    return undefined;
+                }
+            );
+
+            await scanner.startScanner(crossAfterThree);
+            await vi.waitFor(() => expect(scanner.isScannerRunning()).toBe(false), WAIT);
+
+            await scanner.startScanner(crossAfterThree);
+            await waitForResumeAfterLanding();
+
+            // Two empty before the stop, then three after it.
+            expect(batchesBeforeCrossing()).toBe(5);
+        });
     });
 });

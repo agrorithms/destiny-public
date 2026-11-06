@@ -82,6 +82,7 @@ export interface ScannerConfig {
     apiKey?: string;
     enabled: boolean;
     workers: number;
+    holeEmptyBatches: number;
 }
 
 export function getScannerApiKeysFromEnv(): string[] {
@@ -104,6 +105,7 @@ const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
     apiKeys: getScannerApiKeysFromEnv(),
     enabled: true,
     workers: parseInt(process.env.SCANNER_WORKERS || '15', 10),
+    holeEmptyBatches: parseInt(process.env.SCANNER_HOLE_EMPTY_BATCHES || '5', 10),
 };
 
 // =====================

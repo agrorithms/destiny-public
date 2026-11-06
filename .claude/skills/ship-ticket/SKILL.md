@@ -2,7 +2,7 @@
 name: ship-ticket
 description: Deliver one ready-for-agent issue through implement → simplify → review → fix → handoff, checkpointed so it resumes after a usage limit or /clear.
 disable-model-invocation: true
-argument-hint: "#NNN [implementer=<model>] [simplifier=<model>] [reviewer=<model>] [fixer=<model>]"
+argument-hint: "#NNN [implementer=<model>] [simplifier=<model>] [reviewer=<model>] [fixer=<model>] [autofix=nonblocking]"
 ---
 
 # Ship a ticket
@@ -34,6 +34,12 @@ decision stop covers.
 `$ARGUMENTS` is `#NNN`, then any `role=model` pairs. Roles: `implementer`, `simplifier`, `reviewer`,
 `fixer`. Models: `sonnet`, `opus`, `haiku`, `fable`, `inherit`. A role or model outside those lists:
 stop and list the valid values. Every role defaults to `inherit`, the session's model.
+
+`autofix=nonblocking` is the one other argument, and off unless given. It pre-approves the Review
+decision stop for the findings step 5 calls _autofixable_, so they go to the fixer without a question.
+The only value is `nonblocking`: the reviewers grade findings `blocking` or `non-blocking` and nothing
+finer, and a blocking finding is always the user's call. Any other value: stop and say so. Record it
+in `decisions_made` at Start.
 
 Any other text after `#NNN` is a note from the user to you. Act on it where it bears on a step; it is
 no reason to stop.
@@ -157,6 +163,19 @@ fixes undone, and Handoff batches them into one issue.
    non-blocking finding is pre-ticked as a follow-up instead, so a nit can't spend the last fix loop.
    A blocking finding the user unticks needs a reason, recorded in its `note`. A finding left for a
    follow-up gets status `follow-up`. With nothing picked to fix, skip Fix and go to Handoff.
+
+   **With `autofix=nonblocking`, on loop 1 only**, a finding is _autofixable_ when all of these hold;
+   you check each against the diff, not the reviewer's word:
+   - it is `non-blocking`, and sits inside the ticket's diff (never an `out_of_scope` item);
+   - the fix preserves behaviour and touches none of the _Decision stops_ list below (schema or API,
+     dependencies, deleting significant code, a `Stryker disable`, CLAUDE.md wording);
+   - the lines it changes are covered by a test that fails when they are broken: a Stryker-killed
+     mutant, or a bite proof in the progress file. `.tsx` and `src/hooks/` lines have no mutation
+     coverage, so they never qualify.
+
+   Send the autofixable findings to Fix as picked, with the note `autofix`, and put only the rest to
+   the user. Say in the report which findings were auto-picked and why each qualified. The fixer's
+   bite-proof rule is unchanged, and from loop 2 nothing is auto-picked, so the fix loops stay bounded.
 
 ### 4. Fix
 

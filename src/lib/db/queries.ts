@@ -1301,6 +1301,19 @@ export function hasPGCR(instanceId: string): boolean {
     return !!row;
 }
 
+/**
+ * The lowest stored instance id above `afterId`, or null if there is none. A range on
+ * the TEXT primary key is one index seek, where MIN(CAST(...)) scans the table. Text
+ * order is numeric order here because every id has the same number of digits.
+ */
+export function findNextStoredInstanceId(afterId: string): string | null {
+    const db = getDb();
+    const row = db.prepare(
+        'SELECT instance_id FROM pgcrs WHERE instance_id > ? ORDER BY instance_id LIMIT 1'
+    ).get(afterId) as { instance_id: string } | undefined;
+    return row?.instance_id ?? null;
+}
+
 
 export interface InsertFullPGCRData {
     instanceId: string;

@@ -6,7 +6,7 @@ import {
 } from '../bungie/maintenance';
 import { isRaidActivityHash, getRaidKeyFromHash } from '../bungie/manifest';
 import { getDb } from '../db';
-import { insertFullPGCR, hasPGCR } from '../db/queries';
+import { findNextStoredInstanceId, insertFullPGCR, hasPGCR } from '../db/queries';
 import type { InsertFullPGCRPlayer } from '../db/queries';
 import { readActivityDurationSeconds, readEntryStartSeconds } from '../bungie/pgcr-stats';
 import { isoToUnix } from '../utils/helpers';
@@ -38,7 +38,6 @@ type ScannerClientSlot = {
 const VALID_MEMBERSHIP_TYPES = new Set([1, 2, 3, 5, 6]);
 // Global set for missed IDs (deduped, capped)
 const missedIdsSet = new Set<string>();
-const RETRY_THRESHOLD = 50; // Retry when 50 missed IDs are collected
 const MAX_MISSED_IDS = parseInt(process.env.SCANNER_MAX_MISSED_IDS || '20000', 10);
 // Delay before re-entering the scan loop after an unexpected iteration error
 // (e.g. transient SQLITE_BUSY) so the scanner rides out DB contention instead
@@ -59,12 +58,6 @@ function addMissedId(instanceId: string): void {
     missedIdsSet.add(instanceId);
 }
 
-function addMissedIds(instanceIds: string[]): void {
-    for (const instanceId of instanceIds) {
-        addMissedId(instanceId);
-    }
-}
-
 function isValidMembershipType(type: unknown): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
 }
@@ -83,6 +76,7 @@ export interface ScannerConfig {
     apiKey?: string;
     enabled: boolean;
     workers: number;
+    holeEmptyBatches: number;
 }
 
 export function getScannerApiKeysFromEnv(): string[] {
@@ -105,6 +99,7 @@ const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
     apiKeys: getScannerApiKeysFromEnv(),
     enabled: true,
     workers: parseInt(process.env.SCANNER_WORKERS || '15', 10),
+    holeEmptyBatches: Math.max(1, parseInt(process.env.SCANNER_HOLE_EMPTY_BATCHES || '5', 10)),
 };
 
 // =====================
@@ -612,8 +607,8 @@ async function scanBatch(
 
     // The Scanner Position only lands on an id confirmed to exist: one Bungie
     // returned, or one already stored (scanSinglePGCR reports those as not_raid).
-    // A batch with none leaves the position where it was, so the scanner can
-    // never run past the Leading Edge.
+    // A batch with none leaves the position where it was: the scanner is at the
+    // Leading Edge or behind an Id Hole, and only a stored id past it can say which.
     let lastConfirmedIndex = -1;
     for (let i = results.length - 1; i >= 0; i--) {
         if (results[i] === 'raid' || results[i] === 'not_raid') {
@@ -623,7 +618,8 @@ async function scanBatch(
     }
 
     // Queue only the misses below the last confirmed id — real gaps. Misses past
-    // it are rescanned by the next batch, which starts just after it.
+    // it are rescanned by the next batch, which starts just after it, unless they
+    // turn out to be an Id Hole: those ids are crossed and never retried.
     let addedThisBatch = 0;
     let droppedThisBatch = 0;
     for (let i = 0; i < lastConfirmedIndex; i++) {
@@ -668,50 +664,44 @@ async function scanBatch(
 // RETRY MISSED IDs
 // =====================
 
+// A pass works from a snapshot of the queue. A Missed Id stays queued until it resolves as
+// raid or not_raid, so an id a pass cut short never reached needs no handling here.
 async function retryMissedIds(
     clientPool: ScannerClientPool,
-    missedIds: string[],
     workerCount: number
-): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[]; systemDisabled: boolean; fatalNoClients: boolean }> {
+): Promise<{ retryRaidsFound: number; attempted: number; stillMissing: number; systemDisabled: boolean; fatalNoClients: boolean }> {
+    const missedIds = Array.from(missedIdsSet);
     let retryRaidsFound = 0;
     let stillMissing = 0;
     let nextIndex = 0;
     let systemDisabled = false;
     let fatalNoClients = false;
-    const stillMissingIds: string[] = [];
 
     async function worker() {
-        while (true) {
-            if (systemDisabled || fatalNoClients) break;
-
-            const myIndex = nextIndex++;
-            if (myIndex >= missedIds.length || state.shouldStop || systemDisabled || fatalNoClients) break;
-
-            const result = await scanSinglePGCR(clientPool, missedIds[myIndex]);
+        while (nextIndex < missedIds.length && !state.shouldStop && !systemDisabled && !fatalNoClients) {
+            const instanceId = missedIds[nextIndex++];
+            const result = await scanSinglePGCR(clientPool, instanceId);
 
             switch (result) {
                 case 'raid':
                     retryRaidsFound++;
-                    // Successfully found — do NOT put back in queue
+                    missedIdsSet.delete(instanceId);
                     break;
                 case 'not_raid':
-                    // Exists but isn't a raid — do NOT put back in queue
+                    missedIdsSet.delete(instanceId);
                     break;
                 case 'not_found':
                 case 'error':
                 case 'error_retryable':
                     stillMissing++;
-                    stillMissingIds.push(missedIds[myIndex]);
                     break;
                 case 'system_disabled':
                     systemDisabled = true;
                     stillMissing++;
-                    stillMissingIds.push(missedIds[myIndex]);
                     break;
                 case 'fatal_no_clients':
                     fatalNoClients = true;
                     stillMissing++;
-                    stillMissingIds.push(missedIds[myIndex]);
                     break;
             }
         }
@@ -723,7 +713,7 @@ async function retryMissedIds(
     );
     await Promise.all(workers);
 
-    return { retryRaidsFound, stillMissing, stillMissingIds, systemDisabled, fatalNoClients };
+    return { retryRaidsFound, attempted: nextIndex, stillMissing, systemDisabled, fatalNoClients };
 }
 
 
@@ -761,6 +751,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
     console.log(`  Effective:     ${clientPool.totalRequestsPerSecond} req/s total`);
     console.log(`  Batch size:    ${config.batchSize}`);
     console.log(`  Workers:       ${config.workers}`);
+    console.log(`  Hole batches:  ${config.holeEmptyBatches}`);
     console.log(`  Catchup pause: ${config.pauseOnCatchupMs}ms`);
     console.log(`  Max misses:    ${config.maxConsecutiveMisses}`);
     console.log(`  Progress log:  every ${config.progressLogEvery} scanned`);
@@ -780,6 +771,36 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             );
             setTimeout(scanLoop, SCAN_LOOP_ERROR_RETRY_MS);
         }
+    }
+
+    // Evidence of an Id Hole. Per-run, not on `state`: a restart counts from zero.
+    let emptyBatches = 0;
+    // The position the last "no confirmed id" warning was for. The position only
+    // moves forward, so this is one warning per stall with nothing to reset.
+    let warnedAtPosition: bigint | null = null;
+
+    // Moves the position onto the lowest stored id past it. #176's rule still holds:
+    // a stored id came from Bungie, so it exists. With none stored the position stays
+    // put, which is right at the Leading Edge during maintenance. A crossing ends the
+    // miss run: the position is on a confirmed id again.
+    function crossIdHole(): void {
+        const from = state.currentInstanceId;
+        const landingId = findNextStoredInstanceId(from.toString());
+
+        if (landingId === null) {
+            if (warnedAtPosition !== from) {
+                console.warn(`[SCANNER] No confirmed id past ${from} after ${emptyBatches} empty batches`);
+                warnedAtPosition = from;
+            }
+            return;
+        }
+
+        const to = BigInt(landingId);
+        state.currentInstanceId = to;
+        saveScannerPosition(to);
+        emptyBatches = 0;
+        state.consecutiveMisses = 0;
+        console.log(`[SCANNER] Crossed an Id Hole: ${from} → ${to} (+${to - from} ids)`);
     }
 
     async function scanLoopIteration() {
@@ -809,11 +830,16 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             );
             console.log(`[SCANNER] 📡 Another process updated the position. Jumping ahead...`);
             state.currentInstanceId = dbPosition;
+            emptyBatches = 0;
         }
 
         const batchStart = state.currentInstanceId + BigInt(1);
         const result = await scanBatch(clientPool, batchStart, config.batchSize, config.workers);
         const previousTotalScanned = state.totalScanned;
+
+        // Only every id coming back not_found counts: an error of any kind starts the
+        // count again, so a Bungie error storm can never look like an Id Hole.
+        emptyBatches = result.misses === config.batchSize ? emptyBatches + 1 : 0;
 
         if (result.systemDisabled) {
             state.totalScanned += result.scanned;
@@ -873,12 +899,17 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             writeScannerStats();
         }
 
-        // At the Leading Edge — pause then retry missed IDs
+        // Before the pause, not inside it: a crossing skips the pause, and a miss
+        // threshold above the batch size means the pause never fires at all.
+        if (emptyBatches >= config.holeEmptyBatches) {
+            crossIdHole();
+        }
+
+        // Catch-up pause: the batch ended on misses, so wait, then retry missed IDs
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
-                `[SCANNER] Reached the Leading Edge (${state.consecutiveMisses} consecutive misses). ` +
-                `${missedIdsSet.size} missed IDs to retry. ` +
-                `Pausing for ${config.pauseOnCatchupMs / 1000}s...`
+                `[SCANNER] ${state.consecutiveMisses} consecutive misses, ` +
+                `pausing ${config.pauseOnCatchupMs / 1000}s | Position: ${state.currentInstanceId}`
             );
             state.consecutiveMisses = 0;
             writeScannerStats();
@@ -887,20 +918,20 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
             // guarded iteration, so it needs its own error guard.
             setTimeout(async () => {
                 try {
-                    if (missedIdsSet.size >= RETRY_THRESHOLD) {
-                        console.log(`[SCANNER] 🔄 Missed IDs set reached ${missedIdsSet.size}. Retrying...`);
-                        const idsToRetry = Array.from(missedIdsSet);
-                        missedIdsSet.clear();
-                        const retryResult = await retryMissedIds(clientPool, idsToRetry, config.workers);
+                    // Stryker disable next-line ConditionalExpression,EqualityOperator: an empty pass starts no workers and logs nothing
+                    if (missedIdsSet.size > 0) {
+                        const retryResult = await retryMissedIds(clientPool, config.workers);
 
                         state.totalRaidsFound += retryResult.retryRaidsFound;
-                        addMissedIds(retryResult.stillMissingIds);
 
-                        console.log(
-                            `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found. ` +
-                            `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
-                                `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}`
-                        );
+                        if (retryResult.retryRaidsFound > 0) {
+                            console.log(
+                                `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found of ${retryResult.attempted} retried. ` +
+                                `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
+                                `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}` +
+                                ` | Position: ${state.currentInstanceId}`
+                            );
+                        }
 
                         if (retryResult.systemDisabled) {
                             await waitForBungieMaintenancePause('scanner', () => state.shouldStop);

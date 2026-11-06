@@ -1,0 +1,43 @@
+# #230 — Scanner crosses an Id Hole instead of stopping behind it
+
+Spec: `gh issue view 230 --repo agrorithms/destiny-public`. Branch `fix/scanner-id-hole`, base `main` @ `aa31005`.
+Seams and decisions approved 2026-11-05:
+
+- Seam A: the real `startScanner` loop against a real SQLite file, with only `fetch` stubbed. Seam B: a recording `console` spy on `log` and `warn`; the wording is the spec, and no ADR 0004 edit. Seam C: `findNextStoredInstanceId` in `src/lib/db/queries.ts`, reached only through Seam A.
+- An empty batch is `result.misses === config.batchSize`, not `.every` over `results`, which is sparse after a stop mid-batch.
+- The empty-batch count and `warnedAtPosition: bigint | null` are locals in `startScanner`. `SCANNER_HOLE_EMPTY_BATCHES` is read only in `DEFAULT_SCANNER_CONFIG`, default 5, and printed in the banner.
+- Order: retry first, then crossing, so the test that a crossed hole's ids aren't retried can bite with no threshold in the way. Each is a red commit plus a green commit.
+- The `missedIdsSet.size > 0` guard stays, with the one approved `Stryker disable` comment.
+- CLAUDE.md's knob entry was approved; the orchestrator makes that edit.
+
+1. Retry after every catch-up pause, red then green
+   - [x] `tests/scanner/scanner-position.test.ts` — `describe('missed ids')` rewritten, log tests, `stubBungie` per-id answers, console spy (red run: 5 of 10 failed at `443ef95`. The AC8 rewrite passes at base, so its bite was a temporary break, the queue loop bound set to `results.length`: it failed, reverted)
+   - [x] `src/lib/scanner/index.ts` — `RETRY_THRESHOLD` gone, pause and retry log lines
+2. Crossing an Id Hole, red then green
+   - [x] `tests/scanner/scanner-position.test.ts` — `describe('crossing an Id Hole')` (red run at `fe5ca1b`: 15 of 27 failed; the two `does not cross` cases pass at base, so the mutation run is their bite. AC5's bite was a temporary break, queueing the first batch's ids at the crossing: `never asks for the crossed ids again` failed, reverted)
+   - [x] `src/lib/scanner/index.ts` — `holeEmptyBatches`, the banner line, the count, `warnedAtPosition`, the crossing, comments
+   - [x] `src/lib/db/queries.ts` — `findNextStoredInstanceId`
+3. Bite proofs and suite
+   - [x] `docs/progress/230-scanner-id-hole.md` — this file
+   - `npm run mutate:diff -- aa31005...HEAD --typecheck`, full run at `6f7984b`: 100.0% overall (38/38), 100.0% covered, 11 compile errors discarded, 4 ignored, PASS; no loops needed.
+   - Stryker made no mutants of the SQL text, so that had hand bites, each reverted: `>` to `>=` and `ORDER BY instance_id DESC` each failed `lands on the lowest one` and `needs a full count`.
+   - The approved comment ignores all four mutants on its line, including the two killable ones (`false`, `<= 0`). Hand bite, reverted: `size < 0` failed four retry tests.
+   - Prod-shape reproduction from the diagnosis session: green, position +10498 past the hole, and a queue of 45 retried.
+   - Lint, build and vitest at `6f7984b`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 908/908.
+4. /simplify pass
+   - [x] `/simplify pass` — four cleanup agents. `src/lib/scanner/index.ts`: a crossing ends the miss run in `crossIdHole`, replacing the `crossedIdHole` flag. `tests/scanner/scanner-position.test.ts`: `pgcrResponse`, `pauseLines`, a module-level `start`, `beforeEach` setup, the maintenance case as an `it.each` row.
+   - `saveScannerPosition(to)` survived the incremental run, and the test file from before the pass missed the same hand break 6 runs of 6: `storedWhenResumed` was overwritten by later asks for `landing + 1`. It now keeps the first read, and the hand break fails 3 of 3.
+   - `npm run mutate:diff -- aa31005...HEAD --incremental` at `7769517`, changed lines only: 100.0% overall (40/40), 100.0% covered, 4 ignored; one loop. The tool's own 91.0% includes old results for other files, so it isn't this range's score.
+5. Review fixes (loop 1)
+   - [x] P1 `tests/scanner/scanner-position.test.ts` — the discovery test's local `start` restored. `diff` of the test body at `aa31005` against this file: identical. No behaviour change, so no bite beyond that diff.
+   - [x] S2 `tests/scanner/scanner-position.test.ts` — the retry-log test waits for the fourth ask of `secondGap`, which opens pass 3, so pass 2 has finished. Hand bite, reverted: `retryRaidsFound >= 0`, an unconditional line, failed it 5 runs of 5.
+   - [x] S1 `src/lib/scanner/index.ts` — `SCANNER_HOLE_EMPTY_BATCHES` clamped to at least 1 in `DEFAULT_SCANNER_CONFIG`. Red at `168988a`: `reads a SCANNER_HOLE_EMPTY_BATCHES of 0 as 1` and `of -3` failed, 2 of 30, each hopping after the batch with hits.
+   - [x] P2 `tests/scanner/scanner-position.test.ts` — `takes the empty-batch count from SCANNER_HOLE_EMPTY_BATCHES`, through `vi.stubEnv` before a fresh import. Hand bite, reverted: the name misspelt in the source failed it, `expected 5 to be 2`. The fresh imports also put line 108 in the mutation run: its two compiling mutants are killed.
+   - `npm run mutate:diff -- aa310055...HEAD --typecheck`, full run at `9e06645`: 100.0% overall (31/31), 100.0% covered, 10 compile errors discarded, 4 ignored, PASS. No survivors, so no kill loop was spent here.
+   - Lint, build and vitest at `9e06645`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 911/911.
+6. Review fixes (loop 2)
+   - [x] S4 `tests/scanner/scanner-position.test.ts` — `reads a SCANNER_HOLE_EMPTY_BATCHES of %s as 1` waits for `3 * BATCH_SIZE` requests before reading that slice, not for `landing + 1`, the batch's first id. The race didn't reproduce in 24 runs, so the bite forced it. A temporary 200ms stub delay for ids past `landing + 1`, not committed: the old wait failed both rows, the slice stopping at `17000009799`, and the new wait passed both with the same delay.
+
+## Surviving mutants
+
+- `src/lib/scanner/index.ts:934`

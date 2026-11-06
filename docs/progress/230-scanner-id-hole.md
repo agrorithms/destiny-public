@@ -28,6 +28,13 @@ Seams and decisions approved 2026-11-05:
    - [x] `/simplify pass` — four cleanup agents. `src/lib/scanner/index.ts`: a crossing ends the miss run in `crossIdHole`, replacing the `crossedIdHole` flag. `tests/scanner/scanner-position.test.ts`: `pgcrResponse`, `pauseLines`, a module-level `start`, `beforeEach` setup, the maintenance case as an `it.each` row.
    - `saveScannerPosition(to)` survived the incremental run, and the test file from before the pass missed the same hand break 6 runs of 6: `storedWhenResumed` was overwritten by later asks for `landing + 1`. It now keeps the first read, and the hand break fails 3 of 3.
    - `npm run mutate:diff -- aa31005...HEAD --incremental` at `7769517`, changed lines only: 100.0% overall (40/40), 100.0% covered, 4 ignored; one loop. The tool's own 91.0% includes old results for other files, so it isn't this range's score.
+5. Review fixes (loop 1)
+   - [x] P1 `tests/scanner/scanner-position.test.ts` — the discovery test's local `start` restored. `diff` of the test body at `aa31005` against this file: identical. No behaviour change, so no bite beyond that diff.
+   - [x] S2 `tests/scanner/scanner-position.test.ts` — the retry-log test waits for the fourth ask of `secondGap`, which opens pass 3, so pass 2 has finished. Hand bite, reverted: `retryRaidsFound >= 0`, an unconditional line, failed it 5 runs of 5.
+   - [x] S1 `src/lib/scanner/index.ts` — `SCANNER_HOLE_EMPTY_BATCHES` clamped to at least 1 in `DEFAULT_SCANNER_CONFIG`. Red at `168988a`: `reads a SCANNER_HOLE_EMPTY_BATCHES of 0 as 1` and `of -3` failed, 2 of 30, each hopping after the batch with hits.
+   - [x] P2 `tests/scanner/scanner-position.test.ts` — `takes the empty-batch count from SCANNER_HOLE_EMPTY_BATCHES`, through `vi.stubEnv` before a fresh import. Hand bite, reverted: the name misspelt in the source failed it, `expected 5 to be 2`. The fresh imports also put line 108 in the mutation run: its two compiling mutants are killed.
+   - `npm run mutate:diff -- aa310055...HEAD --typecheck`, full run at `9e06645`: 100.0% overall (31/31), 100.0% covered, 10 compile errors discarded, 4 ignored, PASS. No survivors, so no kill loop was spent here.
+   - Lint, build and vitest at `9e06645`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 911/911.
 
 ## Surviving mutants
 

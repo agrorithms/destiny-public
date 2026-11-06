@@ -18,6 +18,13 @@ Seams and decisions approved 2026-11-05:
    - [x] `src/lib/scanner/index.ts` — `holeEmptyBatches`, the banner line, the count, `warnedAtPosition`, the crossing, comments
    - [x] `src/lib/db/queries.ts` — `findNextStoredInstanceId`
 3. Bite proofs and suite
-   - [ ] `docs/progress/230-scanner-id-hole.md` — this file: mutation score, suite numbers
+   - [x] `docs/progress/230-scanner-id-hole.md` — this file
+   - `npm run mutate:diff -- aa31005...HEAD --typecheck`, full run at `6f7984b`: 100.0% overall (38/38), 100.0% covered, 11 compile errors discarded, 4 ignored, PASS; no loops needed.
+   - Stryker made no mutants of the SQL text, so that had hand bites, each reverted: `>` to `>=` and `ORDER BY instance_id DESC` each failed `lands on the lowest one` and `needs a full count`.
+   - The approved comment ignores all four mutants on its line, including the two killable ones (`false`, `<= 0`). Hand bite, reverted: `size < 0` failed four retry tests.
+   - Prod-shape reproduction from the diagnosis session: green, position +10498 past the hole, and a queue of 45 retried.
+   - Lint, build and vitest at `6f7984b`: lint 0 errors (29 warnings), tsc app and scripts, build, vitest 908/908.
 
 ## Surviving mutants
+
+- `src/lib/scanner/index.ts:931`

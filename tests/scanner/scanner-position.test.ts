@@ -146,6 +146,7 @@ describe('scanner position', () => {
     // stays until #174 decides otherwise — this pins it so the position fix in #176
     // can't remove it by accident.
     it('adopts a higher stored position written while it runs', async () => {
+        const start = BigInt('17000000000');
         const jumpTo = start + BigInt(1000);
         writeScannerPosition(start);
         // Every id exists, so no misses queue up and no retry pass re-requests old ids.
@@ -329,7 +330,8 @@ describe('catch-up pause log lines', () => {
         );
 
         await scanner.startScanner(pauseAfterTwoMisses);
-        await vi.waitFor(() => expect(timesRequested(secondGap)).toBeGreaterThanOrEqual(3), WAIT);
+        // The fourth ask opens pass 3, so pass 2 has finished and had its chance to log.
+        await vi.waitFor(() => expect(timesRequested(secondGap)).toBeGreaterThanOrEqual(4), WAIT);
 
         // Only the first pass recovered a raid, so the later ones add no line.
         expect(retryLines()).toEqual([

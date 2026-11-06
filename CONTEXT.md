@@ -186,15 +186,23 @@ _Avoid_: last updated, refresh time
 **Scanner Position**:
 The highest instance id confirmed to exist that the scanner has reached, and where it resumes after
 a restart. It only moves forward and only onto an id confirmed to exist. The scanner moves it by
-getting the id back from Bungie or finding it already stored. Discovery can move it ahead to
-Bungie's newest id when the scanner has fallen far behind. The ids skipped that way aren't
-guaranteed to be scanned.
+getting the id back from Bungie or finding it already stored. When an Id Hole stops the scanner,
+the position moves to the lowest stored id past the hole. Discovery can move it ahead to Bungie's
+newest id when the scanner has fallen far behind. The ids skipped that way aren't guaranteed to be
+scanned.
 _Avoid_: scanner cursor, current instance id, present
 
 **Leading Edge**:
-The newest instance id Bungie has issued. It isn't stored anywhere. The scanner finds it by asking
-for ids past it and getting "not found". The Scanner Position trails it and can never pass it.
+The newest instance id Bungie has issued. It isn't stored anywhere, and "not found" alone doesn't
+prove the scanner has reached it, since an Id Hole gives the same answer. The Scanner Position
+trails it and can never pass it.
 _Avoid_: present, head, now, caught up
+
+**Id Hole**:
+A run of instance ids Bungie skipped and won't issue, with the Leading Edge somewhere beyond it.
+Asking for ids inside one looks exactly like asking past the Leading Edge; only an id known to
+exist further on tells them apart.
+_Avoid_: gap, id gap, skip
 
 **Farm**:
 Repeatedly replaying a single raid encounter or checkpoint for rewards, rather than progressing

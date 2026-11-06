@@ -402,8 +402,10 @@ describe('crossing an Id Hole', () => {
             stubBungie(
                 () => false,
                 (id) => {
+                    // The first ask only: that batch's own save would hide a crossing
+                    // that never saved, and everything past the landing id is asked again.
                     if (id === landing + BigInt(1)) {
-                        storedWhenResumed = readScannerPosition();
+                        storedWhenResumed ??= readScannerPosition();
                     }
                     return undefined;
                 }

@@ -15,4 +15,9 @@ Seams and decisions approved 2026-11-06:
 2. The queue rule and the log lines, green
    - [x] `src/lib/scanner/index.ts` — the pass keeps the queue, ids leave on `raid` or `not_raid`, `attempted`, `Position:` on both lines, `addMissedIds` and `stillMissingIds` gone
 3. Bite proofs and suite
-   - [ ] `docs/progress/232-retry-pass-keeps-missed-ids.md` — this file
+   - [x] `docs/progress/232-retry-pass-keeps-missed-ids.md` — this file
+   - `npm run mutate:diff -- c5e3275...HEAD --typecheck`, full run at `f14d2a1`: 100.0% overall (14/14), 100.0% covered, 1 compile error discarded, 0 ignored, no survivors, threshold PASS, no kill-and-rerun loops needed. Both `missedIdsSet.delete` lines were mutated and killed, and the cap test killed the seven mutants on the cap line.
+   - The `Stryker disable` comment above the `missedIdsSet.size > 0` guard is unchanged, and no new one was added.
+   - Seam 4's bite, a temporary uncommitted hand break: `retryRaidsFound > 0` to `>= 0` at `f14d2a1` failed `logs nothing for a retry pass that recovers no raid`, plus the cut-short test and the pinned retry line (3 of 32). Reverted with `git checkout`; the tree was clean afterwards.
+   - The cut-short test can't tell a count taken from `nextIndex` here, because the top guard breaks before the claim with one worker. The pinned `of 2 retried` line is what catches that.
+   - The throw path comes from reading the code: not reproduced, no test. The queue rule covers it with no code of its own.

@@ -53,6 +53,10 @@ function warnedLines(): string[] {
     return consoleWarn.mock.calls.map(([line]) => String(line));
 }
 
+function retryLines(): string[] {
+    return loggedLines().filter((line) => line.includes('Retry complete'));
+}
+
 /**
  * Answers the PGCR endpoint the way Bungie does: a PGCR for an id that exists
  * (a non-raid one, so nothing is written to the database) and DestinyPGCRNotFound
@@ -116,6 +120,15 @@ function readScannerPosition(): bigint | null {
         "SELECT value FROM crawler_state WHERE key = 'scanner_position'"
     ).get() as { value: string } | undefined;
     return row ? BigInt(row.value) : null;
+}
+
+/**
+ * For a knob read once, as the module loads: the env has to be set before a fresh import.
+ */
+async function importScannerWithEnv(name: string, value: string): Promise<void> {
+    vi.stubEnv(name, value);
+    vi.resetModules();
+    scanner = await import('@/lib/scanner');
 }
 
 /** `count` consecutive instance ids starting at `first`. */
@@ -300,6 +313,65 @@ describe('missed ids', () => {
     });
 });
 
+// A Retry Pass can stop before it reaches every Missed Id. Before #232 the pass emptied
+// the queue and put back only the ids it had tried, so the ids it never reached were
+// gone: not retried, not counted as dropped, and not logged. Every early exit (maintenance,
+// no clients left, a shutdown, a throw) runs the same rule, so one cut-short test stands
+// for them all: an id leaves the queue only when it resolves as a raid or a non-raid.
+describe('a retry pass cut short', () => {
+    const raid = start + BigInt(1);
+    const notRaid = start + BigInt(2);
+    const drewMaintenance = start + BigInt(3);
+    const firstUnreached = start + BigInt(4);
+    const secondUnreached = start + BigInt(5);
+    const confirmed = start + BigInt(6);
+    const missedIds = [raid, notRaid, drewMaintenance, firstUnreached, secondUnreached];
+
+    // The first batch ends on the confirmed id, which queues all five Missed Ids and
+    // fires no pause. The empty batch after it fires the pause. One worker makes the ids
+    // the pass never reaches exact.
+    const sixIdBatches = { ...SCANNER_CONFIG, batchSize: 6 };
+
+    it('keeps every id it did not resolve and reports only the ids it attempted', async () => {
+        vi.stubEnv('BUNGIE_SYSTEM_DISABLED_PAUSE_MS', '1');
+        writeScannerPosition(start);
+        // Every Missed Id misses on the first ask. On the second, three resolve the way
+        // their names say, which ends the pass before it reaches the last two.
+        stubBungie(
+            (id) => id === confirmed || (id === notRaid && timesRequested(id) > 1),
+            (id) => {
+                if (id === raid && timesRequested(id) > 1) {
+                    return pgcrResponse(id, RAID_HASH);
+                }
+                if (id === drewMaintenance && timesRequested(id) === 2) {
+                    return bungieError(5, 'SystemDisabled');
+                }
+                return undefined;
+            }
+        );
+
+        await scanner.startScanner(sixIdBatches);
+        // The fourth ask opens pass 3, so pass 2 has finished. It also arrives if the
+        // unreached ids were lost, so that bug fails below rather than timing out.
+        await vi.waitFor(() => expect(timesRequested(drewMaintenance)).toBeGreaterThanOrEqual(4), WAIT);
+
+        // The forward batch, the pass that was cut short, and the whole of the next pass.
+        const askedForMissedIds = requested.filter((id) => missedIds.includes(id));
+        expect(askedForMissedIds.slice(0, 11)).toEqual([
+            ...missedIds,
+            raid, notRaid, drewMaintenance,
+            drewMaintenance, firstUnreached, secondUnreached,
+        ]);
+
+        // Set size is what shows the raid left the queue. Left queued, it would be found
+        // stored on the next pass and never reach fetch, so the ids requested can't show it.
+        // The later passes recover nothing, so they add no line.
+        expect(retryLines()).toEqual([
+            '[SCANNER] 🔄 Retry complete: 1 raids found of 3 retried. 1 still missing. Set size: 3 | Position: 17000000006',
+        ]);
+    });
+});
+
 // A catch-up pause only says the batch ended on misses. That is what an Id Hole looks
 // like too, so the line must not claim the Leading Edge: that wording hid a 55-hour
 // stall. The retry line is there to report raids recovered, so a pass that found none
@@ -310,8 +382,6 @@ describe('catch-up pause log lines', () => {
     const confirmed = start + BigInt(3);
     const pauseAfterTwoMisses = { ...SCANNER_CONFIG, maxConsecutiveMisses: 2 };
 
-    const retryLines = () => loggedLines().filter((line) => line.includes('Retry complete'));
-
     it('reports the misses and the wait, not the Leading Edge', async () => {
         writeScannerPosition(start);
         stubBungie(() => false);
@@ -319,7 +389,7 @@ describe('catch-up pause log lines', () => {
         await scanner.startScanner(SCANNER_CONFIG);
         await vi.waitFor(() => expect(requested.length).toBeGreaterThanOrEqual(2 * BATCH_SIZE), WAIT);
 
-        expect(loggedLines()).toContain('[SCANNER] 5 consecutive misses, pausing 0.005s');
+        expect(loggedLines()).toContain('[SCANNER] 5 consecutive misses, pausing 0.005s | Position: 17000000000');
         expect(loggedLines().filter((line) => line.includes('Leading Edge'))).toEqual([]);
     });
 
@@ -337,9 +407,28 @@ describe('catch-up pause log lines', () => {
 
         // Only the first pass recovered a raid, so the later ones add no line.
         expect(retryLines()).toEqual([
-            '[SCANNER] 🔄 Retry complete: 1 raids found of 2 retried. 1 still missing. Set size: 1',
+            '[SCANNER] 🔄 Retry complete: 1 raids found of 2 retried. 1 still missing. Set size: 1 | Position: 17000000003',
         ]);
         expect(scanner.getScannerStats().totalRaidsFound).toBe(1);
+    });
+
+    // A stall should read as the same Position: pause after pause, so the position
+    // stays last on the line even when a cap count is printed before it.
+    it('puts the position after the cap count', async () => {
+        await importScannerWithEnv('SCANNER_MAX_MISSED_IDS', '1');
+        writeScannerPosition(start);
+        // The queue holds one id: the first Missed Id takes it and the second is dropped.
+        stubBungie(
+            (id) => id === confirmed,
+            (id) => (id === firstGap && timesRequested(id) > 1 ? pgcrResponse(id, RAID_HASH) : undefined)
+        );
+
+        await scanner.startScanner(pauseAfterTwoMisses);
+        await vi.waitFor(() => expect(retryLines()).toHaveLength(1), WAIT);
+
+        expect(retryLines()).toEqual([
+            '[SCANNER] 🔄 Retry complete: 1 raids found of 1 retried. 0 still missing. Set size: 0 (1 total dropped due to cap) | Position: 17000000003',
+        ]);
     });
 
     it('logs nothing for a retry pass that recovers no raid', async () => {
@@ -458,16 +547,9 @@ describe('crossing an Id Hole', () => {
             expect(loggedLines()).toContain(`  Hole batches:  ${expected}`);
         });
 
-        // The knob is read once, as the module loads, so the env has to be set before a
-        // fresh import. The configs below have no holeEmptyBatches to override it with.
-        async function importScannerWithHoleBatches(value: string): Promise<void> {
-            vi.stubEnv('SCANNER_HOLE_EMPTY_BATCHES', value);
-            vi.resetModules();
-            scanner = await import('@/lib/scanner');
-        }
-
+        // The configs below have no holeEmptyBatches to override the knob with.
         it('takes the empty-batch count from SCANNER_HOLE_EMPTY_BATCHES', async () => {
-            await importScannerWithHoleBatches('2');
+            await importScannerWithEnv('SCANNER_HOLE_EMPTY_BATCHES', '2');
             stubBungie(() => false);
 
             await scanner.startScanner(SCANNER_CONFIG);
@@ -479,7 +561,7 @@ describe('crossing an Id Hole', () => {
         // Below 1 the count would be met after every batch, hits included, and the scanner
         // would hop over every id between the position and the next stored one.
         it.each(['0', '-3'])('reads a SCANNER_HOLE_EMPTY_BATCHES of %s as 1', async (value) => {
-            await importScannerWithHoleBatches(value);
+            await importScannerWithEnv('SCANNER_HOLE_EMPTY_BATCHES', value);
             // Every id in the first batch exists, and none in the second.
             stubBungie((id) => id <= start + BigInt(BATCH_SIZE));
 

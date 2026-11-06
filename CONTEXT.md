@@ -204,6 +204,18 @@ Asking for ids inside one looks exactly like asking past the Leading Edge; only 
 exist further on tells them apart.
 _Avoid_: gap, id gap, skip
 
+**Missed Id**:
+An instance id below the Scanner Position that Bungie didn't return when the scanner first asked,
+usually because the activity is still in progress. It stays queued until Bungie returns it or it
+turns up stored, so an id Bungie never returns stays queued until a restart. A restart forgets every
+Missed Id. Ids a crossing skips never become Missed Ids.
+_Avoid_: gap, missed queue entry
+
+**Retry Pass**:
+One run through the Missed Ids after a catch-up pause. A pass can be cut short, and any Missed Id it
+didn't reach simply stays queued.
+_Avoid_: retry loop, retry cycle
+
 **Farm**:
 Repeatedly replaying a single raid encounter or checkpoint for rewards, rather than progressing
 through the raid. The activity the site is named for.

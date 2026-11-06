@@ -58,12 +58,6 @@ function addMissedId(instanceId: string): void {
     missedIdsSet.add(instanceId);
 }
 
-function addMissedIds(instanceIds: string[]): void {
-    for (const instanceId of instanceIds) {
-        addMissedId(instanceId);
-    }
-}
-
 function isValidMembershipType(type: unknown): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
 }
@@ -670,50 +664,44 @@ async function scanBatch(
 // RETRY MISSED IDs
 // =====================
 
+// A pass works from a snapshot of the queue. A Missed Id stays queued until it resolves as
+// raid or not_raid, so an id a pass cut short never reached needs no handling here.
 async function retryMissedIds(
     clientPool: ScannerClientPool,
-    missedIds: string[],
     workerCount: number
-): Promise<{ retryRaidsFound: number; stillMissing: number; stillMissingIds: string[]; systemDisabled: boolean; fatalNoClients: boolean }> {
+): Promise<{ retryRaidsFound: number; attempted: number; stillMissing: number; systemDisabled: boolean; fatalNoClients: boolean }> {
+    const missedIds = Array.from(missedIdsSet);
     let retryRaidsFound = 0;
     let stillMissing = 0;
     let nextIndex = 0;
     let systemDisabled = false;
     let fatalNoClients = false;
-    const stillMissingIds: string[] = [];
 
     async function worker() {
-        while (true) {
-            if (systemDisabled || fatalNoClients) break;
-
-            const myIndex = nextIndex++;
-            if (myIndex >= missedIds.length || state.shouldStop || systemDisabled || fatalNoClients) break;
-
-            const result = await scanSinglePGCR(clientPool, missedIds[myIndex]);
+        while (nextIndex < missedIds.length && !state.shouldStop && !systemDisabled && !fatalNoClients) {
+            const instanceId = missedIds[nextIndex++];
+            const result = await scanSinglePGCR(clientPool, instanceId);
 
             switch (result) {
                 case 'raid':
                     retryRaidsFound++;
-                    // Successfully found — do NOT put back in queue
+                    missedIdsSet.delete(instanceId);
                     break;
                 case 'not_raid':
-                    // Exists but isn't a raid — do NOT put back in queue
+                    missedIdsSet.delete(instanceId);
                     break;
                 case 'not_found':
                 case 'error':
                 case 'error_retryable':
                     stillMissing++;
-                    stillMissingIds.push(missedIds[myIndex]);
                     break;
                 case 'system_disabled':
                     systemDisabled = true;
                     stillMissing++;
-                    stillMissingIds.push(missedIds[myIndex]);
                     break;
                 case 'fatal_no_clients':
                     fatalNoClients = true;
                     stillMissing++;
-                    stillMissingIds.push(missedIds[myIndex]);
                     break;
             }
         }
@@ -725,7 +713,7 @@ async function retryMissedIds(
     );
     await Promise.all(workers);
 
-    return { retryRaidsFound, stillMissing, stillMissingIds, systemDisabled, fatalNoClients };
+    return { retryRaidsFound, attempted: nextIndex, stillMissing, systemDisabled, fatalNoClients };
 }
 
 
@@ -921,7 +909,7 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
         if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
                 `[SCANNER] ${state.consecutiveMisses} consecutive misses, ` +
-                `pausing ${config.pauseOnCatchupMs / 1000}s`
+                `pausing ${config.pauseOnCatchupMs / 1000}s | Position: ${state.currentInstanceId}`
             );
             state.consecutiveMisses = 0;
             writeScannerStats();
@@ -932,18 +920,16 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
                 try {
                     // Stryker disable next-line ConditionalExpression,EqualityOperator: an empty pass starts no workers and logs nothing
                     if (missedIdsSet.size > 0) {
-                        const idsToRetry = Array.from(missedIdsSet);
-                        missedIdsSet.clear();
-                        const retryResult = await retryMissedIds(clientPool, idsToRetry, config.workers);
+                        const retryResult = await retryMissedIds(clientPool, config.workers);
 
                         state.totalRaidsFound += retryResult.retryRaidsFound;
-                        addMissedIds(retryResult.stillMissingIds);
 
                         if (retryResult.retryRaidsFound > 0) {
                             console.log(
-                                `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found of ${idsToRetry.length} retried. ` +
+                                `[SCANNER] 🔄 Retry complete: ${retryResult.retryRaidsFound} raids found of ${retryResult.attempted} retried. ` +
                                 `${retryResult.stillMissing} still missing. Set size: ${missedIdsSet.size}` +
-                                `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}`
+                                `${missedIdsDroppedDueToCap > 0 ? ` (${missedIdsDroppedDueToCap} total dropped due to cap)` : ''}` +
+                                ` | Position: ${state.currentInstanceId}`
                             );
                         }
 

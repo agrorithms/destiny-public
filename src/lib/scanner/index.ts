@@ -793,8 +793,9 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
     // Moves the position onto the lowest stored id past it. #176's rule still holds:
     // a stored id came from Bungie, so it exists. With none stored the position stays
-    // put, which is right at the Leading Edge during maintenance.
-    function crossIdHole(): boolean {
+    // put, which is right at the Leading Edge during maintenance. A crossing ends the
+    // miss run: the position is on a confirmed id again.
+    function crossIdHole(): void {
         const from = state.currentInstanceId;
         const landingId = findNextStoredInstanceId(from.toString());
 
@@ -803,15 +804,15 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
                 console.warn(`[SCANNER] No confirmed id past ${from} after ${emptyBatches} empty batches`);
                 warnedAtPosition = from;
             }
-            return false;
+            return;
         }
 
         const to = BigInt(landingId);
         state.currentInstanceId = to;
         saveScannerPosition(to);
         emptyBatches = 0;
+        state.consecutiveMisses = 0;
         console.log(`[SCANNER] Crossed an Id Hole: ${from} → ${to} (+${to - from} ids)`);
-        return true;
     }
 
     async function scanLoopIteration() {
@@ -912,10 +913,12 @@ export async function startScanner(overrides?: Partial<ScannerConfig>): Promise<
 
         // Before the pause, not inside it: a crossing skips the pause, and a miss
         // threshold above the batch size means the pause never fires at all.
-        const crossedIdHole = emptyBatches >= config.holeEmptyBatches && crossIdHole();
+        if (emptyBatches >= config.holeEmptyBatches) {
+            crossIdHole();
+        }
 
         // Catch-up pause: the batch ended on misses, so wait, then retry missed IDs
-        if (!crossedIdHole && state.consecutiveMisses >= config.maxConsecutiveMisses) {
+        if (state.consecutiveMisses >= config.maxConsecutiveMisses) {
             console.log(
                 `[SCANNER] ${state.consecutiveMisses} consecutive misses, ` +
                 `pausing ${config.pauseOnCatchupMs / 1000}s`

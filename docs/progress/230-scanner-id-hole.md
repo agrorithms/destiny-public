@@ -27,4 +27,4 @@ Seams and decisions approved 2026-11-05:
 
 ## Surviving mutants
 
-- `src/lib/scanner/index.ts:931`
+- `src/lib/scanner/index.ts:934`

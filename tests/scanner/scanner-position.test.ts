@@ -456,6 +456,41 @@ describe('crossing an Id Hole', () => {
             expect(loggedLines()).toContain(`  Hole batches:  ${expected}`);
         });
 
+        // The knob is read once, as the module loads, so the env has to be set before a
+        // fresh import. The configs below have no holeEmptyBatches to override it with.
+        async function importScannerWithHoleBatches(value: string): Promise<void> {
+            vi.stubEnv('SCANNER_HOLE_EMPTY_BATCHES', value);
+            vi.resetModules();
+            scanner = await import('@/lib/scanner');
+        }
+
+        it('takes the empty-batch count from SCANNER_HOLE_EMPTY_BATCHES', async () => {
+            await importScannerWithHoleBatches('2');
+            stubBungie(() => false);
+
+            await scanner.startScanner(SCANNER_CONFIG);
+            await waitForResumeAfterLanding();
+
+            expect(batchesBeforeCrossing()).toBe(2);
+        });
+
+        // Below 1 the count would be met after every batch, hits included, and the scanner
+        // would hop over every id between the position and the next stored one.
+        it.each(['0', '-3'])('reads a SCANNER_HOLE_EMPTY_BATCHES of %s as 1', async (value) => {
+            await importScannerWithHoleBatches(value);
+            // Every id in the first batch exists, and none in the second.
+            stubBungie((id) => id <= start + BigInt(BATCH_SIZE));
+
+            await scanner.startScanner(SCANNER_CONFIG);
+            await waitForResumeAfterLanding();
+
+            expect(requested.slice(0, 3 * BATCH_SIZE)).toEqual([
+                ...idRange(start + BigInt(1), 2 * BATCH_SIZE),
+                ...idRange(landing + BigInt(1), BATCH_SIZE),
+            ]);
+            expect(readScannerPosition()).toBe(landing);
+        });
+
         // Three holes appeared within hours on Nov 3, so each one needs its own evidence.
         it('needs a full count of empty batches for the next hole too', async () => {
             const secondLanding = landing + BigInt(9000);

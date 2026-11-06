@@ -105,7 +105,7 @@ const DEFAULT_SCANNER_CONFIG: ScannerConfig = {
     apiKeys: getScannerApiKeysFromEnv(),
     enabled: true,
     workers: parseInt(process.env.SCANNER_WORKERS || '15', 10),
-    holeEmptyBatches: parseInt(process.env.SCANNER_HOLE_EMPTY_BATCHES || '5', 10),
+    holeEmptyBatches: Math.max(1, parseInt(process.env.SCANNER_HOLE_EMPTY_BATCHES || '5', 10)),
 };
 
 // =====================

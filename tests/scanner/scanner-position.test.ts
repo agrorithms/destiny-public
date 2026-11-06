@@ -12,8 +12,10 @@ type Scanner = typeof import('@/lib/scanner');
  *
  * The scanner keeps its missed-id set and run state at module level, so every test
  * gets a fresh copy of the module. Settings are shrunk so a run takes milliseconds:
- * one worker keeps the request order deterministic, and a high per-key rate means
- * the limiter never sleeps.
+ * one worker keeps the request order deterministic, and a high per-key rate keeps
+ * the limiter's sleeps to about a millisecond. It does still sleep, so a batch's
+ * requests can span several timer ticks: a test that reads a whole batch must wait
+ * for all of it, not its first id.
  */
 
 const BATCH_SIZE = 5;

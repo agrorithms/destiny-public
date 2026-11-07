@@ -157,3 +157,13 @@ looks hung. The "cheap next move" above is therefore taken before the board ship
 ticket adds the stored generated KDA column and index, and #200 is blocked on it.
 Success is a 30d All Attempts miss near the 7d figure above; if the index does not get there, the
 fallback is to drop 30d on this tab.
+
+## Amendment (2026-11-07): the toggle is a link, the dimension stays (#204)
+
+This ADR put scope in the response so "the analytics UI toggles between them client-side with no
+refetch". The Raid Activity page, and #200's Raid Stats tab on it, are server-rendered and hold the
+scope in the URL (`?scope=all|fresh|full`) so it works with JavaScript off and survives a shared link,
+so choosing a scope is a navigation, not a client-side swap. The reason behind the original wording still
+holds and is the part that matters: **scope is a dimension of the cached value, not a cache key.** A
+scope switch re-renders from the entry already cached for that range and adds no key or cold miss.
+Raid Activity's own series follows the same rule (ADR 0009, amendment 2026-11-07).

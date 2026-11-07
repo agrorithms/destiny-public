@@ -260,3 +260,30 @@ rougher.
   its PGCRs are 95% crawler-sourced and arrive about 12 hours after the instance ends, and Raids in
   Progress there is only 5–9× the snapshot count instead of 10–60×. The coverage and delay figures
   above would come out wrong against it.
+
+## Amendment (2026-11-07): three scopes (#204)
+
+Raid Activity stops counting only All Attempts. One **Scope** choice on the page (`?scope=all|fresh|full`,
+absent meaning All Attempts) narrows the total line, the per-raid panel and the picker's top-3
+default to Fresh Runs or Full Clears — the same three scopes #200's Raid Stats tab shares.
+
+- **A completeness curve for each scope, learned from that scope's runs.** "The estimate scales up the
+  same population it was learned from" applies to each scope separately. Full Clears last far longer than the
+  average run (Vault of Glass, past week on the 2026-11-05 backup: 24 min average over All Attempts,
+  61 min over Full Clears), so dividing a Full Clears partial count by the All Attempts share would
+  understate it. `ACTIVITY_MIN_RAID_RUNS` likewise counts in-scope runs, so under Full Clears most
+  raids are counted and not estimated (only Vault of Glass and Root of Nightmares clear 5,000 Full
+  Clears a week on that backup).
+- **One cache entry per range still, holding all three scopes.** The single sweep tallies each run into
+  every scope it belongs to, as it already tallies each into its raid, and the top 3 are
+  ranked per scope. A key per range × scope would triple the cold misses for a difference of a few
+  arrays.
+- **The covering index no longer covers.** Reading `activity_was_started_from_beginning` and
+  `completed` takes `idx_pgcrs_ended_period_raid` off its covering path: a 30-day read went from
+  ~0.1 s to ~0.5 s on x86 with a warm page cache (2026-11-05 backup), and the curve pass pays the
+  same. That is accepted for now, behind the cache. If the end-to-end cold miss measured in the
+  ticket is too slow, widening the index to cover both flags joins #227's migration rather than
+  becoming a second one.
+- **The Morgeth Pantheon reads zero under Fresh Runs and Full Clears.** None of its runs carries
+  Bungie's fresh-start flag, completed ones included, and only that flag is authoritative
+  (CONTEXT.md, **Full Clear**). The leaderboard already gives it zero Completions; this agrees.

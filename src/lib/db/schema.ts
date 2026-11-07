@@ -231,10 +231,10 @@ export function initializeSchema(db: Database.Database): void {
     //
     // #227 widened #195's (ended_at, period, raid_key), which is dropped here: it is a
     // prefix of this one. Built at open, not by a maintenance script: ~3.0 s cold (1.4 s
-    // warm) and +3.8 MB on the 2026-11-05 backup, x86. The sweep's planner picks it with no hint, under prod's
-    // sqlite_stat1 too (which has no row for it); getRaidStats has to name it with INDEXED
-    // BY, because those stale statistics steer it to idx_pgcrs_raid_ended. Measurements:
-    // ADR 0006's second 2026-11-07 amendment.
+    // warm) and +3.8 MB on the 2026-11-05 backup, x86. The sweep's planner picks it with
+    // no hint, under prod's sqlite_stat1 too (which has no row for it); getRaidStats has
+    // to name it with INDEXED BY, because those stale statistics steer it to
+    // idx_pgcrs_raid_ended. Measurements: ADR 0006's second 2026-11-07 amendment.
     db.exec(`
     DROP INDEX IF EXISTS idx_pgcrs_ended_period_raid;
     CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid_clear

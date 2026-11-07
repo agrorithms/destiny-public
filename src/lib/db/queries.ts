@@ -915,7 +915,8 @@ export interface RaidScopeStats {
 /**
  * The instance-level predicate that defines each scope's population. Adding a scope here, and
  * its `pgcrs` source in {@link queryScope}, are the only edits a new scope needs outside the
- * response assembly, which stops compiling until the new key is supplied. All Attempts is
+ * response assembly, which stops compiling until the new key is supplied; the assembly is
+ * also where a scope is left uncomputed above {@link ALL_SCOPES_MAX_HOURS}. All Attempts is
  * every in-window instance, so its predicate is empty.
  */
 const RAID_SCOPE_PREDICATES = {
@@ -1088,8 +1089,8 @@ export function getRaidStats(
     // Player-Runs in a scope must still appear, with sampleSize 0 and kda null.
     //
     // INDEXED BY names the widened ended_at index (schema.ts), which leads with `ended_at` and
-    // carries the Full Clear flags, so this query and the Full Clears scope never touch the
-    // table to filter. Prod's sqlite_stat1 is stale (2.66M rows counted against 1.87M held,
+    // carries the Full Clear flags, so unfiltered, this query and the Full Clears scope never
+    // touch the table to filter. Prod's sqlite_stat1 is stale (2.66M rows counted against 1.87M held,
     // nothing for this index) and steers the planner to idx_pgcrs_raid_ended without it:
     // 30d Full Clears ~17 s → ~9 s cold. Not ANALYZE, which would re-plan the whole site from
     // statistics nothing tests. ADR 0006's second 2026-11-07 amendment.
@@ -1116,7 +1117,6 @@ export function getRaidStats(
 
     const scopeContext: ScopeQueryContext = { cutoff, filterClause, filterParams };
     const fullClear = queryScope(scopeContext, 'fullClear');
-    // Above the threshold the scope is not computed at all, so it is null for every raid.
     const allAttempts = hoursBack > ALL_SCOPES_MAX_HOURS ? null : queryScope(scopeContext, 'allAttempts');
 
     return scalarRows.map(row => ({
@@ -1799,11 +1799,11 @@ export interface RaidsInProgressOptions {
  * estimate ends at the first step it can't make.
  *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
- * single pass through the covering `idx_pgcrs_ended_period_raid_clear` (`ended_at > first step
- * start`), and each adds its overlap in O(1): the partial first and last steps it touches
- * directly, and the whole steps between them through a running difference array. So the
- * cost is rows + steps, never rows × steps — a run lasting days adds two array writes, not
- * one per hour it spans. The curve is a second pass, over its own training week.
+ * single pass through the covering `idx_pgcrs_ended_period_raid_clear` (`ended_at > first
+ * step start`), and each adds its overlap in O(1): the partial first and last steps it
+ * touches directly, and the whole steps between them through a running difference array.
+ * So the cost is rows + steps, never rows × steps — a run lasting days adds two array
+ * writes, not one per hour it spans. The curve is a second pass, over its own training week.
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
@@ -1950,8 +1950,8 @@ function topRaids(raidTime: ReadonlyMap<string, number>): string[] {
  * **Reads the week of whole steps ending between 8 days and 24 hours before `now`**, so
  * every run that overlapped them has long since ended, and nothing newer teaches it
  * how incomplete a recent step is. Raids only, by `ended_at` (the covering
- * `idx_pgcrs_ended_period_raid_clear`, no table lookups) and never `fetched_at`: the curve is
- * about how long raids last, and the scanner's lag is not. A run that has not ended by
+ * `idx_pgcrs_ended_period_raid_clear`, no table lookups) and never `fetched_at`: the curve
+ * is about how long raids last, and the scanner's lag is not. A run that has not ended by
  * `now` is not a report yet, as in {@link getRaidsInProgress}.
  *
  * A second pass over the same index as the sweep: about 230 ms on the prod backup, once

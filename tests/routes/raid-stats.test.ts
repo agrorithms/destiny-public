@@ -14,7 +14,7 @@ import { DP_EPIC, DP_NORMAL, VOG_MASTER } from '../helpers/pgcr-builder';
  */
 
 interface Body {
-    raids: { raidKey: string; instanceCount: number }[];
+    raids: ({ raidKey: string; instanceCount: number } & Record<string, unknown>)[];
 }
 
 beforeEach(() => {
@@ -22,11 +22,15 @@ beforeEach(() => {
     __resetSwrCacheForTests();
 });
 
-async function instancesPerRaid(query: Record<string, string>): Promise<[string, number][]> {
+async function raids(query: Record<string, string>): Promise<Body['raids']> {
     const response = await GET(new NextRequest(`http://localhost:3100/api/analytics/raid-stats?${new URLSearchParams(query)}`));
     expect(response.status).toBe(200);
     const body: Body = await response.json();
-    return body.raids.map((r): [string, number] => [r.raidKey, r.instanceCount]).sort();
+    return body.raids;
+}
+
+async function instancesPerRaid(query: Record<string, string>): Promise<[string, number][]> {
+    return (await raids(query)).map((r): [string, number] => [r.raidKey, r.instanceCount]).sort();
 }
 
 describe('GET /api/analytics/raid-stats?difficulty=', () => {
@@ -57,11 +61,8 @@ describe('GET /api/analytics/raid-stats?difficulty=', () => {
 // Above 168h only Full Clears is computed (ADR 0006, second 2026-11-07 amendment). The key stays
 // on the wire as null, so a reader of `row[scope]` sees "not computed" rather than a missing field.
 describe('GET /api/analytics/raid-stats scopes by window', () => {
-    async function firstRaid(hours: string): Promise<Record<string, unknown>> {
-        const response = await GET(new NextRequest(`http://localhost:3100/api/analytics/raid-stats?hours=${hours}`));
-        expect(response.status).toBe(200);
-        const body = await response.json() as { raids: Record<string, unknown>[] };
-        return body.raids[0];
+    async function firstRaid(hours: string): Promise<Body['raids'][number]> {
+        return (await raids({ hours }))[0];
     }
 
     beforeEach(() => {

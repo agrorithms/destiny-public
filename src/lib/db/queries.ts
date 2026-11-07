@@ -914,8 +914,8 @@ export interface RaidScopeStats {
 
 /**
  * The instance-level predicate that defines each scope's population. Adding a scope here, and
- * its `pgcrs` source in {@link RAID_SCOPE_PGCRS}, are the only edits a new scope needs outside
- * the response assembly, which stops compiling until the new key is supplied. All Attempts is
+ * its `pgcrs` source in {@link queryScope}, are the only edits a new scope needs outside the
+ * response assembly, which stops compiling until the new key is supplied. All Attempts is
  * every in-window instance, so its predicate is empty.
  */
 const RAID_SCOPE_PREDICATES = {
@@ -933,26 +933,6 @@ export type RaidScope = keyof typeof RAID_SCOPE_PREDICATES;
  * second 2026-11-07 amendment (#227).
  */
 const ALL_SCOPES_MAX_HOURS = 168;
-
-/**
- * The `pgcrs` index raid stats read the window from (schema.ts): it leads with `ended_at` and
- * carries the Full Clear flags, so the scalar query and the Full Clears scope never touch the
- * table to filter. Named with INDEXED BY because prod's sqlite_stat1 is stale (2.66M rows
- * counted against 1.87M held, nothing for this index) and steers the planner to
- * idx_pgcrs_raid_ended instead: 30d Full Clears ~17 s → ~9 s cold. Not ANALYZE, which would
- * re-plan the whole site from statistics nothing tests. ADR 0006's second 2026-11-07 amendment.
- */
-const RAID_STATS_INDEX = 'idx_pgcrs_ended_period_raid_clear';
-
-/**
- * How each scope's statement reads `pgcrs`. All Attempts filters on neither flag and keeps the
- * planner's choice: forced onto {@link RAID_STATS_INDEX} it measured slightly slower (168h cold,
- * 5.0–5.3 s unforced against 5.8–6.4 s forced).
- */
-const RAID_SCOPE_PGCRS: Record<RaidScope, string> = {
-    fullClear: `pgcrs p INDEXED BY ${RAID_STATS_INDEX}`,
-    allAttempts: 'pgcrs p',
-};
 
 export type RaidStatsRow = {
     raidKey: string;
@@ -1011,6 +991,15 @@ function queryScope(
     const db = getDb();
     const predicate = RAID_SCOPE_PREDICATES[scope];
     const scopeClause = predicate ? ` AND ${predicate}` : '';
+    // How each scope reads `pgcrs`. Full Clears names the widened ended_at index (schema.ts),
+    // which carries both flags of its predicate, for the reason given at getRaidStats's scalar
+    // query. All Attempts filters on neither flag and keeps the planner's choice: forced onto
+    // that index it measured slightly slower (168h cold, 5.0–5.3 s unforced against 5.8–6.4 s
+    // forced). Literals in the function, not a top-level table, so mutation testing reaches them.
+    const pgcrsSource: Record<RaidScope, string> = {
+        fullClear: 'pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear',
+        allAttempts: 'pgcrs p',
+    };
 
     const rows = db.prepare(`
     WITH runs AS MATERIALIZED (
@@ -1024,7 +1013,7 @@ function queryScope(
         -- Deliberately NOT the same guard as the aggregate's below.
         CAST(pp.kills + pp.assists AS REAL) / MAX(pp.deaths, 1) as kda
       FROM pgcr_players pp
-      JOIN ${RAID_SCOPE_PGCRS[scope]} ON pp.instance_id = p.instance_id
+      JOIN ${pgcrsSource[scope]} ON pp.instance_id = p.instance_id
       WHERE p.ended_at >= ?
         AND p.raid_key IS NOT NULL
         ${scopeClause}
@@ -1097,6 +1086,13 @@ export function getRaidStats(
 
     // The row set is driven by this query, not by the scope CTEs: a raid with instances but no
     // Player-Runs in a scope must still appear, with sampleSize 0 and kda null.
+    //
+    // INDEXED BY names the widened ended_at index (schema.ts), which leads with `ended_at` and
+    // carries the Full Clear flags, so this query and the Full Clears scope never touch the
+    // table to filter. Prod's sqlite_stat1 is stale (2.66M rows counted against 1.87M held,
+    // nothing for this index) and steers the planner to idx_pgcrs_raid_ended without it:
+    // 30d Full Clears ~17 s → ~9 s cold. Not ANALYZE, which would re-plan the whole site from
+    // statistics nothing tests. ADR 0006's second 2026-11-07 amendment.
     const scalarRows = db.prepare(`
     SELECT
       p.raid_key as raidKey,
@@ -1106,7 +1102,7 @@ export function getRaidStats(
         THEN p.ended_at - p.period END) as fastestClearSeconds,
       ROUND(CAST(SUM(CASE WHEN p.completed = 0 THEN 1 ELSE 0 END) AS REAL)
         / COUNT(*), 4) as dnfRate
-    FROM pgcrs p INDEXED BY ${RAID_STATS_INDEX}
+    FROM pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear
     WHERE p.ended_at >= ?
       AND p.raid_key IS NOT NULL
       ${filterClause}

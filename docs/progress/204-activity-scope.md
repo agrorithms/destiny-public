@@ -32,14 +32,14 @@ Branch `feat/204-activity-scope`, base `feat/227-widen-ended-index` @ `fd26b2c`.
    - [x] `e2e/visual.spec.ts` — `/activity?scope=full`
 4. Bookkeeping
    - [x] `tests/db/raids-in-progress-index.test.ts` — docblock: #204 now reads the flags
-   - [ ] `docs/e2e-coverage.md` — flow entry and journal
-   - [ ] this file
-   - [ ] `docs/handoffs/261107-204-scope-grill.md` (gitignored, local only) — order, Q6, rejected widening, "Not done"
+   - [x] `docs/e2e-coverage.md` — flow entry and journal
+   - [x] this file
+   - [x] `docs/handoffs/261107-204-scope-grill.md` (gitignored, local only) — order, Q6, rejected widening, "Not done"
 5. Bite proofs and suite
-   - [ ] plan check (both passes) on the 2026-11-05 backup copy
-   - [ ] 30d cold miss, before and after
-   - [ ] `npm run mutate:diff -- fd26b2c...HEAD --typecheck`
-   - [ ] `npm run visual:check`
+   - [x] plan check (both passes) on the 2026-11-05 backup copy — covering at every range, no `INDEXED BY` (below)
+   - [x] 30d cold miss, before and after — measured; **not** within the before spread (below), a decision for the user
+   - [x] `npm run mutate:diff -- fd26b2c...HEAD --typecheck` — full run at `b5b3d56`: 100.0% overall (39/39), 100.0% covered, 23 compile errors discarded, PASS; no survivors, no loops, no `Stryker disable`
+   - [x] `npm run visual:check` — 74/74 at `b5b3d56` (68 before plus `activity-full` at six sizes), overflow gate passed
    - [ ] lint, build, test, e2e at HEAD
 
 ## Real data (2026-11-05 backup)
@@ -87,3 +87,11 @@ expressions, ~970 ms with the two raw columns; the raw-flags variant was no fast
 median is ~110 ms (~7%) higher cold and ~250 ms (~18%) higher warm, and 6 runs land above every before run. The
 extra cost is the work the scopes add: two more columns per row, and each Fresh Run and Full Clear added to a
 second and third set of arrays (~47% more overlap writes at 30d). Put to the user as a decision.
+
+## Browser suite
+
+Red run at `1b655c0` (seed and spec committed, page unchanged): `npm run e2e`, **9 failed, 212 passed** — the nine
+new specs, and nothing else, so the re-flagged seed moved no existing spec. Green at `b5b3d56`: 221/221. Deliberate
+breaks in three builds of `e2e/activity-scope.spec.ts` (three because the intro is checked before the peak, so an
+intro break hides a data break); the table is in `docs/e2e-coverage.md`'s #204 entry. Every one of the nine specs
+failed on a break of its own, and all were reverted.

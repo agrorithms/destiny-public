@@ -10,9 +10,10 @@ import { initializeSchema } from '../../src/lib/db/schema';
  * whether it is there: dropping it only makes them slower on prod. Its existence and column
  * order are the spec, and this pins them. The order matters: `ended_at` leads the range scan,
  * and the four columns after it let SQLite answer the sweep (#204 included, once it reads the
- * two flags) from the index alone, and let the Full Clears scope filter without touching the
- * table. Why it's forced with `INDEXED BY` in `getRaidStats`, and measured, is in ADR 0006's
- * second 2026-11-07 amendment.
+ * two flags) from the index alone. The two flags also let the Full Clears predicate filter on
+ * the index, not the table; the scope still reads the table for `instance_id`, its join key.
+ * Why it's forced with `INDEXED BY` in `getRaidStats`, and measured, is in ADR 0006's second
+ * 2026-11-07 amendment.
  */
 function indexColumns(name: string): string[] {
     return testDb()

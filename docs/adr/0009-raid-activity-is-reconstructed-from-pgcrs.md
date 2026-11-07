@@ -283,7 +283,9 @@ default to Fresh Runs or Full Clears — the same three scopes #200's Raid Stats
   ~0.1 s to ~0.5 s on x86 with a warm page cache (2026-11-05 backup), and the curve pass pays the
   same. That is accepted for now, behind the cache. If the end-to-end cold miss measured in the
   ticket is too slow, widening the index to cover both flags joins #227's migration rather than
-  becoming a second one.
+  becoming a second one. *Superseded by #227:* `idx_pgcrs_ended_period_raid_clear` widens it with
+  both flags, and `EXPLAIN QUERY PLAN` shows the flag-reading sweep as a covering read of it again
+  (2026-11-05 backup under prod's `sqlite_stat1`, and a fresh database), with no `INDEXED BY`.
 - **The Morgeth Pantheon reads zero under Fresh Runs and Full Clears.** None of its runs carries
   Bungie's fresh-start flag, completed ones included, and only that flag is authoritative
   (CONTEXT.md, **Full Clear**). The leaderboard already gives it zero Completions; this agrees.

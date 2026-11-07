@@ -223,15 +223,22 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_member_completed_instance ON pgcr_players(membership_id, completed, instance_id);
   `);
 
-    // Covering index for the Raid Activity sweep (getRaidsInProgress, #195): `ended_at > ?`
-    // leads the range scan, and `period` and `raid_key` after it let SQLite answer the
-    // whole sweep from the index without touching the table. On the 2026-10-23 prod backup
-    // (1.84M PGCRs) it took the default 7-day chart from ~330–450 ms to ~210 ms; 30 days is
-    // nearly the whole table, so it barely helps there. Built here at open, not by a
-    // maintenance script: 1.3 s and 65 MB on that backup. The planner picks it before any
-    // ANALYZE has seen it, so the query needs no INDEXED BY.
+    // Covering index for the Raid Activity sweep (getRaidsInProgress, #195) and for raid
+    // stats' scalar query and Full Clears scope (getRaidStats, #227). `ended_at > ?` leads
+    // the range scan; `period` and `raid_key` after it let SQLite answer the sweep from the
+    // index alone, and `completed` and `activity_was_started_from_beginning` let the Full
+    // Clears predicate (and #204's sweep, which reads both) skip the table too.
+    //
+    // #227 widened #195's (ended_at, period, raid_key), which is dropped here: it is a
+    // prefix of this one. Built at open, not by a maintenance script: ~1.4 s and +3 MB on
+    // the 2026-11-05 backup. The sweep's planner picks it with no hint, under prod's
+    // sqlite_stat1 too (which has no row for it); getRaidStats has to name it with INDEXED
+    // BY, because those stale statistics steer it to idx_pgcrs_raid_ended. Measurements:
+    // ADR 0006's second 2026-11-07 amendment.
     db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid ON pgcrs(ended_at, period, raid_key);
+    DROP INDEX IF EXISTS idx_pgcrs_ended_period_raid;
+    CREATE INDEX IF NOT EXISTS idx_pgcrs_ended_period_raid_clear
+      ON pgcrs(ended_at, period, raid_key, completed, activity_was_started_from_beginning);
   `);
 
     // Indexes for tiered bucket selection on the denormalized last_seen_at.

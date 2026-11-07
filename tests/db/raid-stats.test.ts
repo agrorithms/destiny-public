@@ -41,7 +41,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         // seedRun defaults all players to Warlock
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 3 });
+        expect(stats[0].allAttempts?.classDistribution).toEqual({ Warlock: 3 });
     });
 
     it('counts each class separately within a mixed-class fireteam', () => {
@@ -56,7 +56,7 @@ describe('getRaidStats', () => {
         });
 
         const stats = getRaidStats(24);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Titan: 1, Hunter: 2, Warlock: 1 });
+        expect(stats[0].allAttempts?.classDistribution).toEqual({ Titan: 1, Hunter: 2, Warlock: 1 });
     });
 
     it('respects the hours time window', () => {
@@ -65,7 +65,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(4);
         // Only one instance in window, so one player total
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 1 });
+        expect(stats[0].allAttempts?.classDistribution).toEqual({ Warlock: 1 });
     });
 
     // Guards the builder, not the query: buildPGCR's default period used to be a
@@ -76,7 +76,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         // buildPGCR's default fireteam is six players, each one Player-Run.
-        expect(stats[0].allAttempts.sampleSize).toBe(6);
+        expect(stats[0].allAttempts?.sampleSize).toBe(6);
     });
 
     // Difficulty comes from the activity hash (#41); difficulty_tier records Feats, so each
@@ -89,7 +89,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: DP_EPIC });
 
         const stats = getRaidStats(24, { difficulty: 'master' });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['vault_of_glass', 1]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts?.sampleSize])).toEqual([['vault_of_glass', 1]]);
     });
 
     it('difficulty=normal counts Normal-hash instances, Feats on or not', () => {
@@ -99,7 +99,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '4', completedBy: ['p4'], activityHash: DP_EPIC });
 
         const stats = getRaidStats(24, { difficulty: 'normal' });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['vault_of_glass', 2]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts?.sampleSize])).toEqual([['vault_of_glass', 2]]);
     });
 
     it('difficulty=epic counts only Epic-hash instances', () => {
@@ -108,7 +108,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: VOG_MASTER });
 
         const stats = getRaidStats(24, { difficulty: 'epic' });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['the_desert_perpetual', 1]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts?.sampleSize])).toEqual([['the_desert_perpetual', 1]]);
     });
 
     it('exactPlayers filters to exact unique_player_count match', () => {
@@ -118,7 +118,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24, { exactPlayers: 2 });
         expect(stats).toHaveLength(1);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 2 });
+        expect(stats[0].allAttempts?.classDistribution).toEqual({ Warlock: 2 });
     });
 
     it('maxPlayers filters by unique_player_count', () => {
@@ -129,7 +129,7 @@ describe('getRaidStats', () => {
         const stats = getRaidStats(24, { maxPlayers: 2 });
         expect(stats).toHaveLength(1);
         // 1 + 2 players from the two qualifying instances
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 3 });
+        expect(stats[0].allAttempts?.classDistribution).toEqual({ Warlock: 3 });
     });
 
     it('filters compose: difficulty + maxPlayers', () => {
@@ -139,7 +139,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: DP_NORMAL, difficultyTier: 4, uniquePlayerCount: 1 });
 
         const stats = getRaidStats(24, { difficulty: 'master', maxPlayers: 3 });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.classDistribution])).toEqual([['vault_of_glass', { Warlock: 1 }]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts?.classDistribution])).toEqual([['vault_of_glass', { Warlock: 1 }]]);
     });
 
     it('excludes NULL unique_player_count when maxPlayers is specified', () => {
@@ -148,7 +148,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24, { maxPlayers: 6 });
         expect(stats).toHaveLength(1);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 1 });
+        expect(stats[0].allAttempts?.classDistribution).toEqual({ Warlock: 1 });
     });
 
     it('dnfRate is instance-level, not player-level', () => {
@@ -253,8 +253,8 @@ describe('getRaidStats', () => {
         expect(stats[0].fullClear.aggregateKda).toBeNull();
         expect(stats[0].fullClear.classDistribution).toEqual({});
         // The same raid still has Player-Runs under the broader scope.
-        expect(stats[0].allAttempts.sampleSize).toBe(1);
-        expect(stats[0].allAttempts.kda).not.toBeNull();
+        expect(stats[0].allAttempts?.sampleSize).toBe(1);
+        expect(stats[0].allAttempts?.kda).not.toBeNull();
     });
 
     it('reports the two scopes as different populations for the same raid', () => {
@@ -268,11 +268,11 @@ describe('getRaidStats', () => {
         expect(row.fullClear.kda).toEqual({ p25: 100, p50: 100, p75: 100 });
         expect(row.fullClear.aggregateKda).toBe(100);
 
-        expect(row.allAttempts.sampleSize).toBe(2);
+        expect(row.allAttempts?.sampleSize).toBe(2);
         // Sorted KDAs are [0, 100]: nearest rank puts p25 and p50 on the DNF run.
-        expect(row.allAttempts.kda).toEqual({ p25: 0, p50: 0, p75: 100 });
+        expect(row.allAttempts?.kda).toEqual({ p25: 0, p50: 0, p75: 100 });
         // (100+0)/(1+10) = 9.09
-        expect(row.allAttempts.aggregateKda).toBe(9.09);
+        expect(row.allAttempts?.aggregateKda).toBe(9.09);
     });
 
     it('counts instances in instanceCount and Player-Runs in sampleSize', () => {
@@ -282,7 +282,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         expect(stats[0].instanceCount).toBe(2);
-        expect(stats[0].allAttempts.sampleSize).toBe(4);
+        expect(stats[0].allAttempts?.sampleSize).toBe(4);
         expect(stats[0].fullClear.sampleSize).toBe(3);
     });
 
@@ -293,6 +293,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         for (const scope of [stats[0].fullClear, stats[0].allAttempts]) {
+            if (scope === null) throw new Error('every scope is computed at 24h');
             const total = Object.values(scope.classDistribution).reduce((a, b) => a + b, 0);
             expect(total).toBe(scope.sampleSize);
         }

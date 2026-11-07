@@ -15,8 +15,9 @@ Seams and decisions approved 2026-11-07:
    - [x] `tests/routes/raid-stats.test.ts` — S3
    - Red run on the old code: 5 of 38 failed. Both index tests (no widened index; the old one not dropped), the 169h and 720h null tests, and the route's `hours=720` null. The 168h boundary, the 720h scalar fields and the route's `hours=168` pass before and after: they guard what must not change
 2. The index, the hint and the 30d rule, green
-   - [ ] `src/lib/db/schema.ts` — DROP the old index, CREATE the widened one, comment
-   - [ ] `src/lib/db/queries.ts` — `ALL_SCOPES_MAX_HOURS`, `RAID_STATS_INDEX`, the per-scope `pgcrs` source, `RaidStatsRow`, comments naming the index
+   - [x] `src/lib/db/schema.ts` — DROP the old index, CREATE the widened one, comment
+   - [x] `src/lib/db/queries.ts` — `ALL_SCOPES_MAX_HOURS`, `RAID_STATS_INDEX`, the per-scope `pgcrs` source, `RaidStatsRow`, comments naming the index
+   - `tests/db/raid-stats.test.ts` also needed `?.` on the existing `allAttempts` reads (and a throw in the class-sum loop) once the type allows `null`. No assertion changed: a `null` there still fails each test
 3. Docs, measurements and bite proofs
    - [ ] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — pointer on the covering-index bullet
    - [ ] `docs/progress/227-widen-ended-index.md` — this file, with the real-data hashes, plans and timings

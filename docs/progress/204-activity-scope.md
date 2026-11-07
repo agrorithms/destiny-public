@@ -24,14 +24,14 @@ Branch `feat/204-activity-scope`, base `feat/227-widen-ended-index` @ `fd26b2c`.
    - [x] `tests/db/raids-in-progress.test.ts`, `tests/db/completeness-curve.test.ts`
    - [x] `src/lib/db/queries.ts`
 3. Browser suite and page, red then green
-   - [ ] `e2e/support/seed-world.ts` — Fresh Runs and Full Clears re-flagged into the Activity world
-   - [ ] `e2e/activity-scope.spec.ts`
-   - [ ] `src/app/activity/ActivityScopeControl.tsx`
-   - [ ] `src/app/activity/ActivityRangeControl.tsx`, `ActivityRaidPicker.tsx`, `ActivityChart.tsx`
-   - [ ] `src/app/activity/page.tsx`
-   - [ ] `e2e/visual.spec.ts` — `/activity?scope=full`
+   - [x] `e2e/support/seed-world.ts` — Fresh Runs and Full Clears re-flagged into the Activity world
+   - [x] `e2e/activity-scope.spec.ts`
+   - [x] `src/app/activity/ActivityScopeControl.tsx`
+   - [x] `src/app/activity/ActivityRangeControl.tsx`, `ActivityRaidPicker.tsx`, `ActivityChart.tsx`
+   - [x] `src/app/activity/page.tsx`
+   - [x] `e2e/visual.spec.ts` — `/activity?scope=full`
 4. Bookkeeping
-   - [ ] `tests/db/raids-in-progress-index.test.ts` — docblock: #204 now reads the flags
+   - [x] `tests/db/raids-in-progress-index.test.ts` — docblock: #204 now reads the flags
    - [ ] `docs/e2e-coverage.md` — flow entry and journal
    - [ ] this file
    - [ ] `docs/handoffs/261107-204-scope-grill.md` (gitignored, local only) — order, Q6, rejected widening, "Not done"
@@ -60,3 +60,30 @@ Raid runs on the copy by flag: fresh-start 0 / completed 0: 850,139; 0 / 1: 304,
 |---|---|---|---|---|---|
 | 1 | 1,777 | 1,723 | 1,653 | 1,491 | 1,473 |
 | 2 | 1,729 | 1,656 | 1,620 | 1,467 | 1,468 |
+
+**Plan, after** (the shipped `endedRaidRuns`, which also reads `p.activity_was_started_from_beginning = 1` and
+`(FULL_CLEAR)`): at 24h, 7d and 30d, both passes (the curve pass's training week and the sweep) are
+`SEARCH p USING COVERING INDEX idx_pgcrs_ended_period_raid_clear (ended_at>? AND ended_at<?)`. No `INDEXED BY`
+added.
+
+**Same answer for All Attempts.** The 30d and 7d All Attempts series hash the same before and after (`42d6708403f1`,
+`f5de32bfcdf3`: every point, estimate and top raid). The other scopes' default raids on the copy: 7d Fresh Runs and
+Full Clears both VoG · RoN · DSC (the grill's figures); 30d Fresh Runs VoG · LW · RoN, Full Clears VoG · KF · RoN.
+
+**30d cold miss, after**, interleaved with before in the same session (three rounds of before, after and a
+raw-flags variant, then the earlier two), cold ms:
+
+| | runs | min | median | max |
+|---|---|---|---|---|
+| before (`fd26b2c`) | 21 cold | 1,518 | 1,636 | 1,836 |
+| after (`endedRaidRuns` with the two flag expressions) | 15 cold | 1,714 | 1,748 | 2,240 |
+| variant: raw flag columns, classified in JS (not shipped) | 9 cold | 1,767 | 1,807 | 1,836 |
+
+Warm: before 1,322–1,498, after 1,561–1,846. Split warm, the curve pass went ~230 → ~300 ms and the sweep
+~1,060 → ~1,330 ms. Reading the rows alone (no JS work) is ~890 ms before and ~1,190 ms with the two flag
+expressions, ~970 ms with the two raw columns; the raw-flags variant was no faster end to end.
+
+**Verdict: not within the before spread.** 9 of 15 after runs fall inside the before range (1,518–1,836), but the
+median is ~110 ms (~7%) higher cold and ~250 ms (~18%) higher warm, and 6 runs land above every before run. The
+extra cost is the work the scopes add: two more columns per row, and each Fresh Run and Full Clear added to a
+second and third set of arrays (~47% more overlap writes at 30d). Put to the user as a decision.

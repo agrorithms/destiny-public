@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import type { RaidsInProgressSeries } from '@/lib/db/queries';
 import type { RaidOption } from '@/components/RaidMultiSelect';
 import { rangeOfSeries, type ActivityRange } from './activity-range';
+import type { ActivityScopeId } from './activity-scope';
 import {
     CHART_HEIGHT,
     CHART_WIDTH,
@@ -81,12 +82,15 @@ export function ActivityChart({
     series,
     raidOptions,
     picked,
+    scope,
 }: {
     series: RaidsInProgressSeries;
     /** Every raid the picker offers, in its order. */
     raidOptions: RaidOption[];
     /** The raids the bottom panel draws, in the order they are coloured. */
     picked: string[];
+    /** The Scope `series` counts (#204), which a raid pick keeps. */
+    scope: ActivityScopeId;
 }) {
     const { from, to, points } = series;
     const range = rangeOfSeries(series);
@@ -174,7 +178,7 @@ export function ActivityChart({
             </div>
 
             <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-                <ActivityRaidPicker raids={raidOptions} picked={picked} range={range.id} />
+                <ActivityRaidPicker raids={raidOptions} picked={picked} range={range.id} scope={scope} />
                 {pickedRaids.length === 0 ? (
                     <p className="ui-text-secondary text-xs">No raids have been counted in this range yet. Pick some to compare.</p>
                 ) : (

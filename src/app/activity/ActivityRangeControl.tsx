@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ACTIVITY_RANGES, activityRangeHref, type ActivityRangeId } from './activity-range';
+import type { ActivityScopeId } from './activity-scope';
 
 /**
  * The 24h / 7d / 30d presets above the Raid Activity chart (#195).
@@ -10,9 +11,17 @@ import { ACTIVITY_RANGES, activityRangeHref, type ActivityRangeId } from './acti
  * re-renders the server component without a full reload, and `scroll={false}` keeps the
  * reader where they were. Why the range is in the URL: ./activity-range.ts. The links carry the
  * raids the URL named (#198), so a range switch keeps the reader's comparison; with none named
- * they carry none, and each range picks its own top raids.
+ * they carry none, and each range picks its own top raids. They carry the scope too (#204).
  */
-export function ActivityRangeControl({ range, raids }: { range: ActivityRangeId; raids: readonly string[] }) {
+export function ActivityRangeControl({
+    range,
+    raids,
+    scope,
+}: {
+    range: ActivityRangeId;
+    raids: readonly string[];
+    scope: ActivityScopeId;
+}) {
     return (
         <nav aria-label="Range" data-testid="activity-range">
             {/* No wrap and no scroll: three short labels fit a 360px phone on one row, and
@@ -23,7 +32,7 @@ export function ActivityRangeControl({ range, raids }: { range: ActivityRangeId;
                     return (
                         <li key={id} className="border-l ui-divider first:border-l-0">
                             <Link
-                                href={activityRangeHref(id, raids)}
+                                href={activityRangeHref(id, raids, scope)}
                                 scroll={false}
                                 aria-current={active ? 'page' : undefined}
                                 // The leaderboard's View toggle's warm tokens: the chosen preset

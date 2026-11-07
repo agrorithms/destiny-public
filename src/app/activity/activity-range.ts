@@ -13,6 +13,7 @@
  */
 
 import { ACTIVITY_RAIDS_PARAM } from './activity-raids';
+import type { ActivityScopeId } from './activity-scope';
 
 /** The URL's spelling of the range. Absent means 7 days. */
 const ACTIVITY_RANGE_PARAM = 'range';
@@ -51,7 +52,8 @@ export function parseActivityRange(searchParams: Record<string, string | string[
  * any leaves the panel on the range's own top raids. The keys are percent-encoded but not
  * their commas, so a shared link stays readable.
  */
-export function activityRangeHref(id: ActivityRangeId, raids: readonly string[] = []): string {
+export function activityRangeHref(id: ActivityRangeId, raids: readonly string[] = [], scope: ActivityScopeId = 'all'): string {
+    void scope;
     const range = `/activity?${new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id })}`;
     return raids.length === 0 ? range : `${range}&${ACTIVITY_RAIDS_PARAM}=${raids.map(encodeURIComponent).join(',')}`;
 }

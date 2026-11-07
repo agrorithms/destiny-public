@@ -1673,6 +1673,13 @@ export const PROVISIONAL_MIN_AGE_SECONDS = 900; // fifteen minutes
  */
 export const DATA_START_MARGIN_SECONDS = 21600; // six hours
 
+/**
+ * The Scopes Raid Activity counts under (#204, CONTEXT.md **Scope**), each a subset of the one
+ * before: every raid instance, the Fresh Runs among them, and the Full Clears among those.
+ * Spelled as getRaidStats' {@link RaidScope} spells the two it shares.
+ */
+export type ActivityScope = 'allAttempts' | 'freshRuns' | 'fullClear';
+
 /** One step of the Raids in Progress series: `[start, end)` in unix seconds. */
 export interface RaidsInProgressPoint {
     start: number;

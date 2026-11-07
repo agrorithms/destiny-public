@@ -21,8 +21,8 @@ Branch `feat/204-activity-scope`, base `feat/227-widen-ended-index` @ `fd26b2c`.
    - [x] `src/app/activity/activity-scope.test.ts`, `src/app/activity/activity-range.test.ts`
    - [x] `src/app/activity/activity-scope.ts`, `src/app/activity/activity-range.ts`
 2. Query, red then green
-   - [ ] `tests/db/raids-in-progress.test.ts`, `tests/db/completeness-curve.test.ts`
-   - [ ] `src/lib/db/queries.ts`
+   - [x] `tests/db/raids-in-progress.test.ts`, `tests/db/completeness-curve.test.ts`
+   - [x] `src/lib/db/queries.ts`
 3. Browser suite and page, red then green
    - [ ] `e2e/support/seed-world.ts` — Fresh Runs and Full Clears re-flagged into the Activity world
    - [ ] `e2e/activity-scope.spec.ts`

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/analytics/raid-stats/route';
+import type { RaidStatsRow } from '@/lib/db/queries';
 import { __resetSwrCacheForTests } from '@/lib/cache/swr-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
@@ -14,7 +15,7 @@ import { DP_EPIC, DP_NORMAL, VOG_MASTER } from '../helpers/pgcr-builder';
  */
 
 interface Body {
-    raids: { raidKey: string; instanceCount: number }[];
+    raids: RaidStatsRow[];
 }
 
 beforeEach(() => {
@@ -22,11 +23,15 @@ beforeEach(() => {
     __resetSwrCacheForTests();
 });
 
-async function instancesPerRaid(query: Record<string, string>): Promise<[string, number][]> {
+async function raids(query: Record<string, string>): Promise<Body['raids']> {
     const response = await GET(new NextRequest(`http://localhost:3100/api/analytics/raid-stats?${new URLSearchParams(query)}`));
     expect(response.status).toBe(200);
     const body: Body = await response.json();
-    return body.raids.map((r): [string, number] => [r.raidKey, r.instanceCount]).sort();
+    return body.raids;
+}
+
+async function instancesPerRaid(query: Record<string, string>): Promise<[string, number][]> {
+    return (await raids(query)).map((r): [string, number] => [r.raidKey, r.instanceCount]).sort();
 }
 
 describe('GET /api/analytics/raid-stats?difficulty=', () => {
@@ -51,5 +56,29 @@ describe('GET /api/analytics/raid-stats?difficulty=', () => {
 
     it('an unknown difficulty is ignored', async () => {
         expect(await instancesPerRaid({ hours: '24', difficulty: 'hard' })).toEqual([['the_desert_perpetual', 3], ['vault_of_glass', 1]]);
+    });
+});
+
+// Above 168h only Full Clears is computed (ADR 0006, second 2026-11-07 amendment). The key stays
+// on the wire as null, so a reader of `row[scope]` sees "not computed" rather than a missing field.
+describe('GET /api/analytics/raid-stats scopes by window', () => {
+    async function firstRaid(hours: string): Promise<Body['raids'][number]> {
+        return (await raids({ hours }))[0];
+    }
+
+    beforeEach(() => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER });
+    });
+
+    it('sends allAttempts as null at hours=720, with fullClear computed', async () => {
+        const raid = await firstRaid('720');
+        expect(raid).toHaveProperty('allAttempts', null);
+        expect(raid).toHaveProperty('fullClear.sampleSize', 1);
+    });
+
+    it('sends both scopes at hours=168', async () => {
+        const raid = await firstRaid('168');
+        expect(raid).toHaveProperty('allAttempts.sampleSize', 1);
+        expect(raid).toHaveProperty('fullClear.sampleSize', 1);
     });
 });

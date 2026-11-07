@@ -913,9 +913,11 @@ export interface RaidScopeStats {
 }
 
 /**
- * The instance-level predicate that defines each scope's population. Adding a scope here is
- * the only edit a new scope needs outside the response assembly, which stops compiling until
- * the new key is supplied. All Attempts is every in-window instance, so its predicate is empty.
+ * The instance-level predicate that defines each scope's population. Adding a scope here, and
+ * its `pgcrs` source in {@link queryScope}, are the only edits a new scope needs outside the
+ * response assembly, which stops compiling until the new key is supplied; the assembly is
+ * also where a scope is left uncomputed above {@link ALL_SCOPES_MAX_HOURS}. All Attempts is
+ * every in-window instance, so its predicate is empty.
  */
 const RAID_SCOPE_PREDICATES = {
     fullClear: FULL_CLEAR,
@@ -923,6 +925,15 @@ const RAID_SCOPE_PREDICATES = {
 } as const;
 
 export type RaidScope = keyof typeof RAID_SCOPE_PREDICATES;
+
+/**
+ * Windows up to this many hours compute every scope; longer ones compute only `fullClear`, and
+ * the other scopes come back `null`, "not computed for this window". 30d All Attempts is
+ * 5.1M Player-Runs, ~18 s warm on prod's data; 30d Full Clears is 969k. The rule lives here,
+ * not in the route or the UI, because the route accepts any `hours` from 1 to 720. ADR 0006's
+ * second 2026-11-07 amendment (#227).
+ */
+const ALL_SCOPES_MAX_HOURS = 168;
 
 export type RaidStatsRow = {
     raidKey: string;
@@ -932,7 +943,12 @@ export type RaidStatsRow = {
     dnfRate: number;
     /** Raid instances in window — the denominator of dnfRate. A different unit from sampleSize. */
     instanceCount: number;
-} & Record<RaidScope, RaidScopeStats>;
+    /**
+     * Computed for every window. The other scopes are `null` above {@link ALL_SCOPES_MAX_HOURS}:
+     * not computed, which is a different thing from an empty scope (sampleSize 0, kda null).
+     */
+    fullClear: RaidScopeStats;
+} & Record<Exclude<RaidScope, 'fullClear'>, RaidScopeStats | null>;
 
 /** A scope with no Player-Runs at all. A factory, so callers never share one mutable row. */
 function emptyScopeStats(): RaidScopeStats {
@@ -976,6 +992,15 @@ function queryScope(
     const db = getDb();
     const predicate = RAID_SCOPE_PREDICATES[scope];
     const scopeClause = predicate ? ` AND ${predicate}` : '';
+    // How each scope reads `pgcrs`. Full Clears names the widened ended_at index (schema.ts),
+    // which carries both flags of its predicate, for the reason given at getRaidStats's scalar
+    // query. All Attempts filters on neither flag and keeps the planner's choice: forced onto
+    // that index it measured slightly slower (168h cold, 5.0–5.3 s unforced against 5.8–6.4 s
+    // forced). Literals in the function, not a top-level table, so mutation testing reaches them.
+    const pgcrsSource: Record<RaidScope, string> = {
+        fullClear: 'pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear',
+        allAttempts: 'pgcrs p',
+    };
 
     const rows = db.prepare(`
     WITH runs AS MATERIALIZED (
@@ -989,7 +1014,7 @@ function queryScope(
         -- Deliberately NOT the same guard as the aggregate's below.
         CAST(pp.kills + pp.assists AS REAL) / MAX(pp.deaths, 1) as kda
       FROM pgcr_players pp
-      JOIN pgcrs p ON pp.instance_id = p.instance_id
+      JOIN ${pgcrsSource[scope]} ON pp.instance_id = p.instance_id
       WHERE p.ended_at >= ?
         AND p.raid_key IS NOT NULL
         ${scopeClause}
@@ -1062,6 +1087,13 @@ export function getRaidStats(
 
     // The row set is driven by this query, not by the scope CTEs: a raid with instances but no
     // Player-Runs in a scope must still appear, with sampleSize 0 and kda null.
+    //
+    // INDEXED BY names the widened ended_at index (schema.ts), which leads with `ended_at` and
+    // carries the Full Clear flags, so unfiltered, this query and the Full Clears scope never
+    // touch the table to filter. Prod's sqlite_stat1 is stale (2.66M rows counted against 1.87M
+    // held, nothing for this index) and steers the planner to idx_pgcrs_raid_ended without it:
+    // 30d Full Clears ~17 s → ~9 s cold. Not ANALYZE, which would re-plan the whole site from
+    // statistics nothing tests. ADR 0006's second 2026-11-07 amendment.
     const scalarRows = db.prepare(`
     SELECT
       p.raid_key as raidKey,
@@ -1071,7 +1103,7 @@ export function getRaidStats(
         THEN p.ended_at - p.period END) as fastestClearSeconds,
       ROUND(CAST(SUM(CASE WHEN p.completed = 0 THEN 1 ELSE 0 END) AS REAL)
         / COUNT(*), 4) as dnfRate
-    FROM pgcrs p
+    FROM pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear
     WHERE p.ended_at >= ?
       AND p.raid_key IS NOT NULL
       ${filterClause}
@@ -1085,17 +1117,17 @@ export function getRaidStats(
 
     const scopeContext: ScopeQueryContext = { cutoff, filterClause, filterParams };
     const fullClear = queryScope(scopeContext, 'fullClear');
-    const allAttempts = queryScope(scopeContext, 'allAttempts');
+    const allAttempts = hoursBack > ALL_SCOPES_MAX_HOURS ? null : queryScope(scopeContext, 'allAttempts');
 
     return scalarRows.map(row => ({
         raidKey: row.raidKey,
         fastestClearSeconds: row.fastestClearSeconds,
         dnfRate: row.dnfRate,
         instanceCount: row.instanceCount,
-        // A raid can have instances in-window but no Player-Runs in a scope; that — and only
-        // that — is when a scope reports sampleSize 0 and kda null.
+        // A raid can have instances in-window but no Player-Runs in a computed scope; that —
+        // and only that — is when a scope reports sampleSize 0 and kda null.
         fullClear: fullClear.get(row.raidKey) ?? emptyScopeStats(),
-        allAttempts: allAttempts.get(row.raidKey) ?? emptyScopeStats(),
+        allAttempts: allAttempts ? allAttempts.get(row.raidKey) ?? emptyScopeStats() : null,
     }));
 }
 
@@ -1767,11 +1799,11 @@ export interface RaidsInProgressOptions {
  * estimate ends at the first step it can't make.
  *
  * **One sweep, not one query per step.** The PGCRs overlapping the window are read in a
- * single pass through the covering `idx_pgcrs_ended_period_raid` (`ended_at > first step
- * start`), and each adds its overlap in O(1): the partial first and last steps it touches
- * directly, and the whole steps between them through a running difference array. So the
- * cost is rows + steps, never rows × steps — a run lasting days adds two array writes, not
- * one per hour it spans. The curve is a second pass, over its own training week.
+ * single pass through the covering `idx_pgcrs_ended_period_raid_clear` (`ended_at > first
+ * step start`), and each adds its overlap in O(1): the partial first and last steps it
+ * touches directly, and the whole steps between them through a running difference array.
+ * So the cost is rows + steps, never rows × steps — a run lasting days adds two array
+ * writes, not one per hour it spans. The curve is a second pass, over its own training week.
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
@@ -1918,8 +1950,8 @@ function topRaids(raidTime: ReadonlyMap<string, number>): string[] {
  * **Reads the week of whole steps ending between 8 days and 24 hours before `now`**, so
  * every run that overlapped them has long since ended, and nothing newer teaches it
  * how incomplete a recent step is. Raids only, by `ended_at` (the covering
- * `idx_pgcrs_ended_period_raid`, no table lookups) and never `fetched_at`: the curve is
- * about how long raids last, and the scanner's lag is not. A run that has not ended by
+ * `idx_pgcrs_ended_period_raid_clear`, no table lookups) and never `fetched_at`: the curve
+ * is about how long raids last, and the scanner's lag is not. A run that has not ended by
  * `now` is not a report yet, as in {@link getRaidsInProgress}.
  *
  * A second pass over the same index as the sweep: about 230 ms on the prod backup, once
@@ -1976,7 +2008,9 @@ export function getCompletenessCurves(options: {
  * Activity counts ({@link getRaidsInProgress}) and the ones its completeness curve learns
  * from ({@link getCompletenessCurve}), read one way for both so the estimate scales up the
  * same population it was learned from. Raids only, through the covering
- * `idx_pgcrs_ended_period_raid`. A run that has not ended by `now` is not a report yet.
+ * `idx_pgcrs_ended_period_raid_clear`, which the planner picks with no hint, under prod's
+ * statistics too (checked on the 2026-11-05 backup, #227). A run that has not ended by `now`
+ * is not a report yet.
  */
 function endedRaidRuns(bounds: { endedAfter: number; now: number; startedBefore: number }): IterableIterator<[number, number, string]> {
     const { endedAfter, now, startedBefore } = bounds;

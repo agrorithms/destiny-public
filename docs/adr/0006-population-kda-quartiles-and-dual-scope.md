@@ -107,7 +107,7 @@ cold miss awaits it, and at this site's traffic (~5 visitors/day, 2 workers) a ~
 worker restart or a first-time filter combination is a non-event. It is also only ~2.4x a stall the
 endpoint already had.
 
-**The cheap next move, if it stops being one.** If #51's charts make this endpoint hot, or the
+**The cheap next move, if it stops being one.** *(Shown not to work as written: see the second amendment of 2026-11-07, #227.)* If #51's charts make this endpoint hot, or the
 filter matrix multiplies cache keys enough that cold misses stop being rare, add a stored generated
 column for the per-row KDA on `pgcr_players` and index it, so the rank can be served from an index
 instead of a sort. That is a schema migration plus a backfill, and it leaves every query shape and
@@ -121,3 +121,159 @@ Attempts scope.
 These timings scale with retained data. `CRAWLER_CLEANUP_BATCH_SIZE` and the PGCR retention window
 set how many Player-Runs a 168h query ranks; a retention increase moves the All Attempts number
 first.
+
+## Amendment (2026-11-01): the board that reads this endpoint (#200)
+
+The first reader of `getRaidStats` is the Raid Stats tab on the Raid Activity page (#200), and
+building it changes three things this ADR said.
+
+- **There will be three scopes, not two.** #204 puts one choice on the Raid Activity page: All
+  Attempts, Fresh Runs, Full Clears, each a subset of the one before. `getRaidStats` gains a Fresh
+  Runs scope between the existing two. The nesting rule above still holds: the response nests the
+  scope-sensitive metrics, and the nesting is the documentation. Fresh Runs is a statement about
+  how a run *began*, so a Fresh Run nobody finished is in it.
+- **Clear Time Quartiles join `fastestClearSeconds` outside the toggle**, for the reason that
+  put it there: a duration means something only for a Full Clear. Narrowing them to Fresh Runs or
+  All Attempts would publish a typical clear time that includes runs nobody cleared. The datum is
+  the instance, not the Player-Run, and the method is the same nearest rank.
+- **`dnfRate` is not displayed.** On this site most instances are Checkpoint Runs, so it reads
+  as "this raid is hard" and means something else. The API keeps it. A rate over Fresh Runs only,
+  which is the Reset share, is a separate ticket.
+
+**The "non-event" reasoning above no longer holds at 30 days.** The board offers 24h, 7d and 30d.
+Measured 2026-11-01 on a copy of that day's backup (2.09 GB, 13 raids), x86, `getRaidStats` end to
+end, three runs each:
+
+| window | Player-Runs (All Attempts) | ms |
+|---|---|---|
+| 24h | 175k | 1386 / 717 / 613 |
+| 7d | 1.08M | 5133 / 4760 / 4667 |
+| 30d | 5.20M | 27726 / 24700 / 25876 |
+
+Cost tracks Player-Runs, so 30d is about 5x 7d. On the ARM box the earlier ~2x factor puts a 30d
+cold miss near 50 s of blocked event loop; that is an estimate, not a measurement. It stays well
+under the 10-minute active-session watchdog (ADR 0005), but a worker that cannot answer for 50 s
+looks hung. The "cheap next move" above is therefore taken before the board ships: a separate
+ticket adds the stored generated KDA column and index, and #200 is blocked on it.
+Success is a 30d All Attempts miss near the 7d figure above; if the index does not get there, the
+fallback is to drop 30d on this tab.
+
+## Amendment (2026-11-07): the toggle is a link, the dimension stays (#204)
+
+This ADR put scope in the response so "the analytics UI toggles between them client-side with no
+refetch". The Raid Activity page, and #200's Raid Stats tab on it, are server-rendered and hold the
+scope in the URL (`?scope=all|fresh|full`) so it works with JavaScript off and survives a shared link,
+so choosing a scope is a navigation, not a client-side swap. The reason behind the original wording still
+holds and is the part that matters: **scope is a dimension of the cached value, not a cache key.** A
+scope switch re-renders from the entry already cached for that range and adds no key or cold miss.
+Raid Activity's own series follows the same rule (ADR 0009, amendment 2026-11-07).
+
+## Amendment (2026-11-07): the cheap next move doesn't work (#227)
+
+Grilling #227 found that the stored generated KDA column can't do what "the cheap next move" above
+promised, so the 2026-11-01 amendment's plan to take it before #200 ships is withdrawn. In its
+place, **30d on the Raid Stats tab shows Full Clears only**, served through a widened `pgcrs` index
+(the decision is at the end of this amendment). Keeping All Attempts and Fresh Runs at 30d is
+#238's question.
+
+Measured on `data/raid-tracker.backup-2026-11-05.db` (2.07 GB, 1.87M PGCRs, 5.20M `pgcr_players`
+rows), x86, read-only through better-sqlite3 (SQLite 3.51.2). Each window ends at the backup's
+newest `ended_at`, not at the time of the run. Two runs each. These time the scope statement
+(`queryScope`'s SQL) and the scalar query on their own, not `getRaidStats` end to end.
+
+All Attempts at 720h (5,124,713 Player-Runs), broken into pieces:
+
+| piece | ms |
+|---|---|
+| the join alone (window filter, per-row KDA) | 13,628 cold / 3,941 warm |
+| join + `ROW_NUMBER() OVER (PARTITION BY raidKey ORDER BY kda)` | 9,506 / 9,974 |
+| the whole scope statement as shipped | 17,959 / 19,697 |
+| a one-pass reshape (rank and count in one window pass, quartiles only) | 12,597 / 11,542 |
+
+The plan shows where the sort happens:
+
+```
+MATERIALIZE runs
+  SEARCH p USING INDEX idx_pgcrs_raid_ended (ANY(raid_key) AND ended_at>?)
+  SEARCH pp USING INDEX idx_pgcr_players_instance_completed_member (instance_id=?)
+MATERIALIZE ranked
+  SCAN runs
+  USE TEMP B-TREE FOR ORDER BY
+SEARCH r USING AUTOMATIC COVERING INDEX (raidKey=?)
+```
+
+Three things follow, and each one alone is enough to sink the column:
+
+- **No index on `pgcr_players` can serve this sort.** The `ORDER BY kda` runs over `runs`, a
+  materialised temporary table, and is partitioned by `raid_key`, which lives on `pgcrs`. An index
+  on a KDA column of `pgcr_players` isn't visible at the point where the sort happens.
+- **The sort is about a third of the cost.** The join alone is ~4 s warm and ~14 s cold. Taking
+  the sort away entirely would still leave a 30d All Attempts miss well above the 7d figure.
+- **SQLite can't add a `STORED` generated column with `ALTER TABLE ADD COLUMN`**, only a `VIRTUAL`
+  one. Taken literally, the column means rebuilding `pgcr_players`, which can't be done in batches
+  with the crawlers up.
+
+Reshaping the query without a schema change (the last table row) saves less than half.
+
+**Cost by scope.** Cost still tracks Player-Runs in scope, so narrowing the scope is the lever that
+works. Same backup, the scope statement with the given predicate, warm:
+
+| scope | window | Player-Runs | scope statement (ms) |
+|---|---|---|---|
+| Full Clears | 168h | 222,836 | 756 / 733 |
+| Fresh Runs | 168h | 437,929 | 1,452 / 1,394 |
+| Full Clears | 720h | 968,587 | 3,703 / 3,804 |
+| Fresh Runs | 720h | 2,152,720 | 8,621 / 7,863 |
+| All Attempts | 720h | 5,124,713 | 17,959 / 19,697 |
+
+The scalar query (instance count, fastest clear, DNF rate) is ~0.9 s warm at 720h and ~0.17 s at
+168h. A 30d Full Clears statement plus the scalar query is ~4.7 s warm, close to the 7d
+`getRaidStats` figure in the 2026-11-01 amendment (4.7–5.1 s). That was a different backup and
+both scopes end to end, so it is a rough comparison only. Cold, they are not close: the first 720h Full Clears
+join took 13,910 ms, because the scope predicate reads `completed` and
+`activity_was_started_from_beginning` from the `pgcrs` table, which `idx_pgcrs_raid_ended` doesn't
+cover. That is the same index gap #204 opened on the Raid Activity sweep (amendment 2026-11-07
+above).
+
+**The widened index, measured cold.** Same backup, on a scratch copy, x86. "Cold" means the copy's
+pages were evicted from the OS page cache (`posix_fadvise(DONTNEED)`) before each run; the ARM box's
+block volume will differ. 720h, Full Clears scope statement and the scalar query, three cold runs
+and two warm:
+
+| `pgcrs` index | scalar, cold | Full Clears, cold | Full Clears, warm |
+|---|---|---|---|
+| as today | 1,988 / 1,537 / 1,549 | 17,363 / 17,101 / 16,523 | 4,465 / 3,796 |
+| V1: `(ended_at, period, raid_key, completed, activity_was_started_from_beginning)`, forced | 1,048 / 921 / 926 | 9,123 / 9,281 / 9,155 | 3,135 / 3,136 |
+| V2: V1 + `instance_id`, forced | 908 / 878 / 930 | 8,495 / 8,376 / 8,301 | 2,986 / 2,923 |
+
+Output was identical in every variant (same row hashes). V1 replaced `idx_pgcrs_ended_period_raid`
+in 1.4 s for +3 MB; V2 cost +22 MB more for ~0.8 s. The ~8–9 s left cold is the `pgcr_players` side
+(random lookups for kills, deaths, assists and class), which no `pgcrs` index reaches. **Unforced,
+the planner ignored both**: it kept `idx_pgcrs_raid_ended (ANY(raid_key) AND ended_at>?)`, steered by
+`sqlite_stat1`, which the backup copies from prod and which counts 2.66M `pgcrs` rows against 1.87M
+held and has no row for a new index.
+
+**Decided (2026-11-07, #227):**
+
+- **30d is Full Clears only** on the Raid Stats tab. Narrowing the population is the one lever
+  that works without a schema change: 969k Player-Runs instead of 5.1M. The rule lives in the
+  query module, not the UI or the route, because the route accepts any `hours` from 1 to 720:
+  above 168h `getRaidStats` computes only `fullClear`, and the other scopes come back `null`,
+  meaning "not computed for this window". That is a different thing from an empty scope, so the
+  invariant above still holds as written: `kda` is `null` if and only if `sampleSize` is 0, inside
+  a scope that was computed.
+- **V1 replaces `idx_pgcrs_ended_period_raid`**, built at open in `schema.ts` as that index already
+  is, with no maintenance script. It is the same widening #204 needs to keep its sweep covered once it
+  reads the two flags, so one index serves both. V2's gain doesn't pay for its size.
+- **The scalar query and the narrowed scopes name it with `INDEXED BY`**, because prod's statistics
+  steer the planner away from it. All Attempts keeps the planner's choice: it filters on neither
+  flag, and forcing V1 measured slightly slower (168h cold, two runs each: 5,288 / 4,989 ms
+  unforced, 5,823 / 6,364 ms forced; warm 3,291 against 3,346). At 168h V1 took Full Clears from
+  3,954 / 3,924 to 2,060 / 2,091 ms cold (warm 765 against 667) and the scalar query from ~440 to
+  ~190 ms. Fresh Runs filters on one flag; whether it is forced is #200's to measure. Not `ANALYZE`, which would re-plan every query on the site from statistics nothing
+  tests; not a unary `+` on `raid_key`, which says the same thing less plainly.
+- **No warmer.** A 30d miss is ~9 s cold on x86 and, by the ~2x estimate, ~18 s on ARM. At this
+  traffic most 30d visits will be cold misses (the entry lives 30 minutes, per worker), and that is
+  accepted for now. A warmer like the leaderboard's would make every visit warm at the cost of a
+  ~4 s block per worker per refresh, whoever is visiting; it is the next step if the wait proves
+  to matter.

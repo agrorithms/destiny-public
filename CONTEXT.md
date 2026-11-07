@@ -42,7 +42,9 @@ How many raid instances were under way at a given moment, reconstructed from the
 those raids have ended. The measure of raid activity over time. Unlike a Session Snapshot it does
 not depend on who was polled, but a step is counted only once its end is two hours old, when nearly
 all of its raids have ended and the rest are added as their PGCRs arrive; anything more recent is
-Provisional, down to 15 minutes old; nothing is shown for a newer moment.
+Provisional, down to 15 minutes old; nothing is shown for a newer moment. Counted under a **Scope**:
+All Attempts unless the reader picks another, so "raids in progress" under Full Clears means Full
+Clears that were under way — known only once they ended, like everything else here.
 _Avoid_: concurrent raids, active raids, population, active sessions
 
 **Provisional**:
@@ -51,7 +53,9 @@ is an estimate scaled up from the raids that have, not a count. Runs from where 
 two to three hours back on a 1-hour step, down to 15 minutes old; nothing is shown for a newer
 moment. Stops being provisional once its step is counted. A single raid's figure is estimated the same
 way from that raid's own runs, if it has a minimum number of runs in the past week; a raid with fewer
-is shown counted and not estimated.
+is shown counted and not estimated. Both the estimate and that minimum are taken from runs in the
+reader's **Scope** alone: Full Clears last far longer than the average run, so scaling them by every
+run's pace would understate them.
 _Avoid_: live, real-time, projected
 
 **Roster**:
@@ -165,7 +169,9 @@ with the same Clear Time, including one who joined at the final encounter, so a 
 tie. Some Full Clears carry a Clear Time no legitimate run could reach — two-minute clears of
 raids that take far longer, believed cheated — and they are ranked like any other rather than
 filtered; Last Wish is the exception that looks like one, since it has a legitimate route to a
-full completion in a few minutes.
+full completion in a few minutes. A Clear Time exists only for a Full Clear — the duration of a
+run nobody finished is how long someone stayed, not a Clear Time — so every statistic over Clear
+Times describes Full Clears whatever scope the reader has chosen.
 _Avoid_: speedrun, run time, duration
 
 **Heartbeat**:
@@ -405,9 +411,18 @@ _Avoid_: highlight, selection, overlay
 
 **All Attempts**:
 Every raid instance observed in a window, whatever became of it — Full Clears, Checkpoint Runs and
-runs nobody finished. The counterpart to Full Clear, and the broader of the two scopes any
-population statistic can be reported under.
+runs nobody finished. The broadest of the three **Scopes**.
 _Avoid_: all runs, everything, unfiltered
+
+**Scope**:
+Which raid instances a figure counts: **All Attempts**, **Fresh Runs** or **Full Clears**, each a
+subset of the one before. One choice the reader makes for a whole page, and the population figures on
+it follow it. Instance-level throughout: a Full Clear in scope brings every player who was in it,
+finished or not, which is what separates the Full Clears scope from a **Completion**. A **Clear Time**
+is never scoped — it exists only for a Full Clear. A raid Bungie never reports a fresh start for
+(the Morgeth Pantheon) has nothing in the two narrower scopes, and that zero is the true reading,
+not a gap.
+_Avoid_: filter, mode, run type
 
 **KDA Quartiles**:
 The spread of KDA across a raid's Player-Runs: the 25th, 50th and 75th percentile of
@@ -422,3 +437,12 @@ across every Player-Run in scope. Weighted by activity — the busiest runs move
 answers what the population as a whole did, not what any one player is likely to do. Routinely
 disagrees with the KDA Quartiles, and the disagreement is the point.
 _Avoid_: average KDA, total KDA, KDA
+
+**Clear Time Quartiles**:
+The spread of Clear Time across a raid's Full Clears: the 25th, 50th and 75th percentile, each one
+a Clear Time some run actually had. The unit is the **instance**, not the Player-Run — every
+player in a run shares one Clear Time, so counting players would weight a run by its fireteam
+size. Answers how long a typical clear of this raid takes, where the **Fastest Clear** answers
+how long the quickest took. Reported beside **KDA Quartiles** but never narrowed by the scope that
+narrows them.
+_Avoid_: average clear time, median time, typical time

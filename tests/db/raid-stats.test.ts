@@ -298,3 +298,50 @@ describe('getRaidStats', () => {
         }
     });
 });
+
+// ADR 0006's second 2026-11-07 amendment (#227): 30d All Attempts costs ~18 s warm on prod, so
+// above 168h only Full Clears is computed. `null` means "not computed for this window", which is
+// a different thing from a computed scope that came out empty (sampleSize 0, kda null). The
+// literals 168 and 169 are the spec, so the boundary is pinned without the constant.
+describe('getRaidStats windows above 168h', () => {
+    it('leaves allAttempts uncomputed (null) at 169h and still computes fullClear', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], kills: 20, deaths: 2, assists: 0 });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(169);
+        expect(row.allAttempts).toBeNull();
+        expect(row.fullClear).toEqual({ kda: { p25: 10, p50: 10, p75: 10 }, aggregateKda: 10, sampleSize: 1, classDistribution: { Warlock: 1 } });
+    });
+
+    it('still computes allAttempts at exactly 168h', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(168);
+        expect(row.allAttempts?.sampleSize).toBe(2);
+        expect(row.fullClear.sampleSize).toBe(1);
+    });
+
+    it('keeps an empty fullClear distinct from an uncomputed allAttempts at 720h', () => {
+        // DNFs only: the raid is in the window, but nothing in it is a Full Clear.
+        seedRun({ instanceId: '1', incompleteBy: ['p1'], completed: false });
+
+        const stats = getRaidStats(720);
+        expect(stats).toHaveLength(1);
+        expect(stats[0].fullClear).toEqual({ kda: null, aggregateKda: null, sampleSize: 0, classDistribution: {} });
+        expect(stats[0].allAttempts).toBeNull();
+    });
+
+    it('still counts every instance in the scalar fields at 720h', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 1500 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityDurationSeconds: 2400, period: hoursAgo(600) });
+        seedRun({ instanceId: '3', incompleteBy: ['p3'], completed: false, activityDurationSeconds: 300 });
+        seedRun({ instanceId: '4', incompleteBy: ['p4'], completed: false, period: hoursAgo(700) });
+
+        const [row] = getRaidStats(720);
+        expect(row.instanceCount).toBe(4);
+        expect(row.dnfRate).toBe(0.5);
+        expect(row.fastestClearSeconds).toBe(1500);
+        expect(row.fullClear.sampleSize).toBe(2);
+    });
+});

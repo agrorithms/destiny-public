@@ -53,3 +53,30 @@ describe('GET /api/analytics/raid-stats?difficulty=', () => {
         expect(await instancesPerRaid({ hours: '24', difficulty: 'hard' })).toEqual([['the_desert_perpetual', 3], ['vault_of_glass', 1]]);
     });
 });
+
+// Above 168h only Full Clears is computed (ADR 0006, second 2026-11-07 amendment). The key stays
+// on the wire as null, so a reader of `row[scope]` sees "not computed" rather than a missing field.
+describe('GET /api/analytics/raid-stats scopes by window', () => {
+    async function firstRaid(hours: string): Promise<Record<string, unknown>> {
+        const response = await GET(new NextRequest(`http://localhost:3100/api/analytics/raid-stats?hours=${hours}`));
+        expect(response.status).toBe(200);
+        const body = await response.json() as { raids: Record<string, unknown>[] };
+        return body.raids[0];
+    }
+
+    beforeEach(() => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER });
+    });
+
+    it('sends allAttempts as null at hours=720, with fullClear computed', async () => {
+        const raid = await firstRaid('720');
+        expect(raid).toHaveProperty('allAttempts', null);
+        expect(raid).toHaveProperty('fullClear.sampleSize', 1);
+    });
+
+    it('sends both scopes at hours=168', async () => {
+        const raid = await firstRaid('168');
+        expect(raid).toHaveProperty('allAttempts.sampleSize', 1);
+        expect(raid).toHaveProperty('fullClear.sampleSize', 1);
+    });
+});

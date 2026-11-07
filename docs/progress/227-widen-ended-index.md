@@ -20,7 +20,7 @@ Seams and decisions approved 2026-11-07:
    - `tests/db/raid-stats.test.ts` also needed `?.` on the existing `allAttempts` reads (and a throw in the class-sum loop) once the type allows `null`. No assertion changed: a `null` there still fails each test
 3. Docs, measurements and bite proofs
    - [x] `docs/adr/0009-raid-activity-is-reconstructed-from-pgcrs.md` — pointer on the covering-index bullet
-   - [ ] `docs/progress/227-widen-ended-index.md` — this file, with the real-data hashes, plans and timings
+   - [x] `docs/progress/227-widen-ended-index.md` — this file, with the real-data hashes, plans and timings
 
 ## Real-data checks (2026-11-07, x86 under WSL2)
 
@@ -79,3 +79,23 @@ The 24h and 168h plans are no slower. The two changed statements are faster, and
 - A grill-style re-run (a fresh readonly connection, default cache, the branch's exact 720h SQL) gives the same picture: scalar 1,440 / 1,325 / 1,359 cold, 1,263 / 1,446 warm; fullClear 15,478 / 13,501 / 12,861 cold, 4,369 / 4,315 warm.
 
 So the gap isn't the app's connection settings. The ratio holds: ~2.0x on Full Clears cold, against the grill's 1.86x.
+
+## Bite proofs
+
+- The red run is recorded in step 1.
+- `npm run mutate:diff -- c65857a...HEAD --typecheck` (full run at `e535116`) scored 57.1% overall (4 of 7), 57.1% covered, 3 compile errors discarded, 0 ignored. The threshold was not applied, because fewer than 8 mutants were scored. Loops: none run (see below).
+- The three survivors are the string literals in the top-level `RAID_STATS_INDEX` and `RAID_SCOPE_PGCRS`. Each one, made by hand, fails the tests (temporary uncommitted breaks at `e535116`, reverted with `git checkout`):
+  - `RAID_STATS_INDEX = ''`: 29 of 29 in `tests/db/raid-stats.test.ts`, `near "WHERE": syntax error`.
+  - `fullClear: ```: 29 of 29, `near "ON"`.
+  - `allAttempts: ''`: 26 of 29, `near "ON"`.
+- So they aren't equivalent. They're evaluated once when the module loads, before Stryker switches the mutant on, which is the case #195 and #196 hit. Both of those turned such constants into literals inside the functions. That would change the approved code shape, so it goes to the user as a decision rather than a loop.
+
+## Surviving mutants
+
+- `src/lib/db/queries.ts:945`
+- `src/lib/db/queries.ts:953`
+- `src/lib/db/queries.ts:954`
+
+## Suite at `e535116`
+
+`npm run lint`: 0 errors (29 warnings, all in `gos10k/`, there before this branch). `tsc` passes for the app and for `scripts/`. `npm run build` passes. `npm test`: 920 of 920 tests in 62 files. Not a UI ticket, so no e2e or visual:check.

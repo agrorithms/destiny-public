@@ -84,6 +84,9 @@ So the gap isn't the app's connection settings. The ratio holds: ~2.0x on Full C
    - [x] `src/lib/db/queries.ts` — `RAID_STATS_INDEX` and the top-level `RAID_SCOPE_PGCRS` are gone. The scalar query spells `FROM pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear`, and the per-scope `pgcrs` source is a local in `queryScope`, each with its comment. The index name is written twice, which the user accepted. No assertion changed
    - [x] `src/lib/db/schema.ts` — the open cost now reads ~3.0 s cold (1.4 s warm) and +3.8 MB, x86 (orchestrator finding O1)
 
+5. /simplify pass
+   - [x] /simplify pass — 4 cleanup agents. `8fd9482`: reflowed the index comments in `schema.ts` and `queries.ts`, said the hint skips the table only when the request is unfiltered, and the scope-predicate docblock now names the 168h gate. `7c56897`: `allAttempts!.` in place of `?.` in the tests at or under 168h, so a `null` fails the test, where `?.` let `.not.toBeNull()` pass on one. The route tests share one `raids(query)` helper. Bite proof for the changed `expect` lines: `mutate:diff -- c65857a...HEAD --incremental` at `7c56897`. 9 of 9 mutants in `queries.ts` killed, among them `hoursBack > ALL_SCOPES_MAX_HOURS` → `true`, which `returns class distribution as counts per class` kills through `allAttempts!.`
+
 ## Bite proofs
 
 - The red run is recorded in step 1.
@@ -101,3 +104,5 @@ None.
 ## Suite
 
 At `0f11950`, then again at the commit that adds this line (which changes only this file): `npm run lint` 0 errors (29 warnings, all in `gos10k/`, there before this branch); `tsc` passes for the app and for `scripts/`; `npm run build` passes; `npm test` 920 of 920 tests in 62 files. Not a UI ticket, so no e2e or visual:check.
+
+After the /simplify pass, at `7c56897` (the commit adding this line changes only this file): `npm run lint` 0 errors (the same 29 `gos10k/` warnings); `tsc` passes for the app and for `scripts/`; `npm run build` passes; `npm test` 920 of 920 in 62 files.

@@ -80,22 +80,24 @@ The 24h and 168h plans are no slower. The two changed statements are faster, and
 
 So the gap isn't the app's connection settings. The ratio holds: ~2.0x on Full Clears cold, against the grill's 1.86x.
 
+4. Kill loop 1
+   - [x] `src/lib/db/queries.ts` — `RAID_STATS_INDEX` and the top-level `RAID_SCOPE_PGCRS` are gone. The scalar query spells `FROM pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear`, and the per-scope `pgcrs` source is a local in `queryScope`, each with its comment. The index name is written twice, which the user accepted. No assertion changed
+   - [x] `src/lib/db/schema.ts` — the open cost now reads ~3.0 s cold (1.4 s warm) and +3.8 MB, x86 (orchestrator finding O1)
+
 ## Bite proofs
 
 - The red run is recorded in step 1.
-- `npm run mutate:diff -- c65857a...HEAD --typecheck` (full run at `e535116`) scored 57.1% overall (4 of 7), 57.1% covered, 3 compile errors discarded, 0 ignored. The threshold was not applied, because fewer than 8 mutants were scored. Loops: none run (see below).
-- The three survivors are the string literals in the top-level `RAID_STATS_INDEX` and `RAID_SCOPE_PGCRS`. Each one, made by hand, fails the tests (temporary uncommitted breaks at `e535116`, reverted with `git checkout`):
-  - `RAID_STATS_INDEX = ''`: 29 of 29 in `tests/db/raid-stats.test.ts`, `near "WHERE": syntax error`.
-  - `fullClear: ```: 29 of 29, `near "ON"`.
-  - `allAttempts: ''`: 26 of 29, `near "ON"`.
-- So they aren't equivalent. They're evaluated once when the module loads, before Stryker switches the mutant on, which is the case #195 and #196 hit. Both of those turned such constants into literals inside the functions. That would change the approved code shape, so it goes to the user as a decision rather than a loop.
+- Run 1, `npm run mutate:diff -- c65857a...HEAD --typecheck` at `e535116`: 57.1% overall (4 of 7), three survivors.
+  - They were the string literals in the top-level `RAID_STATS_INDEX` and `RAID_SCOPE_PGCRS`. Each one, made by hand, failed the tests: 29, 29 and 26 of the 29 tests in `tests/db/raid-stats.test.ts`, with a SQL syntax error. So they weren't equivalent.
+  - They survived because the constants are evaluated when the module loads, before Stryker switches the mutant on: the case #195 and #196 hit.
+  - The user chose to turn them into literals inside the functions, as those tickets did.
+- Loop 1 (`0f11950`), `--incremental` rerun: no survivor in this branch's files. That run's summary also listed `src/lib/active-session/` mutants, which come from the incremental cache, not from this range.
+- Final full run, `npm run mutate:diff -- c65857a...HEAD --typecheck` at `0f11950`: 100.0% overall (6 of 6), 100.0% covered. 3 compile errors discarded, 0 ignored, 0 static. The threshold wasn't applied (fewer than 8 scored). No `Stryker disable` comments.
 
 ## Surviving mutants
 
-- `src/lib/db/queries.ts:945`
-- `src/lib/db/queries.ts:953`
-- `src/lib/db/queries.ts:954`
+None.
 
-## Suite at `e535116`
+## Suite
 
-`npm run lint`: 0 errors (29 warnings, all in `gos10k/`, there before this branch). `tsc` passes for the app and for `scripts/`. `npm run build` passes. `npm test`: 920 of 920 tests in 62 files. Not a UI ticket, so no e2e or visual:check.
+At `0f11950`, then again at the commit that adds this line (which changes only this file): `npm run lint` 0 errors (29 warnings, all in `gos10k/`, there before this branch); `tsc` passes for the app and for `scripts/`; `npm run build` passes; `npm test` 920 of 920 tests in 62 files. Not a UI ticket, so no e2e or visual:check.

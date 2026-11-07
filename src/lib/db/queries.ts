@@ -1090,8 +1090,8 @@ export function getRaidStats(
     //
     // INDEXED BY names the widened ended_at index (schema.ts), which leads with `ended_at` and
     // carries the Full Clear flags, so unfiltered, this query and the Full Clears scope never
-    // touch the table to filter. Prod's sqlite_stat1 is stale (2.66M rows counted against 1.87M held,
-    // nothing for this index) and steers the planner to idx_pgcrs_raid_ended without it:
+    // touch the table to filter. Prod's sqlite_stat1 is stale (2.66M rows counted against 1.87M
+    // held, nothing for this index) and steers the planner to idx_pgcrs_raid_ended without it:
     // 30d Full Clears ~17 s → ~9 s cold. Not ANALYZE, which would re-plan the whole site from
     // statistics nothing tests. ADR 0006's second 2026-11-07 amendment.
     const scalarRows = db.prepare(`

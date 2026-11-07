@@ -226,8 +226,9 @@ export function initializeSchema(db: Database.Database): void {
     // Covering index for the Raid Activity sweep (getRaidsInProgress, #195) and for raid
     // stats' scalar query and Full Clears scope (getRaidStats, #227). `ended_at > ?` leads
     // the range scan; `period` and `raid_key` after it let SQLite answer the sweep from the
-    // index alone, and `completed` and `activity_was_started_from_beginning` let the Full
-    // Clears predicate (and #204's sweep, which reads both) skip the table too.
+    // index alone. `completed` and `activity_was_started_from_beginning` let the Full Clears
+    // predicate filter on the index, not the table (the scope still reads the table for
+    // `instance_id`, its join key), and keep #204's sweep, which reads both, on the index alone.
     //
     // #227 widened #195's (ended_at, period, raid_key), which is dropped here: it is a
     // prefix of this one. Built at open, not by a maintenance script: ~3.0 s cold (1.4 s

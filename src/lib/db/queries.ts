@@ -1812,7 +1812,12 @@ export interface RaidsInProgressOptions {
  * So the cost is rows + steps, never rows × steps — a run lasting days adds two array
  * writes, not one per hour it spans. The curve is a second pass, over its own training week.
  */
-export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProgressSeries {
+export function getRaidsInProgress(options: RaidsInProgressOptions): Record<ActivityScope, RaidsInProgressSeries> {
+    const series = allAttemptsSeries(options);
+    return { allAttempts: series, freshRuns: series, fullClear: series };
+}
+
+function allAttemptsSeries(options: RaidsInProgressOptions): RaidsInProgressSeries {
     const { rangeSeconds, stepSeconds, now } = options;
     const from = now - rangeSeconds;
     const db = getDb();
@@ -1827,7 +1832,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): RaidsInProg
     );
     const countedSteps = (countedUntil - firstStart) / stepSeconds;
     const steps = (cutoff - firstStart) / stepSeconds;
-    const curves = getCompletenessCurves({ now, stepSeconds, raidKeys: options.raidKeys, minRaidRuns: options.minRaidRuns });
+    const curves = getCompletenessCurves({ now, stepSeconds, raidKeys: options.raidKeys, minRaidRuns: options.minRaidRuns }).allAttempts;
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
     // change in "runs covering the whole step" at each step, summed into a running count.
@@ -1965,7 +1970,7 @@ function topRaids(raidTime: ReadonlyMap<string, number>): string[] {
  * per cache refresh of a range. The same pass learns the per-raid curves (#199).
  */
 export function getCompletenessCurve(options: { now: number; stepSeconds: number }): CompletenessCurve | null {
-    return getCompletenessCurves(options).total;
+    return getCompletenessCurves(options).allAttempts.total;
 }
 
 /** The completeness curves a range's estimates scale by (#199): the total's, and each asked-for raid's own. */
@@ -1984,6 +1989,16 @@ export interface CompletenessCurves {
  * (default {@link MIN_RAID_CURVE_RUNS}); asked for none, none is built.
  */
 export function getCompletenessCurves(options: {
+    now: number;
+    stepSeconds: number;
+    raidKeys?: readonly string[];
+    minRaidRuns?: number;
+}): Record<ActivityScope, CompletenessCurves> {
+    const curves = allAttemptsCurves(options);
+    return { allAttempts: curves, freshRuns: curves, fullClear: curves };
+}
+
+function allAttemptsCurves(options: {
     now: number;
     stepSeconds: number;
     raidKeys?: readonly string[];

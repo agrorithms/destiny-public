@@ -125,5 +125,5 @@ async function readSeries(range: ActivityRange, raidKeys: readonly string[]): Pr
             minRaidRuns: envCount('ACTIVITY_MIN_RAID_RUNS', undefined),
         })
     );
-    return value;
+    return value.allAttempts;
 }

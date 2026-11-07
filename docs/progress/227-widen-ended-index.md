@@ -14,7 +14,7 @@ Seams and decisions approved 2026-11-07:
    - [x] `tests/db/raid-stats.test.ts` — S2
    - [x] `tests/routes/raid-stats.test.ts` — S3
    - Red run on the old code: 5 of 38 failed. Both index tests (no widened index; the old one not dropped), the 169h and 720h null tests, and the route's `hours=720` null. The 168h boundary, the 720h scalar fields and the route's `hours=168` pass before and after: they guard what must not change
-2. The index, the hint and the 30d rule, green
+2. The index, the hint and the 30d rule, green (superseded: see steps 4–5. `RAID_STATS_INDEX` and the top-level per-scope table became literals in the functions, and the tests' `?.` reads became `!.`)
    - [x] `src/lib/db/schema.ts` — DROP the old index, CREATE the widened one, comment
    - [x] `src/lib/db/queries.ts` — `ALL_SCOPES_MAX_HOURS`, `RAID_STATS_INDEX`, the per-scope `pgcrs` source, `RaidStatsRow`, comments naming the index
    - `tests/db/raid-stats.test.ts` also needed `?.` on the existing `allAttempts` reads (and a throw in the class-sum loop) once the type allows `null`. No assertion changed: a `null` there still fails each test
@@ -86,6 +86,30 @@ So the gap isn't the app's connection settings. The ratio holds: ~2.0x on Full C
 
 5. /simplify pass
    - [x] /simplify pass — 4 cleanup agents. `8fd9482`: reflowed the index comments in `schema.ts` and `queries.ts`, said the hint skips the table only when the request is unfiltered, and the scope-predicate docblock now names the 168h gate. `7c56897`: `allAttempts!.` in place of `?.` in the tests at or under 168h, so a `null` fails the test, where `?.` let `.not.toBeNull()` pass on one. The route tests share one `raids(query)` helper. Bite proof for the changed `expect` lines: `mutate:diff -- c65857a...HEAD --incremental` at `7c56897`. 9 of 9 mutants in `queries.ts` killed, among them `hoursBack > ALL_SCOPES_MAX_HOURS` → `true`, which `returns class distribution as counts per class` kills through `allAttempts!.`
+
+**Timings, filtered (`difficulty: 'master'`)** (review finding P1, at `b1a7cfe`, same harness, copies and method; `HARNESS_FILTERS` passes the filter to `getRaidStats`). Under prod's `sqlite_stat1` the filtered scalar query moved from `idx_pgcrs_raid_ended` to the widened index, both with table lookups for `activity_hash`. 168h was run twice per side, the second time after first; the two runs are separated by `;`:
+
+| window | statement | before cold | after cold | before warm | after warm |
+|---|---|---|---|---|---|
+| 24h | scalar | 91 / 88 / 88 | 88 / 89 / 102 | 10 / 10 | 13 / 11 |
+| 24h | fullClear | 191 / 181 / 195 | 162 / 183 / 190 | 12 / 12 | 7 / 7 |
+| 24h | allAttempts | 464 / 473 / 477 | 452 / 517 / 451 | 46 / 49 | 48 / 47 |
+| 168h | scalar | 408 / 387 / 378; 393 / 412 / 385 | 547 / 559 / 509; 527 / 583 / 514 | 167 / 140; 144 / 132 | 136 / 119; 145 / 127 |
+| 168h | fullClear | 1,479 / 1,521 / 1,453; 1,435 / 1,468 / 1,444 | 1,298 / 1,529 / 1,290; 1,311 / 1,527 / 1,301 | 172 / 168; 173 / 175 | 82 / 79; 101 / 76 |
+| 168h | allAttempts | 3,391 / 3,675 / 3,685; 3,665 / 3,560 / 3,435 | 3,636 / 3,669 / 3,515; 3,668 / 3,576 / 3,696 | 513 / 547; 526 / 524 | 582 / 543; 533 / 509 |
+
+`getRaidStats` end to end: 24h cold 1,295 / 1,270 / 1,332 → 1,220 / 1,365 / 1,430 ms (incl. evictions), warm 68 / 72 → 69 / 65 ms. 168h cold 5,817 / 6,149 / 6,112; 6,043 / 6,081 / 5,892 → 6,029 / 6,443 / 5,951; 6,063 / 6,293 / 6,092 ms (incl. evictions), warm 853 / 856; 845 / 832 → 800 / 742; 779 / 713 ms.
+
+One statement is slower outside its spread: the filtered 168h scalar query cold, 378–412 → 509–583 ms (~+130 ms, ~1.35x), in both pairs of runs. Full Clears gains back about as much cold and halves warm, so end to end the 168h cold request lands within its spread and the warm one is faster. 24h is unchanged within spread. Put to the user as a decision; no code changed for it.
+
+## Review fixes
+
+- [x] P1 — filtered timings above; the 168h cold scalar regression is a decision for the user
+- [x] S1 — `src/lib/db/schema.ts`: the two flags let the Full Clears predicate filter on the index, not the table (it still reads the table for `instance_id`)
+- [x] O2 — `src/lib/db/queries.ts`: the `INDEXED BY` comment re-wrapped to its neighbours' width
+- [x] S2 — `tests/db/raids-in-progress-index.test.ts`: dropped `toHaveLength(5)`, which `testDb()` had already satisfied before the reopen; the first test pins the new index's columns
+- [x] S3 — `tests/routes/raid-stats.test.ts`: `Body['raids']` is `RaidStatsRow[]`
+- [x] S4, P2 — step 2 above marked superseded
 
 ## Bite proofs
 

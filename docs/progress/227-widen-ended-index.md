@@ -100,16 +100,18 @@ So the gap isn't the app's connection settings. The ratio holds: ~2.0x on Full C
 
 `getRaidStats` end to end: 24h cold 1,295 / 1,270 / 1,332 → 1,220 / 1,365 / 1,430 ms (incl. evictions), warm 68 / 72 → 69 / 65 ms. 168h cold 5,817 / 6,149 / 6,112; 6,043 / 6,081 / 5,892 → 6,029 / 6,443 / 5,951; 6,063 / 6,293 / 6,092 ms (incl. evictions), warm 853 / 856; 845 / 832 → 800 / 742; 779 / 713 ms.
 
-One statement is slower outside its spread: the filtered 168h scalar query cold, 378–412 → 509–583 ms (~+130 ms, ~1.35x), in both pairs of runs. Full Clears gains back about as much cold and halves warm, so end to end the 168h cold request lands within its spread and the warm one is faster. 24h is unchanged within spread. Put to the user as a decision; no code changed for it.
+One statement is slower outside its spread: the filtered 168h scalar query cold, 378–412 → 509–583 ms (~+130 ms, ~1.35x), in both pairs of runs. Full Clears gains back about as much cold and halves warm, so end to end the 168h cold request lands within its spread and the warm one is faster. 24h is unchanged within spread. Put to the user as a decision; no code changed for it. The user accepted the regression on 2026-11-07: the request end to end is unchanged cold (within spread) and faster warm.
 
 ## Review fixes
 
-- [x] P1 — filtered timings above; the 168h cold scalar regression is a decision for the user
+- [x] P1 — filtered timings above; the 168h cold scalar regression was accepted by the user on 2026-11-07
 - [x] S1 — `src/lib/db/schema.ts`: the two flags let the Full Clears predicate filter on the index, not the table (it still reads the table for `instance_id`)
 - [x] O2 — `src/lib/db/queries.ts`: the `INDEXED BY` comment re-wrapped to its neighbours' width
 - [x] S2 — `tests/db/raids-in-progress-index.test.ts`: dropped `toHaveLength(5)`, which `testDb()` had already satisfied before the reopen; the first test pins the new index's columns
 - [x] S3 — `tests/routes/raid-stats.test.ts`: `Body['raids']` is `RaidStatsRow[]`
 - [x] S4, P2 — step 2 above marked superseded
+- [x] S6 — `tests/db/raids-in-progress-index.test.ts`: the docblock says the flags let the Full Clears predicate filter on the index, not the table (the scope still reads the table for `instance_id`), as S1 made `schema.ts` say
+- [x] P3 — this file: the P1 regression recorded as accepted, in "Timings, filtered" and in P1's line above
 
 ## Bite proofs
 

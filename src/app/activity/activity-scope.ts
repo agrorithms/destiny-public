@@ -52,6 +52,6 @@ export type ActivityScopeId = ActivityScopeOption['id'];
  * with no scope draws.
  */
 export function parseActivityScope(searchParams: Record<string, string | string[] | undefined>): ActivityScopeOption {
-    void searchParams;
-    throw new Error('not implemented');
+    const value = searchParams[ACTIVITY_SCOPE_PARAM];
+    return ACTIVITY_SCOPES.find((scope) => scope.id === value) ?? ACTIVITY_SCOPES[0];
 }

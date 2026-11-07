@@ -18,8 +18,8 @@ Branch `feat/204-activity-scope`, base `feat/227-widen-ended-index` @ `fd26b2c`.
   finished or not." Full Clears: "Only Full Clears count: raids started at the first encounter that someone finished."
 
 1. URL module, red then green
-   - [ ] `src/app/activity/activity-scope.test.ts`, `src/app/activity/activity-range.test.ts`
-   - [ ] `src/app/activity/activity-scope.ts`, `src/app/activity/activity-range.ts`
+   - [x] `src/app/activity/activity-scope.test.ts`, `src/app/activity/activity-range.test.ts`
+   - [x] `src/app/activity/activity-scope.ts`, `src/app/activity/activity-range.ts`
 2. Query, red then green
    - [ ] `tests/db/raids-in-progress.test.ts`, `tests/db/completeness-curve.test.ts`
    - [ ] `src/lib/db/queries.ts`

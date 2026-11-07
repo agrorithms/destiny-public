@@ -13,7 +13,7 @@
  */
 
 import { ACTIVITY_RAIDS_PARAM } from './activity-raids';
-import type { ActivityScopeId } from './activity-scope';
+import { ACTIVITY_SCOPE_PARAM, type ActivityScopeId } from './activity-scope';
 
 /** The URL's spelling of the range. Absent means 7 days. */
 const ACTIVITY_RANGE_PARAM = 'range';
@@ -50,12 +50,15 @@ export function parseActivityRange(searchParams: Record<string, string | string[
  * the control writes says which chart it is. `raids` (#198) are the bottom panel's, written
  * as `?raids=` in the order given — and only when there are some, so a link written without
  * any leaves the panel on the range's own top raids. The keys are percent-encoded but not
- * their commas, so a shared link stays readable.
+ * their commas, so a shared link stays readable. The `scope` (#204) is written only when it
+ * isn't All Attempts, like `raids`, so every link written before it still means what it did.
+ * It goes between the two, `?range=…&scope=…&raids=…`.
  */
 export function activityRangeHref(id: ActivityRangeId, raids: readonly string[] = [], scope: ActivityScopeId = 'all'): string {
-    void scope;
-    const range = `/activity?${new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id })}`;
-    return raids.length === 0 ? range : `${range}&${ACTIVITY_RAIDS_PARAM}=${raids.map(encodeURIComponent).join(',')}`;
+    const params = new URLSearchParams({ [ACTIVITY_RANGE_PARAM]: id });
+    if (scope !== 'all') params.set(ACTIVITY_SCOPE_PARAM, scope);
+    const base = `/activity?${params}`;
+    return raids.length === 0 ? base : `${base}&${ACTIVITY_RAIDS_PARAM}=${raids.map(encodeURIComponent).join(',')}`;
 }
 
 /** What {@link rangeOfSeries} reads off a series: its window and its step, both in seconds. */

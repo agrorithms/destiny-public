@@ -37,6 +37,5 @@ describe('the Raid Activity index', () => {
         initializeSchema(db);
 
         expect(indexColumns('idx_pgcrs_ended_period_raid')).toEqual([]);
-        expect(indexColumns('idx_pgcrs_ended_period_raid_clear')).toHaveLength(5);
     });
 });

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/analytics/raid-stats/route';
+import type { RaidStatsRow } from '@/lib/db/queries';
 import { __resetSwrCacheForTests } from '@/lib/cache/swr-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
@@ -14,7 +15,7 @@ import { DP_EPIC, DP_NORMAL, VOG_MASTER } from '../helpers/pgcr-builder';
  */
 
 interface Body {
-    raids: ({ raidKey: string; instanceCount: number } & Record<string, unknown>)[];
+    raids: RaidStatsRow[];
 }
 
 beforeEach(() => {

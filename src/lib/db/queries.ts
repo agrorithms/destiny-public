@@ -1823,6 +1823,7 @@ export interface RaidsInProgressOptions {
  */
 export function getRaidsInProgress(options: RaidsInProgressOptions): Record<ActivityScope, RaidsInProgressSeries> {
     const { rangeSeconds, stepSeconds, now } = options;
+    const from = now - rangeSeconds;
     const db = getDb();
     const countedUntil = Math.floor((now - COUNTED_AGE_SECONDS) / stepSeconds) * stepSeconds;
     const cutoff = Math.floor((now - PROVISIONAL_MIN_AGE_SECONDS) / stepSeconds) * stepSeconds;
@@ -1831,8 +1832,9 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): Record<Acti
     const { oldest } = db.prepare('SELECT COALESCE(MIN(period), 0) AS oldest FROM pgcrs').get() as { oldest: number };
     const firstStart = Math.min(
         countedUntil,
-        Math.ceil(Math.max(now - rangeSeconds, oldest + DATA_START_MARGIN_SECONDS) / stepSeconds) * stepSeconds
+        Math.ceil(Math.max(from, oldest + DATA_START_MARGIN_SECONDS) / stepSeconds) * stepSeconds
     );
+    const countedSteps = (countedUntil - firstStart) / stepSeconds;
     const steps = (cutoff - firstStart) / stepSeconds;
     const curves = getCompletenessCurves({ now, stepSeconds, raidKeys: options.raidKeys, minRaidRuns: options.minRaidRuns });
 
@@ -1853,11 +1855,11 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): Record<Acti
         if (cleared) addRun(fullClear, raidKey, firstStart, stepSeconds, start, end);
     }
 
-    const window: SweepWindow = { now, stepSeconds, firstStart, countedUntil, steps, raidKeys: options.raidKeys };
+    const window: SweepWindow = { from, now, stepSeconds, firstStart, countedUntil, countedSteps, steps, raidKeys: options.raidKeys };
     return {
-        allAttempts: seriesOf(allAttempts, curves.allAttempts, window, rangeSeconds),
-        freshRuns: seriesOf(freshRuns, curves.freshRuns, window, rangeSeconds),
-        fullClear: seriesOf(fullClear, curves.fullClear, window, rangeSeconds),
+        allAttempts: seriesOf(allAttempts, curves.allAttempts, window),
+        freshRuns: seriesOf(freshRuns, curves.freshRuns, window),
+        fullClear: seriesOf(fullClear, curves.fullClear, window),
     };
 }
 
@@ -1883,12 +1885,14 @@ function addRun(sweep: Sweep, raidKey: string, firstStart: number, stepSeconds: 
     addOverlap(raid, firstStart, stepSeconds, start, end);
 }
 
-/** What every scope's series shares: the step grid, where counting ends, and the raids asked for. */
+/** What every scope's series shares: the range, the step grid, where counting ends, and the raids asked for. */
 interface SweepWindow {
+    from: number;
     now: number;
     stepSeconds: number;
     firstStart: number;
     countedUntil: number;
+    countedSteps: number;
     steps: number;
     raidKeys: readonly string[] | undefined;
 }
@@ -1897,10 +1901,9 @@ interface SweepWindow {
  * One scope's series from its sweep and its own curves: the counted steps, then the
  * Provisional ones down to the first step the scope's curve can't estimate.
  */
-function seriesOf(sweep: Sweep, curves: CompletenessCurves, window: SweepWindow, rangeSeconds: number): RaidsInProgressSeries {
-    const { now, stepSeconds, firstStart, countedUntil, steps, raidKeys: requested } = window;
+function seriesOf(sweep: Sweep, curves: CompletenessCurves, window: SweepWindow): RaidsInProgressSeries {
+    const { from, now, stepSeconds, firstStart, countedUntil, countedSteps, steps, raidKeys: requested } = window;
     const { total, perRaid } = sweep;
-    const countedSteps = (countedUntil - firstStart) / stepSeconds;
     const raidTime = new Map<string, number>();
     const wholeRunsOf = new Map<string, number>();
     // The raids still being estimated, by curve: one that can't make a step's estimate leaves,
@@ -1951,7 +1954,7 @@ function seriesOf(sweep: Sweep, curves: CompletenessCurves, window: SweepWindow,
     const lastPoint = points.at(-1);
     const provisionalUntil = lastPoint?.provisional ? lastPoint.end : countedUntil;
     return {
-        from: now - rangeSeconds,
+        from,
         to: now,
         stepSeconds,
         countedFrom: firstStart,
@@ -2053,7 +2056,8 @@ export function getCompletenessCurves(options: {
     raidKeys?: readonly string[];
     minRaidRuns?: number;
 }): Record<ActivityScope, CompletenessCurves> {
-    const { now, stepSeconds } = options;
+    const { now, stepSeconds, minRaidRuns = MIN_RAID_CURVE_RUNS } = options;
+    const asked = new Set(options.raidKeys);
     const window = trainingWindow(now, stepSeconds);
     const allAttempts = new Map<string, CurveTally>();
     const freshRuns = new Map<string, CurveTally>();
@@ -2064,9 +2068,9 @@ export function getCompletenessCurves(options: {
         if (cleared) tallyRun(tallyOf(fullClear, raidKey), window, stepSeconds, period, endedAt);
     }
     return {
-        allAttempts: curvesOf(allAttempts, options),
-        freshRuns: curvesOf(freshRuns, options),
-        fullClear: curvesOf(fullClear, options),
+        allAttempts: curvesOf(allAttempts, asked, minRaidRuns),
+        freshRuns: curvesOf(freshRuns, asked, minRaidRuns),
+        fullClear: curvesOf(fullClear, asked, minRaidRuns),
     };
 }
 
@@ -2081,12 +2085,7 @@ function tallyOf(tallies: Map<string, CurveTally>, raidKey: string): CurveTally 
 }
 
 /** One scope's curves from its raids' tallies: the total's, and each asked-for raid's with enough runs. */
-function curvesOf(
-    tallies: ReadonlyMap<string, CurveTally>,
-    options: { raidKeys?: readonly string[]; minRaidRuns?: number }
-): CompletenessCurves {
-    const { minRaidRuns = MIN_RAID_CURVE_RUNS } = options;
-    const asked = new Set(options.raidKeys);
+function curvesOf(tallies: ReadonlyMap<string, CurveTally>, asked: ReadonlySet<string>, minRaidRuns: number): CompletenessCurves {
     const raids = new Map<string, CompletenessCurve>();
     for (const [key, tally] of tallies) {
         const curve = asked.has(key) ? raidCurveFromTally(tally, minRaidRuns) : null;

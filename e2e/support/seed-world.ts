@@ -319,12 +319,15 @@ export const ACTIVITY_PEAK_RAIDS = 3;
 /**
  * The raids that run besides RAID_A in the Raid Activity world (#198), most active first, and
  * the hours back from the seed's clock hour that each one's hour-long runs start. The names are
- * what the raid picker and the legend show.
+ * what the raid picker and the legend show. `kinds` (#204) names the runs that are not
+ * Checkpoint Runs, by the hours back they start.
  */
-export const ACTIVITY_OTHER_RAIDS: ReadonlyArray<FixtureRaid & { hoursBack: readonly number[]; kinds?: readonly ActivityRunKind[] }> = [
+export const ACTIVITY_OTHER_RAIDS: ReadonlyArray<
+    FixtureRaid & { hoursBack: readonly number[]; kinds?: Readonly<Record<number, ActivityRunKind>> }
+> = [
     { key: 'kings_fall', hash: 1374392663, name: "King's Fall", hoursBack: [36, 60, 84, 108] },
-    { key: 'vault_of_glass', hash: 3881495763, name: 'Vault of Glass', hoursBack: [40, 64, 88], kinds: ['fresh'] },
-    { key: 'last_wish', hash: 2122313384, name: 'Last Wish', hoursBack: [44, 68], kinds: ['fullClear', 'fullClear'] },
+    { key: 'vault_of_glass', hash: 3881495763, name: 'Vault of Glass', hoursBack: [40, 64, 88], kinds: { 40: 'fresh' } },
+    { key: 'last_wish', hash: 2122313384, name: 'Last Wish', hoursBack: [44, 68], kinds: { 44: 'fullClear', 68: 'fullClear' } },
     { key: 'crotas_end', hash: 1566480315, name: "Crota's End", hoursBack: [72] },
 ];
 
@@ -375,7 +378,7 @@ function seedActivityRuns(): void {
         { start: nowSeconds - hour, seconds: hour / 3 },
         // Appended, so the instance and member ids above are what they were before #198.
         ...ACTIVITY_OTHER_RAIDS.flatMap((raid) =>
-            raid.hoursBack.map((back, at) => ({ start: thisHour - back * hour, seconds: hour, raid, kind: raid.kinds?.[at] }))
+            raid.hoursBack.map((back) => ({ start: thisHour - back * hour, seconds: hour, raid, kind: raid.kinds?.[back] }))
         ),
     ];
 

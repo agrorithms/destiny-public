@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './support/test-fixtures';
 import { ACTIVITY_SCOPES, type ActivityScopeId } from '../src/app/activity/activity-scope';
 import { ACTIVITY_SCOPE_PEAKS, ACTIVITY_SCOPE_TOP_RAIDS, RAID_A } from './support/seed-world';
-import { expectInsideViewport, expectNoOverflow } from './support/viewport';
+import { boxOf, expectInsideViewport, expectNoOverflow } from './support/viewport';
 
 /**
  * The Raid Activity Scope (#204): the All · Fresh · Full Clears links under the range presets,
@@ -185,9 +185,9 @@ test.describe('the scope links', () => {
                 await expectScopeDrawn(page, id);
                 await expectInsideViewport(page.getByTestId('activity-range'), `the range presets under ${id}`);
                 await expectInsideViewport(page.getByTestId('activity-scope'), `the scope links under ${id}`);
-                const range = await page.getByTestId('activity-range').boundingBox();
-                const scope = await page.getByTestId('activity-scope').boundingBox();
-                expect(scope!.y, 'the scope links sit on their own row, under the presets').toBeGreaterThanOrEqual(range!.y + range!.height);
+                const range = await boxOf(page.getByTestId('activity-range'));
+                const scope = await boxOf(page.getByTestId('activity-scope'));
+                expect(scope.y, 'the scope links sit on their own row, under the presets').toBeGreaterThanOrEqual(range.y + range.height);
                 await expectNoOverflow(page);
             }
         });

@@ -47,6 +47,13 @@ Branch `feat/204-activity-scope`, base `feat/227-widen-ended-index` @ `fd26b2c`.
      `ActivityLinkToggle.tsx`; the scope tests seed through `seedDaily` and `seedTrainingWeek`; the seed's run kinds keyed by
      hour back, not position; the phone spec measures through `boxOf` (bite proof: the scope row moved above the presets,
      red at 328 < 404, reverted). Left: see the simplifier's report.
+7. Review fixes (loop 1: P1, S1, S2, S3, S4, S5)
+   - [x] S3, S5 — `isFresh` / `isFullClear` loop variables; the row's flag columns typed `0 | 1 | null` (`RunFlag`), SQL text unchanged (`4fb9514`)
+   - [x] S1, S2, S4 — `runScopesByFlags` is the one definition of which Scopes a run is in, read by both passes through `scopesOfRun`; `perScope` builds the per-Scope records; `getOrCreate` replaces `addRun`'s and `tallyOf`'s get-or-create; `StepGrid` holds `firstStart`, `stepSeconds`, `steps` once, and `addRun` / `addOverlap` / `newOverlap` take it (`7b26c91`)
+   - [x] P1 — `docs/handoffs/261107-204-scope-grill.md` (gitignored, local only): State names the issue body as the spec, the seed fact and `endedRaidRuns` fact describe the branch, "Not done" no longer says no code
+   - [x] plan check and three-way 30d cold miss on the backup copy (below, "Review fix loop 1")
+   - [x] `npm run mutate:diff -- 570dda4...HEAD --typecheck` at `7b26c91`: 100.0% overall (37/37), 100.0% covered, 23 compile errors discarded, PASS; no survivors, no loops, no `Stryker disable`
+   - [x] lint, tsc, build, vitest, e2e, visual:check at `7b26c91` — lint 0 errors (29 warnings), tsc app and scripts, build, vitest 942/942, e2e 221/221, visual:check 74/74 (`--nobuild` after the e2e build), overflow gate passed
 
 ## Real data (2026-11-05 backup)
 
@@ -93,6 +100,36 @@ expressions, ~970 ms with the two raw columns; the raw-flags variant was no fast
 median is ~110 ms (~7%) higher cold and ~250 ms (~18%) higher warm, and 6 runs land above every before run. The
 extra cost is the work the scopes add: two more columns per row, and each Fresh Run and Full Clear added to a
 second and third set of arrays (~47% more overlap writes at 30d). Put to the user as a decision.
+
+## Review fix loop 1 (2026-11-07)
+
+Same scratch copy, harness and method as above (`sync`, `posix_fadvise(DONTNEED)` via `python3 -I`, fincore 0 B,
+`shrink_memory`, `Date.now` pinned to 1793931697, the repo's better-sqlite3). Three trees, each run from its own
+`git archive … src` copy (the fix copied from the working tree at `7b26c91`'s content).
+
+**Plan, fix** (`7b26c91`): at 24h, 7d and 30d both passes are
+`SEARCH p USING COVERING INDEX idx_pgcrs_ended_period_raid_clear (ended_at>? AND ended_at<?)`. `endedRaidRuns`' SQL is
+byte-identical to `570dda4`'s.
+
+**Same answer.** At 7d and 30d every scope's series hashes the same at `570dda4` and at the fix: All Attempts
+`f5de32bfcdf3` (7d) and `42d6708403f1` (30d), Fresh Runs `d2fdbe594de3` / `3536ccbee1c7`, Full Clears
+`cfca187de1cc` / `71b63a5c9c37`.
+
+**30d cold miss**, four interleaved rounds (base, pre-fix, fix; one process each of three cold then two warm calls), ms:
+
+| tree | cold runs | cold min | cold median | cold max | warm min | warm median | warm max |
+|---|---|---|---|---|---|---|---|
+| base `fd26b2c` | 12 | 1,508 | 1,579 | 1,759 | 1,351 | 1,493 | 1,641 |
+| pre-fix `570dda4` | 12 | 1,707 | 1,939 | 2,239 | 1,619 | 1,760 | 1,842 |
+| fix `7b26c91` | 12 | 1,789 | 1,865 | 2,014 | 1,632 | 1,691 | 1,946 |
+
+**Verdict: the fix is inside the pre-fix spread**, cold and warm. A first attempt, not committed, shared one generic
+`addToScopes(rows, accumulators, add)` between the passes with a per-Scope predicate table called per row; it was
+measurably slower (three rounds: cold 2,004–2,074 against pre-fix 1,702–2,033, warm 1,864–1,919 against
+1,557–1,777). With SQLite taken out (rows read once, then replayed from memory; 2,220,515 rows over both passes at
+30d), its JS was ~270–530 ms against pre-fix ~145–240 ms: the shared `add` callback and the three predicate calls per
+row. The committed shape builds each pass's Scope list for all four flag pairs once, so a row costs one array read
+and one call per Scope it is in.
 
 ## Browser suite
 

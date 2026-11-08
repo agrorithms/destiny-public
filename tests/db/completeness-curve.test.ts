@@ -28,8 +28,8 @@ function seedRaid(start: number, seconds: number, extra: Partial<SeedRunOptions>
 }
 
 /** One run a day, on each of the six days from 2 to 7 days back, at `offset` into the day. */
-function seedDaily(offset: number, seconds: number): void {
-    for (let day = 2; day <= 7; day++) seedRaid(MIDNIGHT - day * DAY + offset, seconds);
+function seedDaily(offset: number, seconds: number, extra: Partial<SeedRunOptions> = {}): void {
+    for (let day = 2; day <= 7; day++) seedRaid(MIDNIGHT - day * DAY + offset, seconds, extra);
 }
 
 /**
@@ -231,19 +231,14 @@ describe('the curves of each scope (#204)', () => {
     const FRESH: Partial<SeedRunOptions> = { completedBy: [], incompleteBy: ['p1'] };
     const FULL_CLEAR: Partial<SeedRunOptions> = {};
 
-    /** One run a day for six days at `offset`, of the given kind. */
-    function seedDailyRun(offset: number, seconds: number, extra: Partial<SeedRunOptions>): void {
-        for (let day = 2; day <= 7; day++) seedRaid(MIDNIGHT - day * DAY + offset, seconds, extra);
-    }
-
     it('learns each scope\'s curve from that scope\'s runs alone', () => {
         // In hour 3, every day: a Full Clear from 03:45 to 04:45, whose 15 minutes in the step
         // are known only 45 minutes after it; a Fresh Run nobody finished, 03:00-03:30; and a
         // Checkpoint Run, 03:00-03:30. Both short runs are known at once. Hour 3's share at age 0
         // is then 0 for Full Clears, 1800/2700 for Fresh Runs and 3600/4500 for All Attempts.
-        seedDailyRun(3 * HOUR + 45 * MINUTE, HOUR, FULL_CLEAR);
-        seedDailyRun(3 * HOUR, 30 * MINUTE, FRESH);
-        seedDailyRun(3 * HOUR, 30 * MINUTE, CHECKPOINT);
+        seedDaily(3 * HOUR + 45 * MINUTE, HOUR, FULL_CLEAR);
+        seedDaily(3 * HOUR, 30 * MINUTE, FRESH);
+        seedDaily(3 * HOUR, 30 * MINUTE, CHECKPOINT);
 
         const curves = getCompletenessCurves(ONE_HOUR);
 
@@ -256,7 +251,7 @@ describe('the curves of each scope (#204)', () => {
     });
 
     it('has no curve for a scope with no runs in the training week', () => {
-        seedDailyRun(3 * HOUR, HOUR, CHECKPOINT);
+        seedDaily(3 * HOUR, HOUR, CHECKPOINT);
 
         const curves = getCompletenessCurves(ONE_HOUR);
 
@@ -268,9 +263,9 @@ describe('the curves of each scope (#204)', () => {
     it('learns a raid\'s curve per scope, counting only that scope\'s runs toward the minimum', () => {
         // Last Wish: 6 Full Clears, 6 unfinished Fresh Runs and 6 Checkpoint Runs, so 18 runs in
         // All Attempts, 12 in Fresh Runs and 6 in Full Clears.
-        seedDailyRun(3 * HOUR, HOUR, { ...FULL_CLEAR, raidKey: 'last_wish' });
-        seedDailyRun(5 * HOUR, HOUR, { ...FRESH, raidKey: 'last_wish' });
-        seedDailyRun(7 * HOUR, HOUR, { ...CHECKPOINT, raidKey: 'last_wish' });
+        seedDaily(3 * HOUR, HOUR, { ...FULL_CLEAR, raidKey: 'last_wish' });
+        seedDaily(5 * HOUR, HOUR, { ...FRESH, raidKey: 'last_wish' });
+        seedDaily(7 * HOUR, HOUR, { ...CHECKPOINT, raidKey: 'last_wish' });
 
         const asked = { ...ONE_HOUR, raidKeys: ['last_wish'] };
         const withCurve = (minRaidRuns: number) => {

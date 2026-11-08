@@ -367,10 +367,13 @@ function clock(hour: number, minute = 0): number {
     return MIDNIGHT + hour * HOUR + minute * MINUTE;
 }
 
-/** The daily runs described above, as `[hour, minute, seconds]` triples. */
-function seedTrainingWeek(runs: Array<[number, number, number]>): void {
+/**
+ * The daily runs described above, as `[hour, minute, seconds]` triples, each with `seedRaid`
+ * options of its own if it needs them (#204's scopes).
+ */
+function seedTrainingWeek(runs: Array<[number, number, number, Partial<SeedRunOptions>?]>): void {
     for (let day = 2; day <= 7; day++) {
-        for (const [hour, minute, seconds] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds);
+        for (const [hour, minute, seconds, extra] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds, extra);
     }
 }
 
@@ -943,16 +946,10 @@ describe('scopes (#204)', () => {
      * STANDARD_WEEK), and a Checkpoint Run 10:00-11:00 reported at once. All Attempts' hour 10
      * is then 8,100 s of which 7,200 are reported at 30 minutes: 8/9.
      */
-    function seedWeek(runs: Array<[number, number, number, Partial<SeedRunOptions>]>): void {
-        for (let day = 2; day <= 7; day++) {
-            for (const [hour, minute, seconds, extra] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds, extra);
-        }
-    }
-
     const NOW_11_30 = { ...SEVEN_DAYS, now: HALF_PAST_ELEVEN };
 
     it('estimates each scope by the curve learned from that scope\'s runs', () => {
-        seedWeek([[10, 0, HOUR, FULL_CLEAR], [10, 45, HOUR, FULL_CLEAR], [10, 0, HOUR, CHECKPOINT]]);
+        seedTrainingWeek([[10, 0, HOUR, FULL_CLEAR], [10, 45, HOUR, FULL_CLEAR], [10, 0, HOUR, CHECKPOINT]]);
         // Half an hour of a Full Clear and half an hour of a Checkpoint Run in the 10:00 step.
         seedRaid(clock(10), 30 * MINUTE, FULL_CLEAR);
         seedRaid(clock(10), 30 * MINUTE, CHECKPOINT);
@@ -967,7 +964,7 @@ describe('scopes (#204)', () => {
     });
 
     it('estimates nothing in a scope with no runs in the training week, while a wider scope with some is estimated', () => {
-        seedWeek([[10, 0, HOUR, CHECKPOINT], [10, 0, HOUR, FRESH]]);
+        seedTrainingWeek([[10, 0, HOUR, CHECKPOINT], [10, 0, HOUR, FRESH]]);
         seedRaid(clock(10), 30 * MINUTE, FULL_CLEAR);
 
         const series = getRaidsInProgress(NOW_11_30);
@@ -983,7 +980,7 @@ describe('scopes (#204)', () => {
         // Last Wish's training week: six runs each of Full Clears, unfinished Fresh Runs and
         // Checkpoint Runs, so 18 in All Attempts, 12 in Fresh Runs and 6 in Full Clears. At a
         // minimum of 12 it is estimated under the first two and not under Full Clears.
-        seedWeek([
+        seedTrainingWeek([
             [10, 0, HOUR, { ...FULL_CLEAR, raidKey: 'last_wish' }],
             [10, 0, HOUR, { ...FRESH, raidKey: 'last_wish' }],
             [10, 0, HOUR, { ...CHECKPOINT, raidKey: 'last_wish' }],

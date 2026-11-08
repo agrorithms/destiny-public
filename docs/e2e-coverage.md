@@ -2906,3 +2906,66 @@ Both reverted; green at HEAD.
 - The threshold's boundary (exactly the minimum): Vitest's. The browser sees 4 against 9 or 10 runs.
 - The 30-day range's per-raid estimates: the 3-hour grid can leave no whole Provisional step.
 - The values of the per-raid estimates: hour-of-day dependent; Vitest pins them.
+
+## 2026-11-07 — #204 the Raid Activity Scope (`?scope=`)
+
+`e2e/activity-scope.spec.ts` — **new**, nine specs, kept out of the 1,166-line `activity.spec.ts`. The
+suite is now **thirty-four flows, 221 tests including the two canary setups**. No existing spec changed
+and none changed its expectations: the full suite went 212 passed before the page changed (the red run)
+and 221 after.
+
+**What the page gained:** a second row of links under the range presets (`activity-scope`, `nav`
+labelled Scope): **All · Fresh · Full Clears**, each with `aria-current` and a one-sentence `title`,
+written as `?scope=fresh|full` and left out for All. The range links, the raid picker and the `raids`
+clean-up redirect carry the scope. The intro (`activity-intro`) says which runs are counted in its
+second sentence. The chart, the per-raid panel, its default raids and the per-raid estimates follow
+the scope; one cache entry per range holds all three.
+
+**Seed:** no run was added. `seedActivityRuns` re-flags runs 36 hours back or more, so All Attempts is
+exactly what it was: of the 48-hour peak's three Salvation's Edge runs one is a Full Clear and one an
+unfinished Fresh Run, as is the daily run 54 hours back; both Last Wish runs are Full Clears; Vault of
+Glass's run 40 hours back is an unfinished Fresh Run. Over 7 days the busiest hour is then 3 / 2 / 1
+(`ACTIVITY_SCOPE_PEAKS`), the default raids are SE·KF·VoG / SE·LW·VoG / LW·SE
+(`ACTIVITY_SCOPE_TOP_RAIDS`), and Salvation's Edge has one Full Clear in the training week against the
+server's minimum of 6. The Full Clears are Completions by members with no `players` row, all 44 hours
+back or more, past the 24-hour default window every leaderboard, Fastest Clears and Difficulty spec reads.
+
+1. **Each link sets `?scope=` and redraws the total line** (peak 3 → 2 → 1, three different `d`s), and
+   All goes back to `?range=7d` with no `scope`.
+2. **Each link's `title`, and the intro** follows the scope (and names no other).
+3. **The scope survives a range switch and a reload** (`?range=30d&scope=full`).
+4. **Picked raids survive a scope switch, and a raid pick keeps the scope.**
+5. **An unreadable or repeated scope reads as All Attempts, with no redirect** (`nonsense`, `Full`,
+   `fresh&full`).
+6. **The default raids follow the scope.**
+7. **Salvation's Edge's estimate** is dashed under All Attempts and gone under Full Clears, with the
+   note naming it.
+8. **JavaScript off:** the links are plain links that load their scope.
+9. **At 360px:** both rows inside the viewport, the scope row under the presets, `expectNoOverflow`
+   under each scope.
+
+**Bite proof — the red run.** The seed and the spec were committed before the page changed (`1b655c0`):
+the full suite went **9 failed, 212 passed**. All nine new specs failed and nothing else did. Most
+failed on the missing control, so the assertions after it were broken on purpose, in three builds
+(`npm run e2e -- e2e/activity-scope.spec.ts`). Three, because `expectScopeDrawn` checks the intro
+before the peak, so an intro break hides a data break:
+
+| Build | Break | Spec that failed, and on what |
+| --- | --- | --- |
+| A | the intro always All Attempts' sentence | 2 ("each link carries its tooltip…"), at Fresh's intro |
+| A | the range links drop the scope | 3, `?range=30d` without `scope=full` |
+| A | `parseActivityScope` takes the first of a repeated value | 5, Fresh marked for `?scope=fresh&scope=full` |
+| A | Full Clears served All Attempts' series | 6 (`kings_fall, vault_of_glass` drawn), 7 (the dashed segment still there) |
+| B | Full Clears served All Attempts' series | 1 and 8, `Busiest hour: 3` where 1 was expected (JavaScript off too) |
+| B | the raid picker drops the scope | 4, `?range=7d&raids=…` without `scope=fresh` |
+| C | the scope row given `min-w-[400px]` | 9, `elements overflow the viewport` |
+
+All reverted; green at HEAD.
+
+### What is still NOT covered
+
+- The scope control during maintenance: it sits outside the maintenance branch, but no spec puts the
+  server into maintenance on `/activity`.
+- The Morgeth Pantheon's zero under the narrower scopes: Vitest's (a finished Checkpoint Run is never
+  a Full Clear). The seed has no Pantheon run.
+- The values of each scope's Provisional estimate: hour-of-day dependent; Vitest pins them.

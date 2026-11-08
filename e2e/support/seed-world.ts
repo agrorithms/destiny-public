@@ -292,26 +292,63 @@ export function difficultyPlayerName(player: keyof typeof DIFFICULTY_PLAYERS): s
  *   Crota's End 1, behind Salvation's Edge's 12 and a bit, so the per-raid panel's default
  *   is those three in that order; over 24 hours only Salvation's Edge has run at all.
  *
- * All of them are Checkpoint Runs nobody finished, by members no `players` row names, so
- * no leaderboard, Fastest Clears board, player page or player search can see them: the
- * chart counts every raid instance (All Attempts), and nothing else on the site counts
- * these. Their member ids and instance ids carry the `92` namespace, which no spec file
- * claims (`81`–`91` belong to the files that seed active sessions; docs/e2e-coverage.md
- * lists them), so they collide with no spec's players or runs.
+ * - **the Scopes** (#204): some of the runs above are Fresh Runs, and some of those Full
+ *   Clears ({@link ActivityRunKind}); every other run is a Checkpoint Run nobody finished.
+ *   They were re-flagged rather than added, so All Attempts — what every spec before #204
+ *   reads — is exactly what it was. Of the peak's three Salvation's Edge runs one is a Full
+ *   Clear and one an unfinished Fresh Run, as is the daily run 54 hours back; both Last Wish
+ *   runs are Full Clears; Vault of Glass's run 40 hours back is an unfinished Fresh Run. So
+ *   over 7 days the busiest hour is 3 under All Attempts, 2 under Fresh Runs and 1 under
+ *   Full Clears ({@link ACTIVITY_SCOPE_PEAKS}), and the default raids are Salvation's Edge,
+ *   Last Wish and Vault of Glass under Fresh Runs and Last Wish and Salvation's Edge under
+ *   Full Clears ({@link ACTIVITY_SCOPE_TOP_RAIDS}). Salvation's Edge has one Full Clear in
+ *   the training week against the e2e server's minimum of 6, so it is estimated under All
+ *   Attempts and not under Full Clears.
+ *
+ * Every Checkpoint Run and Fresh Run here was finished by nobody, and every run is by members
+ * no `players` row names. The Full Clears are finished by their member, so each is a
+ * Completion — but each started 44 hours back or more, past the 24 hours that every
+ * leaderboard, Fastest Clears and Difficulty spec reads (the leaderboard's default window,
+ * which no spec moves), so no board those specs see can count them. Their member ids and
+ * instance ids carry the `92` namespace, which no spec file claims (`81`–`91` belong to the
+ * files that seed active sessions; docs/e2e-coverage.md lists them), so they collide with no
+ * spec's players or runs.
  */
 export const ACTIVITY_PEAK_RAIDS = 3;
 
 /**
  * The raids that run besides RAID_A in the Raid Activity world (#198), most active first, and
  * the hours back from the seed's clock hour that each one's hour-long runs start. The names are
- * what the raid picker and the legend show.
+ * what the raid picker and the legend show. `kinds` (#204) names the runs that are not
+ * Checkpoint Runs, by the hours back they start.
  */
-export const ACTIVITY_OTHER_RAIDS: ReadonlyArray<FixtureRaid & { hoursBack: readonly number[] }> = [
+export const ACTIVITY_OTHER_RAIDS: ReadonlyArray<
+    FixtureRaid & { hoursBack: readonly number[]; kinds?: Readonly<Record<number, ActivityRunKind>> }
+> = [
     { key: 'kings_fall', hash: 1374392663, name: "King's Fall", hoursBack: [36, 60, 84, 108] },
-    { key: 'vault_of_glass', hash: 3881495763, name: 'Vault of Glass', hoursBack: [40, 64, 88] },
-    { key: 'last_wish', hash: 2122313384, name: 'Last Wish', hoursBack: [44, 68] },
+    { key: 'vault_of_glass', hash: 3881495763, name: 'Vault of Glass', hoursBack: [40, 64, 88], kinds: { 40: 'fresh' } },
+    { key: 'last_wish', hash: 2122313384, name: 'Last Wish', hoursBack: [44, 68], kinds: { 44: 'fullClear', 68: 'fullClear' } },
     { key: 'crotas_end', hash: 1566480315, name: "Crota's End", hoursBack: [72] },
 ];
+
+/**
+ * How a Raid Activity run began and ended (#204). Absent, a Checkpoint Run nobody finished.
+ * `fresh` is a Fresh Run nobody finished; `fullClear` a Fresh Run its member finished.
+ */
+export type ActivityRunKind = 'checkpoint' | 'fresh' | 'fullClear';
+
+/** The 7-day chart's busiest hour under each Scope (#204), in raids in progress. */
+export const ACTIVITY_SCOPE_PEAKS = { all: ACTIVITY_PEAK_RAIDS, fresh: 2, full: 1 } as const;
+
+/** The per-raid panel's default raids over 7 days under each Scope (#204), most first. */
+export const ACTIVITY_SCOPE_TOP_RAIDS = {
+    all: ['salvations_edge', 'kings_fall', 'vault_of_glass'],
+    fresh: ['salvations_edge', 'last_wish', 'vault_of_glass'],
+    full: ['last_wish', 'salvations_edge'],
+} as const;
+
+/** How the peak's {@link ACTIVITY_PEAK_RAIDS} runs began and ended (#204). */
+const ACTIVITY_PEAK_KINDS: readonly ActivityRunKind[] = ['fullClear', 'fresh', 'checkpoint'];
 
 /** How many runs make the 24-hour range's busiest 10 minutes. */
 export const ACTIVITY_RECENT_PEAK_RAIDS = 2;
@@ -323,10 +360,15 @@ function seedActivityRuns(): void {
     const hour = 3600;
     const nowSeconds = Math.floor(Date.now() / 1000);
     const thisHour = Math.floor(nowSeconds / hour) * hour;
-    const runs: Array<{ start: number; seconds: number; raid?: FixtureRaid }> = [
-        ...Array.from({ length: ACTIVITY_PEAK_RAIDS }, () => ({ start: thisHour - 48 * hour, seconds: hour })),
+    const runs: Array<{ start: number; seconds: number; raid?: FixtureRaid; kind?: ActivityRunKind }> = [
+        ...ACTIVITY_PEAK_KINDS.map((kind) => ({ start: thisHour - 48 * hour, seconds: hour, kind })),
         { start: thisHour - 100 * hour, seconds: 2.5 * hour },
-        ...Array.from({ length: 6 }, (_, day) => ({ start: thisHour - ((day + 1) * 24 + 6) * hour, seconds: hour })),
+        // The second day's, 54 hours back, is a Fresh Run (#204).
+        ...Array.from({ length: 6 }, (_, day) => ({
+            start: thisHour - ((day + 1) * 24 + 6) * hour,
+            seconds: hour,
+            kind: day === 1 ? ('fresh' as const) : undefined,
+        })),
         ...Array.from({ length: ACTIVITY_RECENT_PEAK_RAIDS }, () => ({ start: thisHour - 6 * hour, seconds: hour / 3 })),
         { start: thisHour - ACTIVITY_OLDEST_DAYS * 24 * hour, seconds: hour },
         // The Provisional estimate (#196): a 20-minute run that ended 40 minutes before the seed
@@ -336,17 +378,19 @@ function seedActivityRuns(): void {
         { start: nowSeconds - hour, seconds: hour / 3 },
         // Appended, so the instance and member ids above are what they were before #198.
         ...ACTIVITY_OTHER_RAIDS.flatMap((raid) =>
-            raid.hoursBack.map((back) => ({ start: thisHour - back * hour, seconds: hour, raid }))
+            raid.hoursBack.map((back) => ({ start: thisHour - back * hour, seconds: hour, raid, kind: raid.kinds?.[back] }))
         ),
     ];
 
     runs.forEach((run, index) => {
+        const member = `92000000000000${String(index + 1).padStart(2, '0')}`;
+        const kind = run.kind ?? 'checkpoint';
         seedRun({
             instanceId: `9200${index + 1}`,
             activityHash: (run.raid ?? RAID_A).hash,
             raidKey: (run.raid ?? RAID_A).key,
-            incompleteBy: [`92000000000000${String(index + 1).padStart(2, '0')}`],
-            startedFromBeginning: false,
+            ...(kind === 'fullClear' ? { completedBy: [member] } : { incompleteBy: [member] }),
+            startedFromBeginning: kind !== 'checkpoint',
             period: run.start,
             activityDurationSeconds: run.seconds,
             timePlayedSeconds: run.seconds,

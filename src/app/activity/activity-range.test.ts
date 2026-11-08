@@ -55,6 +55,25 @@ describe('the presets', () => {
     });
 });
 
+describe('the scope in a link (#204)', () => {
+    it('leaves All Attempts out, so a link written before #204 and one written after say the same', () => {
+        expect(activityRangeHref('7d', [], 'all')).toBe('/activity?range=7d');
+        expect(activityRangeHref('24h', ['last_wish'], 'all')).toBe('/activity?range=24h&raids=last_wish');
+    });
+
+    it('writes a narrower scope after the range', () => {
+        expect(activityRangeHref('30d', [], 'fresh')).toBe('/activity?range=30d&scope=fresh');
+        expect(activityRangeHref('24h', [], 'full')).toBe('/activity?range=24h&scope=full');
+    });
+
+    it('keeps the raids, after the scope, when the link carries both', () => {
+        // A range or scope switch keeps the reader's comparison.
+        expect(activityRangeHref('7d', ['last_wish', 'kings_fall'], 'full')).toBe(
+            '/activity?range=7d&scope=full&raids=last_wish,kings_fall'
+        );
+    });
+});
+
 describe('the preset a series was built for', () => {
     // The chart words its caption and picks its ticks from the series it draws, so a
     // series and the range it is described as can never disagree (#195 review, S2).

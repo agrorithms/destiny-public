@@ -1847,12 +1847,12 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): Record<Acti
     const allAttempts = newSweep(steps);
     const freshRuns = newSweep(steps);
     const fullClear = newSweep(steps);
-    for (const [period, endedAt, raidKey, fresh, cleared] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
+    for (const [period, endedAt, raidKey, isFresh, isFullClear] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
         const start = Math.max(period, firstStart);
         const end = Math.min(endedAt, cutoff);
         addRun(allAttempts, raidKey, firstStart, stepSeconds, start, end);
-        if (fresh) addRun(freshRuns, raidKey, firstStart, stepSeconds, start, end);
-        if (cleared) addRun(fullClear, raidKey, firstStart, stepSeconds, start, end);
+        if (isFresh) addRun(freshRuns, raidKey, firstStart, stepSeconds, start, end);
+        if (isFullClear) addRun(fullClear, raidKey, firstStart, stepSeconds, start, end);
     }
 
     const window: SweepWindow = { from, now, stepSeconds, firstStart, countedUntil, countedSteps, steps, raidKeys: options.raidKeys };
@@ -2062,10 +2062,10 @@ export function getCompletenessCurves(options: {
     const allAttempts = new Map<string, CurveTally>();
     const freshRuns = new Map<string, CurveTally>();
     const fullClear = new Map<string, CurveTally>();
-    for (const [period, endedAt, raidKey, fresh, cleared] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
+    for (const [period, endedAt, raidKey, isFresh, isFullClear] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
         tallyRun(tallyOf(allAttempts, raidKey), window, stepSeconds, period, endedAt);
-        if (fresh) tallyRun(tallyOf(freshRuns, raidKey), window, stepSeconds, period, endedAt);
-        if (cleared) tallyRun(tallyOf(fullClear, raidKey), window, stepSeconds, period, endedAt);
+        if (isFresh) tallyRun(tallyOf(freshRuns, raidKey), window, stepSeconds, period, endedAt);
+        if (isFullClear) tallyRun(tallyOf(fullClear, raidKey), window, stepSeconds, period, endedAt);
     }
     return {
         allAttempts: curvesOf(allAttempts, asked, minRaidRuns),
@@ -2101,7 +2101,9 @@ function curvesOf(tallies: ReadonlyMap<string, CurveTally>, asked: ReadonlySet<s
  * completeness curve learns from ({@link getCompletenessCurves}), read one way for both so the
  * estimate scales up the same population it was learned from, in each Scope (#204). `fresh` is
  * 1 for a Fresh Run (Bungie's fresh-start flag, the only authoritative signal) and `fullClear`
- * is 1 for a Full Clear ({@link FULL_CLEAR}, the named rule, not a copy of it); both 0 otherwise.
+ * is 1 for a Full Clear ({@link FULL_CLEAR}, the named rule, not a copy of it); otherwise each
+ * is 0, or NULL (both columns are nullable, and `= 1` on a NULL is NULL), which the passes
+ * read as 0. Typed so, not wrapped in COALESCE, to keep the SQL the plan was checked on.
  * Raids only, through the covering `idx_pgcrs_ended_period_raid_clear`, which holds both flags
  * and which the planner picks with no hint, under prod's statistics too (checked for both passes
  * on the 2026-11-05 backup, #204). A run that has not ended by `now` is not a report yet.
@@ -2110,7 +2112,7 @@ function endedRaidRuns(bounds: {
     endedAfter: number;
     now: number;
     startedBefore: number;
-}): IterableIterator<[number, number, string, 0 | 1, 0 | 1]> {
+}): IterableIterator<EndedRaidRun> {
     const { endedAfter, now, startedBefore } = bounds;
     return getDb().prepare(`
     SELECT p.period, p.ended_at, p.raid_key,
@@ -2121,8 +2123,11 @@ function endedRaidRuns(bounds: {
       AND p.ended_at <= ?
       AND p.period < ?
       AND p.raid_key IS NOT NULL
-  `).raw().iterate(endedAfter, now, startedBefore) as IterableIterator<[number, number, string, 0 | 1, 0 | 1]>;
+  `).raw().iterate(endedAfter, now, startedBefore) as IterableIterator<EndedRaidRun>;
 }
+
+/** One row of {@link endedRaidRuns}: `[period, ended_at, raid_key, fresh, fullClear]`. */
+type EndedRaidRun = [number, number, string, 0 | 1 | null, 0 | 1 | null];
 
 // =====================
 // SESSION SNAPSHOT QUERIES

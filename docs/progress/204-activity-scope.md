@@ -41,6 +41,12 @@ Branch `feat/204-activity-scope`, base `feat/227-widen-ended-index` @ `fd26b2c`.
    - [x] `npm run mutate:diff -- fd26b2c...HEAD --typecheck` — full run at `b5b3d56`: 100.0% overall (39/39), 100.0% covered, 23 compile errors discarded, PASS; no survivors, no loops, no `Stryker disable`
    - [x] `npm run visual:check` — 74/74 at `b5b3d56` (68 before plus `activity-full` at six sizes), overflow gate passed
    - [x] lint, build, test, e2e at HEAD — lint 0 errors (29 warnings), tsc app and scripts, build, vitest 942/942, e2e 221/221 (run at `4c25eae`, and again at the commit that ticks this box)
+6. /simplify pass
+   - [x] /simplify pass — 4 cleanup agents. Done: `seriesOf` reads `from` and `countedSteps` off the window and `curvesOf` takes
+     the asked set once (the sweep loop and `endedRaidRuns` untouched); the range presets and the scope links share
+     `ActivityLinkToggle.tsx`; the scope tests seed through `seedDaily` and `seedTrainingWeek`; the seed's run kinds keyed by
+     hour back, not position; the phone spec measures through `boxOf` (bite proof: the scope row moved above the presets,
+     red at 328 < 404, reverted). Left: see the simplifier's report.
 
 ## Real data (2026-11-05 backup)
 

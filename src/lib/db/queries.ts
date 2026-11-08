@@ -1835,7 +1835,7 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): Record<Acti
         Math.ceil(Math.max(from, oldest + DATA_START_MARGIN_SECONDS) / stepSeconds) * stepSeconds
     );
     const countedSteps = (countedUntil - firstStart) / stepSeconds;
-    const steps = (cutoff - firstStart) / stepSeconds;
+    const grid: StepGrid = { firstStart, stepSeconds, steps: (cutoff - firstStart) / stepSeconds };
     const curves = getCompletenessCurves({ now, stepSeconds, raidKeys: options.raidKeys, minRaidRuns: options.minRaidRuns });
 
     // Seconds of raid time inside each step from runs that only partly cover it, and the
@@ -1844,56 +1844,93 @@ export function getRaidsInProgress(options: RaidsInProgressOptions): Record<Acti
     // last piece lands there, and is zero seconds long. Each scope (#204) has a pair for its
     // total and one for each raid (#198), all filled by the same pass: a run goes into every
     // scope it is in, and the narrower scopes are subsets, so only the flags decide which.
-    const allAttempts = newSweep(steps);
-    const freshRuns = newSweep(steps);
-    const fullClear = newSweep(steps);
+    const sweeps = perScope(() => newSweep(grid));
+    const scopesByFlags = runScopesByFlags();
     for (const [period, endedAt, raidKey, isFresh, isFullClear] of endedRaidRuns({ endedAfter: firstStart, now, startedBefore: cutoff })) {
         const start = Math.max(period, firstStart);
         const end = Math.min(endedAt, cutoff);
-        addRun(allAttempts, raidKey, firstStart, stepSeconds, start, end);
-        if (isFresh) addRun(freshRuns, raidKey, firstStart, stepSeconds, start, end);
-        if (isFullClear) addRun(fullClear, raidKey, firstStart, stepSeconds, start, end);
+        const scopes = scopesOfRun(scopesByFlags, isFresh, isFullClear);
+        for (let i = 0; i < scopes.length; i++) addRun(sweeps[scopes[i]], grid, raidKey, start, end);
     }
 
-    const window: SweepWindow = { from, now, stepSeconds, firstStart, countedUntil, countedSteps, steps, raidKeys: options.raidKeys };
-    return {
-        allAttempts: seriesOf(allAttempts, curves.allAttempts, window),
-        freshRuns: seriesOf(freshRuns, curves.freshRuns, window),
-        fullClear: seriesOf(fullClear, curves.fullClear, window),
+    const window: SweepWindow = { grid, from, now, countedUntil, countedSteps, raidKeys: options.raidKeys };
+    return perScope((scope) => seriesOf(sweeps[scope], curves[scope], window));
+}
+
+/** One `T` for each Scope (#204), made by `make`: an accumulator per Scope for a pass, or a result. */
+function perScope<T>(make: (scope: ActivityScope) => T): Record<ActivityScope, T> {
+    return { allAttempts: make('allAttempts'), freshRuns: make('freshRuns'), fullClear: make('fullClear') };
+}
+
+/**
+ * Which Scopes (#204) a run is in: the one definition both {@link getRaidsInProgress}'s sweep
+ * and {@link getCompletenessCurves}'s pass read, so the estimate keeps learning from the
+ * population it scales. Every run is in All Attempts; a Fresh Run is also in Fresh Runs, and a
+ * Full Clear also in Full Clear. Each pass builds the answer for all four flag pairs once,
+ * indexed as {@link scopesOfRun} reads it, so its per-row loop calls no rule and allocates
+ * nothing: it runs once per row of a 30-day range.
+ */
+function runScopesByFlags(): ActivityScope[][] {
+    const isIn: Record<ActivityScope, (isFresh: boolean, isFullClear: boolean) => boolean> = {
+        allAttempts: () => true,
+        freshRuns: (isFresh) => isFresh,
+        fullClear: (_isFresh, isFullClear) => isFullClear,
     };
+    const scopes = Object.keys(isIn) as ActivityScope[];
+    return [0, 1, 2, 3].map((flags) => scopes.filter((scope) => isIn[scope](flags >= 2, flags % 2 === 1)));
+}
+
+/** The Scopes a run with these flags is in, from {@link runScopesByFlags}; a NULL flag reads as 0. */
+function scopesOfRun(scopesByFlags: ActivityScope[][], isFresh: RunFlag, isFullClear: RunFlag): ActivityScope[] {
+    return scopesByFlags[(isFresh === 1 ? 2 : 0) + (isFullClear === 1 ? 1 : 0)];
+}
+
+/**
+ * `map`'s value for `key`, made by `make(arg)` and stored the first time the key is asked for.
+ * `make` is a named function and `arg` its input, not a closure, so a caller in a per-row loop
+ * allocates nothing unless the key is new.
+ */
+function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V;
+function getOrCreate<K, V, A>(map: Map<K, V>, key: K, make: (arg: A) => V, arg: A): V;
+function getOrCreate<K, V, A>(map: Map<K, V>, key: K, make: (arg?: A) => V, arg?: A): V {
+    let value = map.get(key);
+    if (value === undefined) {
+        value = make(arg);
+        map.set(key, value);
+    }
+    return value;
 }
 
 /** One scope's runs, as {@link getRaidsInProgress}'s sweep adds them up: its total and each raid. */
 interface Sweep {
     total: Overlap;
     perRaid: Map<string, Overlap>;
-    steps: number;
 }
 
-function newSweep(steps: number): Sweep {
-    return { total: newOverlap(steps), perRaid: new Map(), steps };
+function newSweep(grid: StepGrid): Sweep {
+    return { total: newOverlap(grid), perRaid: new Map() };
 }
 
 /** Adds one run, already clipped to the window, to a scope's total and to its raid's own arrays. */
-function addRun(sweep: Sweep, raidKey: string, firstStart: number, stepSeconds: number, start: number, end: number): void {
-    let raid = sweep.perRaid.get(raidKey);
-    if (raid === undefined) {
-        raid = newOverlap(sweep.steps);
-        sweep.perRaid.set(raidKey, raid);
-    }
-    addOverlap(sweep.total, firstStart, stepSeconds, start, end);
-    addOverlap(raid, firstStart, stepSeconds, start, end);
+function addRun(sweep: Sweep, grid: StepGrid, raidKey: string, start: number, end: number): void {
+    addOverlap(sweep.total, grid, start, end);
+    addOverlap(getOrCreate(sweep.perRaid, raidKey, newOverlap, grid), grid, start, end);
 }
 
-/** What every scope's series shares: the range, the step grid, where counting ends, and the raids asked for. */
+/** The steps a range is swept into: `steps` of `stepSeconds` each from `firstStart`, the last ending at the cutoff. */
+interface StepGrid {
+    firstStart: number;
+    stepSeconds: number;
+    steps: number;
+}
+
+/** What every scope's series shares: the step grid, the range, where counting ends, and the raids asked for. */
 interface SweepWindow {
+    grid: StepGrid;
     from: number;
     now: number;
-    stepSeconds: number;
-    firstStart: number;
     countedUntil: number;
     countedSteps: number;
-    steps: number;
     raidKeys: readonly string[] | undefined;
 }
 
@@ -1902,7 +1939,8 @@ interface SweepWindow {
  * Provisional ones down to the first step the scope's curve can't estimate.
  */
 function seriesOf(sweep: Sweep, curves: CompletenessCurves, window: SweepWindow): RaidsInProgressSeries {
-    const { from, now, stepSeconds, firstStart, countedUntil, countedSteps, steps, raidKeys: requested } = window;
+    const { firstStart, stepSeconds, steps } = window.grid;
+    const { from, now, countedUntil, countedSteps, raidKeys: requested } = window;
     const { total, perRaid } = sweep;
     const raidTime = new Map<string, number>();
     const wholeRunsOf = new Map<string, number>();
@@ -1971,8 +2009,8 @@ interface Overlap {
     wholeStepsDelta: Float64Array;
 }
 
-function newOverlap(steps: number): Overlap {
-    return { partialSeconds: new Float64Array(steps + 1), wholeStepsDelta: new Float64Array(steps + 1) };
+function newOverlap(grid: StepGrid): Overlap {
+    return { partialSeconds: new Float64Array(grid.steps + 1), wholeStepsDelta: new Float64Array(grid.steps + 1) };
 }
 
 /**
@@ -1981,7 +2019,8 @@ function newOverlap(steps: number): Overlap {
  * inside a single step takes the same path: its two pieces then overlap and add up to one
  * step more than the run, and the -1 at `last` (which is `first`) takes that step back.
  */
-function addOverlap(overlap: Overlap, firstStart: number, stepSeconds: number, start: number, end: number): void {
+function addOverlap(overlap: Overlap, grid: StepGrid, start: number, end: number): void {
+    const { firstStart, stepSeconds } = grid;
     const first = Math.floor((start - firstStart) / stepSeconds);
     const last = Math.floor((end - firstStart) / stepSeconds);
     overlap.partialSeconds[first] += firstStart + (first + 1) * stepSeconds - start;
@@ -2059,29 +2098,13 @@ export function getCompletenessCurves(options: {
     const { now, stepSeconds, minRaidRuns = MIN_RAID_CURVE_RUNS } = options;
     const asked = new Set(options.raidKeys);
     const window = trainingWindow(now, stepSeconds);
-    const allAttempts = new Map<string, CurveTally>();
-    const freshRuns = new Map<string, CurveTally>();
-    const fullClear = new Map<string, CurveTally>();
+    const tallies = perScope(() => new Map<string, CurveTally>());
+    const scopesByFlags = runScopesByFlags();
     for (const [period, endedAt, raidKey, isFresh, isFullClear] of endedRaidRuns({ endedAfter: window.from, now, startedBefore: window.until })) {
-        tallyRun(tallyOf(allAttempts, raidKey), window, stepSeconds, period, endedAt);
-        if (isFresh) tallyRun(tallyOf(freshRuns, raidKey), window, stepSeconds, period, endedAt);
-        if (isFullClear) tallyRun(tallyOf(fullClear, raidKey), window, stepSeconds, period, endedAt);
+        const scopes = scopesOfRun(scopesByFlags, isFresh, isFullClear);
+        for (let i = 0; i < scopes.length; i++) tallyRun(getOrCreate(tallies[scopes[i]], raidKey, newTally), window, stepSeconds, period, endedAt);
     }
-    return {
-        allAttempts: curvesOf(allAttempts, asked, minRaidRuns),
-        freshRuns: curvesOf(freshRuns, asked, minRaidRuns),
-        fullClear: curvesOf(fullClear, asked, minRaidRuns),
-    };
-}
-
-/** A raid's tally in one scope's tallies, made empty the first time the raid is seen. */
-function tallyOf(tallies: Map<string, CurveTally>, raidKey: string): CurveTally {
-    let tally = tallies.get(raidKey);
-    if (tally === undefined) {
-        tally = newTally();
-        tallies.set(raidKey, tally);
-    }
-    return tally;
+    return perScope((scope) => curvesOf(tallies[scope], asked, minRaidRuns));
 }
 
 /** One scope's curves from its raids' tallies: the total's, and each asked-for raid's with enough runs. */
@@ -2127,7 +2150,10 @@ function endedRaidRuns(bounds: {
 }
 
 /** One row of {@link endedRaidRuns}: `[period, ended_at, raid_key, fresh, fullClear]`. */
-type EndedRaidRun = [number, number, string, 0 | 1 | null, 0 | 1 | null];
+type EndedRaidRun = [number, number, string, RunFlag, RunFlag];
+
+/** A 0/1 flag column of {@link endedRaidRuns}, NULL when a column it compares is. */
+type RunFlag = 0 | 1 | null;
 
 // =====================
 // SESSION SNAPSHOT QUERIES

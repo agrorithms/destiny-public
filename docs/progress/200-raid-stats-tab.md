@@ -89,6 +89,15 @@ decisions approved 2026-11-12:
      `ScopeValue`, `Staged<T>`) and its three figure-less KDA sections share `KdaSection`; `RaidStatsMaintenance` no longer
      exported; `sleep` and `plural` reused; `raidKeys` passed to the chart tab instead of rebuilt; `rank` searches once;
      `getRaidStats`' comment no longer says it is what the route runs. No test file changed, so no `expect` line moved.
+11. Review fix loop 1 (the user picked all six; S5 follow-up, P1 and O2 declined)
+   - [x] O1 `src/lib/db/queries.ts` — one `FRESH_RUN` again, read by `queryScope`, `endedRaidRuns` and `FULL_CLEAR`; every
+     SQL text byte-identical to before (the two constants' values checked), so #204's checked plan stands
+   - [ ] P2 `e2e/activity-stats.spec.ts` — the 30d "Full Clears only" line with JavaScript off, warm; `docs/e2e-coverage.md`
+   - [ ] S1 `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — the no-refetch text marked as superseded for raid stats
+   - [ ] S2 `docs/adr/0004-mock-only-at-the-network-boundary.md` — `serveMaintenance` kept pending a follow-up issue
+   - [ ] S3 `src/app/activity/peek.ts` (new) — `peek`, `settle`, `Peeked`, `Settled`, with `peek` built on `settle`; tests moved
+   - [ ] S4 `src/app/activity/RaidStatsBoard.tsx`, `page.tsx` — `Staged<T>.now` → `seen`, `frameSeen`, `scopeSeen`
+   - [ ] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
 
 ## Commits so far
 

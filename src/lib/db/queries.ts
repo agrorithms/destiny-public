@@ -18,6 +18,14 @@ import { getAllRaidDefinitions, getHashesWithDifficulty } from '../bungie/manife
 import type { Difficulty } from '../bungie/difficulty';
 
 /**
+ * Instance-level: the run was entered at the first encounter, finished or not — a Fresh Run
+ * (CONTEXT.md). Bungie's fresh-start flag is the only authoritative signal. Read by Raid
+ * Activity's sweep (#204) and the Raid Stats Fresh Runs scope (#200), so the two count one
+ * population. Aliased `p`, as {@link FULL_CLEAR} is.
+ */
+export const FRESH_RUN = 'p.activity_was_started_from_beginning = 1';
+
+/**
  * Instance-level: the run reached the end, having been started from the beginning.
  * The glossary entry is CONTEXT.md's `Full Clear`; this is its SQL.
  *
@@ -27,7 +35,7 @@ import type { Difficulty } from '../bungie/difficulty';
  * raid at all" is a different question, and bundling it would make these unusable in a
  * non-raid context. Call sites carry it themselves.
  */
-export const FULL_CLEAR = 'p.completed = 1 AND p.activity_was_started_from_beginning = 1';
+export const FULL_CLEAR = `p.completed = 1 AND ${FRESH_RUN}`;
 
 /**
  * Player-level: this player finished, inside a Full Clear. The extra conjunct is not
@@ -1020,12 +1028,12 @@ function queryScope(
 ): Map<string, RaidScopeStats> {
     const db = getDb();
     // The instance-level predicate that defines each scope's population. All Attempts is every
-    // in-window instance, so its predicate is empty. Fresh Runs (#200) is #204's: Bungie's
-    // fresh-start flag, spelled as endedRaidRuns spells it, so a raid's Fresh Runs here are the
-    // runs Raid Activity counts under that scope. Literals in the function, as `pgcrsSource`.
+    // in-window instance, so its predicate is empty. Fresh Runs (#200) is #204's: the named rule
+    // endedRaidRuns reads too, so a raid's Fresh Runs here are the runs Raid Activity counts under
+    // that scope. Inside the function, as `pgcrsSource` is.
     const predicates: Record<RaidScope, string> = {
         fullClear: FULL_CLEAR,
-        freshRuns: 'p.activity_was_started_from_beginning = 1',
+        freshRuns: FRESH_RUN,
         allAttempts: '',
     };
     const predicate = predicates[scope];
@@ -2250,7 +2258,7 @@ function curvesOf(tallies: ReadonlyMap<string, CurveTally>, asked: ReadonlySet<s
  * swapped): the runs Raid Activity counts ({@link getRaidsInProgress}) and the ones its
  * completeness curve learns from ({@link getCompletenessCurves}), read one way for both so the
  * estimate scales up the same population it was learned from, in each Scope (#204). `fresh` is
- * 1 for a Fresh Run (Bungie's fresh-start flag, the only authoritative signal) and `fullClear`
+ * 1 for a Fresh Run ({@link FRESH_RUN}, the rule the Raid Stats scope reads too) and `fullClear`
  * is 1 for a Full Clear ({@link FULL_CLEAR}, the named rule, not a copy of it); otherwise each
  * is 0, or NULL (both columns are nullable, and `= 1` on a NULL is NULL), which the passes
  * read as 0. Typed so, not wrapped in COALESCE, to keep the SQL the plan was checked on.
@@ -2266,7 +2274,7 @@ function endedRaidRuns(bounds: {
     const { endedAfter, now, startedBefore } = bounds;
     return getDb().prepare(`
     SELECT p.period, p.ended_at, p.raid_key,
-           p.activity_was_started_from_beginning = 1 AS fresh,
+           ${FRESH_RUN} AS fresh,
            (${FULL_CLEAR}) AS full_clear
     FROM pgcrs p
     WHERE p.ended_at > ?

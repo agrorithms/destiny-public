@@ -921,6 +921,7 @@ export interface RaidScopeStats {
  */
 const RAID_SCOPE_PREDICATES = {
     fullClear: FULL_CLEAR,
+    freshRuns: 'p.activity_was_started_from_beginning = 1',
     allAttempts: '',
 } as const;
 
@@ -935,7 +936,29 @@ export type RaidScope = keyof typeof RAID_SCOPE_PREDICATES;
  */
 const ALL_SCOPES_MAX_HOURS = 168;
 
+export interface RaidClearTimeQuartiles {
+    p25: number;
+    p50: number;
+    p75: number;
+}
+
+export function isScopeComputed(_scope: RaidScope, _hoursBack: number): boolean {
+    throw new Error('not implemented');
+}
+
+export function getRaidStatsFrame(_hoursBack: number, _filters?: RaidFilters): RaidStatsFrameRow[] {
+    throw new Error('not implemented');
+}
+
+export function getRaidScopeStats(_hoursBack: number, _scope: RaidScope, _filters?: RaidFilters): Map<string, RaidScopeStats> | null {
+    throw new Error('not implemented');
+}
+
+export type RaidStatsFrameRow = Omit<RaidStatsRow, RaidScope>;
+
 export type RaidStatsRow = {
+    clearTimeQuartiles: RaidClearTimeQuartiles | null;
+    fullClearCount: number;
     raidKey: string;
     /** Full-clear-only by definition, which is why it sits outside the scope toggle. */
     fastestClearSeconds: number | null;
@@ -999,6 +1022,7 @@ function queryScope(
     // forced). Literals in the function, not a top-level table, so mutation testing reaches them.
     const pgcrsSource: Record<RaidScope, string> = {
         fullClear: 'pgcrs p INDEXED BY idx_pgcrs_ended_period_raid_clear',
+        freshRuns: 'pgcrs p',
         allAttempts: 'pgcrs p',
     };
 
@@ -1126,7 +1150,10 @@ export function getRaidStats(
         instanceCount: row.instanceCount,
         // A raid can have instances in-window but no Player-Runs in a computed scope; that —
         // and only that — is when a scope reports sampleSize 0 and kda null.
+        clearTimeQuartiles: null,
+        fullClearCount: 0,
         fullClear: fullClear.get(row.raidKey) ?? emptyScopeStats(),
+        freshRuns: null,
         allAttempts: allAttempts ? allAttempts.get(row.raidKey) ?? emptyScopeStats() : null,
     }));
 }

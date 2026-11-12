@@ -101,6 +101,40 @@ describe('the staged compute', () => {
     });
 });
 
+// The analytics lifetime the route always used: ANALYTICS_CACHE_FRESH_SEC (default 300) and
+// ANALYTICS_CACHE_SWR_SEC (default 1800). Only Date is faked, so the pause runs on real timers.
+describe('the cache lifetime', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+    });
+
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+
+    it('is fresh for ANALYTICS_CACHE_FRESH_SEC, then stale', async () => {
+        vi.stubEnv('ANALYTICS_CACHE_FRESH_SEC', '10');
+        seedFullClear('1');
+        await readRaidStatsFrame(24);
+        await readRaidStatsScope(24, 'fullClear');
+        vi.setSystemTime(Date.now() + 11_000);
+        expect((await readRaidStatsFrame(24)).state).toBe('stale');
+        expect((await readRaidStatsScope(24, 'fullClear')).state).toBe('stale');
+        await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+
+    it('serves stale until ANALYTICS_CACHE_SWR_SEC, then misses', async () => {
+        vi.stubEnv('ANALYTICS_CACHE_FRESH_SEC', '10');
+        vi.stubEnv('ANALYTICS_CACHE_SWR_SEC', '20');
+        seedFullClear('1');
+        await readRaidStatsFrame(24);
+        await readRaidStatsScope(24, 'fullClear');
+        vi.setSystemTime(Date.now() + 21_000);
+        expect((await readRaidStatsFrame(24)).state).toBe('miss');
+        expect((await readRaidStatsScope(24, 'fullClear')).state).toBe('miss');
+    });
+});
+
 describe('the pause before a query on a cache miss', () => {
     /** Starts `read` and reports whether it has settled, without awaiting it. */
     function track<T>(read: Promise<T>): { settled: () => boolean; done: Promise<T> } {        let settled = false;

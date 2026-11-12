@@ -41,17 +41,14 @@ export function activityHref({ range, scope, raids, view }: ActivityUrlState): s
 
 /**
  * Where the page redirects a URL that says something other than what is drawn, or `null` to draw
- * it as it is. `state` is what the page read from the URL, with no raids on the stats tab, which
- * draws none: there any `raids` at all is redirected away (#200), range, scope and tab kept. On
- * the chart a `raids` that isn't exactly what was read from it is cleaned up (#198,
- * {@link isRaidsParamClean}). The redirect throws in Next, so the page calls this outside its try.
+ * it as it is: a `raids` that isn't exactly what was read from it (#198, {@link isRaidsParamClean}),
+ * cleaned up with range, scope and tab kept. `state` is what the page read from the URL, and the
+ * stats tab reads no raids, since it draws none (#200), so there any `raids` at all is redirected
+ * away by the same rule. The redirect throws in Next, so the page calls this outside its try.
  */
 export function cleanActivityHref(
     searchParams: Record<string, string | string[] | undefined>,
     state: ActivityUrlState
 ): string | null {
-    const clean = state.view === 'stats'
-        ? searchParams[ACTIVITY_RAIDS_PARAM] === undefined
-        : isRaidsParamClean(searchParams, state.raids);
-    return clean ? null : activityHref(state);
+    return isRaidsParamClean(searchParams, state.raids) ? null : activityHref(state);
 }

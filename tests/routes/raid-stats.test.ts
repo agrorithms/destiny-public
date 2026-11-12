@@ -132,6 +132,12 @@ describe('GET /api/analytics/raid-stats, staged (#200)', () => {
         expect((await get('168')).headers.get('X-Cache')).toBe('HIT');
     });
 
+    it('says MISS when only the frame missed', async () => {
+        for (const scope of ['fullClear', 'freshRuns', 'allAttempts'] as const) await readRaidStatsScope(168, scope);
+        expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
+        expect((await get('168')).headers.get('X-Cache')).toBe('HIT');
+    });
+
     describe('past the fresh lifetime', () => {
         // Only Date is faked, so the pause and the background refreshes run on real timers.
         const FRESH_MS = 300_000;

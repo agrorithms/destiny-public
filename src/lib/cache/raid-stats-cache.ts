@@ -22,6 +22,7 @@
  */
 
 import { envSeconds } from '../env';
+import { sleep } from '../utils/helpers';
 import {
     getRaidScopeStats,
     getRaidStatsFrame,
@@ -53,7 +54,7 @@ function cacheOptions(): SwrOptions {
 /** Waits the pause, then runs `query`: the compute every raid-stats entry is filled by. */
 function afterPause<T>(query: () => T): () => Promise<T> {
     return async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, RAID_STATS_MISS_PAUSE_MS));
+        await sleep(RAID_STATS_MISS_PAUSE_MS);
         return query();
     };
 }

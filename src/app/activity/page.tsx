@@ -99,7 +99,7 @@ export default async function ActivityPage({
 
     return view === 'stats'
         ? <RaidStatsTab range={range} scope={scope} state={state} />
-        : <RaidsInProgressTab range={range} scope={scope} state={state} raidOptions={raidOptions} />;
+        : <RaidsInProgressTab range={range} scope={scope} state={state} raidOptions={raidOptions} raidKeys={raidKeys} />;
 }
 
 /** The heading, the intro, the tabs and the rows of links: the same on both tabs. */
@@ -126,13 +126,15 @@ async function RaidsInProgressTab({
     scope,
     state,
     raidOptions,
+    raidKeys,
 }: {
     range: ActivityRange;
     scope: ActivityScopeOption;
     state: ActivityUrlState;
     raidOptions: RaidOption[];
+    /** `raidOptions`' keys, in the same order. */
+    raidKeys: string[];
 }) {
-    const raidKeys = raidOptions.map((raid) => raid.key);
     let series: RaidsInProgressSeries | null;
     try {
         series = (await readSeries(range, raidKeys))[scope.key];

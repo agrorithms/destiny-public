@@ -9,6 +9,7 @@
 
 import { isScopeComputed, type RaidScopeStats, type RaidStatsFrameRow } from '@/lib/db/queries';
 import { formatRunDuration } from '@/lib/utils/helpers';
+import { plural } from '../gos10k/plural-copy';
 import { formatShare } from '../gos10k/share-copy';
 import type { ActivityRange } from './activity-range';
 import { ACTIVITY_SCOPES, type ActivityScopeOption } from './activity-scope';
@@ -45,7 +46,7 @@ export type RaidStatsBoard = { kind: 'empty' } | { kind: 'cards'; cards: RaidSta
 
 /** "N runs, too few to show", the line that replaces a panel's figures below {@link MIN_STATS_SAMPLE}. */
 export function tooFewLine(n: number): string {
-    return `${n} ${n === 1 ? 'run' : 'runs'}, too few to show`;
+    return `${n} ${plural(n, 'run', 'runs')}, too few to show`;
 }
 
 /**
@@ -56,7 +57,10 @@ export function tooFewLine(n: number): string {
 export function raidStatsBoard(frame: readonly RaidStatsFrameRow[], definitions: Record<string, { name: string }>): RaidStatsBoard {
     if (frame.length === 0) return { kind: 'empty' };
     const order = Object.keys(definitions);
-    const rank = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length);
+    const rank = (key: string) => {
+        const index = order.indexOf(key);
+        return index === -1 ? order.length : index;
+    };
     const cards = [...frame]
         .sort((a, b) => rank(a.raidKey) - rank(b.raidKey))
         .map((row) => ({ raidKey: row.raidKey, name: definitions[row.raidKey]?.name ?? row.raidKey, clearTime: clearTimePanel(row) }));

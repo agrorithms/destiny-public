@@ -4,10 +4,12 @@ import type { RaidStatsRead } from '@/lib/cache/raid-stats-cache';
 import type { RaidScopeStats, RaidStatsFrameRow } from '@/lib/db/queries';
 import { raidStatsBoard, scopePanel, type Peeked, type RaidStatsCard, type Settled, type StatsFigure } from './raid-stats-view';
 
-/** The frame's read, made by the page (./page.tsx). */
-type FrameRead = Promise<RaidStatsRead<RaidStatsFrameRow[]>>;
-/** The shown scope's read, made by the page after the frame's. */
-type ScopeRead = Promise<RaidStatsRead<Map<string, RaidScopeStats> | null>>;
+/** What the frame's read gives. */
+type FrameValue = RaidStatsRead<RaidStatsFrameRow[]>;
+/** What the shown scope's read gives. */
+type ScopeValue = RaidStatsRead<Map<string, RaidScopeStats> | null>;
+/** A read the page made (./page.tsx), and what its peek saw of it. */
+type Staged<T> = { read: Promise<T>; now: Peeked<T> };
 
 /** What a card's scope part shows: the scope's stats, a skeleton while they compute, or maintenance. */
 type ScopeState = Map<string, RaidScopeStats> | 'pending' | 'maintenance';
@@ -43,8 +45,8 @@ export function RaidStatsBoard({
     scopeStats,
     definitions,
 }: {
-    frame: { read: FrameRead; now: Peeked<RaidStatsRead<RaidStatsFrameRow[]>> };
-    scopeStats: { read: ScopeRead; now: Peeked<RaidStatsRead<Map<string, RaidScopeStats> | null>> };
+    frame: Staged<FrameValue>;
+    scopeStats: Staged<ScopeValue>;
     definitions: Record<string, { name: string }>;
 }) {
     return (
@@ -66,8 +68,8 @@ async function FrameStage({
     scopeStats,
     definitions,
 }: {
-    frame: FrameRead;
-    scopeStats: ScopeRead;
+    frame: Promise<FrameValue>;
+    scopeStats: Promise<ScopeValue>;
     definitions: Record<string, { name: string }>;
 }) {
     const settled = await settle(frame);
@@ -89,8 +91,8 @@ function FrameContent({
     scopeStats,
     definitions,
 }: {
-    frame: Settled<RaidStatsRead<RaidStatsFrameRow[]>>;
-    scopeStats: { read: ScopeRead; now: Peeked<RaidStatsRead<Map<string, RaidScopeStats> | null>> };
+    frame: Settled<FrameValue>;
+    scopeStats: Staged<ScopeValue>;
     definitions: Record<string, { name: string }>;
 }) {
     if (frame.state === 'rejected') {
@@ -116,7 +118,7 @@ function FrameContent({
 }
 
 /** The scope's stage when it was pending at the peek. */
-async function ScopeStage({ cards, scopeStats }: { cards: RaidStatsCard[]; scopeStats: ScopeRead }) {
+async function ScopeStage({ cards, scopeStats }: { cards: RaidStatsCard[]; scopeStats: Promise<ScopeValue> }) {
     const settled = await settle(scopeStats);
     return <RaidStatsCards cards={cards} scope={scopeOf(settled)} />;
 }
@@ -126,7 +128,7 @@ async function ScopeStage({ cards, scopeStats }: { cards: RaidStatsCard[]; scope
  * (statsScopeFor), so a null value doesn't occur; read as no Player-Runs, it would show "0 runs"
  * rather than break the board.
  */
-function scopeOf(read: Settled<RaidStatsRead<Map<string, RaidScopeStats> | null>>): ScopeState {
+function scopeOf(read: Settled<ScopeValue>): ScopeState {
     if (read.state === 'rejected') {
         if (!isDatabaseMaintenanceError(read.error)) throw read.error;
         return 'maintenance';
@@ -134,8 +136,8 @@ function scopeOf(read: Settled<RaidStatsRead<Map<string, RaidScopeStats> | null>
     return read.value.value ?? new Map();
 }
 
-/** The sentence the chart tab shows in maintenance, naming this tab. */
-export function RaidStatsMaintenance() {
+/** The board's line in maintenance, in place of every card. */
+function RaidStatsMaintenance() {
     return (
         <p data-testid="activity-maintenance" className="ui-text-secondary">
             Database maintenance is in progress. Raid Stats is temporarily unavailable.
@@ -195,27 +197,24 @@ function RaidStatsCards({ cards, scope }: { cards: RaidStatsCard[]; scope: Scope
 function ScopePart({ stats }: { stats: RaidScopeStats | undefined | 'pending' | 'maintenance' }) {
     if (stats === 'pending') {
         return (
-            <section data-testid="raid-stats-kda" className="space-y-2">
-                <PanelHeading title="KDA" sample={null} />
+            <KdaSection title="KDA">
                 <div data-testid="raid-stats-skeleton" className="ui-skeleton h-12 rounded" aria-hidden="true" />
-            </section>
+            </KdaSection>
         );
     }
     if (stats === 'maintenance') {
         return (
-            <section data-testid="raid-stats-kda" className="space-y-2">
-                <PanelHeading title="KDA" sample={null} />
+            <KdaSection title="KDA">
                 <p className="ui-text-secondary text-sm">Unavailable during database maintenance.</p>
-            </section>
+            </KdaSection>
         );
     }
     const panel = scopePanel(stats);
     if (panel.kind === 'tooFew') {
         return (
-            <section data-testid="raid-stats-kda" className="space-y-2">
-                <PanelHeading title="KDA and Classes" sample={null} />
+            <KdaSection title="KDA and Classes">
                 <TooFew line={panel.line} />
-            </section>
+            </KdaSection>
         );
     }
     return (
@@ -231,6 +230,16 @@ function ScopePart({ stats }: { stats: RaidScopeStats | undefined | 'pending' | 
                 </p>
             </section>
         </>
+    );
+}
+
+/** The KDA panel with no figures in it: a skeleton, maintenance, or too few to show. */
+function KdaSection({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+        <section data-testid="raid-stats-kda" className="space-y-2">
+            <PanelHeading title={title} sample={null} />
+            {children}
+        </section>
     );
 }
 

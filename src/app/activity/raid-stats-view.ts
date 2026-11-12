@@ -136,3 +136,10 @@ const FULL_CLEARS = ACTIVITY_SCOPES.find((option) => option.key === 'fullClear')
 export function raidStatsIntro(range: ActivityRange, shown: ActivityScopeOption): string {
     return `Clear times and KDA per raid over the last ${range.span}. ${shown.intro}`;
 }
+
+/** What {@link peek} saw of a promise. */
+export type Peeked<T> = { state: 'pending' } | { state: 'fulfilled'; value: T } | { state: 'rejected'; error: unknown };
+
+export function peek<T>(_promise: Promise<T>): Promise<Peeked<T>> {
+    throw new Error('not implemented');
+}

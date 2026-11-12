@@ -5,6 +5,7 @@ import { ACTIVITY_SCOPES } from './activity-scope';
 import {
     MIN_STATS_SAMPLE,
     classLine,
+    peek,
     raidStatsBoard,
     raidStatsIntro,
     scopePanel,
@@ -200,5 +201,25 @@ describe('raidStatsIntro', () => {
         );
         expect(raidStatsIntro(DAY, FRESH)).toBe(`Clear times and KDA per raid over the last 24 hours. ${FRESH.intro}`);
         expect(raidStatsIntro(MONTH, FULL)).toBe(`Clear times and KDA per raid over the last 30 days. ${FULL.intro}`);
+    });
+});
+
+// A warm cache answers within the current turn of the event loop, a cold one after the miss pause
+// (src/lib/cache/raid-stats-cache.ts). The page peeks at its two reads after one turn, so a warm
+// board renders in the first HTML with no Suspense fallback, and a cold one streams (#200).
+describe('peek', () => {
+    it('reads a promise that settles within the current turn, chained or not', async () => {
+        expect(await peek(Promise.resolve(1).then((x) => x + 1))).toEqual({ state: 'fulfilled', value: 2 });
+        const error = new Error('maintenance');
+        const rejected = Promise.reject(error);
+        expect(await peek(rejected)).toEqual({ state: 'rejected', error });
+    });
+
+    it('says pending for a promise waiting on a timer, without waiting for it', async () => {
+        const started = Date.now();
+        const slow = new Promise((resolve) => setTimeout(() => resolve(1), 100));
+        expect(await peek(slow)).toEqual({ state: 'pending' });
+        expect(Date.now() - started).toBeLessThan(90);
+        await slow;
     });
 });

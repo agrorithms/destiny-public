@@ -83,6 +83,12 @@ decisions approved 2026-11-12:
    - [x] one deliberate break per new spec, or the recorded red run — red run at `fa899ef` (16/16 failed, 221 passed), then one build of eight breaks, 10 specs failed, all reverted (table in `docs/e2e-coverage.md`)
    - [x] `npm run visual:check` — run at the commit that ticks this box; result in the implementer's report
    - [x] lint, tsc, build, vitest, e2e at HEAD — run at the commit that ticks this box; result in the implementer's report
+10. Simplify
+   - [x] /simplify pass (`a933b6f`, `66b9dba`): the route reads its three scopes by name, so `assembleRaidStats`' record
+     type checks them (the `SCOPES` list and its `as` cast are gone); the board's read types aliased once (`FrameValue`,
+     `ScopeValue`, `Staged<T>`) and its three figure-less KDA sections share `KdaSection`; `RaidStatsMaintenance` no longer
+     exported; `sleep` and `plural` reused; `raidKeys` passed to the chart tab instead of rebuilt; `rank` searches once;
+     `getRaidStats`' comment no longer says it is what the route runs. No test file changed, so no `expect` line moved.
 
 ## Commits so far
 

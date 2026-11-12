@@ -98,7 +98,13 @@ decisions approved 2026-11-12:
    - [x] S2 `docs/adr/0004-mock-only-at-the-network-boundary.md` — `serveMaintenance` kept pending a follow-up issue
    - [x] S3 `src/app/activity/peek.ts` (new) — `peek`, `settle`, `Peeked`, `Settled`, with `peek` built on `settle`; `peek`'s tests moved unchanged, one `settle` test added
    - [x] S4 `src/app/activity/RaidStatsBoard.tsx`, `page.tsx` — `Staged<T>.now` → `seen`, `frameSeen`, `scopeSeen`
-   - [ ] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
+   - [x] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
+     (`3de6ec2`): lint pass (0 errors, the 29 warnings already on the branch), tsc app and scripts pass, build pass, vitest
+     1006/1006, e2e 238/238, visual:check pass (86 passed). Mutation: **97.8% overall (91/93), 97.8% covered**, PASS, 11
+     static ignored, 115 compile errors discarded. Two survivors, both `StringLiteral` on O1's top-level constants:
+     `queries.ts:26` (`FRESH_RUN` → `""`) and `queries.ts:38` (`FULL_CLEAR` → empty template). Evaluated once at import,
+     before Stryker switches a mutant on, so no test can reach them; not equivalent (either one emptied breaks every scope
+     query). Left as the user said: no `Stryker disable`, no return to literals; put to the user as a decision.
 
 ## Commits so far
 

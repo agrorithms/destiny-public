@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/analytics/raid-stats/route';
 import type { RaidStatsRow } from '@/lib/db/queries';
@@ -6,6 +6,7 @@ import { __resetSwrCacheForTests } from '@/lib/cache/swr-cache';
 import { readRaidStatsFrame, readRaidStatsScope } from '@/lib/cache/raid-stats-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
+import { withDbQuiesced } from '../helpers/db-quiesce';
 import { DP_EPIC, DP_NORMAL, VOG_MASTER } from '../helpers/pgcr-builder';
 
 /**
@@ -129,5 +130,44 @@ describe('GET /api/analytics/raid-stats, staged (#200)', () => {
         await readRaidStatsFrame(168);
         expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
         expect((await get('168')).headers.get('X-Cache')).toBe('HIT');
+    });
+
+    describe('past the fresh lifetime', () => {
+        // Only Date is faked, so the pause and the background refreshes run on real timers.
+        const FRESH_MS = 300_000;
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 400));
+
+        beforeEach(() => {
+            vi.useFakeTimers({ toFake: ['Date'] });
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('says STALE when every piece was served stale', async () => {
+            await get('168');
+            vi.setSystemTime(Date.now() + FRESH_MS + 1000);
+            expect((await get('168')).headers.get('X-Cache')).toBe('STALE');
+            await settle();
+        });
+
+        it('says MISS when one piece missed and the rest were stale', async () => {
+            await readRaidStatsFrame(168);
+            vi.setSystemTime(Date.now() + FRESH_MS + 1000);
+            expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
+            await settle();
+        });
+
+        it('says STALE-ERROR when the refreshes behind the stale pieces failed', async () => {
+            await get('168');
+            vi.setSystemTime(Date.now() + FRESH_MS + 1000);
+            await withDbQuiesced(async () => {
+                expect((await get('168')).headers.get('X-Cache')).toBe('STALE');
+                await settle();
+                expect((await get('168')).headers.get('X-Cache')).toBe('STALE-ERROR');
+                await settle();
+            });
+        });
     });
 });

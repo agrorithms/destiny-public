@@ -33,15 +33,16 @@ decisions approved 2026-11-12:
    - [x] `src/app/activity/activity-range.test.ts`, `activity-raids.test.ts` — calls only; every expected URL unchanged
    - [x] every `/activity` spec green, unchanged — `activity.spec.ts` + `activity-scope.spec.ts` 55/55 on a fresh build
 2. Query, red then green
-   - [ ] `tests/db/raid-stats.test.ts`
-   - [ ] `src/lib/db/queries.ts`
+   - [x] `tests/db/raid-stats.test.ts`
+   - [x] `src/lib/db/queries.ts`
 3. Staged cache and route, red then green
-   - [ ] `tests/db/raid-stats-cache.test.ts` (new)
-   - [ ] `tests/routes/raid-stats.test.ts`
-   - [ ] `src/lib/cache/raid-stats-cache.ts` (new)
-   - [ ] `src/app/api/analytics/raid-stats/route.ts`
+   - [x] `tests/db/raid-stats-cache.test.ts` (new)
+   - [x] `tests/routes/raid-stats.test.ts`
+   - [x] `src/lib/cache/raid-stats-cache.ts` (new)
+   - [x] `src/app/api/analytics/raid-stats/route.ts`
 4. 7d measurement on a backup copy (below)
-   - [ ] each scope cold and warm; Fresh Runs `INDEXED BY` decided
+   - [x] each scope cold and warm; Fresh Runs `INDEXED BY` decided — **not forced** (below)
+   - [ ] **STOPPED: 7d All cold end to end is 8.5–10.6 s, over the ~8 s rule.** Returned to the user (below).
 5. View, red then green
    - [ ] `src/app/activity/activity-view.test.ts` (new), `activity-url.test.ts` (new)
    - [ ] `src/app/activity/raid-stats-view.test.ts` (new)
@@ -66,3 +67,37 @@ decisions approved 2026-11-12:
    - [ ] one deliberate break per new spec, or the recorded red run
    - [ ] `npm run visual:check`
    - [ ] lint, tsc, build, vitest, e2e at HEAD
+
+## Commits so far
+
+- `aa21bf2` URL builder refactor (`/activity` specs 55/55 unchanged on a fresh build).
+- `fc238a5` red (14 failing in `tests/db/raid-stats.test.ts`) → `ffa795e` green: frame, per-scope read, gate, Fresh Runs, Clear Time Quartiles.
+- `e53e7a5` red (10 failing across `tests/db/raid-stats-cache.test.ts` and `tests/routes/raid-stats.test.ts`) → `ec3e125` green: staged cache, the pause, the route.
+
+## 7d measurement (2026-11-12, x86, WSL2 with 5 GB, `data/raid-tracker.backup-2026-11-05.db` scratch copy)
+
+The copy was opened once through `getDb()` (which built `idx_pgcrs_ended_period_raid_clear`, ~1.3 s) and its WAL
+checkpointed. `Date.now` pinned to the backup's newest `ended_at` (1793931697). Cold means `sync` then
+`posix_fadvise(DONTNEED)` on the file, `fincore` reporting 0 B resident, then a fresh process. Times are the statements
+through `getRaidStatsFrame` / `getRaidScopeStats`, not including the 2 × 100 ms pause. Player-Runs at 168h: All 1,100,232,
+Fresh 437,929, Full Clears 222,836.
+
+End to end as the page computes it (the frame, then the URL's scope), three cold runs each, interleaved:
+
+| scope | frame + scope, cold (ms) | of which the scope | frame + scope, warm (ms) |
+|---|---|---|---|
+| All Attempts | 10,487 / 8,500 / 10,572 | 10,007 / 7,922 / 9,998 | 4,357 / 6,464 / 8,288 |
+| Fresh Runs (unforced) | 7,681 / 4,552 / 7,180 | 7,149 / 4,217 / 6,710 | 3,621 / 3,322 / 3,395 |
+| Full Clears | 4,385 / 2,576 / 4,031 | 3,842 / 2,285 / 3,478 | 1,691 / 1,609 / 1,698 |
+
+The frame alone is 290–610 ms cold.
+
+**Same-day calibration against figures ADR 0006 recorded on this same backup (#227, 2026-11-07):** the scope statement
+alone, cold, three runs each today — Full Clears 4,382 / 3,123 / 2,412 ms (recorded: 2,060 / 2,091), All Attempts
+10,145 / 6,569 / 6,386 ms (recorded: 5,288 / 4,989); warm All 4.0–7.8 s (recorded: 3,291). The machine is 1.2–2× slower
+than on the day the ADR measured, and noisy: identical cold runs differ by up to 4 s.
+
+**Fresh Runs `INDEXED BY idx_pgcrs_ended_period_raid_clear`: not forced.** Scope statement alone, cold, interleaved:
+unforced 7,828 / 7,236 / 4,325 ms, forced 6,879 / 4,720 / 5,969 ms (and an earlier unforced batch 6,946 / 4,351 / 5,963).
+Warm: unforced 1,607 / 1,719 / 1,810, forced 1,564 / 1,409 / 1,462. Forced is ~0.6 s faster cold on the means, inside the
+2–3.5 s run-to-run spread, so the rule keeps the planner's choice.

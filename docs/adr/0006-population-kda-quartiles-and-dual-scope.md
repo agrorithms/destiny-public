@@ -10,7 +10,9 @@ reported twice, under **Full Clear** and **All Attempts**, and the analytics UI 
 them client-side with no refetch. Scope is a dimension of the data, not a query parameter, because
 this is an exploratory control on an endpoint behind a 5-minute SWR cache: making the toggle a
 round-trip would thrash the cache and multiply cache keys for a payload difference of a few
-numbers per raid.
+numbers per raid. *(Superseded for raid stats: see the amendment of 2026-11-12, #200, under which
+each scope is its own cache key and a scope switch can be a cold miss. The toggle had already
+become a link in the first amendment of 2026-11-07, #204.)*
 
 Two metrics stay outside the toggle because it is meaningless for them. `fastestClearSeconds` is
 full-clear-only by definition, and `dnfRate` is degenerate under a full-clear scope — filtering to
@@ -114,7 +116,7 @@ instead of a sort. That is a schema migration plus a backfill, and it leaves eve
 all four statistics unchanged — which is why it is the first thing to reach for, ahead of a
 precomputed rollup table (which adds a writer, a staleness window, and a new crawler
 responsibility) or splitting the scopes into separate cache keys (which would undo the no-refetch
-toggle this ADR is built around). The trigger to watch is cold-miss frequency, not absolute query
+toggle this ADR is built around; *since done for raid stats: see the amendment of 2026-11-12, #200*). The trigger to watch is cold-miss frequency, not absolute query
 time: the gap is only visible on `X-Cache: MISS`, and it is concentrated entirely in the All
 Attempts scope.
 

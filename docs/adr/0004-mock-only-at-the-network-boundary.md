@@ -60,10 +60,15 @@ was the way to get that response in a browser. *(Corrected 2026-11-12, #200: thi
 nothing a spec can seed puts the server in maintenance. `withDbQuiesced`
 (tests/helpers/db-quiesce.ts) does, through the production flag `getDb()` reads, and
 e2e/activity-stats.spec.ts uses it for a server-rendered page on a cold cache. The two
-stubs here are unchanged; whether to move them onto the quiesce is not decided.)*
+stubs here are kept as they are, pending a follow-up issue that decides whether to move them onto
+the quiesce.)*
 
 That is the whole exception: a stub of our own API is allowed only for a response the
 e2e server can't be put into. Anything it *can* be driven into is seeded, not stubbed.
+*(Since 2026-11-12, #200, the server can be put into maintenance, so by this rule
+`serveMaintenance` no longer qualifies. It is kept, with the specs that use it, pending the
+follow-up issue the correction above mentions; until that issue lands it is the one known
+exception to this sentence.)*
 For example, a raid leaving the response is done by ending its fireteams in the
 Tracker (`endFireteams` in `e2e/support/seed-world.ts`). This is not a general
 permission. The cost is the one this ADR names: the stub is our fixture, so if the

@@ -178,7 +178,11 @@ export function ActivityChart({
             </div>
 
             <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
-                <ActivityRaidPicker raids={raidOptions} picked={picked} range={range.id} scope={scope} />
+                <ActivityRaidPicker
+                    raids={raidOptions}
+                    picked={picked}
+                    state={{ range: range.id, scope, raids: picked, view: 'chart' }}
+                />
                 {pickedRaids.length === 0 ? (
                     <p className="ui-text-secondary text-xs">No raids have been counted in this range yet. Pick some to compare.</p>
                 ) : (

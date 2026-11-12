@@ -9,9 +9,10 @@ import { ActivityChart } from './ActivityChart';
 import { LocalZoneNote } from './ActivityLocal';
 import { ActivityRangeControl } from './ActivityRangeControl';
 import { ActivityScopeControl } from './ActivityScopeControl';
-import { activityRangeHref, parseActivityRange, rangeOfSeries, type ActivityRange } from './activity-range';
+import { parseActivityRange, rangeOfSeries, type ActivityRange } from './activity-range';
 import { isRaidsParamClean, parseActivityRaids, pickRaids } from './activity-raids';
 import { parseActivityScope } from './activity-scope';
+import { activityHref, type ActivityUrlState } from './activity-url';
 
 /**
  * Raid Activity (#194, parent #51): how many raid instances were in progress over the last
@@ -72,9 +73,10 @@ export default async function ActivityPage({
     const raidOptions = readRaidOptions();
     const raidKeys = raidOptions.map((raid) => raid.key);
     const urlRaids = parseActivityRaids(params, raidKeys);
+    const state: ActivityUrlState = { range: range.id, scope: scope.id, raids: urlRaids, view: 'chart' };
     // A `raids` that is not what was read from it (unknown keys, more than five, nothing valid)
     // is redirected to the link that says what is drawn, scope kept. Outside the try: redirect throws.
-    if (!isRaidsParamClean(params, urlRaids)) redirect(activityRangeHref(range.id, urlRaids, scope.id));
+    if (!isRaidsParamClean(params, urlRaids)) redirect(activityHref(state));
     let series: RaidsInProgressSeries | null;
     try {
         series = (await readSeries(range, raidKeys))[scope.key];
@@ -95,8 +97,8 @@ export default async function ActivityPage({
                 {/* Navigation, so outside the maintenance branch: both rows stay while the
                     chart is unavailable. */}
                 <div className="space-y-2">
-                    <ActivityRangeControl range={range.id} raids={urlRaids} scope={scope.id} />
-                    <ActivityScopeControl scope={scope.id} range={range.id} raids={urlRaids} />
+                    <ActivityRangeControl state={state} />
+                    <ActivityScopeControl state={state} />
                 </div>
             </header>
             {series === null ? (

@@ -1,5 +1,5 @@
-import { ACTIVITY_RANGES, activityRangeHref, type ActivityRangeId } from './activity-range';
-import type { ActivityScopeId } from './activity-scope';
+import { ACTIVITY_RANGES } from './activity-range';
+import { activityHref, type ActivityUrlState } from './activity-url';
 import { ActivityLinkToggle } from './ActivityLinkToggle';
 
 /**
@@ -7,17 +7,9 @@ import { ActivityLinkToggle } from './ActivityLinkToggle';
  * (./ActivityLinkToggle.tsx). Why the range is in the URL: ./activity-range.ts. The links
  * carry the raids the URL named (#198), so a range switch keeps the reader's comparison; with
  * none named they carry none, and each range picks its own top raids. They carry the scope
- * too (#204).
+ * (#204) and the tab (#200) too: each link is the page's own URL state with its range changed.
  */
-export function ActivityRangeControl({
-    range,
-    raids,
-    scope,
-}: {
-    range: ActivityRangeId;
-    raids: readonly string[];
-    scope: ActivityScopeId;
-}) {
-    const items = ACTIVITY_RANGES.map(({ id, label }) => ({ id, label, href: activityRangeHref(id, raids, scope) }));
-    return <ActivityLinkToggle label="Range" testId="activity-range" items={items} current={range} />;
+export function ActivityRangeControl({ state }: { state: ActivityUrlState }) {
+    const items = ACTIVITY_RANGES.map(({ id, label }) => ({ id, label, href: activityHref({ ...state, range: id }) }));
+    return <ActivityLinkToggle label="Range" testId="activity-range" items={items} current={state.range} />;
 }

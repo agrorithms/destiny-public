@@ -38,3 +38,10 @@ export function activityHref({ range, scope, raids, view }: ActivityUrlState): s
     const base = `/activity?${params}`;
     return raids.length === 0 ? base : `${base}&${ACTIVITY_RAIDS_PARAM}=${raids.map(encodeURIComponent).join(',')}`;
 }
+
+export function cleanActivityHref(
+    _searchParams: Record<string, string | string[] | undefined>,
+    _state: ActivityUrlState
+): string | null {
+    throw new Error('not implemented');
+}

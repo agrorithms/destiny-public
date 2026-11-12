@@ -42,7 +42,10 @@ decisions approved 2026-11-12:
    - [x] `src/app/api/analytics/raid-stats/route.ts`
 4. 7d measurement on a backup copy (below)
    - [x] each scope cold and warm; Fresh Runs `INDEXED BY` decided — **not forced** (below)
-   - [ ] **STOPPED: 7d All cold end to end is 8.5–10.6 s, over the ~8 s rule.** Returned to the user (below).
+   - [x] **Stopped: 7d All cold end to end was 8.5–10.6 s, over the ~8 s rule.** User, 2026-11-12: (a) accept on the
+     same-day scaling evidence and continue; All Attempts stays the default. Condition: re-measure 7d All cold once more
+     beside the 30d streaming measurement and record both sets with date and time (box 7). The 8 s rule is spent for
+     this run. Full Clears as the default and prefetching All Attempts are deferred to #245, not built here.
 5. View, red then green
    - [ ] `src/app/activity/activity-view.test.ts` (new), `activity-url.test.ts` (new)
    - [ ] `src/app/activity/raid-stats-view.test.ts` (new)
@@ -57,6 +60,7 @@ decisions approved 2026-11-12:
    - [ ] `e2e/visual.spec.ts` — the stats tab at 7d and 30d
 7. Streaming measurement on the backup copy (below)
    - [ ] cold 30d: header, Clear Time, KDA arrival times
+   - [ ] 7d All cold end to end, re-measured (the condition above)
 8. Docs
    - [ ] `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — amendment: per-scope cache key for raid stats, the pause
    - [ ] `docs/adr/0004-mock-only-at-the-network-boundary.md` — the 2026-10-15 amendment's premise corrected

@@ -17,3 +17,7 @@ export const ACTIVITY_VIEWS = [
 ] as const;
 
 export type ActivityViewId = (typeof ACTIVITY_VIEWS)[number]['id'];
+
+export function parseActivityView(_searchParams: Record<string, string | string[] | undefined>): ActivityViewId {
+    throw new Error('not implemented');
+}

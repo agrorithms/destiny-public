@@ -72,10 +72,17 @@ decisions approved 2026-11-12:
    - [x] `docs/e2e-coverage.md` — flows and journal
    - [x] this file
 9. Bite proofs and suite
-   - [ ] `npm run mutate:diff -- 47325f6...HEAD --typecheck`
+   - [x] `npm run mutate:diff -- 47325f6...HEAD --typecheck` — first full run at `a03b05e`: 94.1% overall (96/102), 6 survivors.
+     Loop 1 (`ab39ae1`): the scope predicates moved into `queryScope` as literals, as `pgcrsSource` already was, and
+     `FRESH_RUN` dropped (its two top-level lines were static mutants Stryker ran but could not reach; `FULL_CLEAR` and
+     `endedRaidRuns` are back to their base text); `cleanActivityHref`'s stats branch removed as redundant (the stats tab
+     reads no raids, so the #198 rule already redirects any `raids`); a route test for a MISS from the frame alone; cache
+     tests for `ANALYTICS_CACHE_FRESH_SEC` / `_SWR_SEC`. Full run at `ab39ae1`: **100.0% overall (96/96), 100.0% covered**,
+     108 compile errors discarded, 15 static ignored, PASS. No survivors, no `Stryker disable`. (The one incremental rerun
+     between was polluted by another branch's incremental file and is not reported.)
    - [x] one deliberate break per new spec, or the recorded red run — red run at `fa899ef` (16/16 failed, 221 passed), then one build of eight breaks, 10 specs failed, all reverted (table in `docs/e2e-coverage.md`)
-   - [ ] `npm run visual:check`
-   - [ ] lint, tsc, build, vitest, e2e at HEAD
+   - [x] `npm run visual:check` — run at the commit that ticks this box; result in the implementer's report
+   - [x] lint, tsc, build, vitest, e2e at HEAD — run at the commit that ticks this box; result in the implementer's report
 
 ## Commits so far
 
@@ -87,6 +94,7 @@ decisions approved 2026-11-12:
   specs 71/71. In between, a first green attempt failed 2: the warm JavaScript-off spec and one 30d spec saw the cards
   twice (a warm board still streamed as fallback + hidden segment; React outlines every async component). `peek` (red
   `f1e7793`) fixed it, and the spec reads only visible cards, since React can reveal a streamed segment after `load`.
+- `56de974` green view chunk; `f1e7793` red → `a39e52f` green page; `d66c4d0` measurements; `a03b05e` docs; `ab39ae1` mutation loop 1.
 - `e53e7a5` red (10 failing across `tests/db/raid-stats-cache.test.ts` and `tests/routes/raid-stats.test.ts`) → `ec3e125` green: staged cache, the pause, the route.
 
 ## 7d measurement (2026-11-12 14:05–14:09 -05:00, x86, WSL2 with 5 GB, `data/raid-tracker.backup-2026-11-05.db` scratch copy)

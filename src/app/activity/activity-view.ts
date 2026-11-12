@@ -18,6 +18,12 @@ export const ACTIVITY_VIEWS = [
 
 export type ActivityViewId = (typeof ACTIVITY_VIEWS)[number]['id'];
 
-export function parseActivityView(_searchParams: Record<string, string | string[] | undefined>): ActivityViewId {
-    throw new Error('not implemented');
+/**
+ * Reads the tab out of the URL. Anything but one exact spelling — missing, unknown, or the key
+ * repeated — is the chart, and is not redirected: the page drawn is the one a link with no
+ * `view` draws, so every `/activity` link written before #200 still opens the chart.
+ */
+export function parseActivityView(searchParams: Record<string, string | string[] | undefined>): ActivityViewId {
+    const value = searchParams[ACTIVITY_VIEW_PARAM];
+    return ACTIVITY_VIEWS.find((view) => view.id === value)?.id ?? 'chart';
 }

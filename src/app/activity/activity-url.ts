@@ -9,7 +9,7 @@
  * import it without pulling the database in.
  */
 
-import { ACTIVITY_RAIDS_PARAM } from './activity-raids';
+import { ACTIVITY_RAIDS_PARAM, isRaidsParamClean } from './activity-raids';
 import { ACTIVITY_RANGE_PARAM, type ActivityRangeId } from './activity-range';
 import { ACTIVITY_SCOPE_PARAM, type ActivityScopeId } from './activity-scope';
 import { ACTIVITY_VIEW_PARAM, type ActivityViewId } from './activity-view';
@@ -39,9 +39,19 @@ export function activityHref({ range, scope, raids, view }: ActivityUrlState): s
     return raids.length === 0 ? base : `${base}&${ACTIVITY_RAIDS_PARAM}=${raids.map(encodeURIComponent).join(',')}`;
 }
 
+/**
+ * Where the page redirects a URL that says something other than what is drawn, or `null` to draw
+ * it as it is. `state` is what the page read from the URL, with no raids on the stats tab, which
+ * draws none: there any `raids` at all is redirected away (#200), range, scope and tab kept. On
+ * the chart a `raids` that isn't exactly what was read from it is cleaned up (#198,
+ * {@link isRaidsParamClean}). The redirect throws in Next, so the page calls this outside its try.
+ */
 export function cleanActivityHref(
-    _searchParams: Record<string, string | string[] | undefined>,
-    _state: ActivityUrlState
+    searchParams: Record<string, string | string[] | undefined>,
+    state: ActivityUrlState
 ): string | null {
-    throw new Error('not implemented');
+    const clean = state.view === 'stats'
+        ? searchParams[ACTIVITY_RAIDS_PARAM] === undefined
+        : isRaidsParamClean(searchParams, state.raids);
+    return clean ? null : activityHref(state);
 }

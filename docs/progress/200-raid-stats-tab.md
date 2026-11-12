@@ -47,10 +47,10 @@ decisions approved 2026-11-12:
      beside the 30d streaming measurement and record both sets with date and time (box 7). The 8 s rule is spent for
      this run. Full Clears as the default and prefetching All Attempts are deferred to #245, not built here.
 5. View, red then green
-   - [ ] `src/app/activity/activity-view.test.ts` (new), `activity-url.test.ts` (new)
-   - [ ] `src/app/activity/raid-stats-view.test.ts` (new)
-   - [ ] `src/app/activity/activity-view.ts`, `activity-url.ts`
-   - [ ] `src/app/activity/raid-stats-view.ts` (new)
+   - [x] `src/app/activity/activity-view.test.ts` (new), `activity-url.test.ts` (new)
+   - [x] `src/app/activity/raid-stats-view.test.ts` (new)
+   - [x] `src/app/activity/activity-view.ts`, `activity-url.ts`
+   - [x] `src/app/activity/raid-stats-view.ts` (new)
 6. Browser suite and page, red then green
    - [ ] `e2e/support/seed-world.ts` — Raid Activity members re-statted by kind
    - [ ] `e2e/activity-stats.spec.ts` (new)
@@ -76,6 +76,7 @@ decisions approved 2026-11-12:
 
 - `aa21bf2` URL builder refactor (`/activity` specs 55/55 unchanged on a fresh build).
 - `fc238a5` red (14 failing in `tests/db/raid-stats.test.ts`) → `ffa795e` green: frame, per-scope read, gate, Fresh Runs, Clear Time Quartiles.
+- `34a4786` red (21 failing in `src/app/activity`) → next commit green: `parseActivityView`, `cleanActivityHref`, `raid-stats-view.ts`.
 - `e53e7a5` red (10 failing across `tests/db/raid-stats-cache.test.ts` and `tests/routes/raid-stats.test.ts`) → `ec3e125` green: staged cache, the pause, the route.
 
 ## 7d measurement (2026-11-12, x86, WSL2 with 5 GB, `data/raid-tracker.backup-2026-11-05.db` scratch copy)

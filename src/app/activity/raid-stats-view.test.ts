@@ -98,6 +98,26 @@ describe('raidStatsBoard', () => {
     });
 });
 
+describe('a broken invariant reads as too few, never as empty figures', () => {
+    it('a Clear Time panel with Full Clears counted but no quartiles', () => {
+        const board = raidStatsBoard([frameRow('last_wish', { clearTimeQuartiles: null })], DEFINITIONS);
+        expect(board.kind === 'cards' && board.cards[0].clearTime).toEqual({ kind: 'tooFew', line: '3 runs, too few to show' });
+    });
+
+    it('a scope with Player-Runs counted but no KDA, or no aggregate', () => {
+        expect(scopePanel(scopeStats({ kda: null }))).toEqual({ kind: 'tooFew', line: '3 runs, too few to show' });
+        expect(scopePanel(scopeStats({ aggregateKda: null }))).toEqual({ kind: 'tooFew', line: '3 runs, too few to show' });
+    });
+});
+
+describe('sample sizes in the thousands', () => {
+    it('are grouped, as the rest of the site prints a count', () => {
+        const board = raidStatsBoard([frameRow('last_wish', { fullClearCount: 1234 })], DEFINITIONS);
+        expect(board.kind === 'cards' && board.cards[0].clearTime).toMatchObject({ sample: '1,234 Full Clears' });
+        expect(scopePanel(scopeStats({ sampleSize: 12345 }))).toMatchObject({ sample: '12,345 player-runs' });
+    });
+});
+
 describe('scopePanel', () => {
     it('shows 25th, Median, 75th and Aggregate KDA to two places, the Player-Runs and the class line', () => {
         expect(scopePanel(scopeStats())).toEqual({

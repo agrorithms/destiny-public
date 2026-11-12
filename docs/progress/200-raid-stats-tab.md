@@ -165,3 +165,9 @@ whole board at 32–93 ms, with no skeleton (`raid-stats-skeleton` absent).
 
 Twice of three the header waited for the frame's query: loading the route's code took longer than the 100 ms pause, so
 the query started before anything flushed. Clear Time still came before KDA every time. Put to the user as a decision.
+
+**Decided 2026-11-12 (user):** accepted and recorded. It hits one request per worker restart, and a running server
+passed 3 of 3.
+
+**Also decided 2026-11-12 (user):** each panel shows its sample size once, muted beside its heading, where the spec
+says beside every figure. An accepted deviation: every figure in a panel shares one sample.

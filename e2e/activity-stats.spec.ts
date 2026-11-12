@@ -45,8 +45,13 @@ function scopeLink(page: Page, id: ActivityScopeId): Locator {
     return page.getByTestId('activity-scope').getByRole('link', { name: scopeOf(id).label, exact: true });
 }
 
+/**
+ * A raid's card as the reader sees it. On a cold load the cards are streamed: React keeps the
+ * finished ones in a hidden segment beside the fallback until it reveals them, which can be after
+ * the `load` event, so only the visible copy counts.
+ */
 function card(page: Page, raidKey: string): Locator {
-    return page.locator(`[data-testid="raid-stats-card"][data-raid="${raidKey}"]`);
+    return page.locator(`[data-testid="raid-stats-card"][data-raid="${raidKey}"]:visible`);
 }
 
 /** The URL's query, without the origin and path, for exact comparison. */
@@ -66,9 +71,9 @@ async function expectSeCard(page: Page, scope: ActivityScopeId): Promise<void> {
     const se = card(page, RAID_STATS_WEEK.raid.key);
     const clearTime = se.getByTestId('raid-stats-clear-time');
     const kda = se.getByTestId('raid-stats-kda');
-    expect(await figures(clearTime)).toEqual(RAID_STATS_WEEK.clearTime.figures);
+    await expect.poll(() => figures(clearTime)).toEqual(RAID_STATS_WEEK.clearTime.figures);
     await expect(clearTime.getByTestId('raid-stats-sample')).toHaveText(RAID_STATS_WEEK.clearTime.sample);
-    expect(await figures(kda), `KDA under ${scope}`).toEqual(RAID_STATS_WEEK.scopes[scope].figures);
+    await expect.poll(() => figures(kda), { message: `KDA under ${scope}` }).toEqual(RAID_STATS_WEEK.scopes[scope].figures);
     await expect(kda.getByTestId('raid-stats-sample')).toHaveText(RAID_STATS_WEEK.scopes[scope].sample);
     await expect(se.getByTestId('raid-stats-classes')).toHaveText(RAID_STATS_WEEK.scopes[scope].classes);
 }
@@ -86,8 +91,8 @@ test.describe('the Raid Stats tab during maintenance', () => {
     test('says the stats are unavailable and keeps the tabs and links (the run\'s first 24h stats request)', async ({ page }) => {
         await withDbQuiesced(async () => {
             await page.goto('/activity?range=24h&view=stats');
-            await expect(page.getByTestId('activity-maintenance').or(page.getByTestId('raid-stats-card').first())).toBeVisible();
-            if ((await page.getByTestId('raid-stats-card').count()) > 0) {
+            await expect(page.getByTestId('activity-maintenance').or(page.locator('[data-testid="raid-stats-card"]:visible').first())).toBeVisible();
+            if ((await page.locator('[data-testid="raid-stats-card"]:visible').count()) > 0) {
                 throw new Error(
                     'Precondition broken: this must be the first request of the e2e run for /activity?range=24h&view=stats. ' +
                     'Its frame was already cached, so the page was served from the cache and maintenance cannot show. ' +
@@ -141,8 +146,10 @@ test.describe('the tab strip', () => {
 
     test('the stats tab draws the cards in the raid table\'s order, one per raid that ran', async ({ page }) => {
         await page.goto(STATS_WEEK);
-        const raids = await page.getByTestId('raid-stats-card').evaluateAll((cards) => cards.map((c) => c.getAttribute('data-raid')));
-        expect(raids).toEqual(['the_desert_perpetual', 'salvations_edge', 'crotas_end', 'kings_fall', 'vault_of_glass', 'last_wish']);
+        const shown = page.locator('[data-testid="raid-stats-card"]:visible');
+        await expect
+            .poll(() => shown.evaluateAll((cards) => cards.map((c) => c.getAttribute('data-raid'))))
+            .toEqual(['the_desert_perpetual', 'salvations_edge', 'crotas_end', 'kings_fall', 'vault_of_glass', 'last_wish']);
     });
 });
 

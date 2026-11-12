@@ -39,12 +39,15 @@ const DYNAMIC_ROUTE_FIXTURES: Record<string, string> = {
  * The Raid Activity chart's 24-hour and 30-day presets (#195) put different ticks and
  * shades on the axis, and only a human looking at them can say whether 30 days of labels
  * reads well at 360px. The Full Clears scope (#204) draws a sparser line, different default
- * raids and the no-estimate note.
+ * raids and the no-estimate note. The Raid Stats tab (#200) is a second page under the same
+ * route: its cards at 7 days, and at 30 days with the line that replaces the scope links.
  */
 const EXTRA_ROUTES: Route[] = [
     { slug: 'activity-24h', path: '/activity?range=24h' },
     { slug: 'activity-30d', path: '/activity?range=30d' },
     { slug: 'activity-full', path: '/activity?scope=full' },
+    { slug: 'activity-stats', path: '/activity?view=stats' },
+    { slug: 'activity-stats-30d', path: '/activity?range=30d&view=stats' },
 ];
 
 /** Behind basic auth, which the e2e server sets no credentials for. */

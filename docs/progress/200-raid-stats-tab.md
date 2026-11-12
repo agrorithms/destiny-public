@@ -52,12 +52,15 @@ decisions approved 2026-11-12:
    - [x] `src/app/activity/activity-view.ts`, `activity-url.ts`
    - [x] `src/app/activity/raid-stats-view.ts` (new)
 6. Browser suite and page, red then green
-   - [ ] `e2e/support/seed-world.ts` — Raid Activity members re-statted by kind
-   - [ ] `e2e/activity-stats.spec.ts` (new)
-   - [ ] `src/app/activity/ActivityViewControl.tsx` (new)
-   - [ ] `src/app/activity/RaidStatsBoard.tsx` (new)
-   - [ ] `src/app/activity/page.tsx`
-   - [ ] `e2e/visual.spec.ts` — the stats tab at 7d and 30d
+   - [x] `e2e/support/seed-world.ts` — Raid Activity members re-statted by kind
+   - [x] `e2e/activity-stats.spec.ts` (new)
+   - [x] `src/app/activity/ActivityViewControl.tsx` (new)
+   - [x] `src/app/activity/RaidStatsBoard.tsx` (new)
+   - [x] `src/app/activity/page.tsx`
+   - [x] `e2e/visual.spec.ts` — the stats tab at 7d and 30d
+   - [x] `src/app/activity/ActivityLinkToggle.tsx` — comment only
+   - [x] `src/app/activity/raid-stats-view.ts` — `peek` (red `f1e7793`), after the warm JavaScript-off spec caught a warm board
+     arriving as fallback + hidden segment
 7. Streaming measurement on the backup copy (below)
    - [ ] cold 30d: header, Clear Time, KDA arrival times
    - [ ] 7d All cold end to end, re-measured (the condition above)
@@ -77,6 +80,11 @@ decisions approved 2026-11-12:
 - `aa21bf2` URL builder refactor (`/activity` specs 55/55 unchanged on a fresh build).
 - `fc238a5` red (14 failing in `tests/db/raid-stats.test.ts`) → `ffa795e` green: frame, per-scope read, gate, Fresh Runs, Clear Time Quartiles.
 - `34a4786` red (21 failing in `src/app/activity`) → next commit green: `parseActivityView`, `cleanActivityHref`, `raid-stats-view.ts`.
+- `fa899ef` red: the whole e2e suite with the new spec and seed, before the page — `activity-stats.spec.ts` 16/16 failed,
+  the other 221 passed, so the re-statted seed moved no existing expectation. Green: next commit, the three `/activity`
+  specs 71/71. In between, a first green attempt failed 2: the warm JavaScript-off spec and one 30d spec saw the cards
+  twice (a warm board still streamed as fallback + hidden segment; React outlines every async component). `peek` (red
+  `f1e7793`) fixed it, and the spec reads only visible cards, since React can reveal a streamed segment after `load`.
 - `e53e7a5` red (10 failing across `tests/db/raid-stats-cache.test.ts` and `tests/routes/raid-stats.test.ts`) → `ec3e125` green: staged cache, the pause, the route.
 
 ## 7d measurement (2026-11-12, x86, WSL2 with 5 GB, `data/raid-tracker.backup-2026-11-05.db` scratch copy)

@@ -62,8 +62,10 @@ decisions approved 2026-11-12:
    - [x] `src/app/activity/raid-stats-view.ts` — `peek` (red `f1e7793`), after the warm JavaScript-off spec caught a warm board
      arriving as fallback + hidden segment
 7. Streaming measurement on the backup copy (below)
-   - [ ] cold 30d: header, Clear Time, KDA arrival times
-   - [ ] 7d All cold end to end, re-measured (the condition above)
+   - [x] cold 30d: header, Clear Time, KDA arrival times — on a running server, header 30–46 ms, Clear Time 1.7–3.7 s, KDA
+     11.6–20.6 s (3/3 in order). On a freshly started server's first request the header waited for the frame in 2 of 3
+     runs: a decision for the user (below)
+   - [x] 7d All cold end to end, re-measured (the condition above) — 5,345 / 5,290 / 8,682 ms (below)
 8. Docs
    - [ ] `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — amendment: per-scope cache key for raid stats, the pause
    - [ ] `docs/adr/0004-mock-only-at-the-network-boundary.md` — the 2026-10-15 amendment's premise corrected
@@ -87,7 +89,7 @@ decisions approved 2026-11-12:
   `f1e7793`) fixed it, and the spec reads only visible cards, since React can reveal a streamed segment after `load`.
 - `e53e7a5` red (10 failing across `tests/db/raid-stats-cache.test.ts` and `tests/routes/raid-stats.test.ts`) → `ec3e125` green: staged cache, the pause, the route.
 
-## 7d measurement (2026-11-12, x86, WSL2 with 5 GB, `data/raid-tracker.backup-2026-11-05.db` scratch copy)
+## 7d measurement (2026-11-12 14:05–14:09 -05:00, x86, WSL2 with 5 GB, `data/raid-tracker.backup-2026-11-05.db` scratch copy)
 
 The copy was opened once through `getDb()` (which built `idx_pgcrs_ended_period_raid_clear`, ~1.3 s) and its WAL
 checkpointed. `Date.now` pinned to the backup's newest `ended_at` (1793931697). Cold means `sync` then
@@ -114,3 +116,44 @@ than on the day the ADR measured, and noisy: identical cold runs differ by up to
 unforced 7,828 / 7,236 / 4,325 ms, forced 6,879 / 4,720 / 5,969 ms (and an earlier unforced batch 6,946 / 4,351 / 5,963).
 Warm: unforced 1,607 / 1,719 / 1,810, forced 1,564 / 1,409 / 1,462. Forced is ~0.6 s faster cold on the means, inside the
 2–3.5 s run-to-run spread, so the rule keeps the planner's choice.
+
+### 7d All Attempts re-measured (2026-11-12 14:46:56–14:47:18 -05:00, same machine, copy and method)
+
+The user's condition for accepting the first set: one more cold end-to-end run of the default view, recorded beside it.
+Load average 0.87 at the start. Frame + All Attempts, cold, three runs: **5,345 / 5,290 / 8,682 ms** (frame 281 / 219 /
+231 ms, the All statement 5,064 / 5,071 / 8,451 ms), plus the 2 × 100 ms pause. Two of three are under the 8 s line and
+in line with ADR 0006's recorded 5.0–5.3 s for the statement; the third is not. The 8 s rule was spent on the first set,
+so this is recorded, not a stop.
+
+## Streaming measurement (2026-11-12 14:44–14:46 -05:00, same machine and copy)
+
+Production build of `a39e52f`'s code (`next build`, the e2e build), `next start -p 3200` with `RAID_TRACKER_DB_PATH` on the
+scratch copy, `WARMER_ENABLED=false`, and `Date.now` pinned to the copy's newest `ended_at` through a `--import` preload.
+URL `/activity?range=30d&view=stats` (All Attempts in the URL, so the tab shows Full Clears). Before each cold request the
+copy was evicted from the page cache (`fincore` 0 B), on a server that had made no Tracker query. Timed by the 2026-11-12
+probe with `Accept-Encoding: gzip`: when each marker first reached the client. Header = the intro "Clear times and KDA
+per raid"; Clear Time = the first Clear Time panel (the second stage's fallback); KDA = the first class line. Each server
+was stopped by its `next-server` PID after its run.
+
+**On a running server** (the route's code loaded first by two requests for the same URL during maintenance, which run the
+page and no query):
+
+| run | header | Clear Time | KDA | end |
+|---|---|---|---|---|
+| 14:45:01 | 30 ms | 1,726 ms | 11,584 ms | 11,590 ms |
+| 14:45:31 | 46 ms | 3,072 ms | 20,582 ms | 20,606 ms |
+| 14:46:19 | 41 ms | 3,734 ms | 14,654 ms | 14,661 ms |
+
+The header arrives before the first query finishes and Clear Time before KDA, every run. Warm, straight after each: the
+whole board at 32–93 ms, with no skeleton (`raid-stats-skeleton` absent).
+
+**On a freshly started server's first request** (nothing loaded before):
+
+| run | header | Clear Time | KDA | end |
+|---|---|---|---|---|
+| 14:44:10 | 3,354 ms | 3,354 ms | 23,433 ms | 23,471 ms |
+| 14:45:56 | 4,198 ms | 4,198 ms | 20,062 ms | 20,088 ms |
+| 14:46:36 | 125 ms | 1,772 ms | 11,632 ms | 11,647 ms |
+
+Twice of three the header waited for the frame's query: loading the route's code took longer than the 100 ms pause, so
+the query started before anything flushed. Clear Time still came before KDA every time. Put to the user as a decision.

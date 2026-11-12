@@ -1221,9 +1221,9 @@ export function getRaidScopeStats(hoursBack: number, scope: RaidScope, filters?:
 }
 
 /**
- * The frame and every scope, together: what `/api/analytics/raid-stats` sends, and the one
- * place a row's shape is assembled. The route composes the same pieces through the cache
- * (src/lib/cache/raid-stats-cache.ts) with {@link assembleRaidStats}; this runs them back to back.
+ * The frame and every scope, together, in the shape `/api/analytics/raid-stats` sends. The route
+ * composes the same pieces through the cache (src/lib/cache/raid-stats-cache.ts) with
+ * {@link assembleRaidStats}; this runs them back to back, uncached.
  */
 export function getRaidStats(
     hoursBack: number,

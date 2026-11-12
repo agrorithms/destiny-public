@@ -3,13 +3,10 @@ import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { isDifficulty } from '@/lib/bungie/difficulty';
 import { envSeconds } from '@/lib/env';
-import { assembleRaidStats, type RaidFilters, type RaidScope, type RaidScopeStats } from '@/lib/db/queries';
+import { assembleRaidStats, type RaidFilters } from '@/lib/db/queries';
 import { readRaidStatsFrame, readRaidStatsScope } from '@/lib/cache/raid-stats-cache';
 import type { CacheState } from '@/lib/cache/swr-cache';
 import { withCache, withNoStore } from '@/lib/http/cache';
-
-/** The scopes the response nests, read in this order after the frame. */
-const SCOPES: readonly RaidScope[] = ['fullClear', 'freshRuns', 'allAttempts'];
 
 /**
  * The response's `X-Cache` (#200): the least fresh of the entries it was built from, since it is
@@ -60,15 +57,15 @@ export async function GET(request: NextRequest) {
         // The frame, then each scope in turn: better-sqlite3 blocks, so nothing is gained by
         // starting them together. Unfiltered, these are the Raid Stats tab's own entries.
         const frame = await readRaidStatsFrame(hours, filters);
-        const states: (CacheState | null)[] = [frame.state];
-        const scopes = {} as Record<RaidScope, Map<string, RaidScopeStats> | null>;
-        for (const scope of SCOPES) {
-            const read = await readRaidStatsScope(hours, scope, filters);
-            scopes[scope] = read.value;
-            states.push(read.state);
-        }
-        const rows = assembleRaidStats(frame.value, scopes);
-        const state = leastFresh(states);
+        const fullClear = await readRaidStatsScope(hours, 'fullClear', filters);
+        const freshRuns = await readRaidStatsScope(hours, 'freshRuns', filters);
+        const allAttempts = await readRaidStatsScope(hours, 'allAttempts', filters);
+        const rows = assembleRaidStats(frame.value, {
+            fullClear: fullClear.value,
+            freshRuns: freshRuns.value,
+            allAttempts: allAttempts.value,
+        });
+        const state = leastFresh([frame.state, fullClear.state, freshRuns.state, allAttempts.state]);
 
         const raids = getAllRaidDefinitions();
 

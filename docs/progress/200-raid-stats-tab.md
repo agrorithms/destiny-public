@@ -67,13 +67,13 @@ decisions approved 2026-11-12:
      runs: a decision for the user (below)
    - [x] 7d All cold end to end, re-measured (the condition above) — 5,345 / 5,290 / 8,682 ms (below)
 8. Docs
-   - [ ] `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — amendment: per-scope cache key for raid stats, the pause
-   - [ ] `docs/adr/0004-mock-only-at-the-network-boundary.md` — the 2026-10-15 amendment's premise corrected
-   - [ ] `docs/e2e-coverage.md` — flows and journal
-   - [ ] this file
+   - [x] `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — amendment: per-scope cache key for raid stats, the pause
+   - [x] `docs/adr/0004-mock-only-at-the-network-boundary.md` — the 2026-10-15 amendment's premise corrected
+   - [x] `docs/e2e-coverage.md` — flows and journal
+   - [x] this file
 9. Bite proofs and suite
    - [ ] `npm run mutate:diff -- 47325f6...HEAD --typecheck`
-   - [ ] one deliberate break per new spec, or the recorded red run
+   - [x] one deliberate break per new spec, or the recorded red run — red run at `fa899ef` (16/16 failed, 221 passed), then one build of eight breaks, 10 specs failed, all reverted (table in `docs/e2e-coverage.md`)
    - [ ] `npm run visual:check`
    - [ ] lint, tsc, build, vitest, e2e at HEAD
 

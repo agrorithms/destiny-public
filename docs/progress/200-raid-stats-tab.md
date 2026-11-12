@@ -95,8 +95,8 @@ decisions approved 2026-11-12:
    - [ ] P2 `e2e/activity-stats.spec.ts` — the 30d "Full Clears only" line with JavaScript off, warm; `docs/e2e-coverage.md`
    - [ ] S1 `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — the no-refetch text marked as superseded for raid stats
    - [ ] S2 `docs/adr/0004-mock-only-at-the-network-boundary.md` — `serveMaintenance` kept pending a follow-up issue
-   - [ ] S3 `src/app/activity/peek.ts` (new) — `peek`, `settle`, `Peeked`, `Settled`, with `peek` built on `settle`; tests moved
-   - [ ] S4 `src/app/activity/RaidStatsBoard.tsx`, `page.tsx` — `Staged<T>.now` → `seen`, `frameSeen`, `scopeSeen`
+   - [x] S3 `src/app/activity/peek.ts` (new) — `peek`, `settle`, `Peeked`, `Settled`, with `peek` built on `settle`; `peek`'s tests moved unchanged, one `settle` test added
+   - [x] S4 `src/app/activity/RaidStatsBoard.tsx`, `page.tsx` — `Staged<T>.now` → `seen`, `frameSeen`, `scopeSeen`
    - [ ] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
 
 ## Commits so far

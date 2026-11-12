@@ -17,7 +17,8 @@ import { parseActivityRaids, pickRaids } from './activity-raids';
 import { parseActivityScope, type ActivityScopeOption } from './activity-scope';
 import { cleanActivityHref, type ActivityUrlState } from './activity-url';
 import { parseActivityView } from './activity-view';
-import { peek, raidStatsIntro, statsScopeFor } from './raid-stats-view';
+import { peek } from './peek';
+import { raidStatsIntro, statsScopeFor } from './raid-stats-view';
 
 /**
  * Raid Activity (#194, parent #51): how many raid instances were in progress over the last
@@ -192,7 +193,7 @@ async function RaidStatsTab({ range, scope, state }: { range: ActivityRange; sco
     // A frame that fails leaves the scope's read unawaited (the board shows maintenance instead);
     // this marks it handled so that isn't an unhandled rejection. The board still awaits the original.
     scopeStats.catch(() => undefined);
-    const [frameNow, scopeNow] = await Promise.all([peek(frame), peek(scopeStats)]);
+    const [frameSeen, scopeSeen] = await Promise.all([peek(frame), peek(scopeStats)]);
 
     return (
         <div className="mx-auto max-w-4xl space-y-6">
@@ -213,8 +214,8 @@ async function RaidStatsTab({ range, scope, state }: { range: ActivityRange; sco
                 The last 2 hours or so are still arriving, so their runs are not all counted yet.
             </p>
             <RaidStatsBoard
-                frame={{ read: frame, now: frameNow }}
-                scopeStats={{ read: scopeStats, now: scopeNow }}
+                frame={{ read: frame, seen: frameSeen }}
+                scopeStats={{ read: scopeStats, seen: scopeSeen }}
                 definitions={getAllRaidDefinitions()}
             />
         </div>

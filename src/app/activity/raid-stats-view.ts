@@ -140,31 +140,3 @@ const FULL_CLEARS = ACTIVITY_SCOPES.find((option) => option.key === 'fullClear')
 export function raidStatsIntro(range: ActivityRange, shown: ActivityScopeOption): string {
     return `Clear times and KDA per raid over the last ${range.span}. ${shown.intro}`;
 }
-
-/** What {@link peek} saw of a promise. */
-export type Peeked<T> = { state: 'pending' } | Settled<T>;
-
-/** A promise's outcome once it has settled. */
-export type Settled<T> = { state: 'fulfilled'; value: T } | { state: 'rejected'; error: unknown };
-
-/**
- * How `promise` stands after one turn of the event loop: settled if it settles on microtasks
- * alone, as a cache hit does, and pending if it waits on a timer, as a miss's pause does. Never
- * waits for it. The Raid Stats tab renders what has settled as plain markup, in the first HTML,
- * and puts only what is pending behind `Suspense`: React outlines every async component into a
- * later chunk, so even a resolved read awaited inside one can reach the reader as a fallback and
- * a hidden segment, which a reader with JavaScript off never sees swapped in.
- */
-export async function peek<T>(promise: Promise<T>): Promise<Peeked<T>> {
-    let seen: Peeked<T> = { state: 'pending' };
-    promise.then(
-        (value) => {
-            seen = { state: 'fulfilled', value };
-        },
-        (error: unknown) => {
-            seen = { state: 'rejected', error };
-        }
-    );
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    return seen;
-}

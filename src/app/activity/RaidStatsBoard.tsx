@@ -2,14 +2,15 @@ import { Suspense } from 'react';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import type { RaidStatsRead } from '@/lib/cache/raid-stats-cache';
 import type { RaidScopeStats, RaidStatsFrameRow } from '@/lib/db/queries';
-import { raidStatsBoard, scopePanel, type Peeked, type RaidStatsCard, type Settled, type StatsFigure } from './raid-stats-view';
+import { settle, type Peeked, type Settled } from './peek';
+import { raidStatsBoard, scopePanel, type RaidStatsCard, type StatsFigure } from './raid-stats-view';
 
 /** What the frame's read gives. */
 type FrameValue = RaidStatsRead<RaidStatsFrameRow[]>;
 /** What the shown scope's read gives. */
 type ScopeValue = RaidStatsRead<Map<string, RaidScopeStats> | null>;
 /** A read the page made (./page.tsx), and what its peek saw of it. */
-type Staged<T> = { read: Promise<T>; now: Peeked<T> };
+type Staged<T> = { read: Promise<T>; seen: Peeked<T> };
 
 /** What a card's scope part shows: the scope's stats, a skeleton while they compute, or maintenance. */
 type ScopeState = Map<string, RaidScopeStats> | 'pending' | 'maintenance';
@@ -31,7 +32,7 @@ type ScopeState = Map<string, RaidScopeStats> | 'pending' | 'maintenance';
  * both reads settle at once and the whole board is in the first HTML, skeleton-free.
  *
  * **What has already settled is plain markup.** The page peeks at both reads after one turn of
- * the event loop ({@link Peeked}): a cache hit has settled by then, a miss is still in its pause.
+ * the event loop (./peek.ts): a cache hit has settled by then, a miss is still in its pause.
  * A settled read renders in place, with no boundary; only a pending one goes behind `Suspense`.
  * React outlines every async component into a later chunk, so a warm read awaited inside one can
  * still reach the reader as a fallback plus a hidden segment, and a reader with JavaScript off
@@ -51,12 +52,12 @@ export function RaidStatsBoard({
 }) {
     return (
         <div data-testid="raid-stats-board">
-            {frame.now.state === 'pending' ? (
+            {frame.seen.state === 'pending' ? (
                 <Suspense fallback={<RaidStatsSkeleton />}>
                     <FrameStage frame={frame.read} scopeStats={scopeStats.read} definitions={definitions} />
                 </Suspense>
             ) : (
-                <FrameContent frame={frame.now} scopeStats={scopeStats} definitions={definitions} />
+                <FrameContent frame={frame.seen} scopeStats={scopeStats} definitions={definitions} />
             )}
         </div>
     );
@@ -73,16 +74,7 @@ async function FrameStage({
     definitions: Record<string, { name: string }>;
 }) {
     const settled = await settle(frame);
-    return <FrameContent frame={settled} scopeStats={{ read: scopeStats, now: { state: 'pending' } }} definitions={definitions} />;
-}
-
-/** A read's outcome once awaited, in the shape {@link peek} gives a settled one. */
-async function settle<T>(read: Promise<T>): Promise<Settled<T>> {
-    try {
-        return { state: 'fulfilled', value: await read };
-    } catch (error) {
-        return { state: 'rejected', error };
-    }
+    return <FrameContent frame={settled} scopeStats={{ read: scopeStats, seen: { state: 'pending' } }} definitions={definitions} />;
 }
 
 /** A settled frame: maintenance, the empty state, or the cards with their scope part. */
@@ -107,14 +99,14 @@ function FrameContent({
             </p>
         );
     }
-    if (scopeStats.now.state === 'pending') {
+    if (scopeStats.seen.state === 'pending') {
         return (
             <Suspense fallback={<RaidStatsCards cards={board.cards} scope="pending" />}>
                 <ScopeStage cards={board.cards} scopeStats={scopeStats.read} />
             </Suspense>
         );
     }
-    return <RaidStatsCards cards={board.cards} scope={scopeOf(scopeStats.now)} />;
+    return <RaidStatsCards cards={board.cards} scope={scopeOf(scopeStats.seen)} />;
 }
 
 /** The scope's stage when it was pending at the peek. */

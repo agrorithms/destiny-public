@@ -250,6 +250,19 @@ test.describe('with JavaScript disabled', () => {
         await expect(page.getByText('Still computing. Reload shortly.')).toHaveCount(0);
     });
 
+    // The 30-day rule is server-rendered: the line in place of the scope links, and Full Clears
+    // whatever the URL's scope, reach a reader with JavaScript off. Warmed as above.
+    test('at 30 days, warm, the Full Clears only line replaces the scope links and the card shows Full Clears', async ({ page, request }) => {
+        const url = '/activity?range=30d&scope=fresh&view=stats';
+        expect((await request.get(url)).ok()).toBe(true);
+        await page.goto(url);
+        await expect(page.getByTestId('activity-full-clears-only')).toHaveText('30 days shows Full Clears only');
+        await expect(page.getByTestId('activity-scope')).toHaveCount(0);
+        await expectSeCard(page, 'full');
+        await expect(page.getByTestId('raid-stats-skeleton')).toHaveCount(0);
+        await expect(page.getByText('Still computing. Reload shortly.')).toHaveCount(0);
+    });
+
     test('the tabs are plain links, the chart tab is still drawn, and a stats link with raids is cleaned up', async ({ page }) => {
         await page.goto('/activity?range=7d');
         await expect(page.getByTestId('activity-chart')).toBeVisible();

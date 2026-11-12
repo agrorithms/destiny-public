@@ -2972,8 +2972,8 @@ All reverted; green at HEAD.
 
 ## 2026-11-12 — #200 the Raid Activity page's Raid Stats tab (`?view=stats`)
 
-`e2e/activity-stats.spec.ts` — **new**, sixteen specs. The suite is now **thirty-five flows, 237 tests
-including the two canary setups**. No existing spec changed and none changed its expectations: the
+`e2e/activity-stats.spec.ts` — **new**, seventeen specs (sixteen at first, the seventeenth from review
+fix loop 1, below). The suite is now **thirty-five flows, 238 tests including the two canary setups**. No existing spec changed and none changed its expectations: the
 full suite went 221 passed and 16 failed before the page changed (the red run, `fa899ef`), with the
 re-statted seed already in.
 
@@ -3015,9 +3015,12 @@ card (`RAID_STATS_TOO_FEW`).
 13. **The chart tab keeps the scope** chosen before a 30-day stats visit.
 14. **JavaScript off, warm:** every panel, no skeleton and no `<noscript>` line (warmed by one earlier
    request to the same server).
-15. **JavaScript off:** the tabs are plain links, the chart is drawn, and a stats link with raids is
+15. **JavaScript off, warm, at 30 days** (`?range=30d&scope=fresh&view=stats`): the "30 days shows
+   Full Clears only" line in place of the scope links, and Salvation's Edge's Full Clears card, with no
+   skeleton and no `<noscript>` line (warmed as 14 is).
+16. **JavaScript off:** the tabs are plain links, the chart is drawn, and a stats link with raids is
    cleaned up.
-16. **At 360px**, at 7 and 30 days: the strip and a card inside the viewport, `expectNoOverflow`.
+17. **At 360px**, at 7 and 30 days: the strip and a card inside the viewport, `expectNoOverflow`.
 
 The spec reads only visible cards: on a cold load React keeps the finished board in a hidden segment
 beside the fallback until it reveals it, which can be after `load`.
@@ -3032,16 +3035,23 @@ missing strip, so the assertions behind it were broken on purpose in one build
 | the 24h stats URL requested once before the quiesce | 1, with the precondition error |
 | a repeated `view` read as its first value | 3, `view=stats&view=stats` drew the board |
 | the tab links keep `raids` | 6, the Raid Stats tab's `href` |
-| no redirect on the stats tab | 7 and 15, the URL kept `raids` |
+| no redirect on the stats tab | 7 and 16, the URL kept `raids` |
 | Full Clears at 7 days served All Attempts' stats | 8 and 14, "KDA under full" |
 | too few below one run instead of three | 9, The Desert Perpetual showed figures |
 | the 30-day line only under `all` and `fresh` (the spec's literal reading) | 12, no line under `full` |
-| the tab strip given `min-w-[400px]` | 16, "the tab strip … ends inside the viewport" |
+| the tab strip given `min-w-[400px]` | 17, "the tab strip … ends inside the viewport" |
 
 A first green attempt also failed 14 and the 30-day `all` spec on their own: a warm board still
 arrived as a fallback plus a hidden segment, because React outlines every async component. The page
 now peeks at both reads after one turn of the event loop and renders what has settled in place
 (`peek`, red at `f1e7793`).
+
+**Review fix loop 1 (spec 15).** Added after the review found no spec loading the 30-day line with
+JavaScript off. It passed on the code as it was, so its bite proof is one deliberate break: the line
+drawn by a client component only after hydration (`useSyncExternalStore`, empty on the server). In
+one build, `npm run e2e -- e2e/activity-stats.spec.ts` gave **1 failed, 18 passed**: spec 15 alone,
+on `activity-full-clears-only` received `""`, while 10–12, which run with JavaScript on, passed.
+Reverted.
 
 ### What is still NOT covered
 

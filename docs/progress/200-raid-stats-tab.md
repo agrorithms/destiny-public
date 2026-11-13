@@ -113,7 +113,10 @@ decisions approved 2026-11-12:
    - [x] S7 `docs/adr/0004-mock-only-at-the-network-boundary.md` — the `serveMaintenance` note moved to the end of the
      exception's paragraph, naming the rule it qualifies
    - [x] S9 `src/lib/db/queries.ts` — `FRESH_RUN` no longer exported (nothing outside `queries.ts` imports it)
-   - [ ] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
+   - [x] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
+     (`c0e7213`): lint pass (0 errors, the same 29 warnings), tsc app and scripts pass, build pass, vitest 1006/1006, e2e
+     238/238, visual:check pass (86 passed). Mutation: **97.8% overall (91/93), 97.8% covered**, PASS, 11 static ignored,
+     115 compile errors discarded. Survivors: the two accepted static ones, `queries.ts:26` and `:38`; no other.
 
 ## Commits so far
 

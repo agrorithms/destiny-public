@@ -23,7 +23,7 @@ import type { Difficulty } from '../bungie/difficulty';
  * Activity's sweep (#204) and the Raid Stats Fresh Runs scope (#200), so the two count one
  * population. Aliased `p`, as {@link FULL_CLEAR} is.
  */
-export const FRESH_RUN = 'p.activity_was_started_from_beginning = 1';
+const FRESH_RUN = 'p.activity_was_started_from_beginning = 1';
 
 /**
  * Instance-level: the run reached the end, having been started from the beginning.

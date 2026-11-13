@@ -112,7 +112,7 @@ decisions approved 2026-11-12:
      cold miss" sentence marked as superseded for raid stats; the ADR 0009 sentence untouched
    - [x] S7 `docs/adr/0004-mock-only-at-the-network-boundary.md` — the `serveMaintenance` note moved to the end of the
      exception's paragraph, naming the rule it qualifies
-   - [ ] S9 `src/lib/db/queries.ts` — `FRESH_RUN` no longer exported (nothing outside `queries.ts` imports it)
+   - [x] S9 `src/lib/db/queries.ts` — `FRESH_RUN` no longer exported (nothing outside `queries.ts` imports it)
    - [ ] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
 
 ## Commits so far

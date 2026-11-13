@@ -65,16 +65,17 @@ the quiesce.)*
 
 That is the whole exception: a stub of our own API is allowed only for a response the
 e2e server can't be put into. Anything it *can* be driven into is seeded, not stubbed.
-*(Since 2026-11-12, #200, the server can be put into maintenance, so by this rule
-`serveMaintenance` no longer qualifies. It is kept, with the specs that use it, pending the
-follow-up issue the correction above mentions; until that issue lands it is the one known
-exception to this sentence.)*
 For example, a raid leaving the response is done by ending its fireteams in the
 Tracker (`endFireteams` in `e2e/support/seed-world.ts`). This is not a general
 permission. The cost is the one this ADR names: the stub is our fixture, so if the
 route's maintenance shape changed, these specs would still pass against the old one.
 Keep every such stub in one helper, so there is one copy to check against the route.
 A second kind of own-API stub is the signal to revisit this exception, not to extend it.
+*(Since 2026-11-12, #200, the server can be put into maintenance, so `serveMaintenance`
+no longer meets this exception's rule that a stub of our own API is allowed only for a
+response the e2e server can't be put into. It is kept, with the specs that use it, pending
+the follow-up issue the correction above mentions; until that issue lands it is the one
+known exception to that rule.)*
 
 ## Consequences
 

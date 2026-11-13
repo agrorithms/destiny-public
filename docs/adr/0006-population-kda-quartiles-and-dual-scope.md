@@ -168,6 +168,7 @@ scope in the URL (`?scope=all|fresh|full`) so it works with JavaScript off and s
 so choosing a scope is a navigation, not a client-side swap. The reason behind the original wording still
 holds and is the part that matters: **scope is a dimension of the cached value, not a cache key.** A
 scope switch re-renders from the entry already cached for that range and adds no key or cold miss.
+*(Superseded for raid stats: see the amendment of 2026-11-12, #200.)*
 Raid Activity's own series follows the same rule (ADR 0009, amendment 2026-11-07).
 
 ## Amendment (2026-11-07): the cheap next move doesn't work (#227)

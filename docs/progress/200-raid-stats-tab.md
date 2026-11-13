@@ -107,6 +107,13 @@ decisions approved 2026-11-12:
      query). Left as the user said: no `Stryker disable`, no return to literals; put to the user as a decision.
      **Decided 2026-11-12 (user):** both accepted as unreachable static survivors, with no `Stryker disable` comment;
      `FULL_CLEAR` keeps reading `FRESH_RUN`. This entry is their record.
+12. Review fix loop 2 (the user picked all three)
+   - [x] S6 `docs/adr/0006-population-kda-quartiles-and-dual-scope.md` — the #204 amendment's "not a cache key" / "no key or
+     cold miss" sentence marked as superseded for raid stats; the ADR 0009 sentence untouched
+   - [x] S7 `docs/adr/0004-mock-only-at-the-network-boundary.md` — the `serveMaintenance` note moved to the end of the
+     exception's paragraph, naming the rule it qualifies
+   - [ ] S9 `src/lib/db/queries.ts` — `FRESH_RUN` no longer exported (nothing outside `queries.ts` imports it)
+   - [ ] lint, tsc, build, vitest, e2e, visual:check and `mutate:diff -- 47325f6...HEAD --typecheck` at the loop's HEAD
 
 ## Commits so far
 

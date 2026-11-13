@@ -4,15 +4,14 @@ import { startTransition, useOptimistic } from 'react';
 import { useRouter } from 'next/navigation';
 import RaidMultiSelect, { type RaidOption } from '@/components/RaidMultiSelect';
 import { MAX_RAIDS } from './activity-raids';
-import { activityRangeHref, type ActivityRangeId } from './activity-range';
-import type { ActivityScopeId } from './activity-scope';
+import { activityHref, type ActivityUrlState } from './activity-url';
 
 /**
  * The raid picker above the Raid Activity chart's bottom panel (#198): the site's raid
  * multi-select, capped at {@link MAX_RAIDS}. The picked raids live in the URL (`?raids=`), as
  * the range does, so a pick is a navigation — `router.replace`, so a run of picks leaves one
- * history entry — and the server component draws the panel from the new URL. A pick keeps
- * the range and the scope (#204).
+ * history entry — and the server component draws the panel from the new URL. A pick is the
+ * page's own URL state with its raids changed, so it keeps the range and the scope (#204).
  *
  * **Shows what is drawn, not what was clicked.** While the navigation is in flight it shows
  * the reader's own pick, so a click answers at once; once the page arrives it shows the raids
@@ -26,13 +25,12 @@ import type { ActivityScopeId } from './activity-scope';
 export function ActivityRaidPicker({
     raids,
     picked,
-    range,
-    scope,
+    state,
 }: {
     raids: RaidOption[];
     picked: string[];
-    range: ActivityRangeId;
-    scope: ActivityScopeId;
+    /** The URL state the chart was drawn from; a pick changes its raids. */
+    state: ActivityUrlState;
 }) {
     const router = useRouter();
     // The reader's pick while the navigation is in flight, then the server's `picked` again.
@@ -41,7 +39,7 @@ export function ActivityRaidPicker({
     function pick(next: string[]) {
         startTransition(() => {
             setShown(next);
-            router.replace(activityRangeHref(range, next, scope), { scroll: false });
+            router.replace(activityHref({ ...state, raids: next }), { scroll: false });
         });
     }
 

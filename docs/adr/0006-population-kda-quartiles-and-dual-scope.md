@@ -10,7 +10,9 @@ reported twice, under **Full Clear** and **All Attempts**, and the analytics UI 
 them client-side with no refetch. Scope is a dimension of the data, not a query parameter, because
 this is an exploratory control on an endpoint behind a 5-minute SWR cache: making the toggle a
 round-trip would thrash the cache and multiply cache keys for a payload difference of a few
-numbers per raid.
+numbers per raid. *(Superseded for raid stats: see the amendment of 2026-11-12, #200, under which
+each scope is its own cache key and a scope switch can be a cold miss. The toggle had already
+become a link in the first amendment of 2026-11-07, #204.)*
 
 Two metrics stay outside the toggle because it is meaningless for them. `fastestClearSeconds` is
 full-clear-only by definition, and `dnfRate` is degenerate under a full-clear scope — filtering to
@@ -114,7 +116,7 @@ instead of a sort. That is a schema migration plus a backfill, and it leaves eve
 all four statistics unchanged — which is why it is the first thing to reach for, ahead of a
 precomputed rollup table (which adds a writer, a staleness window, and a new crawler
 responsibility) or splitting the scopes into separate cache keys (which would undo the no-refetch
-toggle this ADR is built around). The trigger to watch is cold-miss frequency, not absolute query
+toggle this ADR is built around; *since done for raid stats: see the amendment of 2026-11-12, #200*). The trigger to watch is cold-miss frequency, not absolute query
 time: the gap is only visible on `X-Cache: MISS`, and it is concentrated entirely in the All
 Attempts scope.
 
@@ -166,6 +168,7 @@ scope in the URL (`?scope=all|fresh|full`) so it works with JavaScript off and s
 so choosing a scope is a navigation, not a client-side swap. The reason behind the original wording still
 holds and is the part that matters: **scope is a dimension of the cached value, not a cache key.** A
 scope switch re-renders from the entry already cached for that range and adds no key or cold miss.
+*(Superseded for raid stats: see the amendment of 2026-11-12, #200.)*
 Raid Activity's own series follows the same rule (ADR 0009, amendment 2026-11-07).
 
 ## Amendment (2026-11-07): the cheap next move doesn't work (#227)
@@ -277,3 +280,47 @@ held and has no row for a new index.
   accepted for now. A warmer like the leaderboard's would make every visit warm at the cost of a
   ~4 s block per worker per refresh, whoever is visiting; it is the next step if the wait proves
   to matter.
+
+## Amendment (2026-11-12): raid stats are cached per scope, and a miss pauses (#200)
+
+The Raid Stats tab (#200) is the first reader of `getRaidStats`, and it changes two things the
+amendments above said. **For raid stats only**: Raid Activity's chart still computes all three
+scopes in one sweep and caches them as one value per range (ADR 0009), and nothing here touches it.
+
+- **Scope is a cache key for raid stats.** The 2026-11-07 (#204) amendment kept scope a dimension
+  of one cached value. With Fresh Runs added, that value means three scope statements back to back
+  on every cold miss, and better-sqlite3 runs them on the request's thread: about double the wait
+  of the one scope the tab shows. So the work is cut into a **frame** (the scalar query and the Clear
+  Time Quartiles, everything the toggle doesn't move: `getRaidStatsFrame`) and one entry per scope
+  (`getRaidScopeStats`), each cached on its own on the analytics lifetime
+  (src/lib/cache/raid-stats-cache.ts, keys `raid-stats:frame:{hours}` and
+  `raid-stats:{scope}:{hours}`, plus the route's filters). The tab computes the frame and its
+  scope only; `/api/analytics/raid-stats` composes all four pieces and shares the entries. The cost
+  is the one the original decision named: a scope switch on the stats tab can now be a cold miss.
+  It is accepted because the tab shows one scope at a time, and a switch costs that scope alone.
+- **A miss pauses 100 ms before its query** (`RAID_STATS_MISS_PAUSE_MS`). The tab streams (two
+  `Suspense` boundaries in the page), and a blocking query that starts at once leaves Next no free
+  turn of the event loop to flush what is already rendered. In the 2026-11-12 prototype (#200's
+  comment), nothing reached the reader until every query was done with no pause or one of 5 ms or
+  less; 10 ms was borderline and 20 ms worked on every run. 100 ms is headroom, and costs nothing
+  beside queries of seconds. The pause is inside the compute function, so a cache hit never
+  pauses, which is also what puts a warm board in the first HTML. A stale entry's background
+  refresh pauses too, harmlessly.
+
+Three smaller results, measured on a scratch copy of `data/raid-tracker.backup-2026-11-05.db`, x86,
+cold meaning the file evicted from the page cache (`posix_fadvise(DONTNEED)`, checked with
+`fincore`). The tables are in docs/progress/200-raid-stats-tab.md.
+
+- **Fresh Runs keeps the planner's choice**, the question the second 2026-11-07 amendment left to
+  #200. Forced onto `idx_pgcrs_ended_period_raid_clear`, its 168h scope statement was about 0.6 s
+  faster cold on the means (unforced 7,828 / 7,236 / 4,325 ms, forced 6,879 / 4,720 / 5,969 ms),
+  inside run-to-run spread of 2–3.5 s, so it is not forced.
+- **7d All Attempts, the default view, frame plus scope cold:** 10,487 / 8,500 / 10,572 ms in a
+  first set, on a day the machine ran 1.2–2x slower than the 2026-11-07 figures above for the same
+  statements on the same backup, and 5,345 / 5,290 / 8,682 ms in a second set 40 minutes later.
+  Accepted (user, 2026-11-12). Defaulting the tab to Full Clears, or prefetching All Attempts, is
+  #245's question.
+- **Streaming at 30d, on a running server:** the header reached the client at 30–46 ms, Clear Time
+  at 1.7–3.7 s and KDA at 11.6–20.6 s, in that order every run. On a freshly started server's first
+  request, loading the route's code outlasted the pause in two of three runs and the header arrived
+  with Clear Time.

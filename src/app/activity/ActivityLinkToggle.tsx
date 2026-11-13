@@ -10,8 +10,9 @@ export interface ActivityLinkToggleItem {
 }
 
 /**
- * A row of links above the Raid Activity chart, one of them current: the range presets
- * (./ActivityRangeControl.tsx, #195) and the scope links (./ActivityScopeControl.tsx, #204).
+ * A row of links above the Raid Activity chart, one of them current: the tabs
+ * (./ActivityViewControl.tsx, #200), the range presets (./ActivityRangeControl.tsx, #195) and the
+ * scope links (./ActivityScopeControl.tsx, #204).
  *
  * Links with `aria-current`, like the leaderboard's and /gos10k's tabs: each choice is a URL,
  * so a reload or a shared link shows the same chart, and with JavaScript off each one is a
@@ -33,8 +34,9 @@ export function ActivityLinkToggle({
 }) {
     return (
         <nav aria-label={label} data-testid={testId}>
-            {/* No wrap and no scroll: each row's three short labels fit a 360px phone on one
-                row, and activity.spec.ts and activity-scope.spec.ts fail if they stop doing so. */}
+            {/* No wrap and no scroll: each row's short labels fit a 360px phone on one row, and
+                activity.spec.ts, activity-scope.spec.ts and activity-stats.spec.ts fail if they
+                stop doing so. */}
             <ul className="inline-flex overflow-hidden rounded-lg border ui-divider text-sm">
                 {items.map(({ id, label: text, href, title }) => {
                     const active = id === current;

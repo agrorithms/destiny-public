@@ -1,10 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/analytics/raid-stats/route';
 import type { RaidStatsRow } from '@/lib/db/queries';
 import { __resetSwrCacheForTests } from '@/lib/cache/swr-cache';
+import { readRaidStatsFrame, readRaidStatsScope } from '@/lib/cache/raid-stats-cache';
 import { resetTestDb } from '../helpers/db';
 import { seedRun } from '../helpers/seed';
+import { withDbQuiesced } from '../helpers/db-quiesce';
 import { DP_EPIC, DP_NORMAL, VOG_MASTER } from '../helpers/pgcr-builder';
 
 /**
@@ -80,5 +82,98 @@ describe('GET /api/analytics/raid-stats scopes by window', () => {
         const raid = await firstRaid('168');
         expect(raid).toHaveProperty('allAttempts.sampleSize', 1);
         expect(raid).toHaveProperty('fullClear.sampleSize', 1);
+    });
+});
+
+// #200: the route composes the frame and the three scopes from their own cache entries
+// (src/lib/cache/raid-stats-cache.ts). The response gains Fresh Runs, Clear Time Quartiles and the
+// Full Clear count, and is otherwise what it was.
+describe('GET /api/analytics/raid-stats, staged (#200)', () => {
+    async function get(hours: string): Promise<Response> {
+        return GET(new NextRequest(`http://localhost:3100/api/analytics/raid-stats?hours=${hours}`));
+    }
+
+    beforeEach(() => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, activityDurationSeconds: 1500 });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false, activityHash: VOG_MASTER });
+        seedRun({ instanceId: '3', incompleteBy: ['p3'], startedFromBeginning: false, completed: false, activityHash: VOG_MASTER });
+    });
+
+    it('sends every scope, the Clear Time Quartiles and the Full Clear count, beside the fields it had', async () => {
+        const [raid] = await raids({ hours: '168' });
+        expect(raid).toMatchObject({
+            raidKey: 'vault_of_glass',
+            raidName: 'Vault of Glass',
+            instanceCount: 3,
+            fastestClearSeconds: 1500,
+            clearTimeQuartiles: { p25: 1500, p50: 1500, p75: 1500 },
+            fullClearCount: 1,
+        });
+        expect(raid.dnfRate).toBeCloseTo(2 / 3, 4);
+        expect([raid.fullClear.sampleSize, raid.freshRuns!.sampleSize, raid.allAttempts!.sampleSize]).toEqual([1, 2, 3]);
+    });
+
+    it('sends freshRuns as null at hours=720, as allAttempts', async () => {
+        const [raid] = await raids({ hours: '720' });
+        expect(raid).toHaveProperty('freshRuns', null);
+        expect(raid).toHaveProperty('allAttempts', null);
+        expect(raid).toHaveProperty('fullClearCount', 1);
+    });
+
+    it('says MISS while any piece was computed, and HIT once every piece is cached', async () => {
+        expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
+        expect((await get('168')).headers.get('X-Cache')).toBe('HIT');
+    });
+
+    it('shares its pieces with the page: one scope already cached still leaves a MISS for the rest', async () => {
+        await readRaidStatsScope(168, 'fullClear');
+        await readRaidStatsFrame(168);
+        expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
+        expect((await get('168')).headers.get('X-Cache')).toBe('HIT');
+    });
+
+    it('says MISS when only the frame missed', async () => {
+        for (const scope of ['fullClear', 'freshRuns', 'allAttempts'] as const) await readRaidStatsScope(168, scope);
+        expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
+        expect((await get('168')).headers.get('X-Cache')).toBe('HIT');
+    });
+
+    describe('past the fresh lifetime', () => {
+        // Only Date is faked, so the pause and the background refreshes run on real timers.
+        const FRESH_MS = 300_000;
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 400));
+
+        beforeEach(() => {
+            vi.useFakeTimers({ toFake: ['Date'] });
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('says STALE when every piece was served stale', async () => {
+            await get('168');
+            vi.setSystemTime(Date.now() + FRESH_MS + 1000);
+            expect((await get('168')).headers.get('X-Cache')).toBe('STALE');
+            await settle();
+        });
+
+        it('says MISS when one piece missed and the rest were stale', async () => {
+            await readRaidStatsFrame(168);
+            vi.setSystemTime(Date.now() + FRESH_MS + 1000);
+            expect((await get('168')).headers.get('X-Cache')).toBe('MISS');
+            await settle();
+        });
+
+        it('says STALE-ERROR when the refreshes behind the stale pieces failed', async () => {
+            await get('168');
+            vi.setSystemTime(Date.now() + FRESH_MS + 1000);
+            await withDbQuiesced(async () => {
+                expect((await get('168')).headers.get('X-Cache')).toBe('STALE');
+                await settle();
+                expect((await get('168')).headers.get('X-Cache')).toBe('STALE-ERROR');
+                await settle();
+            });
+        });
     });
 });

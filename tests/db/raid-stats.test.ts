@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { resetTestDb } from '../helpers/db';
 import { seedRun, seedFromFixture, hoursAgo } from '../helpers/seed';
 import { buildPGCR, DP_EPIC, DP_NORMAL, VOG_MASTER, VOG_NORMAL } from '../helpers/pgcr-builder';
-import { getRaidStats } from '../../src/lib/db/queries';
+import { getRaidScopeStats, getRaidStats, getRaidStatsFrame, isScopeComputed } from '../../src/lib/db/queries';
 
 beforeEach(() => { resetTestDb(); });
 
@@ -343,5 +343,197 @@ describe('getRaidStats windows above 168h', () => {
         expect(row.dnfRate).toBe(0.5);
         expect(row.fastestClearSeconds).toBe(1500);
         expect(row.fullClear.sampleSize).toBe(2);
+    });
+
+    // #239 item 2, built in #200: the gate covers every scope but Full Clears, so a new scope
+    // can't be typed nullable and still run at 720h.
+    it('leaves freshRuns uncomputed (null) at 720h, as allAttempts, with fullClear computed', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(720);
+        expect(row.freshRuns).toBeNull();
+        expect(row.allAttempts).toBeNull();
+        expect(row.fullClear.sampleSize).toBe(1);
+    });
+
+    it('still computes freshRuns at exactly 168h', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(168);
+        expect(row.freshRuns!.sampleSize).toBe(2);
+    });
+
+    it('isScopeComputed: Full Clears at any window, the others up to 168h and not past it', () => {
+        expect(isScopeComputed('fullClear', 720)).toBe(true);
+        expect(isScopeComputed('fullClear', 169)).toBe(true);
+        for (const scope of ['allAttempts', 'freshRuns'] as const) {
+            expect(isScopeComputed(scope, 24)).toBe(true);
+            expect(isScopeComputed(scope, 168)).toBe(true);
+            expect(isScopeComputed(scope, 169)).toBe(false);
+            expect(isScopeComputed(scope, 720)).toBe(false);
+        }
+    });
+
+    it('getRaidScopeStats runs nothing for an uncomputed scope and answers null', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+
+        expect(getRaidScopeStats(169, 'freshRuns')).toBeNull();
+        expect(getRaidScopeStats(169, 'allAttempts')).toBeNull();
+        expect(getRaidScopeStats(169, 'fullClear')!.get('salvations_edge')!.sampleSize).toBe(1);
+        expect(getRaidScopeStats(168, 'freshRuns')!.get('salvations_edge')!.sampleSize).toBe(1);
+    });
+});
+
+// The third scope (#200, ADR 0006's 2026-11-01 amendment): a Fresh Run is a statement about how a
+// run began, so a Fresh Run nobody finished is in it and a Checkpoint Run somebody finished is not.
+describe('the Fresh Runs scope', () => {
+    function seedThreeKinds(): void {
+        seedRun({ instanceId: '1', completedBy: [{ membershipId: 'p1', characterClass: 'Titan' }], kills: 10, deaths: 1, assists: 0 });
+        seedRun({ instanceId: '2', incompleteBy: [{ membershipId: 'p2', characterClass: 'Hunter' }], completed: false, kills: 30, deaths: 1, assists: 0 });
+        seedRun({ instanceId: '3', completedBy: [{ membershipId: 'p3', characterClass: 'Warlock' }], startedFromBeginning: false, kills: 50, deaths: 1, assists: 0 });
+    }
+
+    it('counts only Fresh Runs: a finished one and an unfinished one, never a Checkpoint Run', () => {
+        seedThreeKinds();
+
+        const [row] = getRaidStats(24);
+        expect(row.freshRuns).toEqual({
+            kda: { p25: 10, p50: 10, p75: 30 },
+            aggregateKda: 20,
+            sampleSize: 2,
+            classDistribution: { Titan: 1, Hunter: 1 },
+        });
+        expect(row.fullClear.sampleSize).toBe(1);
+        expect(row.allAttempts!.sampleSize).toBe(3);
+    });
+
+    it('is a computed empty scope, not null, for a raid with only Checkpoint Runs', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], startedFromBeginning: false });
+
+        const [row] = getRaidStats(24);
+        expect(row.freshRuns).toEqual({ kda: null, aggregateKda: null, sampleSize: 0, classDistribution: {} });
+    });
+
+    it('class counts sum to sampleSize under every scope', () => {
+        seedThreeKinds();
+        seedRun({ instanceId: '4', completedBy: ['p4', { membershipId: 'p5', characterClass: 'Hunter' }], incompleteBy: ['p6'] });
+        seedRun({ instanceId: '5', incompleteBy: [{ membershipId: 'p7', characterClass: 'Titan' }], completed: false, startedFromBeginning: false });
+
+        const [row] = getRaidStats(24);
+        for (const scope of [row.fullClear, row.freshRuns!, row.allAttempts!]) {
+            const total = Object.values(scope.classDistribution).reduce((a, b) => a + b, 0);
+            expect(total).toBe(scope.sampleSize);
+        }
+        expect([row.fullClear.sampleSize, row.freshRuns!.sampleSize, row.allAttempts!.sampleSize]).toEqual([4, 5, 7]);
+    });
+});
+
+// CONTEXT.md, Clear Time Quartiles: the 25th, 50th and 75th percentile of Clear Time over a raid's
+// Full Clears, by nearest rank. The unit is the instance, and the scope never narrows them.
+describe('Clear Time Quartiles', () => {
+    it('collapse onto the one Clear Time there is', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 2000 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 2000, p50: 2000, p75: 2000 });
+        expect(row.fullClearCount).toBe(1);
+    });
+
+    it('at two Full Clears give p25 = p50 = the faster and p75 = the slower', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 3000 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityDurationSeconds: 1200 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 1200, p50: 1200, p75: 3000 });
+        expect(row.fullClearCount).toBe(2);
+    });
+
+    it('over several take ranks ceil(n/4), ceil(n/2) and ceil(3n/4), ignoring runs that are not Full Clears', () => {
+        // Five Full Clears: ranks 2, 3 and 4.
+        for (const [i, seconds] of [3000, 1000, 5000, 2000, 4000].entries()) {
+            seedRun({ instanceId: `c${i}`, completedBy: [`p${i}`], activityDurationSeconds: seconds });
+        }
+        // A short Checkpoint Run someone finished and a short Fresh Run nobody did: no Clear Time.
+        seedRun({ instanceId: 'cp', completedBy: ['q1'], startedFromBeginning: false, activityDurationSeconds: 100 });
+        seedRun({ instanceId: 'dnf', incompleteBy: ['q2'], completed: false, activityDurationSeconds: 200 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 2000, p50: 3000, p75: 4000 });
+        expect(row.fullClearCount).toBe(5);
+        expect(row.instanceCount).toBe(7);
+    });
+
+    it('count each run once, however many players were in it', () => {
+        // Per player, n would be 8 and the median rank 4 would land on the six-player run's 1000.
+        seedRun({ instanceId: '1', completedBy: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'], activityDurationSeconds: 1000 });
+        seedRun({ instanceId: '2', completedBy: ['p7'], activityDurationSeconds: 2000 });
+        seedRun({ instanceId: '3', completedBy: ['p8'], activityDurationSeconds: 3000 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 1000, p50: 2000, p75: 3000 });
+        expect(row.fullClearCount).toBe(3);
+    });
+
+    it('are absent, with a count of 0, for a raid with no Full Clear', () => {
+        seedRun({ instanceId: '1', incompleteBy: ['p1'], completed: false });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toBeNull();
+        expect(row.fullClearCount).toBe(0);
+    });
+
+    it('are computed per raid, and follow the filters as the rest of the row does', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, activityDurationSeconds: 1000 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: VOG_NORMAL, activityDurationSeconds: 3000 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: SALVATIONS_EDGE_HASH, activityDurationSeconds: 5000 });
+
+        expect(getRaidStats(24).map((r) => [r.raidKey, r.clearTimeQuartiles!.p75])).toEqual([
+            ['salvations_edge', 5000],
+            ['vault_of_glass', 3000],
+        ]);
+        const [master] = getRaidStats(24, { difficulty: 'master' });
+        expect(master.clearTimeQuartiles).toEqual({ p25: 1000, p50: 1000, p75: 1000 });
+        expect(master.fullClearCount).toBe(1);
+    });
+
+    it('stay inside the window', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 1000, period: hoursAgo(2) });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityDurationSeconds: 60, period: hoursAgo(10) });
+
+        const [row] = getRaidStats(4);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 1000, p50: 1000, p75: 1000 });
+        expect(row.fullClearCount).toBe(1);
+    });
+});
+
+// The staged compute (#200): the frame is everything outside the scope toggle, computed once per
+// window; each scope is computed on its own. getRaidStats is their composition.
+describe('the frame and the scopes, read apart', () => {
+    it('the frame has a row for every raid with instances, with no scope in it', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 1500 });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false, activityHash: 1566480315 });
+
+        expect(getRaidStatsFrame(24)).toEqual([
+            { raidKey: 'crotas_end', instanceCount: 1, dnfRate: 1, fastestClearSeconds: null, clearTimeQuartiles: null, fullClearCount: 0 },
+            {
+                raidKey: 'salvations_edge',
+                instanceCount: 1,
+                dnfRate: 0,
+                fastestClearSeconds: 1500,
+                clearTimeQuartiles: { p25: 1500, p50: 1500, p75: 1500 },
+                fullClearCount: 1,
+            },
+        ]);
+    });
+
+    it('a scope read on its own leaves out a raid with nothing in it', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false, activityHash: 1566480315 });
+
+        const fullClear = getRaidScopeStats(24, 'fullClear')!;
+        expect([...fullClear.keys()]).toEqual(['salvations_edge']);
+        expect([...getRaidScopeStats(24, 'allAttempts')!.keys()].sort()).toEqual(['crotas_end', 'salvations_edge']);
     });
 });

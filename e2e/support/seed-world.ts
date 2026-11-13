@@ -347,6 +347,58 @@ export const ACTIVITY_SCOPE_TOP_RAIDS = {
     full: ['last_wish', 'salvations_edge'],
 } as const;
 
+/**
+ * The class and stats of each kind of run's one member (#200), so the Raid Stats tab's KDA and
+ * class split differ by Scope. Raids in Progress counts instances, not players or their stats, so
+ * nothing the chart draws moved; no new instance was added. The Full Clears keep the seeder's
+ * defaults, the stats every leaderboard-world run has: a Warlock at (100 + 40) / 2 = 70.
+ */
+const ACTIVITY_MEMBER_BY_KIND: Readonly<Record<ActivityRunKind, { characterClass: string; kills: number; deaths: number; assists: number }>> = {
+    checkpoint: { characterClass: 'Titan', kills: 10, deaths: 2, assists: 0 },
+    fresh: { characterClass: 'Hunter', kills: 50, deaths: 2, assists: 10 },
+    fullClear: { characterClass: 'Warlock', kills: 100, deaths: 2, assists: 40 },
+};
+
+/**
+ * What the Raid Stats tab (#200) shows for Salvation's Edge over 7 days. Its Full Clears are the
+ * leaderboard world's six (Clear Times 25:00 to 45:00, an hour back) and the peak's one (an hour
+ * long, 48 hours back): seven, so its Clear Time is 25th 33:20, Median 36:40, 75th 45:00 by nearest
+ * rank. Its Player-Runs are one per run: those seven Warlocks at KDA 70, the two unfinished Fresh
+ * Runs' Hunters at 30 (the peak's and the daily run 54 hours back), and the ten Checkpoint Runs'
+ * Titans at 5 (the peak's, the 100-hour one, five daily runs, the two 24-hour peak runs and the
+ * run too recent to count). The 30-day tab shows Full Clears, the same seven.
+ */
+export const RAID_STATS_WEEK = {
+    raid: RAID_A,
+    clearTime: {
+        sample: '7 Full Clears',
+        figures: [['Fastest', '25:00'], ['25th', '33:20'], ['Median', '36:40'], ['75th', '45:00']],
+    },
+    scopes: {
+        all: {
+            sample: '19 player-runs',
+            figures: [['25th', '5.00'], ['Median', '5.00'], ['75th', '70.00'], ['Aggregate', '31.58']],
+            classes: 'Titan 52.6% · Warlock 36.8% · Hunter 10.5%',
+        },
+        fresh: {
+            sample: '9 player-runs',
+            figures: [['25th', '70.00'], ['Median', '70.00'], ['75th', '70.00'], ['Aggregate', '61.11']],
+            classes: 'Warlock 77.8% · Hunter 22.2%',
+        },
+        full: {
+            sample: '7 player-runs',
+            figures: [['25th', '70.00'], ['Median', '70.00'], ['75th', '70.00'], ['Aggregate', '70.00']],
+            classes: 'Warlock 100%',
+        },
+    },
+} as const;
+
+/**
+ * A raid with one run in every window (#200): The Desert Perpetual's Epic Full Clear from the
+ * Difficulty world, so its card reads too few in both the Clear Time panel and the scope's.
+ */
+export const RAID_STATS_TOO_FEW = DIFFICULTY_DP;
+
 /** How the peak's {@link ACTIVITY_PEAK_RAIDS} runs began and ended (#204). */
 const ACTIVITY_PEAK_KINDS: readonly ActivityRunKind[] = ['fullClear', 'fresh', 'checkpoint'];
 
@@ -383,8 +435,8 @@ function seedActivityRuns(): void {
     ];
 
     runs.forEach((run, index) => {
-        const member = `92000000000000${String(index + 1).padStart(2, '0')}`;
         const kind = run.kind ?? 'checkpoint';
+        const member = { membershipId: `92000000000000${String(index + 1).padStart(2, '0')}`, ...ACTIVITY_MEMBER_BY_KIND[kind] };
         seedRun({
             instanceId: `9200${index + 1}`,
             activityHash: (run.raid ?? RAID_A).hash,

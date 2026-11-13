@@ -3,10 +3,22 @@ import { isDatabaseMaintenanceError } from '@/lib/db';
 import { getAllRaidDefinitions } from '@/lib/bungie/manifest';
 import { isDifficulty } from '@/lib/bungie/difficulty';
 import { envSeconds } from '@/lib/env';
-import { getRaidStats, type RaidFilters } from '@/lib/db/queries';
-import { getOrCompute } from '@/lib/cache/swr-cache';
-import { filterKeySuffix } from '@/lib/cache/leaderboard-cache';
+import { assembleRaidStats, type RaidFilters } from '@/lib/db/queries';
+import { readRaidStatsFrame, readRaidStatsScope } from '@/lib/cache/raid-stats-cache';
+import type { CacheState } from '@/lib/cache/swr-cache';
 import { withCache, withNoStore } from '@/lib/http/cache';
+
+/**
+ * The response's `X-Cache` (#200): the least fresh of the entries it was built from, since it is
+ * now four of them (the frame and each scope, src/lib/cache/raid-stats-cache.ts). One piece
+ * computed is a MISS for the response, as one whole-response entry used to be; HIT only when
+ * every piece was. A `negative` entry never reaches here: getOrCompute throws it.
+ */
+const LEAST_FRESH_FIRST: readonly CacheState[] = ['miss', 'stale-error', 'stale'];
+
+function leastFresh(states: readonly (CacheState | null)[]): CacheState {
+    return LEAST_FRESH_FIRST.find((state) => states.includes(state)) ?? 'hit';
+}
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -38,19 +50,22 @@ export async function GET(request: NextRequest) {
             filters.maxPlayers = parsed;
         }
     }
-    const hasFilters = filters.difficulty || filters.exactPlayers != null || filters.maxPlayers != null;
-
     const freshSec = envSeconds('ANALYTICS_CACHE_FRESH_SEC', 300);
     const swrSec = envSeconds('ANALYTICS_CACHE_SWR_SEC', 1800);
 
-    const cacheKey = `raid-stats:${hours}${filterKeySuffix(hasFilters ? filters : undefined)}`;
-
     try {
-        const { value: rows, state } = await getOrCompute(
-            cacheKey,
-            { freshMs: freshSec * 1000, staleMs: swrSec * 1000 },
-            () => getRaidStats(hours, hasFilters ? filters : undefined),
-        );
+        // The frame, then each scope in turn: better-sqlite3 blocks, so nothing is gained by
+        // starting them together. Unfiltered, these are the Raid Stats tab's own entries.
+        const frame = await readRaidStatsFrame(hours, filters);
+        const fullClear = await readRaidStatsScope(hours, 'fullClear', filters);
+        const freshRuns = await readRaidStatsScope(hours, 'freshRuns', filters);
+        const allAttempts = await readRaidStatsScope(hours, 'allAttempts', filters);
+        const rows = assembleRaidStats(frame.value, {
+            fullClear: fullClear.value,
+            freshRuns: freshRuns.value,
+            allAttempts: allAttempts.value,
+        });
+        const state = leastFresh([frame.state, fullClear.state, freshRuns.state, allAttempts.state]);
 
         const raids = getAllRaidDefinitions();
 

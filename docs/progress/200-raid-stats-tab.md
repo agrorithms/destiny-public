@@ -105,6 +105,8 @@ decisions approved 2026-11-12:
      `queries.ts:26` (`FRESH_RUN` → `""`) and `queries.ts:38` (`FULL_CLEAR` → empty template). Evaluated once at import,
      before Stryker switches a mutant on, so no test can reach them; not equivalent (either one emptied breaks every scope
      query). Left as the user said: no `Stryker disable`, no return to literals; put to the user as a decision.
+     **Decided 2026-11-12 (user):** both accepted as unreachable static survivors, with no `Stryker disable` comment;
+     `FULL_CLEAR` keeps reading `FRESH_RUN`. This entry is their record.
 
 ## Commits so far
 

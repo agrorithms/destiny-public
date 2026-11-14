@@ -1,6 +1,6 @@
 ---
 name: ship-ticket
-description: Deliver one ready-for-agent issue through implement → simplify → review → fix → handoff, checkpointed so it resumes after a usage limit or /clear.
+description: Deliver one ready-for-agent ticket (GitHub issue or local file) through implement → simplify → review → fix → handoff, checkpointed so it resumes after a usage limit or /clear.
 disable-model-invocation: true
 argument-hint: "#NNN [implementer=<model>] [simplifier=<model>] [reviewer=<model>] [fixer=<model>] [autofix=nonblocking]"
 ---
@@ -15,8 +15,10 @@ decision stop covers.
 
 ## Vocabulary
 
-- **Ticket**: an open issue on `agrorithms/destiny-public` labelled `ready-for-agent`, with a section
-  headed "Acceptance criteria" or "Done when".
+- **Ticket**: either an open issue on `agrorithms/destiny-public` labelled `ready-for-agent`, or a
+  **local ticket**: a file `docs/tickets/**/NNN-*.md` with a `**Status:** ready-for-agent` line.
+  Either has a section headed "Acceptance criteria" or "Done when". A local ticket exists because
+  the repository is public: it is never looked up, opened, commented on or referenced on GitHub.
 - **Pass**: `implement`, `simplify`, `review`, `fix`, `handoff`, in that order. Review and fix loop.
 - **Decision stop**: you put a question to the user, set `pass_status` to `awaiting_decision`, write
   state, and end your turn. Nothing proceeds until the user answers. Start's stop is the one
@@ -46,8 +48,11 @@ no reason to stop.
 
 ## 0. Entry
 
-1. `gh issue view NNN --json number,title,body,labels,state`. If it is closed, lacks the label, or
-   lacks the section, stop: "#NNN isn't ready: <what's missing>. Grill it first." Do no design work.
+1. Find the ticket. List `docs/tickets/**/NNN-*.md`: more than one match is a stop that lists them;
+   exactly one is a **local ticket**, read in full, and you run no `gh` command for it. With no match,
+   it is a GitHub issue: `gh issue view NNN --json number,title,body,labels,state`. If it is closed
+   (GitHub), lacks the label (GitHub) or the `**Status:** ready-for-agent` line (local), or lacks the
+   section, stop: "#NNN isn't ready: <what's missing>. Grill it first." Do no design work.
 2. If `docs/handoffs/NNN-state.json` exists, go to **Resume**. Otherwise **Start**.
 
 ### Start
@@ -55,11 +60,18 @@ no reason to stop.
 Start writes no state until the user's yes, the one exception to the decision-stop rule: nothing has
 happened yet that a `/clear` could lose, and Entry would propose the same again.
 
-1. Read the ticket's "Blocked by" and "Parent". Propose a branch and a base: the blocking ticket's
+1. Read the ticket's "Blocked by" and "Parent". For a local ticket, "Blocked by" names other local
+   tickets by number and "Parent" is a path to a spec file. Propose a branch and a base: the blocking ticket's
    branch if it is unmerged, else `main`. The branch is the ticket's existing `feat/NNN-*` branch if
-   `git branch --list 'feat/NNN-*'` finds one, else a new `feat/NNN-<slug>`. Name the progress file:
+   `git branch --list 'feat/NNN-*'` finds one, else a new `feat/NNN-<slug>`. For a local ticket the
+   slug is neutral: it describes the visible change in ordinary feature terms and never the
+   vulnerability or finding (no "sec", "security", "vuln", "exploit", "injection", "hole", no finding
+   ids, nothing that says what was exploitable). Don't derive it from the ticket title; the next stop
+   asks the user to confirm it. Name the progress file:
    the parent spec's existing `docs/progress/<spec>-*.md` (a new `## #NNN` section), else
-   `docs/progress/NNN-<slug>.md`.
+   `docs/progress/NNN-<slug>.md`. For a local ticket it goes under `docs/progress/private/`, which is
+   gitignored: `docs/progress/private/NNN-<slug>.md`, or a `## #NNN` section in the parent spec's
+   existing file there. A local ticket never uses a file directly under `docs/progress/`.
 2. **Decision stop**: branch, base, progress file, models, and whether the ticket is UI (it touches
    `.tsx` or `e2e/`; your guess from the ticket, for the user to correct). For an existing branch,
    list `git log --oneline <base>..<branch>`: those commits ship in the PR, so review loop 1 covers
@@ -89,7 +101,8 @@ happened yet that a `/clear` could lose, and Entry would propose the same again.
 Launch each agent with the Agent tool, passing the role's model as `model` only when it isn't
 `inherit`. Post one line as you launch it and one when it returns: role, model, commit range.
 
-Every prompt carries facts and decisions: the ticket number, branch, base SHA, commit range, progress
+Every prompt carries facts and decisions: the ticket number, its source (`github`, or `local` with the
+ticket file's path, so the agent reads the file and its `Parent` path instead of calling `gh`), branch, base SHA, commit range, progress
 file and UI flag; what its pass below adds; and the whole `decisions_made` list, so no agent re-raises
 a settled question. The contract and the agent's own definition say how it works and what needs a
 bite proof, and a prompt never grants an exemption from either. #41's fixer prompt waived a bite
@@ -149,7 +162,8 @@ fixes undone, and Handoff batches them into one issue.
 2. Follow steps 1–3 of `~/.claude/skills/mattpocock-skills/skills/engineering/code-review/SKILL.md`:
    - fixed point: the base SHA on loop 1 (so `pre_run` commits are reviewed), the previous loop's
      HEAD after that;
-   - spec: the ticket, plus its parent spec if it has one;
+   - spec: the ticket, plus its parent spec if it has one (for a local ticket, the ticket file and
+     the file its `Parent` names);
    - standards: `CLAUDE.md`, `tests/README.md`, `CONTEXT.md`, `docs/adr/`, `docs/decisions.md`, and
      the smell baseline from that skill's step 3.
 3. Launch two `ship-reviewer` agents in parallel, one with `axis: spec` and one with
@@ -200,14 +214,24 @@ fixes undone, and Handoff batches them into one issue.
    deploying to prod, so give steps they can run first); the files edited; the verified suite at its
    SHA; **For the next orchestrator**; Suggested skills. It is untracked. Never stage it.
 3. Give every `out_of_scope` item already fixed on the branch `issue: "fixed"`, then draft
-   follow-up issues from the `follow-up` findings, the open non-blocking ones, and the `out_of_scope`
+   follow-up issues (for a local ticket, local ticket files; see below) from the `follow-up` findings, the open non-blocking ones, and the `out_of_scope`
    items whose `issue` is `null`. Every `source: "simplify"` item goes into one cleanup issue that
    lists them all; every other item gets its own. First check `gh issue list` for one that already
    covers each item; propose a comment there instead. **Decision stop**: the whole batch at once.
    Open only what the user approves, labelled `needs-triage`, and record each number.
+
+   **Local ticket**: no `gh issue list`, no `gh issue create`, no comment. Draft each follow-up as a
+   file in the ticket's own directory, `NNN-<slug>.md` in the ticket's format with
+   `**Status:** needs-triage`, and write it only on the user's approval of the batch. Number them
+   from the next free number after the highest `NNN-*` file in that directory unless the user
+   assigns numbers at the stop. Record each number in `passes.handoff.issues` and
+   `out_of_scope[].issue` as a number, as for GitHub. An item the batch would have commented on
+   instead goes into its own new file.
 4. **Decision stop**: push and open the PR. One yes covers `git push -u origin <branch>` and
    `gh pr create --base <base ref>`. Draft the body in the session scratchpad. Merging is the user's.
-   If the user pushes it themselves, record `pr: "user"`.
+   If the user pushes it themselves, record `pr: "user"`. For a local ticket, the question says: the
+   repository is public, so the branch name, commit messages and PR body are published; the PR body
+   must not link or quote the local ticket or spec. Keep the option to push.
 
 ## Decision stops
 
@@ -216,7 +240,8 @@ Always the user's call, whoever raises it. Agents get the same list from the age
 - schema or API changes; dependency changes; deleting significant code; deviating from the spec;
   ambiguous requirements; auth, secrets or env config;
 - surviving mutants after three loops; `Stryker disable` comments;
-- CLAUDE.md wording; seams; which review findings to fix; follow-up issues; push and PR.
+- CLAUDE.md wording; seams; which review findings to fix; follow-up issues (or local follow-up
+  tickets); push and PR.
 
 Ask in this form, and copy it into `state.decision` before you end the turn:
 
@@ -250,6 +275,7 @@ branch with a state file, and blocks your turn from ending until you reconcile o
   skips vitest for it, nothing else, so a red test of a new function needs a typed stub to pass tsc.
 - The gate logs every commit it sees to `.claude/hooks/logs/commit-gate.log`: pass, blocked or
   skipped, with the time taken. Read its last lines to confirm the gate ran on a commit.
-- Never commit the state file or a handoff doc. Both are gitignored; keep it that way.
+- Never commit the state file or a handoff doc. Both are gitignored; keep it that way. A local
+  ticket's progress file (`docs/progress/private/`) is gitignored too: never stage it.
 - Merges, pushes and force-pushes happen only at the push stop. After a GitHub-side merge, merge
   `origin/<branch>`. Never `pull --rebase`, never force-push.

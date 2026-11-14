@@ -628,6 +628,12 @@ check "an item fixed in place isn't counted as an issue" "yes" \
 state_set '.passes.handoff = {status:"committed",issues:[],pr:"user"}'
 check "pr: user -> the user pushes" "yes" "$(says '^PR: none, the user pushes$')"
 
+# A local ticket is named on one line; a state file with no source field means GitHub.
+check "no source field -> no ticket line" "no" "$(says '^Ticket local' || true)"
+state_set '.source = "local" | .ticket_path = "docs/tickets/x/999-t.md"'
+check "source local -> the ticket path is named" "yes" "$(says '^Ticket local: docs/tickets/x/999-t.md$')"
+state_set 'del(.source, .ticket_path)'
+
 # Past 30 commits, the oldest are counted rather than silently cut.
 for i in $(seq 1 32); do sg commit -q --allow-empty -m "WIP #999: e$i"; done
 state committed "$(sg rev-parse HEAD)"

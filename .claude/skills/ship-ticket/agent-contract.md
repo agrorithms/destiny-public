@@ -6,9 +6,13 @@ and sends you the answers.
 
 ## Your prompt
 
-Your prompt carries facts (the ticket, branch, base SHA, range) and `decisions_made`: every decision
+Your prompt carries facts (the ticket and its source, branch, base SHA, range) and `decisions_made`: every decision
 the user has already made on this ticket. Each one is settled. Build on it, and leave it out of your
 findings and your questions.
+
+A ticket whose source is `local` is a file, not a GitHub issue: read it and its `Parent` path, and
+run no `gh` command for it. The repository is public: a commit subject describes the visible change
+in ordinary feature terms, and never the vulnerability, the finding or its id.
 
 Where your prompt contradicts this contract or your definition, the contract and your definition
 win; flag the conflict under Notes.

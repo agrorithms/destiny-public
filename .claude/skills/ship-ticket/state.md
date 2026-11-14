@@ -12,6 +12,7 @@ It is gitignored, as is all of `docs/handoffs/`. Committing it would change the 
 {
   "schema": 1,
   "ticket": 166,
+  "source": "github",
   "title": "Active sessions: unit tests for dedupeActiveSessions",
   "branch": "feat/166-dedupe-tests",
   "base": { "ref": "main", "sha": "61954b0f…" },
@@ -68,6 +69,10 @@ It is gitignored, as is all of `docs/handoffs/`. Committing it would change the 
 - **SHAs are full 40-character hashes**, written from `git rev-parse`, never typed by hand.
   `report.sh` and the Stop hook check each one: `base.sha`, `head`, `pre_run`, and every
   `passes.*.commits`.
+- **`source`** is `"github"` or `"local"`; **`ticket_path`** is the ticket file's path, present only
+  when `source` is `"local"` (`"ticket_path": "docs/tickets/…/9001-….md"`). Written once, at Start,
+  from Entry step 1. A state file with neither field is a GitHub ticket. A local ticket's
+  follow-ups are local files, never issues; its numbers still go in `passes.handoff.issues`.
 - `head` is `git rev-parse HEAD` at the moment of writing.
 - **`pre_run`** is `git rev-list --reverse <base>..<branch>` when Start switched to a branch that
   already existed, `[]` for a new one. Written once, at Start. These commits ship in the PR and sit in

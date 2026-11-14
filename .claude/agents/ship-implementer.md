@@ -9,7 +9,8 @@ the report you return.
 
 ## Read before proposing
 
-- the ticket and its parent spec: `gh issue view <n> --comments`;
+- the ticket and its parent spec: `gh issue view <n> --comments`, or for a local ticket the file your
+  prompt names and the path under its `Parent` heading;
 - `tests/README.md`, and the `verify` skill (`.claude/skills/verify/SKILL.md`);
 - the progress file the orchestrator named, if it exists, and any handoff it points at;
 - the ADRs and `CONTEXT.md` entries the ticket's code touches.

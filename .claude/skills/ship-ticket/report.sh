@@ -50,6 +50,7 @@ else PUSHED="pushed, $(git rev-list --count "$UPSTREAM..HEAD") ahead / $(git rev
 
 echo "#$N $(j '.title')"
 echo "Branch $BRANCH @ $(short "$HEAD_SHA") · base $(j '.base.ref') @ $(short "$BASE_SHA") · $(git rev-list --count "$BASE_SHA..HEAD" 2>/dev/null || echo '?') commits · $TREE · $PUSHED"
+[ "$(j '.source // "github"')" = "local" ] && echo "Ticket local: $(j '.ticket_path // "path not recorded"')"
 echo "Models $(j '.models | to_entries | map("\(.key)=\(.value)") | join("  ")')"
 
 line="Passes"

@@ -99,3 +99,8 @@ docs/tickets/
 #gos10k
 /gos10k/*.db*
 /gos10k/node_modules/
+
+#scans-issues
+/docs/26-11-13-scan/
+/docs/specs/26-11-13-scan/
+/docs/progress/private/

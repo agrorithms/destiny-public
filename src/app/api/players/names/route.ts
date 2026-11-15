@@ -15,7 +15,11 @@ const MAX_IDS = 12;
 const MEMBERSHIP_ID = /^\d{1,20}$/;
 
 export async function GET(request: NextRequest) {
-    const ids = (request.nextUrl.searchParams.get('ids') ?? '').split(',');
+    const param = request.nextUrl.searchParams.get('ids');
+    if (param === null) {
+        return withNoStore(NextResponse.json({ error: 'Invalid ids' }, { status: 400 }));
+    }
+    const ids = param.split(',');
 
     if (ids.length > MAX_IDS) {
         return withNoStore(NextResponse.json({ error: 'Too many ids' }, { status: 400 }));
@@ -37,7 +41,7 @@ export async function GET(request: NextRequest) {
         if (isDatabaseMaintenanceError(error)) {
             return withNoStore(NextResponse.json({ maintenance: true, players: [] }));
         }
-        console.error('[ERROR] Player names lookup failed:', error);
-        return withNoStore(NextResponse.json({ error: 'Internal server error' }, { status: 500 }));
+        // Anything else is a real fault: Next answers 500 and logs it.
+        throw error;
     }
 }

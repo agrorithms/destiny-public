@@ -728,7 +728,6 @@ export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
 
 /** The identities of whichever of `membershipIds` the Tracker knows. Unknown ids have no entry. */
 export function getPlayerIdentities(membershipIds: string[]): PlayerIdentity[] {
-    if (membershipIds.length === 0) return [];
     const db = getDb();
     return db.prepare(`
     SELECT

@@ -121,4 +121,16 @@ describe('GET /api/players/names', () => {
         expect(response.headers.get('Cache-Control')).toBe('no-store');
         expect(await response.json()).toEqual({ maintenance: true, players: [] });
     });
+
+    // A real fault, made with the real database rather than a mock (ADR 0004): the lookup
+    // must not pass it off as maintenance or as "nobody known".
+    it('lets any other database failure through as an error', async () => {
+        const db = testDb();
+        db.exec('ALTER TABLE players RENAME TO players_unavailable');
+        try {
+            await expect(lookup(`?ids=${KNOWN_ID}`)).rejects.toThrow(/no such table/);
+        } finally {
+            db.exec('ALTER TABLE players_unavailable RENAME TO players');
+        }
+    });
 });

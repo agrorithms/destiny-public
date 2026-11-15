@@ -11,7 +11,7 @@
 // counts as being in an activity. See CONTEXT.md for Active Session, Roster and Fireteam.
 import { formatBungieDisplayName } from '../bungie/display-name';
 import { getRaidKeyFromHash } from '../bungie/manifest';
-import type { DestinyProfileResponse, PlayerInfo, TransitoryPartyMember } from '../bungie/types';
+import type { CharacterActivitiesComponent, DestinyProfileResponse, PlayerInfo, TransitoryPartyMember } from '../bungie/types';
 import { getActivityDisplayName } from '../utils/activity';
 import { isLikelyMembershipId } from './roster';
 
@@ -75,13 +75,6 @@ export const MAX_NAME_LOOKUP_IDS = 12;
 /** How many public teammates a private player's page probes before giving up. */
 export const MAX_TEAMMATE_PROBES = 3;
 
-interface CharacterActivityLike {
-    dateActivityStarted?: string;
-    currentActivityHash?: number;
-    currentActivityModeHash?: number;
-    currentActivityModeType?: number;
-}
-
 /**
  * The activity a profile (components 204 + 1000) shows, or null when it shows none.
  *
@@ -93,8 +86,9 @@ export function readProfileActivity(profile: DestinyProfileResponse): ProfileAct
     const transitory = profile.profileTransitoryData?.data;
     if (!transitory) return null;
 
-    const characters = Object.values(profile.characterActivities?.data || {}) as CharacterActivityLike[];
-    characters.sort((a, b) => (Date.parse(b.dateActivityStarted || '') || 0) - (Date.parse(a.dateActivityStarted || '') || 0));
+    const characters: CharacterActivitiesComponent[] = Object.values(profile.characterActivities?.data || {});
+    // An unreadable start time sorts last rather than poisoning the order with NaN.
+    characters.sort((a, b) => (Date.parse(b.dateActivityStarted) || 0) - (Date.parse(a.dateActivityStarted) || 0));
     const mostRecent = characters[0];
     const current = transitory.currentActivity;
 
@@ -184,10 +178,10 @@ export function liveSession(subject: SessionSubject, activity: ProfileActivity, 
  */
 export function provisionalSession(subject: SessionSubject, profile: DestinyProfileResponse): ProfileSession | null {
     const transitory = profile.profileTransitoryData?.data;
-    const current = transitory?.currentActivity;
-    if (!current?.startTime) return null;
+    if (!transitory?.currentActivity?.startTime) return null;
+    const current = transitory.currentActivity;
 
-    const partyMembers = cardMembers(subject, transitory?.partyMembers || []);
+    const partyMembers = cardMembers(subject, transitory.partyMembers || []);
     return {
         ...subject,
         activityHash: 0,

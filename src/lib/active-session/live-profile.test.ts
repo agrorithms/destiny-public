@@ -109,6 +109,50 @@ describe('readProfileActivity', () => {
         });
     });
 
+    describe('picks the most recently started character whatever order Bungie lists them in', () => {
+        const older = { currentActivityHash: 1374392663, currentActivityModeHash: 0, currentActivityModeType: 4, dateActivityStarted: '2026-11-14T10:00:00Z' };
+        const newer = { currentActivityHash: RAID_HASH, currentActivityModeHash: 0, currentActivityModeType: 4, dateActivityStarted: '2026-11-14T11:55:00Z' };
+        const unreadable = { currentActivityHash: 910380154, currentActivityModeHash: 0, currentActivityModeType: 4, dateActivityStarted: 'not a date' };
+
+        it.each([
+            ['older first', [older, newer]],
+            ['newer first', [newer, older]],
+            ['an unreadable start first', [unreadable, newer]],
+            ['an unreadable start last', [newer, unreadable]],
+            ['an unreadable start between', [older, unreadable, newer]],
+        ])('%s', (_label, list) => {
+            const profile: DestinyProfileResponse = {
+                ...buildActiveProfile({ membershipId: SELF }),
+                characterActivities: { data: Object.fromEntries(list.map((c, i) => [`c${i}`, c])) },
+            };
+
+            expect(readProfileActivity(profile)?.activityHash).toBe(RAID_HASH);
+        });
+    });
+
+    it('is null when the profile has no transitory component at all', () => {
+        expect(readProfileActivity({})).toBeNull();
+        expect(readProfileActivity({ profileTransitoryData: {} })).toBeNull();
+    });
+
+    it('copes with transitory data that names no activity and lists no Roster', () => {
+        const profile = {
+            characterActivities: {
+                data: { c: { currentActivityHash: RAID_HASH, currentActivityModeHash: 0, currentActivityModeType: 0, dateActivityStarted: '' } },
+            },
+            profileTransitoryData: { data: {} as never },
+        } satisfies DestinyProfileResponse;
+
+        expect(readProfileActivity(profile)).toEqual({
+            activityHash: RAID_HASH,
+            activityModeHash: null,
+            activityModeType: null,
+            startedAt: null,
+            partyMembers: [],
+        });
+        expect(readProfileActivity({ ...profile, characterActivities: { data: {} } })).toBeNull();
+    });
+
     it('falls back to the transitory activity when the characters are withheld', () => {
         const startTime = '2026-11-14T11:45:00.000Z';
         const profile = { ...buildActiveProfile({ membershipId: SELF, startTime }), characterActivities: { privacy: 2 } };
@@ -151,6 +195,12 @@ describe('isActivityWithheld', () => {
         expect(isActivityWithheld(profile)).toBe(true);
     });
 
+    it('is false for a profile missing its identity component, or parts of it', () => {
+        expect(isActivityWithheld({})).toBe(false);
+        expect(isActivityWithheld({ profile: {} })).toBe(false);
+        expect(isActivityWithheld({ profile: { data: {} as never } })).toBe(false);
+    });
+
     it('is false when Bungie leaves the character activities out altogether', () => {
         const profile = buildActiveProfile({ membershipId: SELF });
         delete profile.characterActivities;
@@ -178,6 +228,7 @@ describe('profileOwner and pickHeaderPlayer', () => {
 
     it('is null when the profile carries no identity', () => {
         expect(profileOwner({})).toBeNull();
+        expect(profileOwner({ profile: {} })).toBeNull();
     });
 
     const owner = { membershipId: SELF, membershipType: 3, displayName: 'Fresh#0001', baseName: 'Fresh' };
@@ -278,7 +329,19 @@ describe('provisionalSession', () => {
         expect(provisionalSession(subject, profile)?.playerCount).toBe(4);
     });
 
+    it('falls back to a Roster of one when Bungie lists nobody', () => {
+        const profile = buildPrivateProfile({ membershipId: SELF, startTime: '2026-11-14T11:50:00.000Z' });
+        delete (profile.profileTransitoryData!.data as { partyMembers?: unknown }).partyMembers;
+        profile.profileTransitoryData!.data!.currentActivity.numberOfPlayers = 0;
+
+        expect(provisionalSession(subject, profile)).toMatchObject({
+            playerCount: 1,
+            partyMembers: [{ membershipId: SELF, membershipType: 3, displayName: 'Viewed#0042', status: 1 }],
+        });
+    });
+
     it('is null when Bungie shows no activity at all', () => {
+        expect(provisionalSession(subject, {})).toBeNull();
         expect(provisionalSession(subject, buildPrivateProfile({ membershipId: SELF, withTransitoryData: false }))).toBeNull();
         const noStart = buildPrivateProfile({ membershipId: SELF, startTime: '' });
         expect(provisionalSession(subject, noStart)).toBeNull();

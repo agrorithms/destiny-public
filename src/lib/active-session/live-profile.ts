@@ -9,11 +9,11 @@
 // Pure and browser-safe on purpose: no database, no `fs`, no server Bungie client. The crawler
 // reads a profile through `readProfileActivity` too, so the page and the Tracker agree on what
 // counts as being in an activity. See CONTEXT.md for Active Session, Roster and Fireteam.
-import { formatBungieDisplayName } from '../bungie/display-name';
+import { formatBungieDisplayName, type BungieDisplayNameParts } from '../bungie/display-name';
 import { getRaidKeyFromHash } from '../bungie/manifest';
 import type { CharacterActivitiesComponent, DestinyProfileResponse, PlayerInfo, TransitoryPartyMember } from '../bungie/types';
 import { getActivityDisplayName } from '../utils/activity';
-import { isLikelyMembershipId } from './roster';
+import { isLikelyMembershipId, rosterMemberName } from './roster';
 
 /** What a profile says its owner is doing right now, as Bungie reported it. */
 export interface ProfileActivity {
@@ -70,10 +70,14 @@ export interface NamedPlayer {
 }
 
 export const PRIVATE_ACTIVITY_NAME = 'Activity in progress (details private)';
-/** The most ids the Tracker's known-names lookup answers in one request. */
+/**
+ * The most ids the Tracker's known-names lookup answers in one request; the route enforces this
+ * same constant. A Fireteam's Roster is at most six; twelve leaves room without making the
+ * lookup a bulk export.
+ */
 export const MAX_NAME_LOOKUP_IDS = 12;
 /** How many public teammates a private player's page probes before giving up. */
-export const MAX_TEAMMATE_PROBES = 3;
+const MAX_TEAMMATE_PROBES = 3;
 
 /**
  * The activity a profile (components 204 + 1000) shows, or null when it shows none.
@@ -117,17 +121,24 @@ export function isActivityWithheld(profile: DestinyProfileResponse): boolean {
     return Boolean(characters && !characters.data);
 }
 
-/** The profile's owner, named `Name#Code` when Bungie gives both halves. */
+/**
+ * The heading's player from an identity, named `Name#Code` when both halves are known. The
+ * player read route names a stored player with it too, so both headings follow one rule.
+ */
+export function toProfilePlayer(identity: BungieDisplayNameParts & { membershipType: number }): ProfilePlayer {
+    return {
+        membershipId: identity.membershipId,
+        membershipType: identity.membershipType,
+        displayName: formatBungieDisplayName(identity),
+        baseName: identity.bungieGlobalDisplayName || identity.displayName || identity.membershipId,
+    };
+}
+
+/** The profile's owner, as the viewer's Bungie response names them. */
 export function profileOwner(profile: DestinyProfileResponse): ProfilePlayer | null {
     const userInfo = profile.profile?.data?.userInfo;
     if (!userInfo?.membershipId) return null;
-
-    return {
-        membershipId: userInfo.membershipId,
-        membershipType: userInfo.membershipType,
-        displayName: formatBungieDisplayName(userInfo),
-        baseName: userInfo.bungieGlobalDisplayName || userInfo.displayName || userInfo.membershipId,
-    };
+    return toProfilePlayer(userInfo);
 }
 
 /**
@@ -139,12 +150,6 @@ export function pickHeaderPlayer(stored: ProfilePlayer | null, owner: ProfilePla
     return owner ?? stored;
 }
 
-/** Bungie's name for a member, unless it is really a bare membership id. */
-function rosterName(member: Pick<TransitoryPartyMember, 'membershipId' | 'displayName'>): string {
-    const name = member.displayName;
-    return name && !isLikelyMembershipId(name) ? name : member.membershipId;
-}
-
 /** The Roster as the card shows it: the viewed player named and linkable, the rest as Bungie named them. */
 function cardMembers(subject: SessionSubject, partyMembers: TransitoryPartyMember[]): SessionMember[] {
     // A Roster of one when Bungie listed nobody, as the crawler stores it.
@@ -154,7 +159,7 @@ function cardMembers(subject: SessionSubject, partyMembers: TransitoryPartyMembe
 
     return members.map((member) => member.membershipId === subject.membershipId
         ? { membershipId: subject.membershipId, membershipType: subject.membershipType, displayName: subject.displayName, status: member.status }
-        : { membershipId: member.membershipId, displayName: rosterName(member), status: member.status });
+        : { membershipId: member.membershipId, displayName: rosterMemberName(member.displayName, member.membershipId), status: member.status });
 }
 
 /** The card for an activity the viewer's response shows. */

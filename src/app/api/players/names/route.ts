@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MAX_NAME_LOOKUP_IDS } from '@/lib/active-session/live-profile';
+import { isMembershipId } from '@/lib/active-session/roster';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { formatBungieDisplayName, getPlayerIdentities } from '@/lib/db/queries';
 import { withNoStore } from '@/lib/http/cache';
@@ -10,10 +12,6 @@ import { withNoStore } from '@/lib/http/cache';
  * the Tracker does not know is left out, and the browser names that one itself, on screen only.
  */
 
-/** A Fireteam's Roster is at most six; twelve leaves room without making this a bulk export. */
-const MAX_IDS = 12;
-const MEMBERSHIP_ID = /^\d{1,20}$/;
-
 export async function GET(request: NextRequest) {
     const param = request.nextUrl.searchParams.get('ids');
     if (param === null) {
@@ -21,10 +19,10 @@ export async function GET(request: NextRequest) {
     }
     const ids = param.split(',');
 
-    if (ids.length > MAX_IDS) {
+    if (ids.length > MAX_NAME_LOOKUP_IDS) {
         return withNoStore(NextResponse.json({ error: 'Too many ids' }, { status: 400 }));
     }
-    if (!ids.every((id) => MEMBERSHIP_ID.test(id))) {
+    if (!ids.every(isMembershipId)) {
         return withNoStore(NextResponse.json({ error: 'Invalid ids' }, { status: 400 }));
     }
 

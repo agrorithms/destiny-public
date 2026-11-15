@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isMembershipId } from '@/lib/active-session/roster';
 import { enqueueCrawl, isPlayerCrawlBackingOff } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     const membershipId = typeof body.membershipId === 'string' ? body.membershipId.trim() : '';
     const membershipType = Number(body.membershipType);
 
-    if (!/^\d{1,20}$/.test(membershipId)) {
+    if (!isMembershipId(membershipId)) {
         return withNoStore(NextResponse.json({ error: 'Invalid membershipId' }, { status: 400 }));
     }
     if (!validMembershipTypes.has(membershipType)) {

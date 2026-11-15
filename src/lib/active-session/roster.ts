@@ -57,6 +57,16 @@ export function isLikelyMembershipId(str: string): boolean {
     return /^\d{16,}$/.test(str);
 }
 
+/** Whether a request's membership id is one: digits only, at most twenty. Every route that takes an id checks it with this. */
+export function isMembershipId(value: string): boolean {
+    return /^\d{1,20}$/.test(value);
+}
+
+/** A member's name as Bungie sent it, unless it is really a bare membership id; then the id. */
+export function rosterMemberName(displayName: string | undefined, membershipId: string): string {
+    return displayName && !isLikelyMembershipId(displayName) ? displayName : membershipId;
+}
+
 /** The server's test, plus an empty name or one equal to the member's own ID. */
 function isRawMembershipId(displayName: string, membershipId: string): boolean {
     return !displayName || displayName === membershipId || isLikelyMembershipId(displayName);

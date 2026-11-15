@@ -4,7 +4,7 @@
 import { getDb } from '../db';
 import { formatBungieDisplayName, type ActiveSessionDbRow, type PlayerIdentity } from '../db/queries';
 import { getActivityDisplayName } from '../utils/activity';
-import { isLikelyMembershipId } from './roster';
+import { rosterMemberName } from './roster';
 
 interface PartyMemberInput {
     membershipId?: string;
@@ -28,7 +28,7 @@ interface PlayerLookupRow {
     display_name: string | null;
 }
 
-export function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): PartyMemberOutput[] {
+function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): PartyMemberOutput[] {
     let partyMembers: PartyMemberInput[] = [];
     if (partyMembersJson) {
         try {
@@ -50,15 +50,12 @@ export function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: bo
     if (!enrich) {
         return partyMembers.map((member) => {
             const id = String(member?.membershipId || '');
-            const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
-                ? member.displayName
-                : null;
             const baseMember = member as Record<string, unknown>;
 
             return {
                 ...baseMember,
                 membershipId: id,
-                displayName: fallbackApiName || id,
+                displayName: rosterMemberName(member?.displayName, id),
             };
         });
     }
@@ -104,16 +101,13 @@ export function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: bo
     return partyMembers.map((member) => {
         const id = String(member?.membershipId || '');
         const knownName = nameMap.get(id);
-        const fallbackApiName = member?.displayName && !isLikelyMembershipId(member.displayName)
-            ? member.displayName
-            : null;
         const baseMember = member as Record<string, unknown>;
 
         return {
             ...baseMember,
             membershipId: id,
             membershipType: member?.membershipType ?? typeMap.get(id),
-            displayName: knownName || fallbackApiName || id,
+            displayName: knownName || rosterMemberName(member?.displayName, id),
         };
     });
 }

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAllRaidDefinitions, getRaidNameFromHash } from '@/lib/bungie/manifest';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import {
-    formatBungieDisplayName,
     getPlayerIdentity,
     getPlayerRaidPerformanceStats,
     getPlayerRaidTeammateSummary,
@@ -12,12 +11,11 @@ import {
     type PlayerIdentity,
 } from '@/lib/db/queries';
 import { buildActiveSessionPayload } from '@/lib/active-session/format';
+import { toProfilePlayer } from '@/lib/active-session/live-profile';
+import { isMembershipId } from '@/lib/active-session/roster';
 import { withCache, withNoStore } from '@/lib/http/cache';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
-// A Destiny membership id: digits only. The containing-session read searches each stored Roster
-// for this id, so nothing but an id may reach it.
-const MEMBERSHIP_ID = /^\d{1,20}$/;
 
 function buildFallbackIdentity(membershipType: number, membershipId: string): PlayerIdentity {
     return {
@@ -34,12 +32,7 @@ function buildPlayerPayload(identity: PlayerIdentity | null, membershipType: num
         return buildFallbackPlayerPayload(membershipType, membershipId);
     }
 
-    return {
-        membershipId: identity.membershipId,
-        membershipType: identity.membershipType,
-        displayName: formatBungieDisplayName(identity),
-        baseName: identity.bungieGlobalDisplayName || identity.displayName || identity.membershipId,
-    };
+    return toProfilePlayer(identity);
 }
 
 function buildFallbackPlayerPayload(membershipType: number, membershipId: string) {
@@ -93,7 +86,8 @@ export async function GET(
     const { membershipType: membershipTypeRaw, membershipId } = await context.params;
     const membershipType = parseInt(membershipTypeRaw, 10);
 
-    if (!MEMBERSHIP_ID.test(membershipId) || Number.isNaN(membershipType)) {
+    // Digits only: the containing-session read searches each stored Roster for this id.
+    if (!isMembershipId(membershipId) || Number.isNaN(membershipType)) {
         return withNoStore(NextResponse.json({ error: 'Invalid player identity' }, { status: 400 }));
     }
     if (!validMembershipTypes.has(membershipType)) {

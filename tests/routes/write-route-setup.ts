@@ -8,13 +8,13 @@ export const T0 = new Date('2026-08-03T12:00:00Z').getTime();
 const SECRET = 'test-secret-not-a-real-credential';
 
 /**
- * Registers the environment the three client-write routes need: a page-token
+ * Registers the environment the client-write route needs: a page-token
  * secret (without it isTrustedClientWrite skips the token layer entirely and the
  * tests would prove less than they claim), the site URL the same-origin check
  * allowlists, a frozen clock, and an empty database.
  *
- * Shared rather than copied into each file so the env contract has one home —
- * these routes all sit behind the same guard.
+ * Kept in its own file so the env contract has one home for any route behind
+ * the client-write guard.
  */
 // Not named use* — that reads as a React hook to eslint, and this is a Vitest hook.
 export function installWriteRouteEnv(): void {

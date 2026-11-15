@@ -3,7 +3,7 @@
  * agree on it: playwright.config.ts (the `next start` port and `baseURL`) and
  * e2e/support/write-request.ts (the Origin the same-origin guard must accept).
  * A port change that reached only one of them would surface as a 403 in
- * client-write-guard.spec.ts, which reads like a guard bug rather than a config
+ * players-api-guard.spec.ts, which reads like a guard bug rather than a config
  * drift.
  *
  * The `localhost:3100` literals in tests/helpers/ and src/lib/http/ are

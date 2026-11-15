@@ -123,8 +123,9 @@ async function clientRequest<T>(url: string, init?: RequestInit): Promise<Bungie
 
 /**
  * Fetch a player's profile with components 100 (identity), 204 (character activities),
- * and 1000 (transitory). One call serves both identity hydration and live-session status.
- * Returns the raw `.Response` payload — the server's active-session-update endpoint parses it.
+ * and 1000 (transitory). One call serves both the page heading's name and live-session status.
+ * Returns the raw `.Response` payload; the profile page reads it with
+ * src/lib/active-session/live-profile.ts and sends none of it to the server (ADR 0010).
  */
 export async function fetchPlayerProfileClient(
     membershipType: number,

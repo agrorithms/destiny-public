@@ -79,10 +79,10 @@ function buildMaintenancePayload(
     };
 }
 
-// This route is now a pure SQLite read with ZERO Bungie API calls. Live activity
-// verification and identity lookups for untracked players happen client-side (public
-// key) — see src/lib/bungie/client-api.ts and the active-session-update / queue-crawl
-// endpoints. That keeps the server's Bungie API budget reserved for the crawler/scanner.
+// This route is a pure SQLite read with ZERO Bungie API calls. Live activity and names for
+// untracked players come from the browser's own Bungie calls (public key) and stay in that
+// browser — see src/lib/active-session/live-profile.ts and ADR 0010. That keeps the server's
+// Bungie API budget reserved for the crawler/scanner.
 export async function GET(
     request: NextRequest,
     context: { params: Promise<{ membershipType: string; membershipId: string }> }
@@ -113,7 +113,7 @@ export async function GET(
         if (activeOnly) {
             // containing=1: session that includes this player as a party member (stored via a
             // public teammate). Used for privacy-restricted (1665) players whose own profile
-            // the browser can't read — a pure DB read, formerly a POST to active-session-update.
+            // the browser can't read — a pure DB read.
             if (request.nextUrl.searchParams.get('containing') === '1') {
                 const containing = getActiveSessionContainingPlayer(membershipId, 900);
                 return withNoStore(NextResponse.json({

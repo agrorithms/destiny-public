@@ -1,6 +1,6 @@
 // Shared formatting for active-session API responses. Builds the enriched session shape
 // (raid name from manifest, party-member display names resolved from the players table)
-// that both the player profile route and the active-session-update endpoint return.
+// that the player profile route returns.
 import { getDb } from '../db';
 import { formatBungieDisplayName, type ActiveSessionDbRow, type PlayerIdentity } from '../db/queries';
 import { getActivityDisplayName } from '../utils/activity';

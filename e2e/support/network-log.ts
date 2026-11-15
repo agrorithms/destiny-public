@@ -4,14 +4,14 @@ import { PAGE_TOKEN_HEADER } from '../../src/lib/http/request-auth';
 /**
  * Records every browser → app request to /api/players/** in call order.
  *
- * The ordering is the thing Vitest cannot provide: the client-write flows are a
- * chain of conditional, fire-and-forget calls (active-session-update → identity
- * → enriched re-read → queue-crawl), and a route-handler test can only ever see
- * one link of that chain in isolation. `hasPageToken` is recorded per entry
- * because the token surviving the RSC boundary into a real header is itself an
- * assertion no unit test can make.
+ * What Vitest cannot provide: which requests the profile page actually makes, in
+ * what order. Since #9001 the claim that matters most is a negative one, that the
+ * only write a profile view sends is the history-crawl request (ids only) and
+ * every other call is a read. `hasPageToken` is recorded per entry because the
+ * token surviving the RSC boundary into a real header is itself an assertion no
+ * unit test can make.
  *
- * Shared by client-write-verify.spec.ts and client-write-resolve.spec.ts.
+ * Shared by profile-live-card.spec.ts and profile-roster-names.spec.ts.
  */
 export interface NetworkEntry {
     method: string;
@@ -64,7 +64,7 @@ export function callIndex(log: NetworkEntry[], method: string, pathFragment: str
 }
 
 /**
- * Both client-write specs end on queue-crawl, which is fire-and-forget — the
+ * The profile specs wait on queue-crawl, which is fire-and-forget — the
  * waiter has to be armed before navigating or it can miss the response.
  */
 export function waitForQueueCrawl(page: Page) {

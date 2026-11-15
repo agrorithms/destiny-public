@@ -151,42 +151,6 @@ export function bulkUpsertPlayers(players: PlayerInfo[]): void {
     bulkTx(players);
 }
 
-/**
- * Untrusted (browser-supplied) identity write, used by the client-write endpoints
- * (players/identity, active-session-update). Inserts unknown players, but only fills
- * fields the DB doesn't already know — it never overwrites an existing display name,
- * so a forged request can't rename a player already on the leaderboard.
- * Name and code are written as a pair (gated on the name being NULL) so a mismatched
- * Name#Code can't be assembled from two writes. The crawler's trusted
- * upsertPlayer/bulkUpsertPlayers remain the authoritative, overwriting writers.
- */
-export function upsertPlayerFillOnly(player: PlayerInfo): void {
-    // Callers feed this client-supplied data (e.g. profileResponse.userInfo), so the
-    // membership-type check lives here rather than trusting every route to pre-validate.
-    if (!isValidMembershipType(player.membershipType)) return;
-    const db = getDb();
-    db.prepare(`
-    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(membership_id) DO UPDATE SET
-      display_name = COALESCE(display_name, excluded.display_name),
-      bungie_global_display_name = CASE
-        WHEN bungie_global_display_name IS NULL THEN excluded.bungie_global_display_name
-        ELSE bungie_global_display_name
-      END,
-      bungie_global_display_name_code = CASE
-        WHEN bungie_global_display_name IS NULL THEN excluded.bungie_global_display_name_code
-        ELSE bungie_global_display_name_code
-      END
-  `).run(
-        player.membershipId,
-        player.membershipType,
-        player.displayName ?? null,
-        player.bungieGlobalDisplayName || null,
-        player.bungieGlobalDisplayNameCode ?? null
-    );
-}
-
 /** Return the subset of the given membershipIds that already exist in the players table. */
 export function getExistingPlayerIds(membershipIds: string[]): Set<string> {
     const found = new Set<string>();

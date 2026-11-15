@@ -2,6 +2,7 @@ import { expect, test } from './support/test-fixtures';
 import { SPOOFED_ORIGIN, writeHeaders } from './support/write-request';
 import { buildActiveProfile } from '../tests/helpers/bungie-profile-builder';
 import { getActiveSessionContainingPlayer, getPlayerIdentity } from '../src/lib/db/queries';
+import { ANY_AGE_SECONDS } from './support/seed-world';
 
 /**
  * The players API's write surface, exercised over real HTTP against the running server.
@@ -35,9 +36,6 @@ const RETIRED_IDENTITY_ID = '4611686018488500003';
 // empty body would 403 either way, but if the guard were ever deleted a valid body makes the
 // test fail as a successful write rather than as a 400 that reads like a body problem.
 const queueCrawlBody = { membershipId: CONTROL_ID, membershipType: 3 };
-
-/** A day is far longer than any freshness window, so "no row" means none at all. */
-const ANY_AGE_SECONDS = 86_400;
 
 test.describe('players API write guard over HTTP', () => {
     // The positive control. Without it a 403 proves nothing: a typo'd path or a guard that

@@ -710,15 +710,18 @@ export interface PlayerIdentity {
     bungieGlobalDisplayNameCode: number | null;
 }
 
-export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
-    const db = getDb();
-    const row = db.prepare(`
-    SELECT
+/** The `players` columns a `PlayerIdentity` reads, under its field names. */
+const PLAYER_IDENTITY_COLUMNS = `
       membership_id as membershipId,
       membership_type as membershipType,
       display_name as displayName,
       bungie_global_display_name as bungieGlobalDisplayName,
-      bungie_global_display_name_code as bungieGlobalDisplayNameCode
+      bungie_global_display_name_code as bungieGlobalDisplayNameCode`;
+
+export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
+    const db = getDb();
+    const row = db.prepare(`
+    SELECT ${PLAYER_IDENTITY_COLUMNS}
     FROM players
     WHERE membership_id = ?
   `).get(membershipId) as PlayerIdentity | undefined;
@@ -730,12 +733,7 @@ export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
 export function getPlayerIdentities(membershipIds: string[]): PlayerIdentity[] {
     const db = getDb();
     return db.prepare(`
-    SELECT
-      membership_id as membershipId,
-      membership_type as membershipType,
-      display_name as displayName,
-      bungie_global_display_name as bungieGlobalDisplayName,
-      bungie_global_display_name_code as bungieGlobalDisplayNameCode
+    SELECT ${PLAYER_IDENTITY_COLUMNS}
     FROM players
     WHERE membership_id IN (SELECT value FROM json_each(?))
   `).all(JSON.stringify(membershipIds)) as PlayerIdentity[];

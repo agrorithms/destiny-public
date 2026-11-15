@@ -45,25 +45,6 @@ export function interceptApiCalls(page: Page): NetworkEntry[] {
 }
 
 /**
- * Positions of the calls matching `method` + a path fragment, in call order.
- * Indexes rather than entries because the assertions are about *sequence* —
- * "the identity POSTs happened after the update POST and before the enriched
- * re-read" is the claim, and only a position can carry it.
- */
-export function callIndexes(log: NetworkEntry[], method: string, pathFragment: string): number[] {
-    const indexes: number[] = [];
-    log.forEach((entry, index) => {
-        if (entry.method === method && entry.path.includes(pathFragment)) indexes.push(index);
-    });
-    return indexes;
-}
-
-/** Position of the first matching call, or -1. */
-export function callIndex(log: NetworkEntry[], method: string, pathFragment: string): number {
-    return log.findIndex((entry) => entry.method === method && entry.path.includes(pathFragment));
-}
-
-/**
  * The profile specs wait on queue-crawl, which is fire-and-forget — the
  * waiter has to be armed before navigating or it can miss the response.
  */

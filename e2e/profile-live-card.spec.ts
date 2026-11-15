@@ -1,9 +1,9 @@
 import { expect, test } from './support/test-fixtures';
-import { RAID_A, seedPlayerWithSession } from './support/seed-world';
+import { ANY_AGE_SECONDS, RAID_A, seedPlayerWithSession } from './support/seed-world';
 import { seedPlayer } from '../tests/helpers/seed';
 import { buildActiveProfile, buildInactiveProfile, buildPrivateProfile } from '../tests/helpers/bungie-profile-builder';
 import { getActiveSessionContainingPlayer, getActiveSessionForPlayer, getPlayerIdentity } from '../src/lib/db/queries';
-import { callIndex, interceptApiCalls, waitForQueueCrawl } from './support/network-log';
+import { interceptApiCalls, waitForQueueCrawl } from './support/network-log';
 import { fulfillBungie } from './support/bungie-stub';
 
 /**
@@ -51,9 +51,6 @@ const TEAMMATE_CODE = 8305;
 
 const raidHeading = (page: import('@playwright/test').Page) =>
     page.getByRole('heading', { level: 3, name: RAID_A.name });
-
-/** A day is far longer than any freshness window, so "no row" means none at all. */
-const ANY_AGE_SECONDS = 86_400;
 
 test.beforeAll(() => {
     // The raiding player is deliberately not seeded: a profile view must not make them known.
@@ -183,8 +180,7 @@ test.describe('profile live card', () => {
         await expect(page.getByText('Checking live status…')).toHaveCount(0);
 
         expect(log.some((e) => e.method === 'GET' && e.path.includes('containing=1'))).toBe(true);
-        // Their history crawl is bound to fail, so the page doesn't ask for one.
-        expect(callIndex(log, 'POST', 'queue-crawl')).toBe(-1);
+        // Their history crawl is bound to fail, so the page doesn't ask for one: no POST at all.
         expect(log.filter((e) => e.method === 'POST')).toEqual([]);
     });
 });

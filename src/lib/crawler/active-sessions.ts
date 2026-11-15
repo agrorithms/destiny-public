@@ -47,12 +47,6 @@ const DEFAULT_MEMBER_RESOLVE_CONCURRENCY = Math.max(
     parseInt(process.env.CRAWLER_MEMBER_RESOLVE_CONCURRENCY || '4', 10)
 );
 
-interface PartyMemberLike {
-    membershipId: string;
-    displayName?: string;
-    status?: number;
-}
-
 interface StaleSessionRow {
     membership_id: string;
     membership_type: number;
@@ -169,7 +163,7 @@ export function parseAndStoreActivity(
     let sessionKey: string;
     if (partyMembers.length > 0) {
         const sortedMemberIds = partyMembers
-            .map((m: PartyMemberLike) => m.membershipId)
+            .map((m) => m.membershipId)
             .sort()
             .join('-');
         sessionKey = `${activityHash}-${sortedMemberIds}`;

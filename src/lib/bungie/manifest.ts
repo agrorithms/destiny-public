@@ -1,10 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import { getBungieClient } from './client';
-import type { DestinyActivityDefinition } from './types';
+// Browser-safe on purpose: the profile page names a live raid from this table (#9001), so this
+// module imports nothing that reaches `fs`, the database or the server's Bungie client. The script
+// that writes `data/manifest-cache.json` for a human to read is `scripts/setup-manifest.ts`.
 import type { Difficulty } from './difficulty';
-
-const MANIFEST_CACHE_PATH = path.join(process.cwd(), 'data', 'manifest-cache.json');
 
 export interface RaidDefinition {
     name: string;
@@ -143,52 +140,4 @@ export function getRaidNameFromHash(hash: number): string {
     const key = hashToRaidMap.get(hash);
     if (!key) return 'Unknown Raid';
     return raidDefinitions[key]?.name || 'Unknown Raid';
-}
-
-export async function updateManifestCache(): Promise<void> {
-    console.log('📦 Fetching Destiny 2 manifest...');
-    const client = getBungieClient();
-    const manifest = await client.getManifest();
-
-    const activityDefPath =
-        manifest.Response.jsonWorldComponentContentPaths.en.DestinyActivityDefinition;
-
-    const activityDefUrl = `https://www.bungie.net${activityDefPath}`;
-    console.log(`📥 Downloading activity definitions from ${activityDefUrl}`);
-
-    const response = await fetch(activityDefUrl);
-    const activityDefs: Record<string, DestinyActivityDefinition> = await response.json();
-
-    // Find all raid activities
-    const raidActivities: Record<string, {
-        hash: number;
-        name?: string;
-        description?: string;
-        directActivityModeType?: number;
-    }> = {};
-    for (const [hash, def] of Object.entries(activityDefs)) {
-        if (
-            def.activityTypeHash === 2043403989 ||
-            (def.activityModeTypes && def.activityModeTypes.includes(4))
-        ) {
-            raidActivities[hash] = {
-                hash: Number(hash),
-                name: def.displayProperties?.name,
-                description: def.displayProperties?.description,
-                directActivityModeType: def.directActivityModeType,
-            };
-        }
-    }
-
-    const cacheData = {
-        updatedAt: new Date().toISOString(),
-        raidActivities,
-    };
-
-    fs.mkdirSync(path.dirname(MANIFEST_CACHE_PATH), { recursive: true });
-    fs.writeFileSync(MANIFEST_CACHE_PATH, JSON.stringify(cacheData, null, 2));
-    console.log(
-        `✅ Cached ${Object.keys(raidActivities).length} raid activities to ${MANIFEST_CACHE_PATH}`
-    );
-    console.log('⚠️  Review the cached file and update RAID_DEFINITIONS in manifest.ts if needed');
 }

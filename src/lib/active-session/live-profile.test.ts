@@ -153,6 +153,13 @@ describe('readProfileActivity', () => {
         expect(readProfileActivity({ ...profile, characterActivities: { data: {} } })).toBeNull();
     });
 
+    it('reads the transitory activity when Bungie sends no character component at all', () => {
+        const startTime = '2026-11-14T11:45:00.000Z';
+        const profile = { profileTransitoryData: buildActiveProfile({ membershipId: SELF, startTime }).profileTransitoryData };
+
+        expect(readProfileActivity(profile)).toMatchObject({ activityHash: RAID_HASH, startedAt: startTime });
+    });
+
     it('falls back to the transitory activity when the characters are withheld', () => {
         const startTime = '2026-11-14T11:45:00.000Z';
         const profile = { ...buildActiveProfile({ membershipId: SELF, startTime }), characterActivities: { privacy: 2 } };
@@ -342,6 +349,7 @@ describe('provisionalSession', () => {
 
     it('is null when Bungie shows no activity at all', () => {
         expect(provisionalSession(subject, {})).toBeNull();
+        expect(provisionalSession(subject, { profileTransitoryData: { data: {} as never } })).toBeNull();
         expect(provisionalSession(subject, buildPrivateProfile({ membershipId: SELF, withTransitoryData: false }))).toBeNull();
         const noStart = buildPrivateProfile({ membershipId: SELF, startTime: '' });
         expect(provisionalSession(subject, noStart)).toBeNull();

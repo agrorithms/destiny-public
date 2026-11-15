@@ -34,4 +34,5 @@ Four guards close this off (`src/lib/crawler/index.ts` `activeSessionLoop`,
   **benching live raiders** on offline backoff. It also skips the doomed teammate probes on a
   failed anchor, cutting wasted storm API calls.
 - **The rule covers every writer** (2026-11-14): no path removes an Active Session without a positive
-  confirmation from the crawler's own Bungie call; since ADR 0010 no browser request can remove one.
+  confirmation from the crawler's own Bungie call. No browser request removes an Active Session
+  (ADR 0010).

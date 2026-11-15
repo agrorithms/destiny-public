@@ -48,7 +48,6 @@ type RunnableStatement = {
 };
 type SqlValue = string | number | null;
 // Pure, so it lives where the browser can import it too (#9001); re-exported for the callers here.
-import type { BungieDisplayNameParts } from '../bungie/display-name';
 export { formatBungieDisplayName, type BungieDisplayNameParts } from '../bungie/display-name';
 
 let playerUpsertDbRef: ReturnType<typeof getDb> | null = null;
@@ -63,10 +62,6 @@ let insertFullPGCRTx: ((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPla
 
 function isValidMembershipType(type: unknown): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
-}
-
-export function hasCompleteBungieDisplayName(player: Pick<BungieDisplayNameParts, 'bungieGlobalDisplayName' | 'bungieGlobalDisplayNameCode'>): boolean {
-    return Boolean(player.bungieGlobalDisplayName) && player.bungieGlobalDisplayNameCode !== null;
 }
 
 function getPlayerUpsertResources(): {

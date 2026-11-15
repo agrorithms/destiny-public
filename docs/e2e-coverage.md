@@ -2945,12 +2945,11 @@ Tracker reads the fixture database from the worker through `src/lib/db/queries.t
    path answered 404 or 405 with no session or `players` row left behind.
 
 **Bite proof — the red run.** The specs were written first and run against the unchanged page (build
-of `dbe87cd`, the names lookup already in): **8 of 13 failed**, every one on the claim it exists for —
-both retired-route tests (received 200), the raiding player (a session row stored, `:90`), the stored
-row (deleted, `:120`), the partly private player (the teammate's row stored, `:165`), the roster names
-(a `players` row created, `:171`). The four guard tests on `queue-crawl` passed, as they should: the
-guard is unchanged. Three specs passed on the old page because their behaviour is unchanged, so one
-break each, in one build (`npm run e2e` on the two profile files: 3 failed, 6 passed):
+of `dbe87cd`, the names lookup already in): **8 of 13 failed**, each on its no-write assertion — the
+two retired-path tests (on the 404 or 405 they expect first), the raiding player (`:90`), the stored
+session (`:120`), the partly private player (`:165`), the roster names (`:171`). The four guard tests
+on `queue-crawl` passed, as they should: the guard is unchanged. Three specs passed on the old page
+because their behaviour is unchanged, so one break each, in one build (`npm run e2e` on the two profile files: 3 failed, 6 passed):
 
 | Break | Spec that failed |
 | --- | --- |

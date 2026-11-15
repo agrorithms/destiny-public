@@ -25,6 +25,7 @@ import {
     type NamedPlayer,
     type ProfilePlayer,
     type ProfileSession,
+    type SessionMember,
     type SessionSubject,
 } from '@/lib/active-session/live-profile';
 import { ROSTER_SIZE } from '@/lib/active-session/roster';
@@ -72,9 +73,6 @@ interface TeammateSummaryRow {
     avgCompletionSeconds: number | null;
 }
 
-/** A stored session from the player read route, or one drawn from the viewer's own Bungie response. */
-type ActiveSession = ProfileSession;
-
 interface ProfileResponse {
     maintenance?: boolean;
     message?: string;
@@ -83,7 +81,7 @@ interface ProfileResponse {
     summary: RaidSummaryRow[];
     recentCompletions: RecentCompletion[];
     teammates: TeammateSummaryRow[];
-    activeSession: ActiveSession | null;
+    activeSession: ProfileSession | null;
     privacyRestricted?: boolean;
 }
 
@@ -97,7 +95,7 @@ interface ActiveSessionResponse {
     maintenance?: boolean;
     message?: string;
     player: ProfilePlayer;
-    activeSession: ActiveSession | null;
+    activeSession: ProfileSession | null;
     privacyRestricted?: boolean;
 }
 
@@ -152,7 +150,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
     const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
     const [profile, setProfile] = useState<ProfileResponse | null>(null);
     const [headerPlayer, setHeaderPlayer] = useState<ProfilePlayer | null>(null);
-    const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+    const [activeSession, setActiveSession] = useState<ProfileSession | null>(null);
     const [privacyRestricted, setPrivacyRestricted] = useState(false);
     const [activeLoading, setActiveLoading] = useState(true);
     const [liveChecking, setLiveChecking] = useState(false);
@@ -802,7 +800,7 @@ interface LiveCheck {
     accountPrivate: boolean;
 }
 
-type ShowSession = (session: ActiveSession | null) => void;
+type ShowSession = (session: ProfileSession | null) => void;
 
 /**
  * The live Active Session card, from the viewer's own Bungie calls. Shows the card through
@@ -828,7 +826,7 @@ async function checkLiveSession(
         if (isClientBungieError(err) && err.kind === 'privacy') {
             const containing = await readContainingSession(membershipType, membershipId);
             show(containing);
-            if (containing) void nameRoster(containing, show);
+            if (containing) void nameFromBungie(containing, show);
             return { privacyRestricted: true, accountPrivate: true };
         }
         throw err;
@@ -840,9 +838,7 @@ async function checkLiveSession(
     const activity = readProfileActivity(profile);
 
     if (activity) {
-        const session = liveSession(subject, activity, new Date());
-        show(session);
-        void nameRoster(session, show);
+        void showAndNameRoster(liveSession(subject, activity, new Date()), show);
         return { player, privacyRestricted: withheld, accountPrivate: false };
     }
 
@@ -855,7 +851,7 @@ async function checkLiveSession(
     const containing = await readContainingSession(membershipType, membershipId);
     if (containing) {
         show(containing);
-        void nameRoster(containing, show);
+        void nameFromBungie(containing, show);
         return { player, privacyRestricted: true, accountPrivate: false };
     }
 
@@ -865,12 +861,15 @@ async function checkLiveSession(
     return { player, privacyRestricted: true, accountPrivate: false };
 }
 
-/** The stored session whose Roster contains this player, from the Tracker. A read; it writes nothing. */
-async function readContainingSession(membershipType: number, membershipId: string): Promise<ActiveSession | null> {
+/**
+ * The stored session whose Roster contains this player, from the Tracker. A read; it writes
+ * nothing. The Tracker has already named every member it knows on it.
+ */
+async function readContainingSession(membershipType: number, membershipId: string): Promise<ProfileSession | null> {
     try {
         const res = await fetch(`/api/players/${membershipType}/${membershipId}?part=active&containing=1`);
         if (!res.ok) return null;
-        const data = await res.json() as { activeSession?: ActiveSession | null };
+        const data = await res.json() as { activeSession?: ProfileSession | null };
         return data.activeSession ?? null;
     } catch {
         return null;
@@ -878,7 +877,7 @@ async function readContainingSession(membershipType: number, membershipId: strin
 }
 
 /** The card with the names the Tracker already knows, from its read-only lookup. */
-async function withKnownNames(session: ActiveSession): Promise<ActiveSession> {
+async function withKnownNames(session: ProfileSession): Promise<ProfileSession> {
     const ids = unnamedMemberIds(session, MAX_NAME_LOOKUP_IDS);
     if (ids.length === 0) return session;
     try {
@@ -891,35 +890,36 @@ async function withKnownNames(session: ActiveSession): Promise<ActiveSession> {
     }
 }
 
-/**
- * Names the Roster: the Tracker's known names first, then a GetLinkedProfiles call from the
- * browser for each member it doesn't know. Those names stay on this screen; nothing is posted.
- */
-async function nameRoster(session: ActiveSession, show: ShowSession): Promise<ActiveSession> {
-    let current = await withKnownNames(session);
-    if (current !== session) show(current);
+/** Shows the card, then names its Roster: the Tracker's known names first, then the browser's own. */
+async function showAndNameRoster(session: ProfileSession, show: ShowSession): Promise<void> {
+    show(session);
+    const known = await withKnownNames(session);
+    if (known !== session) show(known);
+    await nameFromBungie(known, show);
+}
 
-    const lookedUp: NamedPlayer[] = [];
-    for (const id of unnamedMemberIds(current, ROSTER_SIZE)) {
+/**
+ * A GetLinkedProfiles call from the browser for each member the card still can't link, all at
+ * once. Those names stay on this screen; nothing is posted.
+ */
+async function nameFromBungie(session: ProfileSession, show: ShowSession): Promise<void> {
+    const found = await Promise.all(unnamedMemberIds(session, ROSTER_SIZE).map(async (id) => {
         try {
             const player = pickPrimaryLinkedProfile(await fetchLinkedProfilesClient(id), id);
-            if (player) lookedUp.push(linkedPlayerName(player));
+            return player ? [linkedPlayerName(player)] : [];
         } catch {
-            // private / deleted / unreachable — leave the id in place
+            return []; // private / deleted / unreachable — leave the id in place
         }
-    }
-    if (lookedUp.length > 0) {
-        current = withNames(current, lookedUp);
-        show(current);
-    }
-    return current;
+    }));
+    const lookedUp = found.flat();
+    if (lookedUp.length > 0) show(withNames(session, lookedUp));
 }
 
 /**
  * A private player with no stored session: probe up to three public teammates from the browser
  * and draw the first whose raid has this player in its Roster. Nothing is stored.
  */
-async function findThroughTeammates(subject: SessionSubject, provisional: ActiveSession, show: ShowSession): Promise<void> {
+async function findThroughTeammates(subject: SessionSubject, provisional: ProfileSession, show: ShowSession): Promise<void> {
     // The lookup supplies the membership types a probe needs.
     const named = await withKnownNames(provisional);
     if (named !== provisional) show(named);
@@ -935,9 +935,9 @@ async function findThroughTeammates(subject: SessionSubject, provisional: Active
         const activity = readProfileActivity(teammateProfile);
         if (!activity || !includesPlayer(activity, subject.membershipId)) continue;
 
-        const session = liveSession(subject, activity, new Date());
-        show(session);
-        await nameRoster(session, show);
+        // The names the lookup already gave carry over, so it is asked only about anyone new.
+        const known = named.partyMembers.filter((member): member is SessionMember & NamedPlayer => typeof member.membershipType === 'number');
+        await showAndNameRoster(withNames(liveSession(subject, activity, new Date()), known), show);
         return;
     }
 }

@@ -35,15 +35,26 @@ export interface ProfilePlayer {
 }
 
 /** A Roster member on the card. With a membership type it links to that player's profile. */
-export interface SessionMember {
+export interface CardMember {
     membershipId: string;
     membershipType?: number;
     displayName: string;
     status: number;
 }
 
-/** The card's session, the same shape the player read route returns for a stored one. */
-export interface ProfileSession {
+/** A member the card can link: one whose membership type it knows. */
+export type LinkableMember = CardMember & { membershipType: number };
+
+/** Whether the card can link this member to a profile. */
+export function isLinkable(member: CardMember): member is LinkableMember {
+    return typeof member.membershipType === 'number';
+}
+
+/**
+ * What the card shows: the profile's live card, or a stored Active Session read from the Tracker,
+ * which the player read route returns in this same shape.
+ */
+export interface ProfileCard {
     membershipId: string;
     membershipType: number;
     displayName: string;
@@ -52,11 +63,11 @@ export interface ProfileSession {
     raidName: string;
     startedAt: string;
     playerCount: number;
-    partyMembers: SessionMember[];
+    partyMembers: CardMember[];
 }
 
 /** The player whose profile is being viewed, as the card names them. */
-export interface SessionSubject {
+export interface CardSubject {
     membershipId: string;
     membershipType: number;
     displayName: string;
@@ -154,7 +165,7 @@ export function pickHeaderPlayer(stored: ProfilePlayer | null, owner: ProfilePla
 }
 
 /** The Roster as the card shows it: the viewed player named and linkable, the rest as Bungie named them. */
-function cardMembers(subject: SessionSubject, partyMembers: TransitoryPartyMember[]): SessionMember[] {
+function cardMembers(subject: CardSubject, partyMembers: TransitoryPartyMember[]): CardMember[] {
     // A Roster of one when Bungie listed nobody, as the crawler stores it.
     const members = partyMembers.length > 0
         ? partyMembers
@@ -165,8 +176,8 @@ function cardMembers(subject: SessionSubject, partyMembers: TransitoryPartyMembe
         : { membershipId: member.membershipId, displayName: rosterMemberName(member.displayName, member.membershipId), status: member.status });
 }
 
-/** The card for an activity the viewer's response shows. */
-export function liveSession(subject: SessionSubject, activity: ProfileActivity, now: Date): ProfileSession {
+/** The profile's live card, for an activity the viewer's response shows. */
+export function liveCard(subject: CardSubject, activity: ProfileActivity, now: Date): ProfileCard {
     const partyMembers = cardMembers(subject, activity.partyMembers);
 
     return {
@@ -184,7 +195,7 @@ export function liveSession(subject: SessionSubject, activity: ProfileActivity, 
  * A private player's Fireteam before its raid is known: transitory data says they are in an
  * activity with this Roster, and withholds which one. Null when it says nothing.
  */
-export function provisionalSession(subject: SessionSubject, profile: DestinyProfileResponse): ProfileSession | null {
+export function provisionalCard(subject: CardSubject, profile: DestinyProfileResponse): ProfileCard | null {
     const transitory = profile.profileTransitoryData?.data;
     if (!transitory?.currentActivity?.startTime) return null;
     const current = transitory.currentActivity;
@@ -202,9 +213,9 @@ export function provisionalSession(subject: SessionSubject, profile: DestinyProf
 }
 
 /** The members the card cannot link yet, once each, at most `limit`. */
-export function unnamedMemberIds(session: ProfileSession, limit: number): string[] {
-    const ids = session.partyMembers
-        .filter((member) => typeof member.membershipType !== 'number')
+export function unnamedMemberIds(card: ProfileCard, limit: number): string[] {
+    const ids = card.partyMembers
+        .filter((member) => !isLinkable(member))
         .map((member) => member.membershipId);
     return [...new Set(ids)].slice(0, limit);
 }
@@ -213,12 +224,12 @@ export function unnamedMemberIds(session: ProfileSession, limit: number): string
  * The card with each member in `named` given that name and membership type. A known name that
  * is only a bare id does not replace a better one already on the card.
  */
-export function withNames(session: ProfileSession, named: NamedPlayer[]): ProfileSession {
+export function withNames(card: ProfileCard, named: NamedPlayer[]): ProfileCard {
     const byId = new Map(named.map((player) => [player.membershipId, player]));
 
     return {
-        ...session,
-        partyMembers: session.partyMembers.map((member) => {
+        ...card,
+        partyMembers: card.partyMembers.map((member) => {
             const player = byId.get(member.membershipId);
             if (!player) return member;
             return {
@@ -240,11 +251,12 @@ export function linkedPlayerName(player: PlayerInfo): NamedPlayer {
 }
 
 /** The teammates a private player's page may probe: ones the card can link, never the player. */
-export function teammatesToProbe(session: ProfileSession, viewedId: string): Array<{ membershipId: string; membershipType: number }> {
-    return session.partyMembers
-        .filter((member) => member.membershipId !== viewedId && typeof member.membershipType === 'number')
+export function teammatesToProbe(card: ProfileCard, viewedId: string): Array<{ membershipId: string; membershipType: number }> {
+    return card.partyMembers
+        .filter(isLinkable)
+        .filter((member) => member.membershipId !== viewedId)
         .slice(0, MAX_TEAMMATE_PROBES)
-        .map((member) => ({ membershipId: member.membershipId, membershipType: member.membershipType as number }));
+        .map((member) => ({ membershipId: member.membershipId, membershipType: member.membershipType }));
 }
 
 /** Whether a teammate's activity has the viewed player in its Roster. */

@@ -7,10 +7,10 @@ import { interceptApiCalls, waitForQueueCrawl } from './support/network-log';
 import { fulfillBungie } from './support/bungie-stub';
 
 /**
- * The profile page's live Active Session card, drawn from the viewer's own Bungie response
- * (#9001). The browser fetches the player's profile with the public key and renders what it
- * got, for that viewer only. Nothing it saw is sent to the server: the only write a profile
- * view makes is the history-crawl request, which carries ids and nothing else.
+ * The profile's live card, drawn from the viewer's own Bungie response (#9001). The browser
+ * fetches the player's profile with the public key and renders what it got, for that viewer
+ * only. Nothing it saw is sent to the server: the only write a profile view makes is the
+ * history-crawl request, which carries ids and nothing else.
  *
  *   - a raiding player with no stored session: the card appears, and afterwards the Tracker
  *     still has no session row and no player row for them;

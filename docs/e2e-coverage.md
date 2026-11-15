@@ -2910,7 +2910,7 @@ Both reverted; green at HEAD.
 ## 2026-11-14 — #9001 the profile page's live card is drawn in the browser
 
 A browser no longer writes session or identity data to the Tracker (ADR 0010). The profile page
-draws the live Active Session card from the viewer's own Bungie response, names known Roster members
+draws its live card from the viewer's own Bungie response, names known Roster members
 through the read-only `GET /api/players/names?ids=`, names the rest from the browser's own
 GetLinkedProfiles calls on that screen only, and finds a partly private player's raid by probing up to
 three public teammates. The two routes that took a posted profile and posted names are deleted.

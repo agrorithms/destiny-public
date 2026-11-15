@@ -15,7 +15,7 @@ store it. The rule is:
 - **A browser may only ask the crawler to look.** A request from a browser carries player ids and
   nothing else: no profile, no name, no claim about what it saw. The server decides what to do from
   its own state, and the crawler does the looking. Today that is the history-crawl request
-  (`POST /api/players/queue-crawl`); a request to poll a player's live session is to follow.
+  (`POST /api/players/queue-crawl`); a request for the crawler to poll a player is to follow.
 - **Only the crawler removes an Active Session**, under ADR 0005's positive-confirmation rule. No
   request from a browser deletes a row.
 

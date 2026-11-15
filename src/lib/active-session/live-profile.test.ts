@@ -5,17 +5,18 @@ import {
     PRIVATE_ACTIVITY_NAME,
     includesPlayer,
     isActivityWithheld,
+    isLinkable,
     linkedPlayerName,
-    liveSession,
+    liveCard,
     pickHeaderPlayer,
     profileOwner,
-    provisionalSession,
+    provisionalCard,
     readProfileActivity,
     teammatesToProbe,
     unnamedMemberIds,
     withNames,
     type ProfileActivity,
-    type ProfileSession,
+    type ProfileCard,
 } from './live-profile';
 import {
     RAID_HASH,
@@ -54,7 +55,7 @@ function activity(overrides: Partial<ProfileActivity> = {}): ProfileActivity {
     };
 }
 
-function session(members: ProfileSession['partyMembers']): ProfileSession {
+function cardWith(members: ProfileCard['partyMembers']): ProfileCard {
     return {
         membershipId: SELF,
         membershipType: 3,
@@ -288,9 +289,9 @@ describe('profileOwner and pickHeaderPlayer', () => {
     });
 });
 
-describe('liveSession', () => {
+describe('liveCard', () => {
     it("draws the card from the viewer's response: raid, start, count, the viewed player named and linkable", () => {
-        expect(liveSession(subject, activity(), NOW)).toEqual({
+        expect(liveCard(subject, activity(), NOW)).toEqual({
             membershipId: SELF,
             membershipType: 3,
             displayName: 'Viewed#0042',
@@ -310,7 +311,7 @@ describe('liveSession', () => {
     });
 
     it('treats an empty name as no name', () => {
-        const card = liveSession(subject, activity({
+        const card = liveCard(subject, activity({
             partyMembers: [{ membershipId: MATE, displayName: '', status: 1, emblemHash: 0 }],
         }), NOW);
 
@@ -318,7 +319,7 @@ describe('liveSession', () => {
     });
 
     it('fills in a Roster of one, and the current time when Bungie gives no start', () => {
-        const card = liveSession(subject, activity({ partyMembers: [], startedAt: null }), NOW);
+        const card = liveCard(subject, activity({ partyMembers: [], startedAt: null }), NOW);
 
         expect(card.partyMembers).toEqual([{ membershipId: SELF, membershipType: 3, displayName: 'Viewed#0042', status: 1 }]);
         expect(card.playerCount).toBe(1);
@@ -326,15 +327,15 @@ describe('liveSession', () => {
     });
 
     it('names a non-raid activity by its mode, and in orbit as such', () => {
-        const strike = liveSession(subject, activity({ activityHash: 12345, activityModeType: 3 }), NOW);
-        const orbit = liveSession(subject, activity({ activityHash: 12345, activityModeType: null, activityModeHash: 2166136261 }), NOW);
+        const strike = liveCard(subject, activity({ activityHash: 12345, activityModeType: 3 }), NOW);
+        const orbit = liveCard(subject, activity({ activityHash: 12345, activityModeType: null, activityModeHash: 2166136261 }), NOW);
 
         expect(strike).toMatchObject({ raidKey: 'unknown', raidName: 'Strike' });
         expect(orbit.raidName).toBe('In Orbit');
     });
 });
 
-describe('provisionalSession', () => {
+describe('provisionalCard', () => {
     it("shows a private player's fireteam before its raid is known", () => {
         const startTime = '2026-11-14T11:50:00.000Z';
         const profile = buildPrivateProfile({
@@ -346,7 +347,7 @@ describe('provisionalSession', () => {
             ],
         });
 
-        expect(provisionalSession(subject, profile)).toEqual({
+        expect(provisionalCard(subject, profile)).toEqual({
             membershipId: SELF,
             membershipType: 3,
             displayName: 'Viewed#0042',
@@ -366,7 +367,7 @@ describe('provisionalSession', () => {
         const profile = buildPrivateProfile({ membershipId: SELF, partyMembers: [{ membershipId: SELF }] });
         profile.profileTransitoryData!.data!.currentActivity.numberOfPlayers = 4;
 
-        expect(provisionalSession(subject, profile)?.playerCount).toBe(4);
+        expect(provisionalCard(subject, profile)?.playerCount).toBe(4);
     });
 
     it('falls back to a Roster of one when Bungie lists nobody', () => {
@@ -374,28 +375,32 @@ describe('provisionalSession', () => {
         delete (profile.profileTransitoryData!.data as { partyMembers?: unknown }).partyMembers;
         profile.profileTransitoryData!.data!.currentActivity.numberOfPlayers = 0;
 
-        expect(provisionalSession(subject, profile)).toMatchObject({
+        expect(provisionalCard(subject, profile)).toMatchObject({
             playerCount: 1,
             partyMembers: [{ membershipId: SELF, membershipType: 3, displayName: 'Viewed#0042', status: 1 }],
         });
     });
 
     it('is null when Bungie shows no activity at all', () => {
-        expect(provisionalSession(subject, {})).toBeNull();
-        expect(provisionalSession(subject, { profileTransitoryData: { data: {} as never } })).toBeNull();
-        expect(provisionalSession(subject, buildPrivateProfile({ membershipId: SELF, withTransitoryData: false }))).toBeNull();
+        expect(provisionalCard(subject, {})).toBeNull();
+        expect(provisionalCard(subject, { profileTransitoryData: { data: {} as never } })).toBeNull();
+        expect(provisionalCard(subject, buildPrivateProfile({ membershipId: SELF, withTransitoryData: false }))).toBeNull();
         const noStart = buildPrivateProfile({ membershipId: SELF, startTime: '' });
-        expect(provisionalSession(subject, noStart)).toBeNull();
+        expect(provisionalCard(subject, noStart)).toBeNull();
     });
 });
 
 describe('naming the Roster', () => {
-    const card = session([
+    const card = cardWith([
         { membershipId: SELF, membershipType: 3, displayName: 'Viewed#0042', status: 9 },
         { membershipId: MATE, displayName: 'MateOnBungie', status: 1 },
         { membershipId: STRANGER, displayName: STRANGER, status: 1 },
         { membershipId: STRANGER, displayName: STRANGER, status: 1 },
     ]);
+
+    it('can link only the members whose membership type it knows', () => {
+        expect(card.partyMembers.filter(isLinkable).map((member) => member.membershipId)).toEqual([SELF]);
+    });
 
     it('asks only about members with nothing to link to, once each, up to the limit', () => {
         expect(unnamedMemberIds(card, MAX_NAME_LOOKUP_IDS)).toEqual([MATE, STRANGER]);
@@ -433,7 +438,7 @@ describe('naming the Roster', () => {
 
 describe('probing for a private player', () => {
     it('probes up to three teammates the site can link, never the viewed player', () => {
-        const card = session([
+        const card = cardWith([
             { membershipId: SELF, membershipType: 3, displayName: 'Viewed#0042', status: 9 },
             { membershipId: STRANGER, displayName: STRANGER, status: 1 },
             { membershipId: 'a', membershipType: 1, displayName: 'A#0001', status: 1 },

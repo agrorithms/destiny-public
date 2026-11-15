@@ -53,5 +53,4 @@ The two routes that accepted posted profiles and posted identities are deleted, 
   token guard (`src/lib/http/request-auth.ts`) and their own rate limits.
 - A name from a Bungie response is drawn as text wherever the page shows it; the browser specs
   pin that with names containing markup (`e2e/profile-roster-names.spec.ts`).
-- The player read route accepts a membership id of 1 to 20 digits only, since the private-player
-  path searches stored Rosters for that id.
+- The player read route accepts a membership id of 1 to 20 digits only.

@@ -8,9 +8,7 @@ import { RAID_HASH } from '../helpers/bungie-profile-builder';
 
 /**
  * `GET /api/players/{type}/{id}`: the player read route accepts a membership id of 1 to 20
- * digits and nothing else (#9001). The profile page's private-player path reads the stored
- * session *containing* a player through it, a search through each stored Roster, so the id
- * it searches for has to be an id.
+ * digits and nothing else (#9001), on every read it serves.
  */
 
 const HOST_ID = '4611686018488940001';
@@ -35,8 +33,8 @@ const READS = [
 
 const BAD_IDS = [
     ['letters', 'abc'],
-    ['a LIKE wildcard', '%'],
-    ['a LIKE single-character wildcard', '1_2'],
+    ['a percent sign', '%'],
+    ['an underscore', '1_2'],
     ['a quote', "1'"],
     ['21 digits', '123456789012345678901'],
     ['digits with a space', '4611686018488940001 '],

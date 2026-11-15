@@ -3,7 +3,7 @@ import { resetTestDb } from '../helpers/db';
 
 /** Frozen clock for every client-write route test, so token TTLs and cooldowns
  *  are reasoned about relative to a known instant. */
-const T0 =new Date('2026-08-03T12:00:00Z').getTime();
+const T0 = new Date('2026-08-03T12:00:00Z').getTime();
 
 const SECRET = 'test-secret-not-a-real-credential';
 

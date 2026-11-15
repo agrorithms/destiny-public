@@ -85,7 +85,7 @@ describe('GET /api/players/names', () => {
 
     it.each([
         ['a non-digit id', `?ids=${KNOWN_ID},abc`],
-        ['a LIKE wildcard', `?ids=${KNOWN_ID},1%25`],
+        ['a percent sign', `?ids=${KNOWN_ID},1%25`],
         ['a 21-digit id', '?ids=123456789012345678901'],
         ['an empty entry', `?ids=${KNOWN_ID},,${OTHER_KNOWN_ID}`],
         ['an empty list', '?ids='],

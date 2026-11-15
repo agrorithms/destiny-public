@@ -86,7 +86,7 @@ export async function GET(
     const { membershipType: membershipTypeRaw, membershipId } = await context.params;
     const membershipType = parseInt(membershipTypeRaw, 10);
 
-    // Digits only: the containing-session read searches each stored Roster for this id.
+    // A membership id is 1 to 20 digits.
     if (!isMembershipId(membershipId) || Number.isNaN(membershipType)) {
         return withNoStore(NextResponse.json({ error: 'Invalid player identity' }, { status: 400 }));
     }
@@ -108,9 +108,9 @@ export async function GET(
 
         // Fast-path for profile header rendering: last-known active session from the DB.
         if (activeOnly) {
-            // containing=1: session that includes this player as a party member (stored via a
-            // public teammate). Used for privacy-restricted (1665) players whose own profile
-            // the browser can't read — a pure DB read.
+            // containing=1: the stored session that has this player in its Roster, as the
+            // crawler wrote it. Both private paths read it: an account-wide private player, and
+            // one whose activity Bungie withholds. A pure DB read.
             if (request.nextUrl.searchParams.get('containing') === '1') {
                 const containing = getActiveSessionContainingPlayer(membershipId, 900);
                 return withNoStore(NextResponse.json({

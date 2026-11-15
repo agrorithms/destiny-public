@@ -28,7 +28,7 @@ interface PlayerLookupRow {
     display_name: string | null;
 }
 
-function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean = true): PartyMemberOutput[] {
+function enrichPartyMembersFromJson(partyMembersJson: string | undefined, enrich: boolean): PartyMemberOutput[] {
     let partyMembers: PartyMemberInput[] = [];
     if (partyMembersJson) {
         try {
@@ -55,7 +55,7 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
             return {
                 ...baseMember,
                 membershipId: id,
-                displayName: rosterMemberName(member?.displayName, id),
+                displayName: rosterMemberName(member.displayName, id),
             };
         });
     }
@@ -107,7 +107,7 @@ function enrichPartyMembersFromJson(partyMembersJson?: string, enrich: boolean =
             ...baseMember,
             membershipId: id,
             membershipType: member?.membershipType ?? typeMap.get(id),
-            displayName: knownName || rosterMemberName(member?.displayName, id),
+            displayName: knownName || rosterMemberName(member.displayName, id),
         };
     });
 }

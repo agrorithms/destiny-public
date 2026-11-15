@@ -25,8 +25,10 @@ the active-sessions page is one fireteam.
 _Avoid_: party, group, team, squad, lobby
 
 **Active Session**:
-A fireteam observed to be inside a raid right now. Ceases to be active when the crawler confirms
-the raid ended, or when the observation goes stale.
+A fireteam observed to be inside a raid right now. The observer is the crawler, from its own Bungie
+calls. Ceases to be active when the crawler confirms the raid ended, or when the observation goes
+stale. What a viewer's browser sees of one player on a profile page is not an Active Session until
+the crawler observes it (ADR 0010).
 _Avoid_: live session, current activity, in-progress raid
 
 **Session Snapshot**:

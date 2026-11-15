@@ -155,6 +155,24 @@ describe('parseAndStoreActivity', () => {
         expect(storedRow()).toMatchObject({ activity_hash: RAID_HASH, activity_mode_hash: 7, started_at: newer });
     });
 
+    it('stores the session when Bungie lists a null character entry', () => {
+        const newer = new Date(T0 - 5 * 60_000).toISOString();
+        const profile: DestinyProfileResponse = {
+            ...buildActiveProfile({ membershipId: PLAYER_ID }),
+            characterActivities: {
+                data: {
+                    a: null as never,
+                    b: { currentActivityHash: RAID_HASH, currentActivityModeHash: 7, currentActivityModeType: 4, dateActivityStarted: newer },
+                },
+            },
+        };
+
+        const result = parseAndStoreActivity(player, profile);
+
+        expect(result.status).toBe('active');
+        expect(storedRow()).toMatchObject({ activity_hash: RAID_HASH, activity_mode_hash: 7, started_at: newer });
+    });
+
     it('falls back to the transitory activity when no character reports one', () => {
         const startTime = new Date(T0 - 10 * 60_000).toISOString();
         const base = buildActiveProfile({ membershipId: PLAYER_ID, startTime });

@@ -130,6 +130,39 @@ describe('readProfileActivity', () => {
         });
     });
 
+    // The crawler reads every profile it polls through this function, so a malformed character
+    // map must not throw: a null entry sorts last, as the crawler always treated it.
+    describe('passes over a null character entry wherever Bungie lists it', () => {
+        const newer = { currentActivityHash: RAID_HASH, currentActivityModeHash: 7, currentActivityModeType: 4, dateActivityStarted: '2026-11-14T11:55:00Z' };
+        const missing = null as unknown as typeof newer;
+
+        it.each([
+            ['null first', [missing, newer]],
+            ['null last', [newer, missing]],
+        ])('%s', (_label, list) => {
+            const profile: DestinyProfileResponse = {
+                ...buildActiveProfile({ membershipId: SELF }),
+                characterActivities: { data: Object.fromEntries(list.map((c, i) => [`c${i}`, c])) },
+            };
+
+            expect(readProfileActivity(profile)).toMatchObject({
+                activityHash: RAID_HASH,
+                activityModeHash: 7,
+                startedAt: '2026-11-14T11:55:00Z',
+            });
+        });
+
+        it('reads the transitory activity when every entry is null', () => {
+            const startTime = '2026-11-14T11:45:00.000Z';
+            const profile: DestinyProfileResponse = {
+                ...buildActiveProfile({ membershipId: SELF, startTime }),
+                characterActivities: { data: { c0: missing, c1: missing } },
+            };
+
+            expect(readProfileActivity(profile)).toMatchObject({ activityHash: RAID_HASH, startedAt: startTime });
+        });
+    });
+
     it('is null when the profile has no transitory component at all', () => {
         expect(readProfileActivity({})).toBeNull();
         expect(readProfileActivity({ profileTransitoryData: {} })).toBeNull();

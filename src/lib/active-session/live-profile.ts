@@ -90,7 +90,10 @@ export function readProfileActivity(profile: DestinyProfileResponse): ProfileAct
     const transitory = profile.profileTransitoryData?.data;
     if (!transitory) return null;
 
-    const characters: CharacterActivitiesComponent[] = Object.values(profile.characterActivities?.data || {});
+    // Bungie's map can hold a null entry. It is passed over rather than read, as the crawler
+    // always treated it, so one malformed character never throws inside the crawler's check.
+    const characters = Object.values<CharacterActivitiesComponent | null>(profile.characterActivities?.data || {})
+        .filter((character): character is CharacterActivitiesComponent => character !== null);
     // An unreadable start time sorts last rather than poisoning the order with NaN.
     characters.sort((a, b) => (Date.parse(b.dateActivityStarted) || 0) - (Date.parse(a.dateActivityStarted) || 0));
     const mostRecent = characters[0];

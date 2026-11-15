@@ -2959,6 +2959,14 @@ because their behaviour is unchanged, so one break each, in one build (`npm run 
 
 All reverted; green at HEAD.
 
+**Review fix — the account-wide private player's session is found through its Roster.** Test 4
+seeded the private player's own session row, so it would pass on a read of that row alone. The
+private player now has no row of their own: the session is stored under a teammate's id with them in
+its Roster, and the test checks that up front. Deliberate break, one build: the `containing=1` read
+swapped for the player's-own-row read (`getActiveSessionForPlayer`) → "an account-wide private player
+shows the stored session containing them" failed at `:189` (raid heading not found); the other three
+tests in the file passed. Reverted; green at HEAD.
+
 **Found, not fixed:** the profile page's heading (`h1`) runs 480px past a 360px viewport for a
 full-length Bungie Name with no spaces. It predates this ticket; the phone-width spec gives its host a
 short name so it measures the card.

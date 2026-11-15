@@ -49,12 +49,19 @@ const TEAMMATE_ID = '4611686018488300005';
 const TEAMMATE_NAME = 'PublicMate83';
 const TEAMMATE_CODE = 8305;
 
+const MATE_ID = '4611686018488300006';
+const MATE_NAME = 'StoredMate83';
+const MATE_CODE = 8306;
+
 const raidHeading = (page: import('@playwright/test').Page) =>
     page.getByRole('heading', { level: 3, name: RAID_A.name });
 
 test.beforeAll(() => {
     // The raiding player is deliberately not seeded: a profile view must not make them known.
-    seedPlayerWithSession({ membershipId: PRIVATE_ID, name: PRIVATE_NAME, code: PRIVATE_CODE, raid: RAID_A });
+    // The private player has no session row of their own: theirs is the one the crawler stored for
+    // a teammate, with them in its Roster.
+    seedPlayer(PRIVATE_ID, PRIVATE_NAME, PRIVATE_CODE);
+    seedPlayerWithSession({ membershipId: MATE_ID, name: MATE_NAME, code: MATE_CODE, raid: RAID_A, extraMembers: [PRIVATE_ID] });
     seedPlayerWithSession({ membershipId: LEFT_ID, name: LEFT_NAME, code: LEFT_CODE, raid: RAID_A });
     // Known to the site, so the page can probe them; neither has a session row.
     seedPlayer(HIDDEN_ID, HIDDEN_NAME, HIDDEN_CODE);
@@ -165,6 +172,10 @@ test.describe('profile live card', () => {
     });
 
     test('an account-wide private player shows the stored session containing them', async ({ page }) => {
+        // The session is found through its Roster, not through a row of the player's own.
+        expect(getActiveSessionForPlayer(PRIVATE_ID, ANY_AGE_SECONDS)).toBeNull();
+        expect(getActiveSessionContainingPlayer(PRIVATE_ID, ANY_AGE_SECONDS)?.membershipId).toBe(MATE_ID);
+
         const log = interceptApiCalls(page);
         await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, {}, {
             ErrorCode: 1665,

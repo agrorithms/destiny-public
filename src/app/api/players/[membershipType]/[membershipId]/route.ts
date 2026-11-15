@@ -15,6 +15,9 @@ import { buildActiveSessionPayload } from '@/lib/active-session/format';
 import { withCache, withNoStore } from '@/lib/http/cache';
 
 const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
+// A Destiny membership id: digits only. The containing-session read searches each stored Roster
+// for this id, so nothing but an id may reach it.
+const MEMBERSHIP_ID = /^\d{1,20}$/;
 
 function buildFallbackIdentity(membershipType: number, membershipId: string): PlayerIdentity {
     return {
@@ -90,7 +93,7 @@ export async function GET(
     const { membershipType: membershipTypeRaw, membershipId } = await context.params;
     const membershipType = parseInt(membershipTypeRaw, 10);
 
-    if (!membershipId || Number.isNaN(membershipType)) {
+    if (!MEMBERSHIP_ID.test(membershipId) || Number.isNaN(membershipType)) {
         return withNoStore(NextResponse.json({ error: 'Invalid player identity' }, { status: 400 }));
     }
     if (!validMembershipTypes.has(membershipType)) {

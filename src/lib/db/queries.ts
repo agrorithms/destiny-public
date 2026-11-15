@@ -773,6 +773,22 @@ export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
     return row || null;
 }
 
+/** The identities of whichever of `membershipIds` the Tracker knows. Unknown ids have no entry. */
+export function getPlayerIdentities(membershipIds: string[]): PlayerIdentity[] {
+    if (membershipIds.length === 0) return [];
+    const db = getDb();
+    return db.prepare(`
+    SELECT
+      membership_id as membershipId,
+      membership_type as membershipType,
+      display_name as displayName,
+      bungie_global_display_name as bungieGlobalDisplayName,
+      bungie_global_display_name_code as bungieGlobalDisplayNameCode
+    FROM players
+    WHERE membership_id IN (SELECT value FROM json_each(?))
+  `).all(JSON.stringify(membershipIds)) as PlayerIdentity[];
+}
+
 export interface PlayerRaidCompletionSummary {
     raidKey: string;
     completions: number;

@@ -134,8 +134,8 @@ spelled out in the `seedFireteams` docblock in `e2e/support/seed-world.ts`.
 
 - **One fixture player namespace per spec file *that seeds*.** Specs which seed
   active sessions own a numeric prefix (`81` = active-sessions-cap, `82` =
-  player-names, `83` = client-write-verify, `84` = client-write-resolve,
-  `85` = client-write-guard, `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy, `91` = active-sessions-size; `92` is the seed world's own activity runs, for `/activity`) applied to both membership ids and display names, so no two specs
+  player-names, `83` = profile-live-card (was client-write-verify), `84` = profile-roster-names
+  (was client-write-resolve), `85` = players-api-guard (was client-write-guard), `86` = active-sessions-order, `87` = active-sessions-list, `88` = active-sessions-expand, `89` = active-sessions-collapse, `90` = active-sessions-copy, `91` = active-sessions-size; `92` is the seed world's own activity runs, for `/activity`) applied to both membership ids and display names, so no two specs
   can collide on the `active_sessions` primary key or produce two players with the
   same rendered `Name#Code`. Read-only specs (`leaderboard`, `theme`) share the
   static world deliberately — there is nothing to collide on, and duplicating the
@@ -2906,3 +2906,68 @@ Both reverted; green at HEAD.
 - The threshold's boundary (exactly the minimum): Vitest's. The browser sees 4 against 9 or 10 runs.
 - The 30-day range's per-raid estimates: the 3-hour grid can leave no whole Provisional step.
 - The values of the per-raid estimates: hour-of-day dependent; Vitest pins them.
+
+## 2026-11-14 — #9001 the profile page's live card is drawn in the browser
+
+A browser no longer writes session or identity data to the Tracker (ADR 0010). The profile page
+draws the live Active Session card from the viewer's own Bungie response, names known Roster members
+through the read-only `GET /api/players/names?ids=`, names the rest from the browser's own
+GetLinkedProfiles calls on that screen only, and finds a partly private player's raid by probing up to
+three public teammates. The two routes that took a posted profile and posted names are deleted.
+
+The three client-write specs were rewritten for this, not deleted, and renamed with `git mv` (their
+id prefixes kept): `client-write-verify` → **`e2e/profile-live-card.spec.ts`** (4 tests),
+`client-write-resolve` → **`e2e/profile-roster-names.spec.ts`** (3), `client-write-guard` →
+**`e2e/players-api-guard.spec.ts`** (6). The suite is now **216 tests including the two canary
+setups**. `networkidle` never settles on the profile page, so "afterwards" is the live-check
+indicator ("Checking live status…") gone, after the request the test is about. Each check of the
+Tracker reads the fixture database from the worker through `src/lib/db/queries.ts`.
+
+1. **A raiding player with no stored session** (untracked): the card from the stubbed profile, the
+   heading's `Name#Code` from the same response, and afterwards no session row containing them and no
+   `players` row; the only POST is `queue-crawl`, with its page token.
+2. **A stored session while Bungie reports no activity**: the Active Session section leaves, and the
+   row is still there (the crawler's re-verify removes it).
+3. **A partly private player** (activity withheld, a teammate the site knows): the private banner, the
+   teammate probed once, the raid's card; no session row for either player; only `queue-crawl` posted.
+4. **An account-wide private player** (1665): the banner and the stored session containing them; no
+   POST at all.
+5. **Roster names**: a known teammate links as `Name#Code` from the lookup; two strangers show as raw
+   ids until the gated GetLinkedProfiles stub is released, then link by `Name#Code`; only the strangers
+   were looked up at Bungie; no `players` row for them; one lookup GET carrying only `ids` (the host,
+   already named from their own profile, isn't asked for); only `queue-crawl` posted.
+6. **At 360px**, a card of five full-length (26-character) names: `expectNoOverflow`.
+7. **Markup in names** (the host's own name, a Roster name Bungie sent, a looked-up name): each
+   renders as literal text in the card and the heading; no `img` or `script` in the card or the
+   heading, no `img[src=x|y]` on the page, no dialog.
+8. **The players API guard** over HTTP, now on `queue-crawl`: positive control (`202 {queued:true}`),
+   spoofed origin, no origin and no referer, no page token; and a fully valid POST to each retired
+   path answered 404 or 405 with no session or `players` row left behind.
+
+**Bite proof — the red run.** The specs were written first and run against the unchanged page (build
+of `dbe87cd`, the names lookup already in): **8 of 13 failed**, every one on the claim it exists for —
+both retired-route tests (received 200), the raiding player (a session row stored, `:90`), the stored
+row (deleted, `:120`), the partly private player (the teammate's row stored, `:165`), the roster names
+(a `players` row created, `:171`). The four guard tests on `queue-crawl` passed, as they should: the
+guard is unchanged. Three specs passed on the old page because their behaviour is unchanged, so one
+break each, in one build (`npm run e2e` on the two profile files: 3 failed, 6 passed):
+
+| Break | Spec that failed |
+| --- | --- |
+| the account-wide private branch shows nothing instead of the containing session | "an account-wide private player shows the stored session containing them" (raid heading not found) |
+| the card's member link `truncate` → `whitespace-nowrap` | "a card of full-length names fits a phone" (`expectNoOverflow`) |
+| the card's member link rendered with `dangerouslySetInnerHTML` | "markup in a name from Bungie is shown as text" (literal text not found) |
+
+All reverted; green at HEAD.
+
+**Found, not fixed:** the profile page's heading (`h1`) runs 480px past a 360px viewport for a
+full-length Bungie Name with no spaces. It predates this ticket; the phone-width spec gives its host a
+short name so it measures the card.
+
+### What is still NOT covered
+
+- A teammate probe that finds a raid *without* the private player in it, and one whose teammates are
+  all private: Vitest pins `includesPlayer` and `teammatesToProbe`; the browser sees the happy path.
+- The Refresh button's re-check: the same function as the first load.
+- A GetLinkedProfiles answer that resolves to a different (cross-save primary) membership.
+

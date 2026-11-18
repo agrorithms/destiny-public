@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { resetTestDb } from '../helpers/db';
 import { seedRun, seedFromFixture, hoursAgo } from '../helpers/seed';
 import { buildPGCR, DP_EPIC, DP_NORMAL, VOG_MASTER, VOG_NORMAL } from '../helpers/pgcr-builder';
-import { getRaidStats } from '../../src/lib/db/queries';
+import { getRaidScopeStats, getRaidStats, getRaidStatsFrame, isScopeComputed } from '../../src/lib/db/queries';
 
 beforeEach(() => { resetTestDb(); });
 
@@ -41,7 +41,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         // seedRun defaults all players to Warlock
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 3 });
+        expect(stats[0].allAttempts!.classDistribution).toEqual({ Warlock: 3 });
     });
 
     it('counts each class separately within a mixed-class fireteam', () => {
@@ -56,7 +56,7 @@ describe('getRaidStats', () => {
         });
 
         const stats = getRaidStats(24);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Titan: 1, Hunter: 2, Warlock: 1 });
+        expect(stats[0].allAttempts!.classDistribution).toEqual({ Titan: 1, Hunter: 2, Warlock: 1 });
     });
 
     it('respects the hours time window', () => {
@@ -65,7 +65,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(4);
         // Only one instance in window, so one player total
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 1 });
+        expect(stats[0].allAttempts!.classDistribution).toEqual({ Warlock: 1 });
     });
 
     // Guards the builder, not the query: buildPGCR's default period used to be a
@@ -76,7 +76,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         // buildPGCR's default fireteam is six players, each one Player-Run.
-        expect(stats[0].allAttempts.sampleSize).toBe(6);
+        expect(stats[0].allAttempts!.sampleSize).toBe(6);
     });
 
     // Difficulty comes from the activity hash (#41); difficulty_tier records Feats, so each
@@ -89,7 +89,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: DP_EPIC });
 
         const stats = getRaidStats(24, { difficulty: 'master' });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['vault_of_glass', 1]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts!.sampleSize])).toEqual([['vault_of_glass', 1]]);
     });
 
     it('difficulty=normal counts Normal-hash instances, Feats on or not', () => {
@@ -99,7 +99,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '4', completedBy: ['p4'], activityHash: DP_EPIC });
 
         const stats = getRaidStats(24, { difficulty: 'normal' });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['vault_of_glass', 2]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts!.sampleSize])).toEqual([['vault_of_glass', 2]]);
     });
 
     it('difficulty=epic counts only Epic-hash instances', () => {
@@ -108,7 +108,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: VOG_MASTER });
 
         const stats = getRaidStats(24, { difficulty: 'epic' });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.sampleSize])).toEqual([['the_desert_perpetual', 1]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts!.sampleSize])).toEqual([['the_desert_perpetual', 1]]);
     });
 
     it('exactPlayers filters to exact unique_player_count match', () => {
@@ -118,7 +118,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24, { exactPlayers: 2 });
         expect(stats).toHaveLength(1);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 2 });
+        expect(stats[0].allAttempts!.classDistribution).toEqual({ Warlock: 2 });
     });
 
     it('maxPlayers filters by unique_player_count', () => {
@@ -129,7 +129,7 @@ describe('getRaidStats', () => {
         const stats = getRaidStats(24, { maxPlayers: 2 });
         expect(stats).toHaveLength(1);
         // 1 + 2 players from the two qualifying instances
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 3 });
+        expect(stats[0].allAttempts!.classDistribution).toEqual({ Warlock: 3 });
     });
 
     it('filters compose: difficulty + maxPlayers', () => {
@@ -139,7 +139,7 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: DP_NORMAL, difficultyTier: 4, uniquePlayerCount: 1 });
 
         const stats = getRaidStats(24, { difficulty: 'master', maxPlayers: 3 });
-        expect(stats.map((s) => [s.raidKey, s.allAttempts.classDistribution])).toEqual([['vault_of_glass', { Warlock: 1 }]]);
+        expect(stats.map((s) => [s.raidKey, s.allAttempts!.classDistribution])).toEqual([['vault_of_glass', { Warlock: 1 }]]);
     });
 
     it('excludes NULL unique_player_count when maxPlayers is specified', () => {
@@ -148,7 +148,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24, { maxPlayers: 6 });
         expect(stats).toHaveLength(1);
-        expect(stats[0].allAttempts.classDistribution).toEqual({ Warlock: 1 });
+        expect(stats[0].allAttempts!.classDistribution).toEqual({ Warlock: 1 });
     });
 
     it('dnfRate is instance-level, not player-level', () => {
@@ -253,8 +253,8 @@ describe('getRaidStats', () => {
         expect(stats[0].fullClear.aggregateKda).toBeNull();
         expect(stats[0].fullClear.classDistribution).toEqual({});
         // The same raid still has Player-Runs under the broader scope.
-        expect(stats[0].allAttempts.sampleSize).toBe(1);
-        expect(stats[0].allAttempts.kda).not.toBeNull();
+        expect(stats[0].allAttempts!.sampleSize).toBe(1);
+        expect(stats[0].allAttempts!.kda).not.toBeNull();
     });
 
     it('reports the two scopes as different populations for the same raid', () => {
@@ -268,11 +268,11 @@ describe('getRaidStats', () => {
         expect(row.fullClear.kda).toEqual({ p25: 100, p50: 100, p75: 100 });
         expect(row.fullClear.aggregateKda).toBe(100);
 
-        expect(row.allAttempts.sampleSize).toBe(2);
+        expect(row.allAttempts!.sampleSize).toBe(2);
         // Sorted KDAs are [0, 100]: nearest rank puts p25 and p50 on the DNF run.
-        expect(row.allAttempts.kda).toEqual({ p25: 0, p50: 0, p75: 100 });
+        expect(row.allAttempts!.kda).toEqual({ p25: 0, p50: 0, p75: 100 });
         // (100+0)/(1+10) = 9.09
-        expect(row.allAttempts.aggregateKda).toBe(9.09);
+        expect(row.allAttempts!.aggregateKda).toBe(9.09);
     });
 
     it('counts instances in instanceCount and Player-Runs in sampleSize', () => {
@@ -282,7 +282,7 @@ describe('getRaidStats', () => {
 
         const stats = getRaidStats(24);
         expect(stats[0].instanceCount).toBe(2);
-        expect(stats[0].allAttempts.sampleSize).toBe(4);
+        expect(stats[0].allAttempts!.sampleSize).toBe(4);
         expect(stats[0].fullClear.sampleSize).toBe(3);
     });
 
@@ -292,9 +292,248 @@ describe('getRaidStats', () => {
         seedRun({ instanceId: '3', incompleteBy: ['p5'], completed: false });
 
         const stats = getRaidStats(24);
-        for (const scope of [stats[0].fullClear, stats[0].allAttempts]) {
+        for (const scope of [stats[0].fullClear, stats[0].allAttempts!]) {
             const total = Object.values(scope.classDistribution).reduce((a, b) => a + b, 0);
             expect(total).toBe(scope.sampleSize);
         }
+    });
+});
+
+// ADR 0006's second 2026-11-07 amendment (#227): 30d All Attempts costs ~18 s warm on prod, so
+// above 168h only Full Clears is computed. `null` means "not computed for this window", which is
+// a different thing from a computed scope that came out empty (sampleSize 0, kda null). The
+// literals 168 and 169 are the spec, so the boundary is pinned without the constant.
+describe('getRaidStats windows above 168h', () => {
+    it('leaves allAttempts uncomputed (null) at 169h and still computes fullClear', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], kills: 20, deaths: 2, assists: 0 });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(169);
+        expect(row.allAttempts).toBeNull();
+        expect(row.fullClear).toEqual({ kda: { p25: 10, p50: 10, p75: 10 }, aggregateKda: 10, sampleSize: 1, classDistribution: { Warlock: 1 } });
+    });
+
+    it('still computes allAttempts at exactly 168h', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(168);
+        expect(row.allAttempts!.sampleSize).toBe(2);
+        expect(row.fullClear.sampleSize).toBe(1);
+    });
+
+    it('keeps an empty fullClear distinct from an uncomputed allAttempts at 720h', () => {
+        // DNFs only: the raid is in the window, but nothing in it is a Full Clear.
+        seedRun({ instanceId: '1', incompleteBy: ['p1'], completed: false });
+
+        const stats = getRaidStats(720);
+        expect(stats).toHaveLength(1);
+        expect(stats[0].fullClear).toEqual({ kda: null, aggregateKda: null, sampleSize: 0, classDistribution: {} });
+        expect(stats[0].allAttempts).toBeNull();
+    });
+
+    it('still counts every instance in the scalar fields at 720h', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 1500 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityDurationSeconds: 2400, period: hoursAgo(600) });
+        seedRun({ instanceId: '3', incompleteBy: ['p3'], completed: false, activityDurationSeconds: 300 });
+        seedRun({ instanceId: '4', incompleteBy: ['p4'], completed: false, period: hoursAgo(700) });
+
+        const [row] = getRaidStats(720);
+        expect(row.instanceCount).toBe(4);
+        expect(row.dnfRate).toBe(0.5);
+        expect(row.fastestClearSeconds).toBe(1500);
+        expect(row.fullClear.sampleSize).toBe(2);
+    });
+
+    // #239 item 2, built in #200: the gate covers every scope but Full Clears, so a new scope
+    // can't be typed nullable and still run at 720h.
+    it('leaves freshRuns uncomputed (null) at 720h, as allAttempts, with fullClear computed', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(720);
+        expect(row.freshRuns).toBeNull();
+        expect(row.allAttempts).toBeNull();
+        expect(row.fullClear.sampleSize).toBe(1);
+    });
+
+    it('still computes freshRuns at exactly 168h', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false });
+
+        const [row] = getRaidStats(168);
+        expect(row.freshRuns!.sampleSize).toBe(2);
+    });
+
+    it('isScopeComputed: Full Clears at any window, the others up to 168h and not past it', () => {
+        expect(isScopeComputed('fullClear', 720)).toBe(true);
+        expect(isScopeComputed('fullClear', 169)).toBe(true);
+        for (const scope of ['allAttempts', 'freshRuns'] as const) {
+            expect(isScopeComputed(scope, 24)).toBe(true);
+            expect(isScopeComputed(scope, 168)).toBe(true);
+            expect(isScopeComputed(scope, 169)).toBe(false);
+            expect(isScopeComputed(scope, 720)).toBe(false);
+        }
+    });
+
+    it('getRaidScopeStats runs nothing for an uncomputed scope and answers null', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+
+        expect(getRaidScopeStats(169, 'freshRuns')).toBeNull();
+        expect(getRaidScopeStats(169, 'allAttempts')).toBeNull();
+        expect(getRaidScopeStats(169, 'fullClear')!.get('salvations_edge')!.sampleSize).toBe(1);
+        expect(getRaidScopeStats(168, 'freshRuns')!.get('salvations_edge')!.sampleSize).toBe(1);
+    });
+});
+
+// The third scope (#200, ADR 0006's 2026-11-01 amendment): a Fresh Run is a statement about how a
+// run began, so a Fresh Run nobody finished is in it and a Checkpoint Run somebody finished is not.
+describe('the Fresh Runs scope', () => {
+    function seedThreeKinds(): void {
+        seedRun({ instanceId: '1', completedBy: [{ membershipId: 'p1', characterClass: 'Titan' }], kills: 10, deaths: 1, assists: 0 });
+        seedRun({ instanceId: '2', incompleteBy: [{ membershipId: 'p2', characterClass: 'Hunter' }], completed: false, kills: 30, deaths: 1, assists: 0 });
+        seedRun({ instanceId: '3', completedBy: [{ membershipId: 'p3', characterClass: 'Warlock' }], startedFromBeginning: false, kills: 50, deaths: 1, assists: 0 });
+    }
+
+    it('counts only Fresh Runs: a finished one and an unfinished one, never a Checkpoint Run', () => {
+        seedThreeKinds();
+
+        const [row] = getRaidStats(24);
+        expect(row.freshRuns).toEqual({
+            kda: { p25: 10, p50: 10, p75: 30 },
+            aggregateKda: 20,
+            sampleSize: 2,
+            classDistribution: { Titan: 1, Hunter: 1 },
+        });
+        expect(row.fullClear.sampleSize).toBe(1);
+        expect(row.allAttempts!.sampleSize).toBe(3);
+    });
+
+    it('is a computed empty scope, not null, for a raid with only Checkpoint Runs', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], startedFromBeginning: false });
+
+        const [row] = getRaidStats(24);
+        expect(row.freshRuns).toEqual({ kda: null, aggregateKda: null, sampleSize: 0, classDistribution: {} });
+    });
+
+    it('class counts sum to sampleSize under every scope', () => {
+        seedThreeKinds();
+        seedRun({ instanceId: '4', completedBy: ['p4', { membershipId: 'p5', characterClass: 'Hunter' }], incompleteBy: ['p6'] });
+        seedRun({ instanceId: '5', incompleteBy: [{ membershipId: 'p7', characterClass: 'Titan' }], completed: false, startedFromBeginning: false });
+
+        const [row] = getRaidStats(24);
+        for (const scope of [row.fullClear, row.freshRuns!, row.allAttempts!]) {
+            const total = Object.values(scope.classDistribution).reduce((a, b) => a + b, 0);
+            expect(total).toBe(scope.sampleSize);
+        }
+        expect([row.fullClear.sampleSize, row.freshRuns!.sampleSize, row.allAttempts!.sampleSize]).toEqual([4, 5, 7]);
+    });
+});
+
+// CONTEXT.md, Clear Time Quartiles: the 25th, 50th and 75th percentile of Clear Time over a raid's
+// Full Clears, by nearest rank. The unit is the instance, and the scope never narrows them.
+describe('Clear Time Quartiles', () => {
+    it('collapse onto the one Clear Time there is', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 2000 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 2000, p50: 2000, p75: 2000 });
+        expect(row.fullClearCount).toBe(1);
+    });
+
+    it('at two Full Clears give p25 = p50 = the faster and p75 = the slower', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 3000 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityDurationSeconds: 1200 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 1200, p50: 1200, p75: 3000 });
+        expect(row.fullClearCount).toBe(2);
+    });
+
+    it('over several take ranks ceil(n/4), ceil(n/2) and ceil(3n/4), ignoring runs that are not Full Clears', () => {
+        // Five Full Clears: ranks 2, 3 and 4.
+        for (const [i, seconds] of [3000, 1000, 5000, 2000, 4000].entries()) {
+            seedRun({ instanceId: `c${i}`, completedBy: [`p${i}`], activityDurationSeconds: seconds });
+        }
+        // A short Checkpoint Run someone finished and a short Fresh Run nobody did: no Clear Time.
+        seedRun({ instanceId: 'cp', completedBy: ['q1'], startedFromBeginning: false, activityDurationSeconds: 100 });
+        seedRun({ instanceId: 'dnf', incompleteBy: ['q2'], completed: false, activityDurationSeconds: 200 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 2000, p50: 3000, p75: 4000 });
+        expect(row.fullClearCount).toBe(5);
+        expect(row.instanceCount).toBe(7);
+    });
+
+    it('count each run once, however many players were in it', () => {
+        // Per player, n would be 8 and the median rank 4 would land on the six-player run's 1000.
+        seedRun({ instanceId: '1', completedBy: ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'], activityDurationSeconds: 1000 });
+        seedRun({ instanceId: '2', completedBy: ['p7'], activityDurationSeconds: 2000 });
+        seedRun({ instanceId: '3', completedBy: ['p8'], activityDurationSeconds: 3000 });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 1000, p50: 2000, p75: 3000 });
+        expect(row.fullClearCount).toBe(3);
+    });
+
+    it('are absent, with a count of 0, for a raid with no Full Clear', () => {
+        seedRun({ instanceId: '1', incompleteBy: ['p1'], completed: false });
+
+        const [row] = getRaidStats(24);
+        expect(row.clearTimeQuartiles).toBeNull();
+        expect(row.fullClearCount).toBe(0);
+    });
+
+    it('are computed per raid, and follow the filters as the rest of the row does', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityHash: VOG_MASTER, activityDurationSeconds: 1000 });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityHash: VOG_NORMAL, activityDurationSeconds: 3000 });
+        seedRun({ instanceId: '3', completedBy: ['p3'], activityHash: SALVATIONS_EDGE_HASH, activityDurationSeconds: 5000 });
+
+        expect(getRaidStats(24).map((r) => [r.raidKey, r.clearTimeQuartiles!.p75])).toEqual([
+            ['salvations_edge', 5000],
+            ['vault_of_glass', 3000],
+        ]);
+        const [master] = getRaidStats(24, { difficulty: 'master' });
+        expect(master.clearTimeQuartiles).toEqual({ p25: 1000, p50: 1000, p75: 1000 });
+        expect(master.fullClearCount).toBe(1);
+    });
+
+    it('stay inside the window', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 1000, period: hoursAgo(2) });
+        seedRun({ instanceId: '2', completedBy: ['p2'], activityDurationSeconds: 60, period: hoursAgo(10) });
+
+        const [row] = getRaidStats(4);
+        expect(row.clearTimeQuartiles).toEqual({ p25: 1000, p50: 1000, p75: 1000 });
+        expect(row.fullClearCount).toBe(1);
+    });
+});
+
+// The staged compute (#200): the frame is everything outside the scope toggle, computed once per
+// window; each scope is computed on its own. getRaidStats is their composition.
+describe('the frame and the scopes, read apart', () => {
+    it('the frame has a row for every raid with instances, with no scope in it', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'], activityDurationSeconds: 1500 });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false, activityHash: 1566480315 });
+
+        expect(getRaidStatsFrame(24)).toEqual([
+            { raidKey: 'crotas_end', instanceCount: 1, dnfRate: 1, fastestClearSeconds: null, clearTimeQuartiles: null, fullClearCount: 0 },
+            {
+                raidKey: 'salvations_edge',
+                instanceCount: 1,
+                dnfRate: 0,
+                fastestClearSeconds: 1500,
+                clearTimeQuartiles: { p25: 1500, p50: 1500, p75: 1500 },
+                fullClearCount: 1,
+            },
+        ]);
+    });
+
+    it('a scope read on its own leaves out a raid with nothing in it', () => {
+        seedRun({ instanceId: '1', completedBy: ['p1'] });
+        seedRun({ instanceId: '2', incompleteBy: ['p2'], completed: false, activityHash: 1566480315 });
+
+        const fullClear = getRaidScopeStats(24, 'fullClear')!;
+        expect([...fullClear.keys()]).toEqual(['salvations_edge']);
+        expect([...getRaidScopeStats(24, 'allAttempts')!.keys()].sort()).toEqual(['crotas_end', 'salvations_edge']);
     });
 });

@@ -81,6 +81,8 @@ export interface CrawlerConfig {
     activeSessionConcurrency: number;
     activeSessionStaleConcurrency: number;
     activeSessionStaleReverifyLimit: number;
+    /** Poll requests for players with no session row, checked per cycle on top of the batch (#9002). */
+    activeSessionPollRequestMaxPerCycle: number;
     sessionPollingLimit: number;
     cleanupIntervalMs: number;
     cleanupMaxAgeHours: number;
@@ -126,6 +128,10 @@ const DEFAULT_CONFIG: CrawlerConfig = {
     activeSessionStaleReverifyLimit: Math.max(
         1,
         parseInt(process.env.ACTIVE_SESSION_STALE_REVERIFY_LIMIT || '200', 10)
+    ),
+    activeSessionPollRequestMaxPerCycle: Math.max(
+        0,
+        parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE || '20', 10)
     ),
     sessionPollingLimit: Math.max(
         1,
@@ -427,6 +433,7 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
         activeSessionConcurrency: config.activeSessionConcurrency,
         activeSessionStaleConcurrency: config.activeSessionStaleConcurrency,
         activeSessionStaleReverifyLimit: config.activeSessionStaleReverifyLimit,
+        activeSessionPollRequestMaxPerCycle: config.activeSessionPollRequestMaxPerCycle,
         sessionPollingLimit: config.sessionPollingLimit,
     });
 
@@ -507,7 +514,7 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
 
             console.log(`\n👁️ Polling active sessions...`);
 
-            // The whole poll body (candidate checks + stale re-verify + member resolution)
+            // The whole poll body (poll requests + candidate checks + stale re-verify + member resolution)
             // races the watchdog. If a single hung Bungie request stalls it past the budget,
             // the watchdog wins and we abandon this poll rather than parking the loop.
             const pollWork = (async () => {
@@ -517,6 +524,7 @@ export async function startCrawler(overrides?: Partial<CrawlerConfig>): Promise<
                     playerCheckConcurrency: config.activeSessionConcurrency,
                     staleCheckConcurrency: config.activeSessionStaleConcurrency,
                     staleReverifyLimit: config.activeSessionStaleReverifyLimit,
+                    pollRequestMaxPerCycle: config.activeSessionPollRequestMaxPerCycle,
                 });
 
                 // Log summary by raid and record a snapshot for the session history endpoint.

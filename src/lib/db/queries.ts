@@ -493,6 +493,29 @@ export function deleteCrawlQueueRows(membershipIds: string[]): void {
   `).run(JSON.stringify(membershipIds));
 }
 
+// =====================
+// SESSION POLL REQUESTS
+// =====================
+
+export type SessionPollRequestResult = 'accepted' | 'queue_full' | 'privacy_backoff';
+
+export interface SessionPollRequest {
+    membershipId: string;
+    membershipType: number;
+}
+
+export function requestSessionPoll(_membershipId: string, _membershipType: number): SessionPollRequestResult {
+    throw new Error('not implemented');
+}
+
+export function claimSessionPollRequests(_limit: number): SessionPollRequest[] {
+    throw new Error('not implemented');
+}
+
+export function deleteSessionPollRequests(_membershipIds: string[]): void {
+    throw new Error('not implemented');
+}
+
 /**
  * Resolve membershipType + displayName for a list of membershipIds from the players table.
  * Returns a map of membershipId → { membershipType, displayName }.

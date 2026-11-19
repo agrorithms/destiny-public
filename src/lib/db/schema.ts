@@ -94,7 +94,38 @@ export function initializeSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_crawl_queue_drain ON crawl_queue(priority DESC, enqueued_at ASC);
+
+    -- Poll requests for players with no Active Session row: the crawler gives each one a
+    -- session check on its next active-session cycle (#9002). Ids only — a request carries
+    -- nothing a browser saw (ADR 0010). A request for a player who already has a row is not
+    -- queued here; it marks the row (active_sessions.reverify_requested_at) instead. Kept
+    -- apart from crawl_queue: a different loop drains it at a different cost. Capped at
+    -- ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX rows, so it needs no index.
+    CREATE TABLE IF NOT EXISTS session_poll_requests (
+      membership_id   TEXT PRIMARY KEY,
+      membership_type INTEGER NOT NULL,
+      requested_at    INTEGER NOT NULL DEFAULT (unixepoch())
+    );
   `);
+
+    // "Due for re-verify" marker (#9002): set when a poll request names a player who has a
+    // row, so the next cycle re-verifies it ahead of other stale rows. Deliberately its own
+    // column: checked_at drives the freshness window and the list's scan order (ADR 0001),
+    // and a request is not an observation. NULL = not requested.
+    try {
+        db.prepare(`ALTER TABLE active_sessions ADD COLUMN reverify_requested_at INTEGER`).run();
+    } catch {
+        // Column already exists.
+    }
+
+    // Which kind of session-poll backoff next_session_eligible_at holds (#9002): 1 when the
+    // last check found the player private, 0 when offline or online. A poll request may skip
+    // an offline backoff but never a privacy one, and the two backoffs share one column.
+    try {
+        db.prepare(`ALTER TABLE players ADD COLUMN session_privacy_backoff INTEGER NOT NULL DEFAULT 0`).run();
+    } catch {
+        // Column already exists.
+    }
 
     // Migration guard for existing DBs created before "source" was added.
     try {

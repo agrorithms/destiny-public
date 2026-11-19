@@ -38,9 +38,11 @@ private player found through a teammate, that one teammate's. The server enqueue
 player, on its next cycle). The route writes no session row and no `players` row. Its limits, each
 an environment knob and none keyed on the caller's address: one global limiter
 (`ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN`, 60), a per-player cooldown started only by an
-accepted request (`ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC`, 300), and the queue-length cap
-(`ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX`, 200). A request over a limit gets 429 and the page
-ignores it; a player in privacy backoff is declined. The cooldown also bounds an id with no
+accepted request and keyed on the membership id alone, as the queue is
+(`ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC`, 300), and the queue-length cap
+(`ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX`, 200). A request over the global limiter or the queue cap
+gets 429; a player inside the cooldown gets 200 with `recently_refreshed` and nothing enqueued, and
+a player in privacy backoff is declined the same way. The page ignores every answer. The cooldown also bounds an id with no
 `players` row that Bungie reports private or rejects, which the crawler can write no backoff for.
 The limiter and cooldown live in each web process's memory, so under PM2 cluster x2 the effective
 ceilings are up to twice the knobs (120 a minute, and a player may be accepted once per process

@@ -554,11 +554,14 @@ export function requestSessionPoll(membershipId: string, membershipType: number)
 export function claimSessionPollRequests(limit: number): SessionPollRequest[] {
     const db = getDb();
     db.transaction(() => {
+        // Correlated, so it probes players by primary key per queued id instead of scanning the
+        // whole players table every cycle, queue empty or not.
         db.prepare(`
       DELETE FROM session_poll_requests
-      WHERE membership_id IN (
-        SELECT membership_id FROM players
-        WHERE session_privacy_backoff = 1 AND next_session_eligible_at > unixepoch()
+      WHERE EXISTS (
+        SELECT 1 FROM players p
+        WHERE p.membership_id = session_poll_requests.membership_id
+          AND p.session_privacy_backoff = 1 AND p.next_session_eligible_at > unixepoch()
       )
     `).run();
         db.prepare(`

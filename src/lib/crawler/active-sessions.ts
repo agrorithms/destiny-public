@@ -154,7 +154,7 @@ function classifyCheckFailure(error: unknown, membershipId: string): PlayerActiv
  */
 async function checkRequestedPlayer(requested: PlayerInfo, client: BungieClient): Promise<PlayerActivityCheckResult> {
     try {
-        const profile = (await client.getProfile(requested.membershipType, requested.membershipId, [100, 204, 1000])).Response;
+        const profile = await fetchPlayerActivityProfile(requested, client, [100, 204, 1000]);
         const userInfo = profile.profile?.data?.userInfo;
         const player: PlayerInfo = userInfo
             ? {
@@ -176,18 +176,20 @@ async function checkRequestedPlayer(requested: PlayerInfo, client: BungieClient)
 }
 
 /**
- * Fetch the raw profile components (204 + 1000) used to determine current activity.
+ * Fetch the raw profile components (204 + 1000) used to determine current activity, plus any
+ * a caller adds (a requested check also asks for 100, the profile's own name).
  * Returns the `.Response` payload. Throws on Bungie errors (privacy, maintenance, etc.).
  */
 export async function fetchPlayerActivityProfile(
     player: PlayerInfo,
-    clientOverride?: ReturnType<typeof getBungieClient>
+    clientOverride?: ReturnType<typeof getBungieClient>,
+    components: number[] = [204, 1000]
 ): Promise<DestinyProfileResponse> {
     const client = clientOverride || getBungieClient();
     const profile = await client.getProfile(
         player.membershipType,
         player.membershipId,
-        [204, 1000]
+        components
     );
     return profile.Response;
 }

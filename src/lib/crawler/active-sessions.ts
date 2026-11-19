@@ -151,29 +151,26 @@ function classifyCheckFailure(error: unknown, membershipId: string): PlayerActiv
  * in an activity, the crawler stores the row and makes them a Tracked Player, named from its
  * own call. A browser's word never creates a player (ADR 0010); inactive or rejected writes nothing.
  */
-async function checkRequestedPlayer(
-    request: { membershipId: string; membershipType: number },
-    client: BungieClient
-): Promise<PlayerActivityCheckResult> {
+async function checkRequestedPlayer(requested: PlayerInfo, client: BungieClient): Promise<PlayerActivityCheckResult> {
     try {
-        const profile = (await client.getProfile(request.membershipType, request.membershipId, [100, 204, 1000])).Response;
+        const profile = (await client.getProfile(requested.membershipType, requested.membershipId, [100, 204, 1000])).Response;
         const userInfo = profile.profile?.data?.userInfo;
         const player: PlayerInfo = userInfo
             ? {
-                membershipId: request.membershipId,
+                membershipId: requested.membershipId,
                 membershipType: userInfo.membershipType,
                 displayName: userInfo.bungieGlobalDisplayName || userInfo.displayName,
                 bungieGlobalDisplayName: userInfo.bungieGlobalDisplayName,
                 bungieGlobalDisplayNameCode: userInfo.bungieGlobalDisplayNameCode,
             }
-            : { ...request, displayName: '' };
+            : requested;
         const result = parseAndStoreActivity(player, profile);
         if (result.status === 'active' && userInfo) {
             upsertPlayer(player);
         }
         return result;
     } catch (error) {
-        return classifyCheckFailure(error, request.membershipId);
+        return classifyCheckFailure(error, requested.membershipId);
     }
 }
 

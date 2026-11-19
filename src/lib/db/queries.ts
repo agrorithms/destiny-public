@@ -508,17 +508,6 @@ export interface SessionPollRequest {
     membershipType: number;
 }
 
-// Pending requests for players with no session row. Requests on players who have a row only
-// mark it, so they never count here.
-const SESSION_POLL_REQUEST_QUEUE_MAX = Math.max(
-    0,
-    parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX || '200', 10)
-);
-
-// A privacy backoff still running. An offline backoff is not this: a request may skip it.
-const IN_SESSION_PRIVACY_BACKOFF = `
-  session_privacy_backoff = 1 AND next_session_eligible_at > unixepoch()`;
-
 /**
  * Ask the crawler to look at a player on its next active-session cycle (#9002). Ids only:
  * the crawler decides what to do from its own state (ADR 0010).
@@ -529,9 +518,14 @@ const IN_SESSION_PRIVACY_BACKOFF = `
  */
 export function requestSessionPoll(membershipId: string, membershipType: number): SessionPollRequestResult {
     const db = getDb();
-    const inPrivacyBackoff = db.prepare(
-        `SELECT 1 FROM players WHERE membership_id = ? AND ${IN_SESSION_PRIVACY_BACKOFF}`
-    ).get(membershipId);
+    // Pending requests for players with no session row. Requests on players who have a row
+    // only mark it, so they never count here.
+    const queueMax = Math.max(0, parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX || '200', 10));
+    // A privacy backoff still running. An offline backoff doesn't count: a request may skip it.
+    const inPrivacyBackoff = db.prepare(`
+    SELECT 1 FROM players
+    WHERE membership_id = ? AND session_privacy_backoff = 1 AND next_session_eligible_at > unixepoch()
+  `).get(membershipId);
     if (inPrivacyBackoff) return 'privacy_backoff';
 
     const marked = db.prepare(`
@@ -546,7 +540,7 @@ export function requestSessionPoll(membershipId: string, membershipType: number)
     INSERT INTO session_poll_requests (membership_id, membership_type)
     SELECT ?, ? WHERE (SELECT COUNT(*) FROM session_poll_requests) < ?
     ON CONFLICT(membership_id) DO NOTHING
-  `).run(membershipId, membershipType, SESSION_POLL_REQUEST_QUEUE_MAX);
+  `).run(membershipId, membershipType, queueMax);
     const pending = db.prepare('SELECT 1 FROM session_poll_requests WHERE membership_id = ?').get(membershipId);
     return pending ? 'accepted' : 'queue_full';
 }
@@ -562,7 +556,10 @@ export function claimSessionPollRequests(limit: number): SessionPollRequest[] {
     db.transaction(() => {
         db.prepare(`
       DELETE FROM session_poll_requests
-      WHERE membership_id IN (SELECT membership_id FROM players WHERE ${IN_SESSION_PRIVACY_BACKOFF})
+      WHERE membership_id IN (
+        SELECT membership_id FROM players
+        WHERE session_privacy_backoff = 1 AND next_session_eligible_at > unixepoch()
+      )
     `).run();
         db.prepare(`
       UPDATE active_sessions SET reverify_requested_at = COALESCE(reverify_requested_at, unixepoch())

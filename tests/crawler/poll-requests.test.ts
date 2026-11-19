@@ -156,6 +156,26 @@ describe('a poll request for a player with no session row', () => {
         expect(rowsAnywhere(REQUESTED_ID)).toEqual(NOWHERE);
     });
 
+    it('stops the cycle for Bungie maintenance, as a candidate check would, and the request is spent', async () => {
+        stubBungieProfiles({ [REQUESTED_ID]: 'maintenance' });
+        requestSessionPoll(REQUESTED_ID, 3);
+
+        await expect(cycle()).rejects.toMatchObject({ errorStatus: 'SystemDisabled' });
+        expect(rowsAnywhere(REQUESTED_ID)).toEqual(NOWHERE);
+    });
+
+    it('lists the raid but tracks nobody when Bungie leaves out the profile component', async () => {
+        const profile = raidingProfile(REQUESTED_ID);
+        delete profile.profile;
+        stubBungieProfiles({ [REQUESTED_ID]: profile });
+        requestSessionPoll(REQUESTED_ID, 3);
+
+        await cycle();
+
+        expect(sessionRow(REQUESTED_ID)).toMatchObject({ membership_type: 3, display_name: 'Unknown' });
+        expect(playerRow(REQUESTED_ID)).toBeUndefined();
+    });
+
     it('polls exactly the per-cycle cap, oldest first, and the rest on later cycles', async () => {
         const ids = ['4611686018488961001', '4611686018488961002', '4611686018488961003'];
         const calls = stubBungieProfiles(Object.fromEntries(ids.map((id) => [id, buildInactiveProfile({ membershipId: id })])));

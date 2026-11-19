@@ -6,9 +6,10 @@ import { bungieEnvelope } from '../helpers/bungie-profile-builder';
  * Bungie's answer for one membership id, as the crawler's GetProfile call sees it.
  *  - a profile: ErrorCode 1 with that Response;
  *  - `rejected`: ErrorCode 1601 DestinyAccountNotFound, what Bungie sends for an id it doesn't know;
- *  - `timeout`: the fetch rejects, as AbortSignal.timeout does — no signal at all.
+ *  - `timeout`: the fetch rejects, as AbortSignal.timeout does — no signal at all;
+ *  - `maintenance`: ErrorCode 5 SystemDisabled, Bungie's whole API down for maintenance.
  */
-export type BungieAnswer = DestinyProfileResponse | 'rejected' | 'timeout';
+export type BungieAnswer = DestinyProfileResponse | 'rejected' | 'timeout' | 'maintenance';
 
 export interface ProfileCall {
     membershipId: string;
@@ -36,7 +37,9 @@ export function stubBungieProfiles(answers: Record<string, BungieAnswer>): Profi
         if (answer === 'timeout') throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
         const body = answer === 'rejected'
             ? bungieEnvelope(null, { ErrorCode: 1601, ErrorStatus: 'DestinyAccountNotFound', Message: 'Not found' })
-            : bungieEnvelope(answer);
+            : answer === 'maintenance'
+                ? bungieEnvelope(null, { ErrorCode: 5, ErrorStatus: 'SystemDisabled', Message: 'Down for maintenance' })
+                : bungieEnvelope(answer);
         return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
     });
     return calls;

@@ -184,11 +184,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
         hasQueuedOnIdentity.current = identityKey;
         if (opts?.skip) return;
 
-        void fetch('/api/players/queue-crawl', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', [PAGE_TOKEN_HEADER]: pageToken },
-            body: JSON.stringify({ membershipType: Number(membershipType), membershipId }),
-        }).catch(() => undefined);
+        postClientWrite('/api/players/queue-crawl', { membershipType: Number(membershipType), membershipId }, pageToken);
     }, [membershipId, membershipType, pageToken]);
 
     // Fire-and-forget: ask the crawler to poll this player (and the teammate the raid was read
@@ -203,11 +199,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
         if (!body) return;
         hasAskedOnIdentity.current = identityKey;
 
-        void fetch('/api/players/profile-viewed', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', [PAGE_TOKEN_HEADER]: pageToken },
-            body: JSON.stringify(body),
-        }).catch(() => undefined);
+        postClientWrite('/api/players/profile-viewed', body, pageToken);
     }, [membershipId, membershipType, pageToken]);
 
     const fetchActiveSession = useCallback(async (opts?: { verify?: boolean }) => {
@@ -813,6 +805,18 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
             )}
         </div>
     );
+}
+
+/**
+ * A fire-and-forget POST to a client-write endpoint (ADR 0010), carrying the page token. The
+ * answer, a refusal or a failure changes nothing on screen.
+ */
+function postClientWrite(path: string, body: object, pageToken: string): void {
+    void fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', [PAGE_TOKEN_HEADER]: pageToken },
+        body: JSON.stringify(body),
+    }).catch(() => undefined);
 }
 
 interface LiveCheck {

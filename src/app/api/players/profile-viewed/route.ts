@@ -1,22 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { PlayerRef } from '@/lib/active-session/profile-viewed';
 import { isMembershipId } from '@/lib/active-session/roster';
+import { VALID_MEMBERSHIP_TYPES } from '@/lib/bungie/search-mapping';
 import { requestSessionPoll } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { createPollRequestLimits } from '@/lib/http/poll-request-limits';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
 
-const validMembershipTypes = new Set([1, 2, 3, 5, 6]);
-
 // One global limiter and a per-player cooldown, neither keyed on the caller's address. The
 // queue-length cap is enforced by requestSessionPoll. See poll-request-limits.ts for the
 // per-process (2x under PM2 cluster x2) caveat.
 const limits = createPollRequestLimits();
-
-interface PlayerRef {
-    membershipId: string;
-    membershipType: number;
-}
 
 function parsePlayer(value: unknown): PlayerRef | null {
     // Anything that is not an object has no ids to read, and fails the checks below.
@@ -24,7 +19,7 @@ function parsePlayer(value: unknown): PlayerRef | null {
     if (typeof membershipId !== 'string') return null;
     const id = membershipId.trim();
     const type = Number(membershipType);
-    if (!isMembershipId(id) || !validMembershipTypes.has(type)) return null;
+    if (!isMembershipId(id) || !VALID_MEMBERSHIP_TYPES.has(type)) return null;
     return { membershipId: id, membershipType: type };
 }
 

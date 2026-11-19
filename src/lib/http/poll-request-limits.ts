@@ -12,8 +12,8 @@ import { CooldownGate, FixedWindowLimiter } from './rate-limit';
  * is enforced in SQLite and holds across processes. Abuse dampeners, not quotas (ADR 0010).
  */
 
-export const DEFAULT_GLOBAL_PER_MIN = 60;
-export const DEFAULT_COOLDOWN_SEC = 300;
+const DEFAULT_GLOBAL_PER_MIN = 60;
+const DEFAULT_COOLDOWN_SEC = 300;
 
 function readNonNegativeInt(raw: string | undefined, fallback: number): number {
     const parsed = parseInt(String(raw), 10);

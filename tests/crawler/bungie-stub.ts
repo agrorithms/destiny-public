@@ -12,11 +12,12 @@ import { bungieEnvelope } from '../helpers/bungie-profile-builder';
 export type BungieAnswer = DestinyProfileResponse | 'rejected' | 'timeout' | 'maintenance';
 
 export interface ProfileCall {
+    membershipType: string;
     membershipId: string;
     components: string;
 }
 
-const PROFILE_URL = /\/Destiny2\/-?\d+\/Profile\/(\d+)\/\?components=([\d,]+)$/;
+const PROFILE_URL = /\/Destiny2\/(-?\d+)\/Profile\/(\d+)\/\?components=([\d,]+)$/;
 
 /**
  * Stubs `fetch` (the only thing tests mock, ADR 0004) to answer GetProfile per membership id,
@@ -29,8 +30,8 @@ export function stubBungieProfiles(answers: Record<string, BungieAnswer>): Profi
         const url = String(input);
         const match = PROFILE_URL.exec(url);
         if (!match) throw new Error(`Unexpected Bungie request in test: ${url}`);
-        const [, membershipId, components] = match;
-        calls.push({ membershipId, components });
+        const [, membershipType, membershipId, components] = match;
+        calls.push({ membershipType, membershipId, components });
 
         const answer = answers[membershipId];
         if (answer === undefined) throw new Error(`No stubbed Bungie answer for ${membershipId}`);

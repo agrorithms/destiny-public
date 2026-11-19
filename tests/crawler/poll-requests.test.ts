@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/active-sessions/route';
 import { pollActiveSessions } from '@/lib/crawler/active-sessions';
@@ -6,13 +6,12 @@ import {
     claimSessionPollRequests,
     recordSessionCheck,
     requestSessionPoll,
-    upsertActiveSession,
     upsertPlayer,
 } from '@/lib/db/queries';
 import type { PlayerInfo } from '@/lib/bungie/types';
 import { resetTestDb, testDb } from '../helpers/db';
-import { seedPlayer } from '../helpers/seed';
-import { RAID_HASH, buildActiveProfile, buildInactiveProfile } from '../helpers/bungie-profile-builder';
+import { nowSec, seedActiveSession, seedPlayer } from '../helpers/seed';
+import { buildActiveProfile, buildInactiveProfile } from '../helpers/bungie-profile-builder';
 import { askedAbout, stubBungieProfiles } from './bungie-stub';
 
 /**
@@ -25,10 +24,6 @@ import { askedAbout, stubBungieProfiles } from './bungie-stub';
 const REQUESTED_ID = '4611686018488960001';
 const TEAMMATE_ID = '4611686018488960002';
 const CANDIDATE_ID = '4611686018488960003';
-
-function nowSec(): number {
-    return Math.floor(Date.now() / 1000);
-}
 
 function cycle(players: PlayerInfo[] = [], options: { maxToCheck?: number; requestCap?: number } = {}) {
     return pollActiveSessions(players, options.maxToCheck ?? 200, {
@@ -55,18 +50,16 @@ function pendingIds(): string[] {
 }
 
 /** Every table a stray write could land in. */
+const TABLES = ['active_sessions', 'players', 'pgcr_players', 'crawl_queue', 'session_poll_requests'] as const;
+
 function rowsAnywhere(membershipId: string): Record<string, number> {
-    const count = (sql: string) => (testDb().prepare(sql).get(membershipId) as { n: number }).n;
-    return {
-        active_sessions: count('SELECT COUNT(*) AS n FROM active_sessions WHERE membership_id = ?'),
-        players: count('SELECT COUNT(*) AS n FROM players WHERE membership_id = ?'),
-        pgcr_players: count('SELECT COUNT(*) AS n FROM pgcr_players WHERE membership_id = ?'),
-        crawl_queue: count('SELECT COUNT(*) AS n FROM crawl_queue WHERE membership_id = ?'),
-        session_poll_requests: count('SELECT COUNT(*) AS n FROM session_poll_requests WHERE membership_id = ?'),
-    };
+    return Object.fromEntries(TABLES.map((table) => [
+        table,
+        (testDb().prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE membership_id = ?`).get(membershipId) as { n: number }).n,
+    ]));
 }
 
-const NOWHERE = { active_sessions: 0, players: 0, pgcr_players: 0, crawl_queue: 0, session_poll_requests: 0 };
+const NOWHERE = Object.fromEntries(TABLES.map((table) => [table, 0]));
 
 function raidingProfile(membershipId: string, name = 'Requested', code = 4321) {
     return buildActiveProfile({
@@ -113,7 +106,7 @@ describe('a poll request for a player with no session row', () => {
         expect(playerRow(REQUESTED_ID)!.last_session_check_at).toBeGreaterThan(0);
         expect(sessionRow(REQUESTED_ID)!.display_name).toBe('Seen');
         // One call, asking for the profile component that carries the name.
-        expect(calls).toEqual([{ membershipId: REQUESTED_ID, components: '100,204,1000' }]);
+        expect(calls).toEqual([{ membershipType: '3', membershipId: REQUESTED_ID, components: '100,204,1000' }]);
     });
 
     it('names a player with no Bungie name by their platform name', async () => {
@@ -292,26 +285,6 @@ const ANCHOR_ID = '4611686018488970001';
 const MATE_A = '4611686018488970002';
 const MATE_B = '4611686018488970003';
 
-/**
- * A session row as the crawler writes it: the Roster exactly as Bungie's transitory data
- * sends it, with no membership type on any member. Aged by moving checked_at back, the one
- * thing no production writer does.
- */
-function seedSession(anchorId: string, ageSeconds: number, roster: string[] = [anchorId]): void {
-    upsertActiveSession({
-        membershipId: anchorId,
-        membershipType: 3,
-        displayName: `Guardian-${anchorId}`,
-        activityHash: RAID_HASH,
-        activityModeType: 4,
-        raidKey: 'salvations_edge',
-        startedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
-        partyMembersJson: JSON.stringify(roster.map((membershipId) => ({ membershipId, emblemHash: 0, status: 1 }))),
-        playerCount: roster.length,
-    });
-    testDb().prepare('UPDATE active_sessions SET checked_at = ? WHERE membership_id = ?').run(nowSec() - ageSeconds, anchorId);
-}
-
 function checkedAt(membershipId: string): number | undefined {
     return (testDb().prepare('SELECT checked_at FROM active_sessions WHERE membership_id = ?').get(membershipId) as
         | { checked_at: number }
@@ -330,7 +303,7 @@ async function listedRosters(): Promise<string[][]> {
 
 describe('a poll request for a player with a session row', () => {
     it('re-verifies a fresh row on the next cycle, which an unrequested fresh row would not get', async () => {
-        seedSession(ANCHOR_ID, 60);
+        seedActiveSession(ANCHOR_ID, { ageSeconds: 60 });
         const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
 
         await cycle();
@@ -345,7 +318,7 @@ describe('a poll request for a player with a session row', () => {
 
     it('re-verifies the row when the player gained it after the request was queued', async () => {
         requestSessionPoll(ANCHOR_ID, 3);
-        seedSession(ANCHOR_ID, 60);
+        seedActiveSession(ANCHOR_ID, { ageSeconds: 60 });
         const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
 
         await cycle();
@@ -355,7 +328,7 @@ describe('a poll request for a player with a session row', () => {
     });
 
     it('is consumed once the row is re-verified: the next cycle leaves the fresh row alone', async () => {
-        seedSession(ANCHOR_ID, 60);
+        seedActiveSession(ANCHOR_ID, { ageSeconds: 60 });
         const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
         requestSessionPoll(ANCHOR_ID, 3);
 
@@ -371,11 +344,11 @@ describe('a poll request for a player with a session row', () => {
         const oldest = '4611686018488971003';
         const older = '4611686018488971004';
         const old = '4611686018488971005';
-        seedSession(freshRequested, 60);
-        seedSession(staleRequested, 320);
-        seedSession(oldest, 1500);
-        seedSession(older, 1200);
-        seedSession(old, 900);
+        seedActiveSession(freshRequested, { ageSeconds: 60 });
+        seedActiveSession(staleRequested, { ageSeconds: 320 });
+        seedActiveSession(oldest, { ageSeconds: 1500 });
+        seedActiveSession(older, { ageSeconds: 1200 });
+        seedActiveSession(old, { ageSeconds: 900 });
         requestSessionPoll(freshRequested, 3);
         requestSessionPoll(staleRequested, 3);
         const calls = stubBungieProfiles(Object.fromEntries(
@@ -389,7 +362,7 @@ describe('a poll request for a player with a session row', () => {
 
     it('removes only the requested player\'s row when they are cleanly gone and a probed teammate still raids', async () => {
         seedPlayer(MATE_A, 'MateA', 1);
-        seedSession(ANCHOR_ID, 60, [ANCHOR_ID, MATE_A]);
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, MATE_A], ageSeconds: 60 });
         requestSessionPoll(ANCHOR_ID, 3);
         stubBungieProfiles({
             [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }),
@@ -405,7 +378,7 @@ describe('a poll request for a player with a session row', () => {
     it('removes the row when the requested player and every probed teammate are cleanly inactive', async () => {
         seedPlayer(MATE_A, 'MateA', 1);
         seedPlayer(MATE_B, 'MateB', 2);
-        seedSession(ANCHOR_ID, 60, [ANCHOR_ID, MATE_A, MATE_B]);
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, MATE_A, MATE_B], ageSeconds: 60 });
         requestSessionPoll(ANCHOR_ID, 3);
         const calls = stubBungieProfiles({
             [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }),
@@ -422,7 +395,7 @@ describe('a poll request for a player with a session row', () => {
 
     it('keeps the row when a teammate probe times out, and re-verifies it again next cycle', async () => {
         seedPlayer(MATE_A, 'MateA', 1);
-        seedSession(ANCHOR_ID, 60, [ANCHOR_ID, MATE_A]);
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, MATE_A], ageSeconds: 60 });
         requestSessionPoll(ANCHOR_ID, 3);
         const calls = stubBungieProfiles({
             [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }),
@@ -439,7 +412,7 @@ describe('a poll request for a player with a session row', () => {
     });
 
     it('keeps the row when the requested player\'s own check errors, and re-verifies it again next cycle', async () => {
-        seedSession(ANCHOR_ID, 60);
+        seedActiveSession(ANCHOR_ID, { ageSeconds: 60 });
         requestSessionPoll(ANCHOR_ID, 3);
         const calls = stubBungieProfiles({ [ANCHOR_ID]: 'timeout' });
 
@@ -454,21 +427,15 @@ describe('a poll request for a player with a session row', () => {
 describe('the stale re-verify\'s teammate probe', () => {
     it('probes a teammate the Tracker knows, with the membership type it has for them', async () => {
         upsertPlayer({ membershipId: MATE_A, membershipType: 2, displayName: 'MateA' });
-        seedSession(ANCHOR_ID, 400, [ANCHOR_ID, MATE_A]);
-        const calls: string[] = [];
-        stubBungieProfiles({
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, MATE_A], ageSeconds: 400 });
+        const calls = stubBungieProfiles({
             [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }),
             [MATE_A]: raiding(MATE_A, [MATE_A, ANCHOR_ID]),
-        });
-        const stubbed = globalThis.fetch;
-        vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
-            calls.push(String(input));
-            return stubbed(input);
         });
 
         await cycle();
 
-        expect(calls.some((url) => url.includes(`/Destiny2/2/Profile/${MATE_A}/`))).toBe(true);
+        expect(calls).toContainEqual(expect.objectContaining({ membershipType: '2', membershipId: MATE_A }));
         expect(await listedRosters()).toEqual([[ANCHOR_ID, MATE_A].sort()]);
         // The teammate's own row, written by the probe, carries the Tracker's name for them.
         expect(sessionRow(MATE_A)!.display_name).toBe('MateA');
@@ -476,7 +443,7 @@ describe('the stale re-verify\'s teammate probe', () => {
 
     it('names a probed teammate the Tracker holds no name for by their membership id', async () => {
         upsertPlayer({ membershipId: MATE_A, membershipType: 3, displayName: '' });
-        seedSession(ANCHOR_ID, 400, [ANCHOR_ID, MATE_A]);
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, MATE_A], ageSeconds: 400 });
         stubBungieProfiles({
             [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }),
             [MATE_A]: raiding(MATE_A, [MATE_A]),
@@ -488,7 +455,7 @@ describe('the stale re-verify\'s teammate probe', () => {
     });
 
     it('skips a teammate the Tracker doesn\'t know, since Bungie needs a membership type', async () => {
-        seedSession(ANCHOR_ID, 400, [ANCHOR_ID, MATE_A]);
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, MATE_A], ageSeconds: 400 });
         const calls = stubBungieProfiles({ [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }) });
 
         await cycle();
@@ -500,7 +467,7 @@ describe('the stale re-verify\'s teammate probe', () => {
     it('probes at most two teammates', async () => {
         const mates = ['4611686018488972001', '4611686018488972002', '4611686018488972003'];
         for (const id of mates) seedPlayer(id, `Mate-${id}`, 1);
-        seedSession(ANCHOR_ID, 400, [ANCHOR_ID, ...mates]);
+        seedActiveSession(ANCHOR_ID, { roster: [ANCHOR_ID, ...mates], ageSeconds: 400 });
         const calls = stubBungieProfiles(Object.fromEntries(
             [ANCHOR_ID, ...mates].map((id) => [id, buildInactiveProfile({ membershipId: id })])
         ));

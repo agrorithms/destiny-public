@@ -1,5 +1,5 @@
 import { getDb } from '../../src/lib/db';
-import { insertFullPGCR, upsertPlayer } from '../../src/lib/db/queries';
+import { insertFullPGCR, upsertActiveSession, upsertPlayer } from '../../src/lib/db/queries';
 import { getRaidKeyFromHash } from '../../src/lib/bungie/manifest';
 import { processPGCR } from '../../src/lib/crawler/pgcr';
 import { readActivityDurationSeconds, readEntryStartSeconds } from '../../src/lib/bungie/pgcr-stats';
@@ -143,6 +143,40 @@ export function seedPlayer(
         bungieGlobalDisplayName,
         bungieGlobalDisplayNameCode,
     });
+}
+
+/** The current Unix time in whole seconds, the unit SQLite's `unixepoch()` stores. */
+export function nowSec(): number {
+    return Math.floor(Date.now() / 1000);
+}
+
+/**
+ * Seeds an Active Session row through the crawler's own writer, `upsertActiveSession`: a
+ * Salvation's Edge run with the Roster exactly as Bungie's transitory data sends it, no
+ * membership type on any member. `ageSeconds` moves checked_at back, the one thing no
+ * production writer does, so a test can make the row stale.
+ */
+export function seedActiveSession(
+    anchorId: string,
+    options: { roster?: string[]; ageSeconds?: number } = {}
+): void {
+    const roster = options.roster ?? [anchorId];
+    upsertActiveSession({
+        membershipId: anchorId,
+        membershipType: 3,
+        displayName: `Guardian-${anchorId}`,
+        activityHash: RAID_HASH,
+        activityModeType: 4,
+        raidKey: 'salvations_edge',
+        startedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+        partyMembersJson: JSON.stringify(roster.map((membershipId) => ({ membershipId, emblemHash: 0, status: 1 }))),
+        playerCount: roster.length,
+    });
+    if (options.ageSeconds) {
+        getDb()
+            .prepare('UPDATE active_sessions SET checked_at = ? WHERE membership_id = ?')
+            .run(nowSec() - options.ageSeconds, anchorId);
+    }
 }
 
 /**

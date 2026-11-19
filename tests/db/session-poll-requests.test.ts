@@ -4,10 +4,9 @@ import {
     deleteSessionPollRequests,
     recordSessionCheck,
     requestSessionPoll,
-    upsertActiveSession,
 } from '@/lib/db/queries';
 import { resetTestDb, testDb } from '../helpers/db';
-import { seedPlayer } from '../helpers/seed';
+import { nowSec, seedActiveSession, seedPlayer } from '../helpers/seed';
 
 /**
  * Poll requests (#9002): a player id the crawler should look at on its next active-session
@@ -20,24 +19,6 @@ const PLAYER_ID = '4611686018488930001';
 const OTHER_ID = '4611686018488930002';
 // The default of ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX.
 const QUEUE_MAX = 200;
-
-function nowSec(): number {
-    return Math.floor(Date.now() / 1000);
-}
-
-function seedSessionRow(membershipId: string): void {
-    upsertActiveSession({
-        membershipId,
-        membershipType: 3,
-        displayName: 'Raider',
-        activityHash: 1541433876,
-        activityModeType: 4,
-        raidKey: 'salvations_edge',
-        startedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
-        partyMembersJson: JSON.stringify([{ membershipId, emblemHash: 0, status: 1 }]),
-        playerCount: 1,
-    });
-}
 
 function checkedAt(membershipId: string): number {
     return (testDb()
@@ -97,16 +78,15 @@ describe('requestSessionPoll', () => {
 
     it('marks a player who has a session row instead of queueing them, even with the queue full', () => {
         fillQueue(QUEUE_MAX);
-        seedSessionRow(PLAYER_ID);
+        seedActiveSession(PLAYER_ID);
 
         expect(requestSessionPoll(PLAYER_ID, 3)).toBe('accepted');
         expect(pendingIds()).not.toContain(PLAYER_ID);
     });
 
     it('leaves the marked row\'s last-checked time alone', () => {
-        seedSessionRow(PLAYER_ID);
-        // Age the row so a mark that rewrote checked_at to "now" would show.
-        testDb().prepare('UPDATE active_sessions SET checked_at = ? WHERE membership_id = ?').run(nowSec() - 120, PLAYER_ID);
+        // Aged, so a mark that rewrote checked_at to "now" would show.
+        seedActiveSession(PLAYER_ID, { ageSeconds: 120 });
         const before = checkedAt(PLAYER_ID);
 
         requestSessionPoll(PLAYER_ID, 3);
@@ -126,7 +106,7 @@ describe('requestSessionPoll', () => {
     it('declines a player in privacy backoff who has a session row', () => {
         seedPlayer(PLAYER_ID, 'Hidden', 1);
         recordSessionCheck(PLAYER_ID, 'privacy');
-        seedSessionRow(PLAYER_ID);
+        seedActiveSession(PLAYER_ID);
 
         expect(requestSessionPoll(PLAYER_ID, 3)).toBe('privacy_backoff');
     });
@@ -199,8 +179,7 @@ describe('claimSessionPollRequests', () => {
 
     it('turns a request whose player has since gained a session row into a mark', () => {
         requestSessionPoll(PLAYER_ID, 3);
-        seedSessionRow(PLAYER_ID);
-        testDb().prepare('UPDATE active_sessions SET checked_at = ? WHERE membership_id = ?').run(nowSec() - 120, PLAYER_ID);
+        seedActiveSession(PLAYER_ID, { ageSeconds: 120 });
         const before = checkedAt(PLAYER_ID);
 
         expect(claimSessionPollRequests(10)).toEqual([]);

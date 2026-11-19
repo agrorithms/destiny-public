@@ -116,6 +116,27 @@ describe('a poll request for a player with no session row', () => {
         expect(calls).toEqual([{ membershipId: REQUESTED_ID, components: '100,204,1000' }]);
     });
 
+    it('names a player with no Bungie name by their platform name', async () => {
+        stubBungieProfiles({
+            [REQUESTED_ID]: buildActiveProfile({ membershipId: REQUESTED_ID, displayName: 'PlatformName', bungieGlobalDisplayName: '' }),
+        });
+        requestSessionPoll(REQUESTED_ID, 3);
+
+        await cycle();
+
+        expect(sessionRow(REQUESTED_ID)!.display_name).toBe('PlatformName');
+        expect(playerRow(REQUESTED_ID)).toBeDefined();
+    });
+
+    it('uses the default per-cycle cap when the poll is given no options', async () => {
+        const calls = stubBungieProfiles({ [REQUESTED_ID]: buildInactiveProfile({ membershipId: REQUESTED_ID }) });
+        requestSessionPoll(REQUESTED_ID, 3);
+
+        await pollActiveSessions([]);
+
+        expect(askedAbout(calls)).toEqual([REQUESTED_ID]);
+    });
+
     it('stores the membership type Bungie reports over the one the request carried', async () => {
         stubBungieProfiles({
             [REQUESTED_ID]: buildActiveProfile({ membershipId: REQUESTED_ID, membershipType: 2, bungieGlobalDisplayName: 'CrossSave', bungieGlobalDisplayNameCode: 77 }),
@@ -164,9 +185,11 @@ describe('a poll request for a player with no session row', () => {
         expect(rowsAnywhere(REQUESTED_ID)).toEqual(NOWHERE);
     });
 
-    it('lists the raid but tracks nobody when Bungie leaves out the profile component', async () => {
-        const profile = raidingProfile(REQUESTED_ID);
-        delete profile.profile;
+    it.each([
+        ['leaves out the profile component', undefined],
+        ['sends the profile component with no data', { privacy: 2 }],
+    ])('lists the raid but tracks nobody when Bungie %s', async (_case, component) => {
+        const profile = { ...raidingProfile(REQUESTED_ID), profile: component };
         stubBungieProfiles({ [REQUESTED_ID]: profile });
         requestSessionPoll(REQUESTED_ID, 3);
 
@@ -447,6 +470,21 @@ describe('the stale re-verify\'s teammate probe', () => {
 
         expect(calls.some((url) => url.includes(`/Destiny2/2/Profile/${MATE_A}/`))).toBe(true);
         expect(await listedRosters()).toEqual([[ANCHOR_ID, MATE_A].sort()]);
+        // The teammate's own row, written by the probe, carries the Tracker's name for them.
+        expect(sessionRow(MATE_A)!.display_name).toBe('MateA');
+    });
+
+    it('names a probed teammate the Tracker holds no name for by their membership id', async () => {
+        upsertPlayer({ membershipId: MATE_A, membershipType: 3, displayName: '' });
+        seedSession(ANCHOR_ID, 400, [ANCHOR_ID, MATE_A]);
+        stubBungieProfiles({
+            [ANCHOR_ID]: buildInactiveProfile({ membershipId: ANCHOR_ID }),
+            [MATE_A]: raiding(MATE_A, [MATE_A]),
+        });
+
+        await cycle();
+
+        expect(sessionRow(MATE_A)!.display_name).toBe(MATE_A);
     });
 
     it('skips a teammate the Tracker doesn\'t know, since Bungie needs a membership type', async () => {

@@ -3023,6 +3023,31 @@ specs test unchanged code, so they do too. One build, three breaks:
 
 All reverted; green at HEAD.
 
+### Review fixes (loop 1)
+
+No spec added; two assertions tightened and the in-process poll cycle narrowed. Still seven specs.
+
+- **Spec 3, "a stored session while Bungie reports no activity…"** (O2). It asserted only that the
+  row was still there, which holds whether or not the route marked it. It now asserts the row's
+  `reverify_requested_at` is set. The seeded row is checked now, inside `MAX_SESSION_AGE_SECONDS` (two hours by default), so
+  #9002's rule marks it.
+- **Spec 7, the poll cycle** (S1). The worker's Bungie stub threw on an unanswered request, but
+  the crawler swallows that as a transient error, so the throw failed nothing. The stub now
+  records every unanswered URL in `unexpected`, and the spec asserts it is empty and that Bungie
+  was asked about the listed player only. The cycle also claimed up to 20 queued requests and
+  re-verified any stale or marked row, other specs' included; `isolatePollCycle` sets those aside
+  for the cycle and puts each back as it was afterwards.
+
+**Bite proof** (`npm run e2e -- e2e/profile-poll-request.spec.ts`, one break per run; the spec-file
+break needed no build of its own):
+
+| Break | Result |
+| --- | --- |
+| `requestSessionPoll`'s mark sets `reverify_requested_at` to itself (the row matches, so it still answers `accepted`) | spec 3 failed: expected `Any<Number>`, received `null`; the other eight passed |
+| spec 7 without `isolatePollCycle` | spec 7 failed at `unexpected`: four GetProfile calls, for spec 3's marked row and for specs 1 and 2's three queued requests |
+
+Both reverted; green at HEAD.
+
 ### What is still NOT covered
 
 - The real crawler loop. Spec 7 runs one cycle's function in the test process. The loop's own

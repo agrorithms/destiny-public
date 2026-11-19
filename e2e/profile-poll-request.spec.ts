@@ -6,7 +6,7 @@ import { getActiveSessionContainingPlayer, getPlayerIdentity } from '../src/lib/
 import { getDb } from '../src/lib/db';
 import { interceptApiCalls, recordProfileViewed, waitForProfileViewed, waitForQueueCrawl } from './support/network-log';
 import { fulfillBungie } from './support/bungie-stub';
-import { stubCrawlerBungie } from './support/crawler-bungie';
+import { isolatePollCycle, stubCrawlerBungie } from './support/crawler-bungie';
 import { expectNoOverflow } from './support/viewport';
 
 /**
@@ -152,10 +152,10 @@ test.describe('profile view asks the crawler to look', () => {
         await sent;
 
         expect(bodies).toEqual([{ membershipId: LEFT_ID, membershipType: 3 }]);
-        // Only the crawler removes the row.
+        // The row is still there, marked for the crawler's re-verify: only the crawler removes it.
         const marked = getDb().prepare('SELECT reverify_requested_at FROM active_sessions WHERE membership_id = ?').get(LEFT_ID) as
             { reverify_requested_at: number | null } | undefined;
-        expect(marked).toBeDefined();
+        expect(marked?.reverify_requested_at).toEqual(expect.any(Number));
     });
 
     test('a player with no stored session and no activity sends no request', async ({ page }) => {
@@ -220,17 +220,22 @@ test.describe('profile view asks the crawler to look', () => {
         expect(getActiveSessionContainingPlayer(LISTED_ID, ANY_AGE_SECONDS)).toBeNull();
         expect(pendingPollRequests()).toContain(LISTED_ID);
 
-        // The crawler's next poll cycle, run here against the same Tracker the server reads.
+        // The crawler's next poll cycle, run here against the same Tracker the server reads, and
+        // narrowed to this player: other specs' queued requests and session rows are set aside.
+        const putBack = isolatePollCycle(LISTED_ID);
         const bungie = stubCrawlerBungie({ [LISTED_ID]: raiding });
         try {
             const { pollActiveSessions } = await import('../src/lib/crawler/active-sessions');
             await pollActiveSessions([], 200, {
                 playerCheckConcurrency: 1, staleCheckConcurrency: 1, pollRequestMaxPerCycle: 20,
             });
-            expect(bungie.asked).toContain(LISTED_ID);
         } finally {
             bungie.restore();
+            putBack();
         }
+        // The crawler swallows a failed Bungie call, so a stray one shows only here.
+        expect(bungie.unexpected).toEqual([]);
+        expect(bungie.asked).toEqual([LISTED_ID]);
 
         await page.goto('/active-sessions');
         await expect(page.getByText(`${LISTED_NAME}#${LISTED_CODE}'s fireteam`)).toBeVisible({ timeout: 10_000 });

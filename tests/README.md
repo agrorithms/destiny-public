@@ -127,6 +127,7 @@ never share one.
 
 ```
 tests/
+├── crawler/             the active-session poll and loop, against the test db with fetch stubbed
 ├── db/                  tests that need a database
 ├── fixtures/            captured Bungie PGCR JSON, the Archive seed, + README
 ├── helpers/             builders, seeding, db access — SHARED with e2e/

@@ -36,3 +36,7 @@ Four guards close this off (`src/lib/crawler/index.ts` `activeSessionLoop`,
 - **The rule covers every writer** (2026-11-14): no path removes an Active Session without a positive
   confirmation from the crawler's own Bungie call. No browser request removes an Active Session
   (ADR 0010).
+- **The teammate probe now runs** (2026-11-18, #9002): Bungie's transitory party members carry no
+  membership type, so until then the re-verify found no teammate it could probe, and a cleanly
+  gone player's row was removed unprobed. Each teammate's type now comes from the `players`
+  table; a teammate the Tracker doesn't know is still skipped.

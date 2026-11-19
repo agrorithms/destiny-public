@@ -11,7 +11,8 @@ import type { DestinyProfileResponse } from '../../src/lib/bungie/types';
  * page never touch it. (`tests/crawler/bungie-stub.ts` does the same under Vitest, but imports
  * `vitest`, which `tests/helpers/` and e2e may not.)
  *
- * Only GetProfile is answered; anything else the crawler asks fails the spec loudly.
+ * Only GetProfile is answered; anything else the crawler asks fails the spec loudly. The Bungie
+ * client refuses to send without a key, so a dummy one is set while the stub is in place.
  */
 const PROFILE_URL = /\/Destiny2\/(-?\d+)\/Profile\/(\d+)\/\?components=([\d,]+)$/;
 
@@ -23,6 +24,8 @@ export interface CrawlerBungie {
 
 export function stubCrawlerBungie(answers: Record<string, DestinyProfileResponse>): CrawlerBungie {
     const original = globalThis.fetch;
+    const originalKey = process.env.BUNGIE_API_KEY;
+    process.env.BUNGIE_API_KEY ??= 'e2e-dummy-key-not-a-real-credential';
     const asked: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
         const match = PROFILE_URL.exec(String(input));
@@ -36,5 +39,11 @@ export function stubCrawlerBungie(answers: Record<string, DestinyProfileResponse
             headers: { 'Content-Type': 'application/json' },
         });
     }) as typeof fetch;
-    return { asked, restore: () => { globalThis.fetch = original; } };
+    return {
+        asked,
+        restore: () => {
+            globalThis.fetch = original;
+            if (originalKey === undefined) delete process.env.BUNGIE_API_KEY;
+        },
+    };
 }

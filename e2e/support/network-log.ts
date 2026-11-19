@@ -49,10 +49,7 @@ export function interceptApiCalls(page: Page): NetworkEntry[] {
  * waiter has to be armed before navigating or it can miss the response.
  */
 export function waitForQueueCrawl(page: Page) {
-    return page.waitForResponse(
-        (res) => res.url().includes('/api/players/queue-crawl') && res.request().method() === 'POST',
-        { timeout: 15_000 },
-    );
+    return waitForPost(page, '/api/players/queue-crawl');
 }
 
 /**
@@ -61,8 +58,13 @@ export function waitForQueueCrawl(page: Page) {
  * Resolves on the response, whatever its status.
  */
 export function waitForProfileViewed(page: Page) {
+    return waitForPost(page, '/api/players/profile-viewed');
+}
+
+/** The response to the page's next POST to `path`, whatever its status. */
+function waitForPost(page: Page, path: string) {
     return page.waitForResponse(
-        (res) => res.url().includes('/api/players/profile-viewed') && res.request().method() === 'POST',
+        (res) => res.url().includes(path) && res.request().method() === 'POST',
         { timeout: 15_000 },
     );
 }

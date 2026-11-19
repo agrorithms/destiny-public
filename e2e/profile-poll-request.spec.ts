@@ -208,7 +208,6 @@ test.describe('profile view asks the crawler to look', () => {
     });
 
     test('a viewed raiding player with no row is listed on /active-sessions after a poll cycle', async ({ page }) => {
-        process.env.BUNGIE_API_KEY ??= 'e2e-dummy-key-not-a-real-credential';
         const raiding = raidingProfile(LISTED_ID, LISTED_NAME, LISTED_CODE);
         await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, raiding));
         const sent = waitForProfileViewed(page);

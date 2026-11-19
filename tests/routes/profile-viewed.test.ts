@@ -33,6 +33,12 @@ function queued(): string[] {
         { membership_id: string }[]).map((r) => r.membership_id);
 }
 
+/** A known player the crawler is holding off: their profile was private when it last looked. */
+function seedPrivacyBackoff(membershipId: string) {
+    seedPlayer(membershipId, 'Private#0001', 1);
+    testDb().prepare('UPDATE players SET session_privacy_backoff = 1, next_session_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(membershipId);
+}
+
 function counts() {
     const db = testDb();
     const n = (table: string) => (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
@@ -267,8 +273,7 @@ describe('the limits', () => {
     });
 
     it('declines a player in privacy backoff and enqueues nothing', async () => {
-        seedPlayer(VIEWED, 'Private#0001', 1);
-        testDb().prepare('UPDATE players SET session_privacy_backoff = 1, next_session_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(VIEWED);
+        seedPrivacyBackoff(VIEWED);
         expect(requestSessionPoll(VIEWED, 3)).toBe('privacy_backoff');
 
         const response = await post({ membershipId: VIEWED, membershipType: 3 });
@@ -278,8 +283,7 @@ describe('the limits', () => {
     });
 
     it('queues the teammate even when the viewed player is declined', async () => {
-        seedPlayer(VIEWED, 'Private#0001', 1);
-        testDb().prepare('UPDATE players SET session_privacy_backoff = 1, next_session_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(VIEWED);
+        seedPrivacyBackoff(VIEWED);
         const response = await post({ membershipId: VIEWED, membershipType: 3, teammate: { membershipId: MATE, membershipType: 3 } });
         expect(response.status).toBe(202);
         expect(queued()).toEqual([MATE]);

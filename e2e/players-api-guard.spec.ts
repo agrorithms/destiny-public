@@ -13,6 +13,8 @@ import { ANY_AGE_SECONDS } from './support/seed-world';
  *
  *   - the request-authenticity guard (issue #24) still sits on `queue-crawl`: a positive
  *     control, a spoofed origin, no origin and no referer, no page token;
+ *   - the poll-request route, `profile-viewed` (#9003), sits behind the same guard and the
+ *     middleware's per-address bucket;
  *   - a POST to either retired path is answered 404 or 405 and leaves no row behind.
  *
  * Why over HTTP: src/lib/http/request-auth.test.ts covers the guard's logic and
@@ -31,6 +33,7 @@ import { ANY_AGE_SECONDS } from './support/seed-world';
 const CONTROL_ID = '4611686018488500001';
 const RETIRED_PROFILE_ID = '4611686018488500002';
 const RETIRED_IDENTITY_ID = '4611686018488500003';
+const POLL_ID = '4611686018488500004';
 
 // A well-formed body on the negatives too. The guard runs before request.json(), so an
 // empty body would 403 either way, but if the guard were ever deleted a valid body makes the
@@ -84,6 +87,37 @@ test.describe('players API write guard over HTTP', () => {
 
         expect(response.status()).toBe(403);
         expect(await response.json()).toEqual({ error: 'Forbidden' });
+    });
+
+    // The poll request route (#9003) sits behind the same guard. The positive control is
+    // profile-poll-request.spec.ts, where a real page's request is answered 202.
+    test('profile-viewed: a spoofed origin, no origin and no page token are each rejected by the guard', async ({ request }) => {
+        const body = { membershipId: POLL_ID, membershipType: 3 };
+        const cases = [
+            writeHeaders({ origin: SPOOFED_ORIGIN, ip: '85.0.0.7' }),
+            writeHeaders({ origin: null, ip: '85.0.0.7' }),
+            writeHeaders({ omitToken: true, ip: '85.0.0.7' }),
+        ];
+        for (const headers of cases) {
+            const response = await request.post('/api/players/profile-viewed', { headers, data: body });
+            expect(response.status()).toBe(403);
+            expect(await response.json()).toEqual({ error: 'Forbidden' });
+        }
+    });
+
+    // Covered by the middleware's `players-read` bucket like every /api/players/ route: 60 a
+    // minute per address, answered before the route runs. Bad ids keep the first 60 requests
+    // from queueing anything; the 61st is middleware's 429, whose body is not the route's.
+    test('profile-viewed: the 61st request in a minute from one address is cut off by the middleware', async ({ request }) => {
+        const headers = writeHeaders({ ip: '85.0.0.8' });
+        const statuses: number[] = [];
+        for (let i = 0; i < 61; i++) {
+            const response = await request.post('/api/players/profile-viewed', { headers, data: { membershipId: 'x', membershipType: 3 } });
+            statuses.push(response.status());
+            if (i === 60) expect(await response.json()).toEqual({ error: 'Too many requests. Please try again shortly.' });
+        }
+        expect(statuses.slice(0, 60).every((status) => status === 400)).toBe(true);
+        expect(statuses[60]).toBe(429);
     });
 
     // Sent with everything the guard wants (origin, token), so only the route's absence can

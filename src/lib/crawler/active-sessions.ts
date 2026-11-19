@@ -11,6 +11,9 @@ import {
     recordSessionCheck,
     claimSessionPollRequests,
     deleteSessionPollRequests,
+    // How long before a session is force-deleted even if re-verification fails. Shared with
+    // the poll-request queries, which mark only rows the re-verify will still look at.
+    MAX_SESSION_AGE_SECONDS,
 } from '../db/queries';
 import { getDb } from '../db';
 import { pickPrimaryLinkedProfile } from '../bungie/linked-profiles';
@@ -21,11 +24,6 @@ import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/
 // How long before a session is considered "stale" and needs re-verification
 const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
 
-// How long before a session is force-deleted even if re-verification fails
-const MAX_SESSION_AGE_SECONDS = Math.max(
-    1,
-    parseInt(process.env.MAX_ACTIVE_SESSION_AGE_SECONDS || '7200', 10)
-);
 const DEFAULT_ACTIVE_SESSION_CONCURRENCY = Math.max(
     1,
     parseInt(process.env.ACTIVE_SESSION_CONCURRENCY || process.env.CRAWLER_CONCURRENCY || '4', 10)
@@ -552,9 +550,14 @@ export async function pollActiveSessions(
 
     // A requested player already in the batch is polled once, as part of it. The rest are
     // checked on top of the batch; they are never in batchById, so never skipped as covered.
-    const requestedChecks = requests
-        .filter((r) => !batchById.has(r.membershipId))
-        .map((r): PlayerInfo => ({ ...r, displayName: '' }));
+    // A tracked player starts with the Tracker's name for them, which their row keeps if
+    // Bungie's answer carries none; an untracked one has none until Bungie gives one.
+    const unbatchedRequests = requests.filter((r) => !batchById.has(r.membershipId));
+    const trackedNames = resolveMembershipTypes(unbatchedRequests.map((r) => r.membershipId));
+    const requestedChecks = unbatchedRequests.map((r): PlayerInfo => ({
+        ...r,
+        displayName: trackedNames.get(r.membershipId)?.displayName ?? '',
+    }));
     const requestedIds = new Set(requestedChecks.map((p) => p.membershipId));
 
     const covered = new Set<string>();

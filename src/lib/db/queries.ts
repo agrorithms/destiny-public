@@ -501,6 +501,16 @@ export function deleteCrawlQueueRows(membershipIds: string[]): void {
 // SESSION POLL REQUESTS
 // =====================
 
+/**
+ * How old a session row may get before the crawler's re-verify stops looking at it and
+ * force-deletes it instead (MAX_ACTIVE_SESSION_AGE_SECONDS). A poll request marks only a row
+ * younger than this: a mark on an older row would be deleted with it, unpolled.
+ */
+export const MAX_SESSION_AGE_SECONDS = Math.max(
+    1,
+    parseInt(process.env.MAX_ACTIVE_SESSION_AGE_SECONDS || '7200', 10)
+);
+
 export type SessionPollRequestResult = 'accepted' | 'queue_full' | 'privacy_backoff';
 
 export interface SessionPollRequest {
@@ -513,8 +523,10 @@ export interface SessionPollRequest {
  * the crawler decides what to do from its own state (ADR 0010).
  *  - privacy_backoff: the player's last check found them private and the backoff is running.
  *  - accepted: the player's session row is marked due for re-verify (checked_at untouched,
- *    ADR 0001), or a request is pending for them, new or already there.
- *  - queue_full: no row, not already pending, and the queue is at its cap.
+ *    ADR 0001), or a request is pending for them, new or already there. A row past
+ *    MAX_SESSION_AGE_SECONDS counts as no row: the re-verify drops it unchecked, so the
+ *    request waits in the queue and its check runs after the drop.
+ *  - queue_full: no row to mark, not already pending, and the queue is at its cap.
  */
 export function requestSessionPoll(membershipId: string, membershipType: number): SessionPollRequestResult {
     const db = getDb();
@@ -530,8 +542,8 @@ export function requestSessionPoll(membershipId: string, membershipType: number)
 
     const marked = db.prepare(`
     UPDATE active_sessions SET reverify_requested_at = COALESCE(reverify_requested_at, unixepoch())
-    WHERE membership_id = ?
-  `).run(membershipId);
+    WHERE membership_id = ? AND checked_at >= unixepoch() - ?
+  `).run(membershipId, MAX_SESSION_AGE_SECONDS);
     if (marked.changes > 0) return 'accepted';
 
     // One statement, so two web processes can't both pass the count and overfill the queue.
@@ -548,7 +560,8 @@ export function requestSessionPoll(membershipId: string, membershipType: number)
 /**
  * The crawler's read of the queue at the start of a cycle. First settles requests whose
  * player's state changed since they were made: a player now in privacy backoff is dropped
- * unpolled, and a player who now has a session row has the row marked instead. Then returns
+ * unpolled, and a player who now has a session row younger than MAX_SESSION_AGE_SECONDS has
+ * the row marked instead (an older row is about to be dropped, so the request stays). Then returns
  * the oldest `limit` of the rest, which stay pending until deleteSessionPollRequests.
  */
 export function claimSessionPollRequests(limit: number): SessionPollRequest[] {
@@ -567,11 +580,12 @@ export function claimSessionPollRequests(limit: number): SessionPollRequest[] {
         db.prepare(`
       UPDATE active_sessions SET reverify_requested_at = COALESCE(reverify_requested_at, unixepoch())
       WHERE membership_id IN (SELECT membership_id FROM session_poll_requests)
-    `).run();
+        AND checked_at >= unixepoch() - ?
+    `).run(MAX_SESSION_AGE_SECONDS);
         db.prepare(`
       DELETE FROM session_poll_requests
-      WHERE membership_id IN (SELECT membership_id FROM active_sessions)
-    `).run();
+      WHERE membership_id IN (SELECT membership_id FROM active_sessions WHERE checked_at >= unixepoch() - ?)
+    `).run(MAX_SESSION_AGE_SECONDS);
     })();
     return db.prepare(`
     SELECT membership_id AS membershipId, membership_type AS membershipType

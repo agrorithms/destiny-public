@@ -458,6 +458,7 @@ export async function pollActiveSessions(
         playerCheckConcurrency?: number;
         staleCheckConcurrency?: number;
         staleReverifyLimit?: number;
+        pollRequestMaxPerCycle?: number;
     }
 ): Promise<RaidSession[]> {
     const playerCheckConcurrency = Math.max(

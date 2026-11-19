@@ -151,6 +151,14 @@ describe('what is refused', () => {
         expect(queued()).toEqual([]);
     });
 
+    it('400s a membership type that is not a number, even one that would coerce to a valid type', async () => {
+        for (const bad of [true, [3], '1e0', '3']) {
+            expect((await post({ membershipId: VIEWED, membershipType: bad })).status).toBe(400);
+            expect((await post({ membershipId: VIEWED, membershipType: 3, teammate: { membershipId: MATE, membershipType: bad } })).status).toBe(400);
+        }
+        expect(queued()).toEqual([]);
+    });
+
     it('400s a teammate that is not an object', async () => {
         for (const bad of ['x', 7, true]) {
             const response = await post({ membershipId: VIEWED, membershipType: 3, teammate: bad });
@@ -229,6 +237,20 @@ describe('the limits', () => {
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ queued: false, reason: 'recently_refreshed' });
         expect(queued()).toEqual([]);
+    });
+
+    it('enqueues nothing for the same id under another membership type inside the cooldown', async () => {
+        // The queue and the privacy backoff key on the id alone, so the cooldown does too:
+        // cycling the type must not buy another GetProfile.
+        await post({ membershipId: VIEWED, membershipType: 3 });
+        testDb().prepare('DELETE FROM session_poll_requests').run();
+        for (const type of [1, 2, 5, 6]) {
+            const response = await post({ membershipId: VIEWED, membershipType: type });
+            expect(await response.json()).toEqual({ queued: false, reason: 'recently_refreshed' });
+        }
+        const asTeammate = await post({ membershipId: MATE, membershipType: 3, teammate: { membershipId: VIEWED, membershipType: 1 } });
+        expect(asTeammate.status).toBe(202);
+        expect(queued()).toEqual([MATE]);
     });
 
     it('a cooling-down player does not use up the global limit', async () => {

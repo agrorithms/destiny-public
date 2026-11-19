@@ -3,7 +3,7 @@ import { requestSessionPoll } from '@/lib/db/queries';
 import { buildWriteRequest, type WriteRequestOptions } from '../helpers/build-write-request';
 import { testDb } from '../helpers/db';
 import { withDbQuiesced } from '../helpers/db-quiesce';
-import { seedActiveSession, seedPlayer } from '../helpers/seed';
+import { seedActiveSession, seedPrivacyBackoff } from '../helpers/seed';
 import { installWriteRouteEnv } from './write-route-setup';
 
 installWriteRouteEnv();
@@ -31,12 +31,6 @@ async function loadRoute(env: Record<string, string> = {}): Promise<Post> {
 function queued(): string[] {
     return (testDb().prepare('SELECT membership_id FROM session_poll_requests ORDER BY membership_id').all() as
         { membership_id: string }[]).map((r) => r.membership_id);
-}
-
-/** A known player the crawler is holding off: their profile was private when it last looked. */
-function seedPrivacyBackoff(membershipId: string) {
-    seedPlayer(membershipId, 'Private#0001', 1);
-    testDb().prepare('UPDATE players SET session_privacy_backoff = 1, next_session_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(membershipId);
 }
 
 function counts() {

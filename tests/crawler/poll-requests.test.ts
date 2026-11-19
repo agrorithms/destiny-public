@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/active-sessions/route';
 import { pollActiveSessions } from '@/lib/crawler/active-sessions';
 import {
-    claimSessionPollRequests,
     recordSessionCheck,
     requestSessionPoll,
     upsertPlayer,
@@ -45,8 +44,11 @@ function playerRow(membershipId: string) {
         | undefined;
 }
 
+/** The queue as it stands, oldest first, read straight from the table: claiming would settle it. */
 function pendingIds(): string[] {
-    return claimSessionPollRequests(1000).map((r) => r.membershipId);
+    return (testDb()
+        .prepare('SELECT membership_id FROM session_poll_requests ORDER BY requested_at ASC, rowid ASC')
+        .all() as { membership_id: string }[]).map((r) => r.membership_id);
 }
 
 /** Every table a stray write could land in. */

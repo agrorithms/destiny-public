@@ -8,7 +8,9 @@ const HOST = 'localhost:3100';
 
 export interface WriteRequestOptions {
     /** Defaults to the trusted same-origin value; override to test the 403 path. */
-    origin?: string;
+    origin?: string | null;
+    /** Sends no page-token header, the token-layer 403 path. */
+    omitToken?: boolean;
     /** Sets x-forwarded-for, which the per-IP rate limiters key on. */
     ip?: string;
 }
@@ -28,12 +30,12 @@ export function buildWriteRequest(
     body: Record<string, unknown> | string,
     options: WriteRequestOptions = {}
 ): NextRequest {
-    const { origin = `http://${HOST}`, ip = '1.2.3.4' } = options;
+    const { origin = `http://${HOST}`, ip = '1.2.3.4', omitToken = false } = options;
 
     return new NextRequest(`http://${HOST}${path}`, {
         method: 'POST',
         headers: {
-            ...writeHeaders({ origin, ip }),
+            ...writeHeaders({ origin, ip, omitToken }),
             host: HOST,
         },
         body: typeof body === 'string' ? body : JSON.stringify(body),

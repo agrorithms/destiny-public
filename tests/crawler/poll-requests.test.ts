@@ -300,6 +300,17 @@ describe('a poll request for a player with a session row', () => {
         expect(checkedAt(ANCHOR_ID)).toBeGreaterThan(nowSec() - 60);
     });
 
+    it('re-verifies the row when the player gained it after the request was queued', async () => {
+        requestSessionPoll(ANCHOR_ID, 3);
+        seedSession(ANCHOR_ID, 60);
+        const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
+
+        await cycle();
+
+        expect(askedAbout(calls)).toEqual([ANCHOR_ID]);
+        expect(checkedAt(ANCHOR_ID)).toBeGreaterThan(nowSec() - 60);
+    });
+
     it('is consumed once the row is re-verified: the next cycle leaves the fresh row alone', async () => {
         seedSession(ANCHOR_ID, 60);
         const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });

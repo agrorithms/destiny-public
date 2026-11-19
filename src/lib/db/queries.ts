@@ -1548,6 +1548,10 @@ export function getPGCRCount(): number {
 // ACTIVE SESSION QUERIES
 // =====================
 
+/**
+ * Store what the crawler just observed of a player's activity. An observation also answers any
+ * poll request that marked the row due for re-verify (#9002), so the mark is cleared here.
+ */
 export function upsertActiveSession(session: {
     membershipId: string;
     membershipType: number;
@@ -1574,7 +1578,8 @@ export function upsertActiveSession(session: {
       started_at = excluded.started_at,
       party_members_json = excluded.party_members_json,
       player_count = excluded.player_count,
-      checked_at = unixepoch()
+      checked_at = unixepoch(),
+      reverify_requested_at = NULL
   `).run(
         session.membershipId,
         session.membershipType,

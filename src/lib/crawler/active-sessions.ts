@@ -288,7 +288,10 @@ export async function refreshStaleSessionsWithOptions(options?: {
     const limit = Math.max(1, options?.limit || DEFAULT_STALE_SESSION_REVERIFY_LIMIT);
     const client = getBungieClient();
 
-    // Find sessions that are stale (not checked recently) but not ancient
+    // Find sessions that are stale (not checked recently) but not ancient, and rows a poll
+    // request marked due for re-verify (#9002), whatever their age. Marked rows go first and
+    // share the one limit, so requests add no Bungie budget. The mark is cleared when the row
+    // is next observed (upsertActiveSession) or removed; a row kept on no signal keeps it.
     const inOrbitPlaceholders = IN_ORBIT_MODE_HASHES.map(() => '?').join(',');
     const staleSessions = db.prepare(`
     SELECT 
@@ -303,9 +306,10 @@ export async function refreshStaleSessionsWithOptions(options?: {
       checked_at,
       party_members_json
     FROM active_sessions
-    WHERE checked_at < ?
+    WHERE (checked_at < ? OR reverify_requested_at IS NOT NULL)
       AND checked_at >= ?
     ORDER BY
+      reverify_requested_at IS NULL ASC,
       CASE
         WHEN activity_mode_type = 4 OR raid_key IS NOT NULL THEN 0
         WHEN activity_mode_hash IN (${inOrbitPlaceholders}) AND player_count >= 3 THEN 1
@@ -476,29 +480,20 @@ function getTeammateMembershipIds(partyMembersJson: string | null | undefined, e
     }
 }
 
+/**
+ * Teammates the re-verify can probe, in Roster order. Bungie's transitory party members carry
+ * no membership type and GetProfile needs one, so it comes from the players table, as
+ * enqueueEndedSession's does; a teammate the Tracker doesn't know yet can't be probed.
+ */
 function getTeammateCandidates(partyMembersJson: string | null | undefined, excludeMembershipId: string): PlayerInfo[] {
-    if (!partyMembersJson) {
-        return [];
-    }
-
-    try {
-        const partyMembers = JSON.parse(partyMembersJson) as Array<{
-            membershipId?: string;
-            membershipType?: number;
-            displayName?: string;
-        }>;
-
-        return partyMembers
-            .filter((m) => !!m.membershipId && m.membershipId !== excludeMembershipId)
-            .map((m) => ({
-                membershipId: String(m.membershipId),
-                membershipType: Number.isFinite(Number(m.membershipType)) ? Number(m.membershipType) : 0,
-                displayName: m.displayName || String(m.membershipId),
-            }))
-            .filter((m) => m.membershipType > 0);
-    } catch {
-        return [];
-    }
+    const teammateIds = getTeammateMembershipIds(partyMembersJson, excludeMembershipId);
+    const known = resolveMembershipTypes(teammateIds);
+    return teammateIds.flatMap((membershipId) => {
+        const info = known.get(membershipId);
+        return info
+            ? [{ membershipId, membershipType: info.membershipType, displayName: info.displayName || membershipId }]
+            : [];
+    });
 }
 
 /**

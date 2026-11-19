@@ -19,6 +19,8 @@ const PLAYER_ID = '4611686018488930001';
 const OTHER_ID = '4611686018488930002';
 // The default of ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX.
 const QUEUE_MAX = 200;
+// The default of MAX_ACTIVE_SESSION_AGE_SECONDS: the crawler drops a row older than this unchecked.
+const MAX_SESSION_AGE = 7200;
 
 function checkedAt(membershipId: string): number {
     return (testDb()
@@ -82,6 +84,13 @@ describe('requestSessionPoll', () => {
 
         expect(requestSessionPoll(PLAYER_ID, 3)).toBe('accepted');
         expect(pendingIds()).not.toContain(PLAYER_ID);
+    });
+
+    it('queues a player whose session row is past the max session age, as one with no row', () => {
+        seedActiveSession(PLAYER_ID, { ageSeconds: MAX_SESSION_AGE + 60 });
+
+        expect(requestSessionPoll(PLAYER_ID, 3)).toBe('accepted');
+        expect(pendingIds()).toEqual([PLAYER_ID]);
     });
 
     it('leaves the marked row\'s last-checked time alone', () => {

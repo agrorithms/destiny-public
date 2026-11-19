@@ -192,6 +192,17 @@ describe('a poll request for a player with no session row', () => {
         expect(playerRow(REQUESTED_ID)).toBeUndefined();
     });
 
+    it('names the row from the Tracker when the player is tracked and Bungie leaves out the profile component', async () => {
+        seedPlayer(REQUESTED_ID, 'Known', 1234);
+        stubBungieProfiles({ [REQUESTED_ID]: { ...raidingProfile(REQUESTED_ID), profile: undefined } });
+        requestSessionPoll(REQUESTED_ID, 3);
+
+        await cycle();
+
+        expect(sessionRow(REQUESTED_ID)!.display_name).toBe('Known');
+        expect(playerRow(REQUESTED_ID)).toMatchObject({ bungie_global_display_name: 'Known', bungie_global_display_name_code: 1234 });
+    });
+
     it('polls exactly the per-cycle cap, oldest first, and the rest on later cycles', async () => {
         const ids = ['4611686018488961001', '4611686018488961002', '4611686018488961003'];
         const calls = stubBungieProfiles(Object.fromEntries(ids.map((id) => [id, buildInactiveProfile({ membershipId: id })])));
@@ -282,6 +293,9 @@ describe('a poll request for a player with no session row', () => {
 // ---- Requests on players who have a session row ----
 
 const ANCHOR_ID = '4611686018488970001';
+// The default of MAX_ACTIVE_SESSION_AGE_SECONDS: the re-verify skips a row older than this and
+// force-deletes it, so a mark on such a row would never be acted on.
+const MAX_SESSION_AGE = 7200;
 const MATE_A = '4611686018488970002';
 const MATE_B = '4611686018488970003';
 
@@ -319,6 +333,28 @@ describe('a poll request for a player with a session row', () => {
     it('re-verifies the row when the player gained it after the request was queued', async () => {
         requestSessionPoll(ANCHOR_ID, 3);
         seedActiveSession(ANCHOR_ID, { ageSeconds: 60 });
+        const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
+
+        await cycle();
+
+        expect(askedAbout(calls)).toEqual([ANCHOR_ID]);
+        expect(checkedAt(ANCHOR_ID)).toBeGreaterThan(nowSec() - 60);
+    });
+
+    it('polls a player whose row is past the max session age, after the old row is dropped', async () => {
+        seedActiveSession(ANCHOR_ID, { ageSeconds: MAX_SESSION_AGE + 60 });
+        const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
+        requestSessionPoll(ANCHOR_ID, 3);
+
+        await cycle();
+
+        expect(askedAbout(calls)).toEqual([ANCHOR_ID]);
+        expect(checkedAt(ANCHOR_ID)).toBeGreaterThan(nowSec() - 60);
+    });
+
+    it('polls a queued player whose row, gained after the request, is past the max session age by the claim', async () => {
+        requestSessionPoll(ANCHOR_ID, 3);
+        seedActiveSession(ANCHOR_ID, { ageSeconds: MAX_SESSION_AGE + 60 });
         const calls = stubBungieProfiles({ [ANCHOR_ID]: raiding(ANCHOR_ID, [ANCHOR_ID]) });
 
         await cycle();

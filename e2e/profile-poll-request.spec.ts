@@ -234,7 +234,7 @@ test.describe('profile view asks the crawler to look', () => {
         }
 
         await page.goto('/active-sessions');
-        await expect(page.getByText(`${LISTED_NAME}'s fireteam`)).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText(`${LISTED_NAME}#${LISTED_CODE}'s fireteam`)).toBeVisible({ timeout: 10_000 });
         expect(getPlayerIdentity(LISTED_ID)?.bungieGlobalDisplayName).toBe(LISTED_NAME);
     });
 });

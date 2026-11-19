@@ -14,8 +14,8 @@ store it. The rule is:
   Active Sessions and player identities, and only from its own Bungie calls.
 - **A browser may only ask the crawler to look.** A request from a browser carries player ids and
   nothing else: no profile, no name, no claim about what it saw. The server decides what to do from
-  its own state, and the crawler does the looking. Today that is the history-crawl request
-  (`POST /api/players/queue-crawl`); a request for the crawler to poll a player is to follow.
+  its own state, and the crawler does the looking. Two such requests exist: the history-crawl
+  request (`POST /api/players/queue-crawl`) and the poll request (`POST /api/players/profile-viewed`).
 - **Only the crawler removes an Active Session**, under ADR 0005's positive-confirmation rule. No
   request from a browser deletes a row.
 
@@ -31,6 +31,21 @@ profile shows the browser's answer.
 
 The two routes that accepted posted profiles and posted identities are deleted, not fenced.
 
+When the page's own Bungie check finds a raid, or the stored baseline had a session for the viewed
+player, it also sends the poll request, once per visit: the viewed player's id and type and, for a
+private player found through a teammate, that one teammate's. The server enqueues it with
+`requestSessionPoll` (ADR 0005's crawler then re-verifies a listed row, or checks an unlisted
+player, on its next cycle). The route writes no session row and no `players` row. Its limits, each
+an environment knob and none keyed on the caller's address: one global limiter
+(`ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN`, 60), a per-player cooldown started only by an
+accepted request (`ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC`, 300), and the queue-length cap
+(`ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX`, 200). A request over a limit gets 429 and the page
+ignores it; a player in privacy backoff is declined. The cooldown also bounds an id with no
+`players` row that Bungie reports private or rejects, which the crawler can write no backoff for.
+The limiter and cooldown live in each web process's memory, so under PM2 cluster x2 the effective
+ceilings are up to twice the knobs (120 a minute, and a player may be accepted once per process
+inside the cooldown); the queue cap is enforced in SQLite and holds across processes.
+
 ## Considered and rejected
 
 - **Quarantine.** Store what a browser sends, tagged as unconfirmed; show it only on the profile
@@ -43,10 +58,12 @@ The two routes that accepted posted profiles and posted identities are deleted, 
 
 ## Consequences
 
-- A profile view has no effect on the public active-sessions list, the player search or the
-  `players` table. A Fireteam a viewer sees on a profile is listed when the crawler's poll finds
-  it, and removed by the crawler's re-verify; until then the profile and the list can disagree for
-  a few minutes. That is the accepted cost.
+- A profile view never writes to the public active-sessions list, the player search or the
+  `players` table itself. It can ask the crawler to look, and the crawler may then list a Fireteam
+  or add a player it has confirmed raiding (a Tracked Player, `CONTEXT.md`) from its own Bungie
+  call. A Fireteam a viewer sees on a profile is listed when the crawler's poll finds it, and
+  removed by the crawler's re-verify; until then the profile and the list can disagree for a few
+  minutes. That is the accepted cost.
 - Untracked Roster members' names exist only in the viewer's browser. The crawler's own member
   resolution names them in the Tracker on a later cycle.
 - The client-write surface is the routes that take ids only. They keep the same-origin and page

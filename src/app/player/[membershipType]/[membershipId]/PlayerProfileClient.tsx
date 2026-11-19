@@ -28,6 +28,7 @@ import {
     type ProfileCard,
     type ProfilePlayer,
 } from '@/lib/active-session/live-profile';
+import { profileViewedBody, type RaidSource } from '@/lib/active-session/profile-viewed';
 import { ROSTER_SIZE } from '@/lib/active-session/roster';
 import { fetchLinkedProfilesClient, fetchPlayerProfileClient, isClientBungieError } from '@/lib/bungie/client-api';
 import { pickPrimaryLinkedProfile } from '@/lib/bungie/linked-profiles';
@@ -169,6 +170,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
     });
     const [expandedTeammateRaids, setExpandedTeammateRaids] = useState<Set<string>>(new Set());
     const hasQueuedOnIdentity = useRef<string | null>(null);
+    const hasAskedOnIdentity = useRef<string | null>(null);
 
     // Fire-and-forget: queue a background crawl once per profile visit so the next visitor
     // (and the next load) sees fresher data. Deferred until the live privacy check settles:
@@ -189,6 +191,25 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
         }).catch(() => undefined);
     }, [membershipId, membershipType, pageToken]);
 
+    // Fire-and-forget: ask the crawler to poll this player (and the teammate the raid was read
+    // from, if any) on its next cycle. Ids only (ADR 0010); the answer, a refusal or a failure
+    // changes nothing on screen. Once per profile visit, and only when there is something to ask:
+    // the browser's own check found a raid, or the stored baseline had a session for this player.
+    const askCrawlerToLook = useCallback((storedSession: boolean, raid: RaidSource) => {
+        if (!membershipId || !membershipType) return;
+        const identityKey = `${membershipType}:${membershipId}`;
+        if (hasAskedOnIdentity.current === identityKey) return;
+        const body = profileViewedBody({ membershipId, membershipType: Number(membershipType) }, storedSession, raid);
+        if (!body) return;
+        hasAskedOnIdentity.current = identityKey;
+
+        void fetch('/api/players/profile-viewed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', [PAGE_TOKEN_HEADER]: pageToken },
+            body: JSON.stringify(body),
+        }).catch(() => undefined);
+    }, [membershipId, membershipType, pageToken]);
+
     const fetchActiveSession = useCallback(async (opts?: { verify?: boolean }) => {
         if (!membershipType || !membershipId) return;
 
@@ -202,6 +223,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
             const data: ActiveSessionResponse = await response.json();
             setHeaderPlayer(data.player);
             setActiveSession(data.activeSession);
+            const storedSession = Boolean(data.activeSession);
             setPrivacyRestricted((current) => current || Boolean(data.privacyRestricted));
             setMaintenanceMessage(data.maintenance ? data.message || 'Database maintenance is in progress.' : null);
 
@@ -214,6 +236,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                     .then((live) => {
                         // Privacy status is now known — safe to decide on the background crawl.
                         queueCrawlOnce({ skip: live.accountPrivate });
+                        void live.raid.then((raid) => askCrawlerToLook(storedSession, raid));
                         if (live.player) setHeaderPlayer(live.player);
                         if (live.privacyRestricted) {
                             setPrivacyRestricted(true);
@@ -223,6 +246,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                         // Keep the DB baseline already on screen. Non-privacy failure
                         // (network etc.) → still queue the crawl (fail open).
                         queueCrawlOnce();
+                        askCrawlerToLook(storedSession, null);
                         console.error("Failed to check the profile's live card:", err);
                     })
                     .finally(() => setLiveChecking(false));
@@ -233,7 +257,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
         } finally {
             setActiveLoading(false);
         }
-    }, [membershipId, membershipType, queueCrawlOnce]);
+    }, [membershipId, membershipType, queueCrawlOnce, askCrawlerToLook]);
 
     const fetchProfile = useCallback(async (opts?: { refresh?: boolean }) => {
         if (!membershipType || !membershipId) return;
@@ -798,6 +822,12 @@ interface LiveCheck {
     /** Account-wide privacy (1665 "No peeking") — distinct from partial privacy, where the
      *  profile is fetchable but current-activity data is withheld. */
     accountPrivate: boolean;
+    /**
+     * Where this check found a raid for the viewed player: their own profile, a teammate's (for a
+     * private player), or nowhere. Settles once the check is done, which for a private player
+     * includes the teammate probes. Never rejects.
+     */
+    raid: Promise<RaidSource>;
 }
 
 type ShowCard = (card: ProfileCard | null) => void;
@@ -827,7 +857,7 @@ async function checkLiveCard(
             const containing = await readContainingSession(membershipType, membershipId);
             show(containing);
             if (containing) void nameFromBungie(containing, show);
-            return { privacyRestricted: true, accountPrivate: true };
+            return { privacyRestricted: true, accountPrivate: true, raid: Promise.resolve(null) };
         }
         throw err;
     }
@@ -839,12 +869,12 @@ async function checkLiveCard(
 
     if (activity) {
         void showAndNameRoster(liveCard(subject, activity, new Date()), show);
-        return { player, privacyRestricted: withheld, accountPrivate: false };
+        return { player, privacyRestricted: withheld, accountPrivate: false, raid: Promise.resolve({ from: 'self' }) };
     }
 
     if (!withheld) {
         show(null);
-        return { player, privacyRestricted: false, accountPrivate: false };
+        return { player, privacyRestricted: false, accountPrivate: false, raid: Promise.resolve(null) };
     }
 
     // Activity withheld: first a stored session that contains them, then their public teammates.
@@ -852,13 +882,15 @@ async function checkLiveCard(
     if (containing) {
         show(containing);
         void nameFromBungie(containing, show);
-        return { player, privacyRestricted: true, accountPrivate: false };
+        return { player, privacyRestricted: true, accountPrivate: false, raid: Promise.resolve(null) };
     }
 
     const provisional = provisionalCard(subject, profile);
     show(provisional);
-    if (provisional) void findThroughTeammates(subject, provisional, show);
-    return { player, privacyRestricted: true, accountPrivate: false };
+    const raid = provisional
+        ? findThroughTeammates(subject, provisional, show).catch((): RaidSource => null)
+        : Promise.resolve(null);
+    return { player, privacyRestricted: true, accountPrivate: false, raid };
 }
 
 /**
@@ -917,9 +949,10 @@ async function nameFromBungie(card: ProfileCard, show: ShowCard): Promise<void> 
 
 /**
  * A private player with no stored session: probe up to three public teammates from the browser
- * and draw the first whose raid has this player in its Roster. Nothing is stored.
+ * and draw the first whose raid has this player in its Roster. Nothing is stored. Resolves with
+ * that teammate as soon as one is found, while the Roster's naming carries on, or with null.
  */
-async function findThroughTeammates(subject: CardSubject, provisional: ProfileCard, show: ShowCard): Promise<void> {
+async function findThroughTeammates(subject: CardSubject, provisional: ProfileCard, show: ShowCard): Promise<RaidSource> {
     // The lookup supplies the membership types a probe needs.
     const named = await withKnownNames(provisional);
     if (named !== provisional) show(named);
@@ -937,9 +970,10 @@ async function findThroughTeammates(subject: CardSubject, provisional: ProfileCa
 
         // The names the lookup already gave carry over, so it is asked only about anyone new.
         const known = named.partyMembers.filter(isLinkable);
-        await showAndNameRoster(withNames(liveCard(subject, activity, new Date()), known), show);
-        return;
+        void showAndNameRoster(withNames(liveCard(subject, activity, new Date()), known), show);
+        return { from: 'teammate', teammate: { membershipId: teammate.membershipId, membershipType: teammate.membershipType } };
     }
+    return null;
 }
 
 function getMembershipPrefix(membershipType: number): string {

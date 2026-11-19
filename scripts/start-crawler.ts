@@ -24,6 +24,10 @@ const CRAWLER_CONFIG = {
     // inside ACTIVE_SESSION_STALE_REVERIFY_LIMIT. Read in src/lib/crawler/active-sessions.ts.
     // ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX (default 200): pending poll requests for players with
     // no session row; a request beyond it is refused. Read in src/lib/db/queries.ts.
+    // The two limits on the web side of poll requests are read by the web processes, not here:
+    // ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN (default 60) and
+    // ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC (default 300), in src/lib/http/poll-request-limits.ts.
+    // Both are per web process, so under PM2 cluster x2 the effective ceilings are up to twice the knobs.
 };
 
 // ============================================

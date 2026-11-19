@@ -4,7 +4,7 @@ import { RAID_A } from './support/seed-world';
 import { seedPlayer } from '../tests/helpers/seed';
 import { buildActiveProfile, buildLinkedProfiles, type PartyMemberInput } from '../tests/helpers/bungie-profile-builder';
 import { getPlayerIdentity } from '../src/lib/db/queries';
-import { interceptApiCalls, waitForQueueCrawl } from './support/network-log';
+import { interceptApiCalls, waitForProfileViewed, waitForQueueCrawl } from './support/network-log';
 import { fulfillBungie } from './support/bungie-stub';
 import { expectNoOverflow } from './support/viewport';
 
@@ -137,6 +137,7 @@ test.describe('profile roster names', () => {
         const gate = new Promise<void>((resolve) => { release = resolve; });
         const requested = await stubBungie(page, HOST_ID, profile, UNKNOWN_MEMBERS, gate);
         const queueCrawlDone = waitForQueueCrawl(page);
+        const profileViewedDone = waitForProfileViewed(page);
 
         await page.goto(`/player/3/${HOST_ID}`);
 
@@ -164,6 +165,7 @@ test.describe('profile roster names', () => {
         expect([...requested].sort()).toEqual(UNKNOWN_MEMBERS.map((m) => m.membershipId).sort());
 
         await queueCrawlDone;
+        await profileViewedDone;
         await expect(page.getByText('Checking live status…')).toHaveCount(0);
 
         // Shown on this screen only: the Tracker still doesn't know them.
@@ -171,7 +173,7 @@ test.describe('profile roster names', () => {
             expect(getPlayerIdentity(member.membershipId)).toBeNull();
         }
 
-        // The lookup is a read carrying ids, and the history crawl is the only write.
+        // The lookup is a read carrying ids; the two requests asking the crawler to look are the only writes.
         const lookups = log.filter((e) => e.method === 'GET' && e.path.startsWith('/api/players/names?'));
         expect(lookups).toHaveLength(1);
         const asked = new URL(lookups[0].path, 'http://x').searchParams;
@@ -180,7 +182,8 @@ test.describe('profile roster names', () => {
             // The host is already named from their own profile, so only the rest are asked for.
             [KNOWN_ID, ...UNKNOWN_MEMBERS.map((m) => m.membershipId)].sort(),
         );
-        expect(log.filter((e) => e.method === 'POST').map((e) => e.path)).toEqual(['/api/players/queue-crawl']);
+        expect(log.filter((e) => e.method === 'POST').map((e) => e.path))
+            .toEqual(['/api/players/queue-crawl', '/api/players/profile-viewed']);
     });
 
     test('a card of full-length names fits a phone', async ({ page }) => {

@@ -1,3 +1,4 @@
+import type { PlayerRef } from '@/lib/active-session/profile-viewed';
 import { CooldownGate, FixedWindowLimiter } from './rate-limit';
 
 /**
@@ -21,12 +22,16 @@ function readNonNegativeInt(raw: string | undefined, fallback: number): number {
 }
 
 export interface PollRequestLimits {
-    /** True when this player was accepted within the cooldown: the request should enqueue nothing. */
-    isCoolingDown(key: string): boolean;
+    /**
+     * True when this player was accepted within the cooldown: the request should enqueue nothing.
+     * Keyed on the membership id alone, as the queue and the privacy backoff are, so the same id
+     * sent under another membership type is the same player.
+     */
+    isCoolingDown(player: PlayerRef): boolean;
     /** Counts one enqueue attempt against the global limit; true when it is over the limit. */
     isOverGlobalLimit(): boolean;
     /** Starts the player's cooldown. Called only for an accepted request. */
-    recordAccepted(key: string): void;
+    recordAccepted(player: PlayerRef): void;
 }
 
 /**
@@ -40,9 +45,9 @@ export function createPollRequestLimits(env: Record<string, string | undefined> 
     const limiter = new FixedWindowLimiter(perMinute, 60_000);
     const cooldown = new CooldownGate(cooldownMs);
     return {
-        isCoolingDown: (key) => cooldown.isCoolingDown(key),
+        isCoolingDown: (player) => cooldown.isCoolingDown(player.membershipId),
         // FixedWindowLimiter lets the first hit of a window through whatever the limit, so 0 needs its own answer.
         isOverGlobalLimit: () => perMinute === 0 || limiter.isRateLimited('global'),
-        recordAccepted: (key) => cooldown.record(key),
+        recordAccepted: (player) => cooldown.record(player.membershipId),
     };
 }

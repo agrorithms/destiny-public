@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPollRequestLimits } from './poll-request-limits';
 
 // The two limits on "profile viewed" requests. Time-dependent, so fake timers throughout.
+const A = { membershipId: '1', membershipType: 3 };
+const B = { membershipId: '2', membershipType: 3 };
 const T0 = new Date('2026-08-03T12:00:00Z').getTime();
 
 beforeEach(() => {
@@ -47,31 +49,37 @@ describe('the global limit', () => {
 
 describe('the per-player cooldown', () => {
     it('is not running for a player never accepted', () => {
-        expect(createPollRequestLimits({}).isCoolingDown('3:1')).toBe(false);
+        expect(createPollRequestLimits({}).isCoolingDown(A)).toBe(false);
     });
 
     it('runs for 300 seconds by default, for that player only', () => {
         const limits = createPollRequestLimits({});
-        limits.recordAccepted('3:1');
-        expect(limits.isCoolingDown('3:1')).toBe(true);
-        expect(limits.isCoolingDown('3:2')).toBe(false);
+        limits.recordAccepted(A);
+        expect(limits.isCoolingDown(A)).toBe(true);
+        expect(limits.isCoolingDown(B)).toBe(false);
         vi.advanceTimersByTime(299_000);
-        expect(limits.isCoolingDown('3:1')).toBe(true);
+        expect(limits.isCoolingDown(A)).toBe(true);
         vi.advanceTimersByTime(1_000);
-        expect(limits.isCoolingDown('3:1')).toBe(false);
+        expect(limits.isCoolingDown(A)).toBe(false);
+    });
+
+    it('holds the id whatever membership type it is sent under', () => {
+        const limits = createPollRequestLimits({});
+        limits.recordAccepted(A);
+        expect(limits.isCoolingDown({ membershipId: '1', membershipType: 1 })).toBe(true);
     });
 
     it('takes its length from ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC', () => {
         const limits = createPollRequestLimits({ ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC: '10' });
-        limits.recordAccepted('3:1');
+        limits.recordAccepted(A);
         vi.advanceTimersByTime(10_000);
-        expect(limits.isCoolingDown('3:1')).toBe(false);
+        expect(limits.isCoolingDown(A)).toBe(false);
     });
 
     it('reads an unreadable value as the default of 300 seconds', () => {
         const limits = createPollRequestLimits({ ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC: 'soon' });
-        limits.recordAccepted('3:1');
+        limits.recordAccepted(A);
         vi.advanceTimersByTime(299_000);
-        expect(limits.isCoolingDown('3:1')).toBe(true);
+        expect(limits.isCoolingDown(A)).toBe(true);
     });
 });

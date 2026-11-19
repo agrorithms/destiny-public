@@ -17,10 +17,11 @@ function parsePlayer(value: unknown): PlayerRef | null {
     // Anything that is not an object has no ids to read, and fails the checks below.
     const { membershipId, membershipType } = (value ?? {}) as Record<string, unknown>;
     if (typeof membershipId !== 'string') return null;
+    // A JSON number only, as the page sends: coercing would let `true`, `[3]` or "1e0" pass as a type.
+    if (typeof membershipType !== 'number') return null;
     const id = membershipId.trim();
-    const type = Number(membershipType);
-    if (!isMembershipId(id) || !VALID_MEMBERSHIP_TYPES.has(type)) return null;
-    return { membershipId: id, membershipType: type };
+    if (!isMembershipId(id) || !VALID_MEMBERSHIP_TYPES.has(membershipType)) return null;
+    return { membershipId: id, membershipType };
 }
 
 function json(body: Record<string, unknown>, status = 200): NextResponse {
@@ -60,15 +61,15 @@ export async function POST(request: NextRequest) {
         if (!teammate) return json({ error: 'Invalid teammate' }, 400);
     }
 
-    // A teammate who is the viewed player is harmless: the cooldown the first one starts skips the second.
+    // A teammate who is the viewed player is harmless: the cooldown the first one starts skips the
+    // second, whatever type each was sent under.
     const players = teammate ? [viewed, teammate] : [viewed];
 
     let accepted = 0;
     let refusal: { reason: string; status: number } | null = null;
     try {
         for (const player of players) {
-            const key = `${player.membershipType}:${player.membershipId}`;
-            if (limits.isCoolingDown(key)) {
+            if (limits.isCoolingDown(player)) {
                 refusal ??= { reason: 'recently_refreshed', status: 200 };
                 continue;
             }
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
             }
             const result = requestSessionPoll(player.membershipId, player.membershipType);
             if (result === 'accepted') {
-                limits.recordAccepted(key);
+                limits.recordAccepted(player);
                 accepted += 1;
             } else if (result === 'queue_full') {
                 refusal = { reason: 'queue_full', status: 429 };

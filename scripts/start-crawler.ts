@@ -21,7 +21,7 @@ const CRAWLER_CONFIG = {
     // ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE (default 20): poll requests for players with no
     // session row checked per active-session cycle, one GetProfile each, on top of
     // CRAWLER_SESSION_POLLING_LIMIT. Requests on players with a row only mark it for re-verify,
-    // inside ACTIVE_SESSION_STALE_REVERIFY_LIMIT. Read in src/lib/crawler/index.ts.
+    // inside ACTIVE_SESSION_STALE_REVERIFY_LIMIT. Read in src/lib/crawler/active-sessions.ts.
     // ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX (default 200): pending poll requests for players with
     // no session row; a request beyond it is refused. Read in src/lib/db/queries.ts.
 };

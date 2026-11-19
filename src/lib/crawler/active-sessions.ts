@@ -57,8 +57,8 @@ const DEFAULT_MEMBER_RESOLVE_CONCURRENCY = Math.max(
 
 // Poll requests (#9002) for players with no session row, polled per cycle on top of the normal
 // batch. Each is one GetProfile call; requests on players who have a row cost nothing extra,
-// since they only move the row up the re-verify order.
-const DEFAULT_POLL_REQUEST_MAX_PER_CYCLE = Math.max(
+// since they only move the row up the re-verify order. The loop's config reads it from here.
+export const DEFAULT_POLL_REQUEST_MAX_PER_CYCLE = Math.max(
     0,
     parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE || '20', 10)
 );

@@ -11,7 +11,12 @@ import {
     recordSessionSnapshot,
 } from '../db/queries';
 import { crawlPlayer } from './players';
-import { pollActiveSessions, resolveUnknownPartyMembers, collectPartyMemberIds } from './active-sessions';
+import {
+    pollActiveSessions,
+    resolveUnknownPartyMembers,
+    collectPartyMemberIds,
+    DEFAULT_POLL_REQUEST_MAX_PER_CYCLE,
+} from './active-sessions';
 import { getDb } from '../db';
 import { processWithConcurrency } from '../utils/concurrent';
 import {
@@ -129,10 +134,7 @@ const DEFAULT_CONFIG: CrawlerConfig = {
         1,
         parseInt(process.env.ACTIVE_SESSION_STALE_REVERIFY_LIMIT || '200', 10)
     ),
-    activeSessionPollRequestMaxPerCycle: Math.max(
-        0,
-        parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE || '20', 10)
-    ),
+    activeSessionPollRequestMaxPerCycle: DEFAULT_POLL_REQUEST_MAX_PER_CYCLE,
     sessionPollingLimit: Math.max(
         1,
         parseInt(process.env.CRAWLER_SESSION_POLLING_LIMIT || '200', 10)

@@ -51,7 +51,7 @@ function pendingIds(): string[] {
 
 function fillQueue(count: number): void {
     for (let i = 0; i < count; i++) {
-        expect(requestSessionPoll(String(4611686018488940000 + i), 3)).toBe('accepted');
+        expect(requestSessionPoll(`46116860184889${String(i).padStart(5, '0')}`, 3)).toBe('accepted');
     }
 }
 

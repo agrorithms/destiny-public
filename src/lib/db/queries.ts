@@ -285,7 +285,8 @@ const SESSION_PRIVACY_BACKOFF_SEC = Math.max(
  * of being re-polled every cycle. Mirrors recordCrawlOutcome's structure.
  *  - online:  clear backoff; player is live (their active_sessions row is written separately).
  *  - offline: exponential backoff, base*1 on the first miss, capped.
- *  - privacy: long fixed backoff — a private profile never surfaces a session.
+ *  - privacy: long fixed backoff — a private profile never surfaces a session. Flagged in
+ *    session_privacy_backoff so a poll request can tell it from an offline backoff (#9002).
  */
 export type SessionCheckOutcome = 'online' | 'offline' | 'privacy';
 
@@ -297,7 +298,8 @@ export function recordSessionCheck(membershipId: string, outcome: SessionCheckOu
         UPDATE players SET
           last_session_check_at = unixepoch(),
           consecutive_offline_checks = 0,
-          next_session_eligible_at = NULL
+          next_session_eligible_at = NULL,
+          session_privacy_backoff = 0
         WHERE membership_id = ?
       `).run(membershipId);
             return;
@@ -308,7 +310,8 @@ export function recordSessionCheck(membershipId: string, outcome: SessionCheckOu
         UPDATE players SET
           last_session_check_at = unixepoch(),
           consecutive_offline_checks = consecutive_offline_checks + 1,
-          next_session_eligible_at = unixepoch() + MIN(?, ? * (1 << MIN(consecutive_offline_checks, 20)))
+          next_session_eligible_at = unixepoch() + MIN(?, ? * (1 << MIN(consecutive_offline_checks, 20))),
+          session_privacy_backoff = 0
         WHERE membership_id = ?
       `).run(SESSION_OFFLINE_BACKOFF_CAP_SEC, SESSION_OFFLINE_BACKOFF_BASE_SEC, membershipId);
             return;
@@ -316,7 +319,8 @@ export function recordSessionCheck(membershipId: string, outcome: SessionCheckOu
             db.prepare(`
         UPDATE players SET
           last_session_check_at = unixepoch(),
-          next_session_eligible_at = unixepoch() + ?
+          next_session_eligible_at = unixepoch() + ?,
+          session_privacy_backoff = 1
         WHERE membership_id = ?
       `).run(SESSION_PRIVACY_BACKOFF_SEC, membershipId);
             return;
@@ -504,16 +508,84 @@ export interface SessionPollRequest {
     membershipType: number;
 }
 
-export function requestSessionPoll(_membershipId: string, _membershipType: number): SessionPollRequestResult {
-    throw new Error('not implemented');
+// Pending requests for players with no session row. Requests on players who have a row only
+// mark it, so they never count here.
+const SESSION_POLL_REQUEST_QUEUE_MAX = Math.max(
+    0,
+    parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX || '200', 10)
+);
+
+// A privacy backoff still running. An offline backoff is not this: a request may skip it.
+const IN_SESSION_PRIVACY_BACKOFF = `
+  session_privacy_backoff = 1 AND next_session_eligible_at > unixepoch()`;
+
+/**
+ * Ask the crawler to look at a player on its next active-session cycle (#9002). Ids only:
+ * the crawler decides what to do from its own state (ADR 0010).
+ *  - privacy_backoff: the player's last check found them private and the backoff is running.
+ *  - accepted: the player's session row is marked due for re-verify (checked_at untouched,
+ *    ADR 0001), or a request is pending for them, new or already there.
+ *  - queue_full: no row, not already pending, and the queue is at its cap.
+ */
+export function requestSessionPoll(membershipId: string, membershipType: number): SessionPollRequestResult {
+    const db = getDb();
+    const inPrivacyBackoff = db.prepare(
+        `SELECT 1 FROM players WHERE membership_id = ? AND ${IN_SESSION_PRIVACY_BACKOFF}`
+    ).get(membershipId);
+    if (inPrivacyBackoff) return 'privacy_backoff';
+
+    const marked = db.prepare(`
+    UPDATE active_sessions SET reverify_requested_at = COALESCE(reverify_requested_at, unixepoch())
+    WHERE membership_id = ?
+  `).run(membershipId);
+    if (marked.changes > 0) return 'accepted';
+
+    // One statement, so two web processes can't both pass the count and overfill the queue.
+    // DO NOTHING on a repeat keeps the first requested_at: repeated views don't jump the line.
+    db.prepare(`
+    INSERT INTO session_poll_requests (membership_id, membership_type)
+    SELECT ?, ? WHERE (SELECT COUNT(*) FROM session_poll_requests) < ?
+    ON CONFLICT(membership_id) DO NOTHING
+  `).run(membershipId, membershipType, SESSION_POLL_REQUEST_QUEUE_MAX);
+    const pending = db.prepare('SELECT 1 FROM session_poll_requests WHERE membership_id = ?').get(membershipId);
+    return pending ? 'accepted' : 'queue_full';
 }
 
-export function claimSessionPollRequests(_limit: number): SessionPollRequest[] {
-    throw new Error('not implemented');
+/**
+ * The crawler's read of the queue at the start of a cycle. First settles requests whose
+ * player's state changed since they were made: a player now in privacy backoff is dropped
+ * unpolled, and a player who now has a session row has the row marked instead. Then returns
+ * the oldest `limit` of the rest, which stay pending until deleteSessionPollRequests.
+ */
+export function claimSessionPollRequests(limit: number): SessionPollRequest[] {
+    const db = getDb();
+    db.transaction(() => {
+        db.prepare(`
+      DELETE FROM session_poll_requests
+      WHERE membership_id IN (SELECT membership_id FROM players WHERE ${IN_SESSION_PRIVACY_BACKOFF})
+    `).run();
+        db.prepare(`
+      UPDATE active_sessions SET reverify_requested_at = COALESCE(reverify_requested_at, unixepoch())
+      WHERE membership_id IN (SELECT membership_id FROM session_poll_requests)
+    `).run();
+        db.prepare(`
+      DELETE FROM session_poll_requests
+      WHERE membership_id IN (SELECT membership_id FROM active_sessions)
+    `).run();
+    })();
+    return db.prepare(`
+    SELECT membership_id AS membershipId, membership_type AS membershipType
+    FROM session_poll_requests
+    ORDER BY requested_at ASC, rowid ASC
+    LIMIT ?
+  `).all(limit) as SessionPollRequest[];
 }
 
-export function deleteSessionPollRequests(_membershipIds: string[]): void {
-    throw new Error('not implemented');
+/** Consume requests the crawler has handled, whatever the outcome. */
+export function deleteSessionPollRequests(membershipIds: string[]): void {
+    getDb().prepare(`
+    DELETE FROM session_poll_requests WHERE membership_id IN (SELECT value FROM json_each(?))
+  `).run(JSON.stringify(membershipIds));
 }
 
 /**

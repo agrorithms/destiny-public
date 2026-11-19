@@ -19,9 +19,10 @@ interface PlayerRef {
 }
 
 function parsePlayer(value: unknown): PlayerRef | null {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-    const { membershipId, membershipType } = value as Record<string, unknown>;
-    const id = typeof membershipId === 'string' ? membershipId.trim() : '';
+    // Anything that is not an object has no ids to read, and fails the checks below.
+    const { membershipId, membershipType } = (value ?? {}) as Record<string, unknown>;
+    if (typeof membershipId !== 'string') return null;
+    const id = membershipId.trim();
     const type = Number(membershipType);
     if (!isMembershipId(id) || !validMembershipTypes.has(type)) return null;
     return { membershipId: id, membershipType: type };
@@ -49,7 +50,6 @@ export async function POST(request: NextRequest) {
     } catch {
         return json({ error: 'Invalid JSON body' }, 400);
     }
-    if (typeof body !== 'object' || body === null) return json({ error: 'Invalid JSON body' }, 400);
 
     const viewed = parsePlayer(body);
     if (!viewed) return json({ error: 'Invalid membershipId or membershipType' }, 400);
@@ -65,7 +65,8 @@ export async function POST(request: NextRequest) {
         if (!teammate) return json({ error: 'Invalid teammate' }, 400);
     }
 
-    const players = teammate && teammate.membershipId !== viewed.membershipId ? [viewed, teammate] : [viewed];
+    // A teammate who is the viewed player is harmless: the cooldown the first one starts skips the second.
+    const players = teammate ? [viewed, teammate] : [viewed];
 
     let accepted = 0;
     let refusal: { reason: string; status: number } | null = null;

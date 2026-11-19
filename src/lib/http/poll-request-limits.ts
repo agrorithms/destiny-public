@@ -16,7 +16,7 @@ export const DEFAULT_GLOBAL_PER_MIN = 60;
 export const DEFAULT_COOLDOWN_SEC = 300;
 
 function readNonNegativeInt(raw: string | undefined, fallback: number): number {
-    const parsed = parseInt(raw ?? '', 10);
+    const parsed = parseInt(String(raw), 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 

@@ -68,14 +68,30 @@ describe('what is enqueued', () => {
     it('rejects a body naming more than one teammate and queues nothing', async () => {
         const mate = { membershipId: MATE, membershipType: 3 };
         const other = { membershipId: '4611686018488900003', membershipType: 3 };
-        for (const body of [
-            { membershipId: VIEWED, membershipType: 3, teammate: [mate, other] },
-            { membershipId: VIEWED, membershipType: 3, teammates: [mate, other] },
-        ]) {
-            const response = await post(body);
-            expect(response.status).toBe(400);
-        }
+        const asList = await post({ membershipId: VIEWED, membershipType: 3, teammate: [mate, other] });
+        expect(asList.status).toBe(400);
+        const several = await post({ membershipId: VIEWED, membershipType: 3, teammates: [mate, other] });
+        expect(several.status).toBe(400);
+        expect(await several.json()).toEqual({ error: 'At most one teammate' });
         expect(queued()).toEqual([]);
+    });
+
+    it('treats a teammates list of one as an unknown field, and queues only the viewed player', async () => {
+        const response = await post({ membershipId: VIEWED, membershipType: 3, teammates: [{ membershipId: MATE, membershipType: 3 }] });
+        expect(response.status).toBe(202);
+        expect(queued()).toEqual([VIEWED]);
+    });
+
+    it('treats a null teammate as none', async () => {
+        const response = await post({ membershipId: VIEWED, membershipType: 3, teammate: null });
+        expect(response.status).toBe(202);
+        expect(queued()).toEqual([VIEWED]);
+    });
+
+    it('accepts ids with stray whitespace, queued trimmed', async () => {
+        const response = await post({ membershipId: ` ${VIEWED} `, membershipType: 3, teammate: { membershipId: `${MATE}\n`, membershipType: 3 } });
+        expect(response.status).toBe(202);
+        expect(queued()).toEqual([VIEWED, MATE]);
     });
 
     it('ignores fields beyond the ids and stores them nowhere', async () => {
@@ -115,6 +131,9 @@ describe('what is refused', () => {
             expect((await post({ membershipId: VIEWED, membershipType: 3, teammate: { membershipId: bad, membershipType: 3 } })).status).toBe(400);
         }
         expect((await post({ membershipId: 4611686018488900001, membershipType: 3 })).status).toBe(400);
+        expect((await post({ membershipType: 3 })).status).toBe(400);
+        const response = await post({ membershipId: 'abc', membershipType: 3 });
+        expect(await response.json()).toEqual({ error: 'Invalid membershipId or membershipType' });
         expect(queued()).toEqual([]);
     });
 
@@ -128,18 +147,26 @@ describe('what is refused', () => {
 
     it('400s a teammate that is not an object', async () => {
         for (const bad of ['x', 7, true]) {
-            expect((await post({ membershipId: VIEWED, membershipType: 3, teammate: bad })).status).toBe(400);
+            const response = await post({ membershipId: VIEWED, membershipType: 3, teammate: bad });
+            expect(response.status).toBe(400);
+            expect(await response.json()).toEqual({ error: 'Invalid teammate' });
         }
         expect(queued()).toEqual([]);
     });
 
-    it('400s a body that is not JSON', async () => {
-        expect((await post('{not json')).status).toBe(400);
+    it('400s a body that is not JSON, or JSON that is not an object', async () => {
+        const notJson = await post('{not json');
+        expect(notJson.status).toBe(400);
+        expect(await notJson.json()).toEqual({ error: 'Invalid JSON body' });
+        for (const raw of ['null', '7', '"text"', '[]']) expect((await post(raw)).status).toBe(400);
+        expect(queued()).toEqual([]);
     });
 
     it('403s a foreign origin, no origin, and no page token, queueing nothing', async () => {
         const body = { membershipId: VIEWED, membershipType: 3 };
-        expect((await post(body, { origin: 'https://evil.example.com' })).status).toBe(403);
+        const foreign = await post(body, { origin: 'https://evil.example.com' });
+        expect(foreign.status).toBe(403);
+        expect(await foreign.json()).toEqual({ error: 'Forbidden' });
         expect((await post(body, { origin: null })).status).toBe(403);
         expect((await post(body, { omitToken: true })).status).toBe(403);
         expect(queued()).toEqual([]);
@@ -149,6 +176,22 @@ describe('what is refused', () => {
         const response = await withDbQuiesced(() => post({ membershipId: VIEWED, membershipType: 3 }));
         expect(response.status).toBe(503);
         expect(await response.json()).toEqual({ queued: false, reason: 'maintenance' });
+    });
+});
+
+describe('a failure that is not maintenance', () => {
+    it('answers 500 and queues nothing', async () => {
+        const db = testDb();
+        db.exec('ALTER TABLE session_poll_requests RENAME TO session_poll_requests_away');
+        let response: Response;
+        try {
+            response = await post({ membershipId: VIEWED, membershipType: 3 });
+        } finally {
+            db.exec('ALTER TABLE session_poll_requests_away RENAME TO session_poll_requests');
+        }
+        expect(response.status).toBe(500);
+        expect(await response.json()).toEqual({ error: 'Internal server error' });
+        expect(queued()).toEqual([]);
     });
 });
 

@@ -63,7 +63,14 @@ export function stubCrawlerBungie(answers: Record<string, DestinyProfileResponse
  * marked session rows, whoever's they are; other specs leave both behind. This sets them aside
  * (the other requests out of the queue; every other session row fresh and unmarked) and the
  * returned function puts each back exactly as it was, so specs after this one see what they left.
- * Nothing else is touched: the other rows are not the spec's to read (ADR 0003).
+ * Nothing else is touched: rows outside the spec's own fixture namespace belong to other specs
+ * (docs/e2e-coverage.md, "Conventions to keep"), so this only hides them for one cycle.
+ *
+ * Safe only because the suite runs one spec at a time: `workers: 1` with `fullyParallel: false`
+ * in playwright.config.ts. With more workers, specs running at the same time would find their
+ * queued requests gone and their session rows marked fresh for the length of this cycle, and the
+ * returned function would write the values captured here over anything they changed meanwhile.
+ * Raising `workers` means rewriting this to touch only the spec's own rows first.
  */
 export function isolatePollCycle(membershipId: string): () => void {
     const db = getDb();

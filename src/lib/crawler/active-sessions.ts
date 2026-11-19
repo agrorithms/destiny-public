@@ -141,6 +141,7 @@ function classifyCheckFailure(error: unknown, membershipId: string): PlayerActiv
     }
     // Transient failure (timeout / 5xx / network). Report 'error', not 'inactive',
     // so callers don't mistake a Bungie hiccup for the player being offline.
+    // Stryker disable next-line CallExpression,StringLiteral: log output only, no behaviour reads it
     console.error(`[ERROR] Unexpected error checking activity for ${membershipId}:`, (error as Error).message);
     return { status: 'error', session: null };
 }
@@ -627,7 +628,9 @@ export async function pollActiveSessions(
     }
 
     console.log(
+        // Stryker disable next-line StringLiteral,ArithmeticOperator: log output only, no behaviour reads it
         `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length + requestedChecks.length} players checked` +
+        // Stryker disable next-line StringLiteral: log output only, no behaviour reads it
         ` (${requestedChecks.length} by request)` +
         ` (${skippedViaFireteam} skipped via fireteam), ${sessions.size} sessions found`
     );

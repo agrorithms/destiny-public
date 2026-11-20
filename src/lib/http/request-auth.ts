@@ -1,5 +1,5 @@
-// Lightweight request-authenticity guard for the public client-write endpoints (queue-crawl and
-// profile-viewed, which take ids and ask the crawler to look; a browser never writes session or
+// Lightweight request-authenticity guard for the public client-write endpoint (profile-viewed,
+// which takes ids and two flags and asks the crawler to look; a browser never writes session or
 // identity data, see ADR 0010). It accepts browser POSTs, so it's reachable by anyone. This raises the bar against scripted abuse —
 // it is NOT airtight auth (a determined attacker can scrape a token within its TTL):
 //   1. Same-origin check  — Origin/Referer must match the site (blocks CSRF + lazy bots).

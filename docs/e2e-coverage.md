@@ -3060,3 +3060,52 @@ Both reverted; green at HEAD.
   two, so the 2x ceiling is stated in ADR 0010 and pinned in Vitest only.
 - The queue-full 429 and the privacy-backoff decline from the browser: Vitest
   (`tests/routes/profile-viewed.test.ts`) pins both; the page ignores every response.
+
+## 2026-11-20 — #9004 one client-write request: the history crawl folds into "profile viewed"
+
+A profile view now sends **one** client-write request, `POST /api/players/profile-viewed`, where it
+sent two. It carries the ids and two optional flags (ADR 0010): `poll:false` when the page has
+nothing to ask the poll about (no raid found, no stored session), `history:false` for an
+account-wide-private player, whose history crawl is guaranteed to fail. The page sends it once the
+live check and any teammate probe have settled, and sends nothing when both flags would be false.
+The history crawl is queued for the viewed player only, into `crawl_queue`; the poll goes into
+`session_poll_requests` as before. `queue-crawl` is deleted. The suite is now **227 tests**; the
+flow count stays **thirty-four** (no new flow: the profile page's request is one flow).
+
+Specs changed, none added as a new file:
+
+- `e2e/profile-poll-request.spec.ts` (now 11): a raiding player's request is the only POST and the
+  player is in both queues; the teammate case polls both ids and queues the history crawl for the
+  viewed player only; **a player with no stored session and no activity** now sends the request with
+  `poll:false` (history crawl queued, no poll request); **an account-wide-private player with a
+  stored session** sends `history:false` and has no crawl row; **an account-wide-private player with
+  nothing stored** sends no request.
+- `e2e/profile-live-card.spec.ts` and `e2e/profile-roster-names.spec.ts`: the POST list is
+  `['/api/players/profile-viewed']`; the waits on the old route are gone.
+- `e2e/players-api-guard.spec.ts` (now 8): the guard's positive control and three negatives sit on
+  `profile-viewed`; the per-address middleware cut stays; a valid POST to `queue-crawl` answers 404
+  or 405 and queues nothing in `crawl_queue`.
+- `e2e/support/network-log.ts`: `waitForQueueCrawl` removed.
+
+**Bite proof — the red run.** The specs were changed first and run against the previous build
+(`50951f5`, `npm run e2e:nobuild`): **8 failed, 18 passed** across the four files — the raiding
+player and the quiet, private-with-session specs on `poll-request` (one POST expected, two sent),
+the raiding and partly private players on `live-card`, the known-members spec on `roster-names`, the
+history-crawl-route-is-gone spec on the guard (it still answered 202), and the markup spec on
+`roster-names`, whose card never drew on that stale build. Green on the new build (227 of 227).
+Two specs passed on the old page, so one break each, in one build (`playwright test
+e2e/profile-poll-request.spec.ts`: 2 failed, 9 passed):
+
+| Break | Spec that failed |
+| --- | --- |
+| `profileViewedBody` without its "nothing to ask" null | "an account-wide private player with nothing stored sends no request" (a POST was sent) |
+| the route also queues the teammate for a history crawl | "a private player found through a public teammate also names that teammate" (teammate found in the crawl queue) |
+
+Both reverted; green at HEAD.
+
+### What is still NOT covered
+
+- The history crawl's global limiter, the queue cap and the cooldown from a browser: Vitest
+  (`tests/routes/profile-viewed.test.ts`, `tests/db/history-crawl-requests.test.ts`,
+  `src/lib/http/history-crawl-limits.test.ts`) pins them; the page ignores every answer.
+- The crawler draining `crawl_queue` after a view: `tests/crawler/`'s concern, unchanged.

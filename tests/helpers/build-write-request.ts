@@ -17,7 +17,7 @@ export interface WriteRequestOptions {
 
 /**
  * Constructs a NextRequest suitable for testing the client-write endpoint
- * (queue-crawl). The Origin, page token, and
+ * (profile-viewed). The Origin, page token, and
  * x-forwarded-for headers that isTrustedClientWrite checks come from
  * ./write-headers.ts, shared with the Playwright side.
  *

@@ -9,7 +9,7 @@ import {
 } from './request-auth';
 
 /**
- * The only thing standing between the client-write endpoint (queue-crawl) and
+ * The only thing standing between the client-write endpoint (profile-viewed) and
  * anyone with curl. It had no
  * coverage. This file pins both layers described in the module header: the
  * same-origin check, and the short-lived HMAC page token.
@@ -26,7 +26,7 @@ const T0 = new Date('2026-08-03T12:00:00Z').getTime();
 
 /** A request carrying only the headers the guard actually reads. */
 function requestWith(headers: Record<string, string>): NextRequest {
-    return new NextRequest('http://localhost:3100/api/players/queue-crawl', {
+    return new NextRequest('http://localhost:3100/api/players/profile-viewed', {
         method: 'POST',
         headers,
     });

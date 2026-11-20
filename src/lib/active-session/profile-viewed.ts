@@ -1,7 +1,8 @@
 /**
- * What the profile page tells the server when it has seen a raid: the ids of whom the crawler
- * should poll, and nothing else (ADR 0010). No profile, no name, no statement of what the
- * browser saw. The server decides from its own state.
+ * What the profile page tells the server in its one `profile-viewed` request: the ids of the
+ * viewed player (and of the teammate a raid was read from), and whether to ask for a poll and
+ * for the viewed player's history crawl, and nothing else (ADR 0010). No profile, no name, no
+ * statement of what the browser saw. The server decides from its own state.
  */
 
 export interface PlayerRef {

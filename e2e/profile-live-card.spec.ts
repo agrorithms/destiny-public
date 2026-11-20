@@ -9,9 +9,9 @@ import { fulfillBungie } from './support/bungie-stub';
 /**
  * The profile's live card, drawn from the viewer's own Bungie response (#9001). The browser
  * fetches the player's profile with the public key and renders what it got, for that viewer
- * only. Nothing it saw is sent to the server: the only writes a profile view makes are the
- * history-crawl request and, when it saw a raid, the poll request, which carry ids and nothing
- * else (profile-poll-request.spec.ts covers what the poll request names).
+ * only. Nothing it saw is sent to the server: the only write a profile view makes is the one
+ * `profile-viewed` request, which carries ids and the poll/history flags and nothing else
+ * (profile-poll-request.spec.ts covers what it names).
  *
  *   - a raiding player with no stored session: the card appears, and afterwards the Tracker
  *     still has no session row and no player row for them;

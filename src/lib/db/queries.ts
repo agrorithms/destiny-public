@@ -493,14 +493,14 @@ export function requestHistoryCrawl(membershipId: string, membershipType: number
     const db = getDb();
     const queueMax = Math.max(0, parseInt(process.env.HISTORY_CRAWL_REQUEST_QUEUE_MAX || '200', 10));
     // One statement, so two web processes can't both pass the count and overfill the queue.
-    const inserted = db.prepare(`
+    // DO NOTHING on a repeat leaves an existing row as it was.
+    db.prepare(`
     INSERT INTO crawl_queue (membership_id, membership_type, display_name, source, priority, enqueued_at)
     SELECT ?, ?, NULL, 'profile-view', 0, unixepoch()
     WHERE (SELECT COUNT(*) FROM crawl_queue WHERE source = 'profile-view') < ?
     ON CONFLICT(membership_id) DO NOTHING
   `).run(membershipId, membershipType, queueMax);
-    if (inserted.changes > 0) return 'accepted';
-    // Nothing inserted: either the player was already queued or the queue is at its cap.
+    // Queued now, by this insert or an earlier one, or refused because the queue is at its cap.
     const pending = db.prepare('SELECT 1 FROM crawl_queue WHERE membership_id = ?').get(membershipId);
     return pending ? 'accepted' : 'queue_full';
 }

@@ -493,18 +493,20 @@ export function requestHistoryCrawl(membershipId: string, membershipType: number
     const db = getDb();
     const queueMax = Math.max(0, parseInt(process.env.HISTORY_CRAWL_REQUEST_QUEUE_MAX || '200', 10));
     // One statement, so two web processes can't both pass the count and overfill the queue.
-    db.prepare(`
+    const inserted = db.prepare(`
     INSERT INTO crawl_queue (membership_id, membership_type, display_name, source, priority, enqueued_at)
     SELECT ?, ?, NULL, 'profile-view', 0, unixepoch()
     WHERE (SELECT COUNT(*) FROM crawl_queue WHERE source = 'profile-view') < ?
     ON CONFLICT(membership_id) DO NOTHING
   `).run(membershipId, membershipType, queueMax);
+    if (inserted.changes > 0) return 'accepted';
+    // Nothing inserted: either the player was already queued or the queue is at its cap.
     const pending = db.prepare('SELECT 1 FROM crawl_queue WHERE membership_id = ?').get(membershipId);
     return pending ? 'accepted' : 'queue_full';
 }
 
 /** True when the player's crawl backoff (failure or privacy) has not yet expired. */
-export function isPlayerCrawlBackingOff(membershipId: string): boolean {
+function isPlayerCrawlBackingOff(membershipId: string): boolean {
     const db = getDb();
     const row = db.prepare(`
     SELECT 1 FROM players

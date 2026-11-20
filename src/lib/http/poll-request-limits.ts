@@ -16,12 +16,13 @@ import { CooldownGate, FixedWindowLimiter } from './rate-limit';
 const DEFAULT_GLOBAL_PER_MIN = 60;
 const DEFAULT_COOLDOWN_SEC = 300;
 
-function readNonNegativeInt(raw: string | undefined, fallback: number): number {
+export function readNonNegativeInt(raw: string | undefined, fallback: number): number {
     const parsed = parseInt(String(raw), 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export interface PollRequestLimits {
+/** The web-process limits on one kind of profile-view request. */
+export interface RequestLimits {
     /**
      * True when this player was accepted within the cooldown: the request should enqueue nothing.
      * Keyed on the membership id alone, as the queue and the privacy backoff are, so the same id
@@ -35,13 +36,10 @@ export interface PollRequestLimits {
 }
 
 /**
- * Reads `ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN` (default 60) and
- * `ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC` (default 300, the stale re-verify's age and longer
- * than the roughly two-minute poll cycle) once, when called.
+ * One global limiter (`perMinute` attempts a minute, 0 refusing all) and a per-player cooldown
+ * of `cooldownMs`, keyed on the membership id. Each kind of request builds its own.
  */
-export function createPollRequestLimits(env: Record<string, string | undefined> = process.env): PollRequestLimits {
-    const perMinute = readNonNegativeInt(env.ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN, DEFAULT_GLOBAL_PER_MIN);
-    const cooldownMs = readNonNegativeInt(env.ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC, DEFAULT_COOLDOWN_SEC) * 1000;
+export function createRequestLimits(perMinute: number, cooldownMs: number): RequestLimits {
     const limiter = new FixedWindowLimiter(perMinute, 60_000);
     const cooldown = new CooldownGate(cooldownMs);
     return {
@@ -50,4 +48,16 @@ export function createPollRequestLimits(env: Record<string, string | undefined> 
         isOverGlobalLimit: () => perMinute === 0 || limiter.isRateLimited('global'),
         recordAccepted: (player) => cooldown.record(player.membershipId),
     };
+}
+
+/**
+ * Reads `ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN` (default 60) and
+ * `ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC` (default 300, the stale re-verify's age and longer
+ * than the roughly two-minute poll cycle) once, when called.
+ */
+export function createPollRequestLimits(env: Record<string, string | undefined> = process.env): RequestLimits {
+    return createRequestLimits(
+        readNonNegativeInt(env.ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN, DEFAULT_GLOBAL_PER_MIN),
+        readNonNegativeInt(env.ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC, DEFAULT_COOLDOWN_SEC) * 1000,
+    );
 }

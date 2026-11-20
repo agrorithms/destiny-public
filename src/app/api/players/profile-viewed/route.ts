@@ -6,7 +6,7 @@ import { requestHistoryCrawl, requestSessionPoll } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { createHistoryCrawlLimits } from '@/lib/http/history-crawl-limits';
-import { createPollRequestLimits } from '@/lib/http/poll-request-limits';
+import { createPollRequestLimits, type RequestLimits } from '@/lib/http/poll-request-limits';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
 
 // Each kind of request has one global limiter and a per-player cooldown, neither keyed on the
@@ -25,6 +25,38 @@ function parsePlayer(value: unknown): PlayerRef | null {
     const id = membershipId.trim();
     if (!isMembershipId(id) || !VALID_MEMBERSHIP_TYPES.has(membershipType)) return null;
     return { membershipId: id, membershipType };
+}
+
+interface Refusal {
+    reason: string;
+    status: number;
+}
+
+/**
+ * One ask of one kind: the cooldown, then the global limit, then the queue. Answers null when
+ * the ask was accepted, or why it was refused: a 429 for the global limit or a full queue, a 200
+ * for the cooldown or `declinedReason` (the queue's own decline).
+ */
+function ask(
+    kindLimits: RequestLimits,
+    player: PlayerRef,
+    enqueue: (membershipId: string, membershipType: number) => string,
+    declinedReason: string,
+): Refusal | null {
+    if (kindLimits.isCoolingDown(player)) return { reason: 'recently_refreshed', status: 200 };
+    if (kindLimits.isOverGlobalLimit()) return { reason: 'rate_limited', status: 429 };
+    const result = enqueue(player.membershipId, player.membershipType);
+    if (result === 'accepted') {
+        kindLimits.recordAccepted(player);
+        return null;
+    }
+    if (result === 'queue_full') return { reason: 'queue_full', status: 429 };
+    return { reason: declinedReason, status: 200 };
+}
+
+/** A 429 replaces any earlier refusal; a 200 refusal is kept only when nothing came before it. */
+function worse(earlier: Refusal | null, next: Refusal): Refusal {
+    return next.status === 429 ? next : (earlier ?? next);
 }
 
 function json(body: Record<string, unknown>, status = 200): NextResponse {
@@ -80,45 +112,23 @@ export async function POST(request: NextRequest) {
     const polled = flags.poll ? (teammate ? [viewed, teammate] : [viewed]) : [];
 
     let accepted = 0;
-    let refusal: { reason: string; status: number } | null = null;
+    let refusal: Refusal | null = null;
     try {
         for (const player of polled) {
-            if (limits.isCoolingDown(player)) {
-                refusal ??= { reason: 'recently_refreshed', status: 200 };
+            const refused = ask(limits, player, requestSessionPoll, 'privacy_backoff');
+            if (!refused) {
+                accepted += 1;
                 continue;
             }
-            if (limits.isOverGlobalLimit()) {
-                refusal = { reason: 'rate_limited', status: 429 };
-                break;
-            }
-            const result = requestSessionPoll(player.membershipId, player.membershipType);
-            if (result === 'accepted') {
-                limits.recordAccepted(player);
-                accepted += 1;
-            } else if (result === 'queue_full') {
-                refusal = { reason: 'queue_full', status: 429 };
-                break;
-            } else {
-                refusal ??= { reason: 'privacy_backoff', status: 200 };
-            }
+            refusal = worse(refusal, refused);
+            // A 429 stops the poll asks only: the history ask has its own limits.
+            if (refused.status === 429) break;
         }
 
         if (flags.history) {
-            if (historyLimits.isCoolingDown(viewed)) {
-                refusal ??= { reason: 'recently_refreshed', status: 200 };
-            } else if (historyLimits.isOverGlobalLimit()) {
-                refusal = { reason: 'rate_limited', status: 429 };
-            } else {
-                const result = requestHistoryCrawl(viewed.membershipId, viewed.membershipType);
-                if (result === 'accepted') {
-                    historyLimits.recordAccepted(viewed);
-                    accepted += 1;
-                } else if (result === 'queue_full') {
-                    refusal = { reason: 'queue_full', status: 429 };
-                } else {
-                    refusal ??= { reason: 'backing_off', status: 200 };
-                }
-            }
+            const refused = ask(historyLimits, viewed, requestHistoryCrawl, 'backing_off');
+            if (refused) refusal = worse(refusal, refused);
+            else accepted += 1;
         }
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {

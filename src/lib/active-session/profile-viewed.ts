@@ -12,6 +12,10 @@ export interface PlayerRef {
 export interface ProfileViewedBody extends PlayerRef {
     /** The one teammate the raid was read from, for a private player found through a teammate. */
     teammate?: PlayerRef;
+    /** False when the page has nothing to ask the poll about. Omitted means true. */
+    poll?: false;
+    /** False when the viewed player's history crawl is guaranteed to fail. Omitted means true. */
+    history?: false;
 }
 
 /** Where the browser's own Bungie check found a raid for the viewed player. */
@@ -24,21 +28,26 @@ export type RaidSource =
     | null;
 
 /**
- * The request a profile view sends, or null when it sends none. It is sent when the browser's own
- * check found a raid (naming the player the raid was read from), or when the stored baseline had
- * a session for the viewed player, so the crawler re-checks that Fireteam. A player with neither
- * a stored session nor a raid sends nothing.
+ * The one request a profile view sends, or null when it asks for nothing. It asks for a poll
+ * when the browser's own check found a raid (naming the player the raid was read from) or the
+ * stored baseline had a session for the viewed player; and for the viewed player's history crawl
+ * unless the account is private account-wide, where the crawl is guaranteed to fail. The flags
+ * are left out when true.
  */
 export function profileViewedBody(
     viewed: PlayerRef,
     storedSession: boolean,
     raid: RaidSource,
-    _accountPrivate = false,
+    accountPrivate: boolean,
 ): ProfileViewedBody | null {
+    const poll = Boolean(raid) || storedSession;
+    const history = !accountPrivate;
+    if (!poll && !history) return null;
     const body: ProfileViewedBody = { membershipId: viewed.membershipId, membershipType: viewed.membershipType };
     if (raid?.from === 'teammate') {
         body.teammate = { membershipId: raid.teammate.membershipId, membershipType: raid.teammate.membershipType };
-        return body;
     }
-    return raid || storedSession ? body : null;
+    if (!poll) body.poll = false;
+    if (!history) body.history = false;
+    return body;
 }

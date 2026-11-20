@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { PlayerRef } from '@/lib/active-session/profile-viewed';
 import { isMembershipId } from '@/lib/active-session/roster';
 import { VALID_MEMBERSHIP_TYPES } from '@/lib/bungie/search-mapping';
-import { requestSessionPoll } from '@/lib/db/queries';
+import { requestHistoryCrawl, requestSessionPoll } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
+import { createHistoryCrawlLimits } from '@/lib/http/history-crawl-limits';
 import { createPollRequestLimits } from '@/lib/http/poll-request-limits';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
 
-// One global limiter and a per-player cooldown, neither keyed on the caller's address. The
-// queue-length cap is enforced by requestSessionPoll. See poll-request-limits.ts for the
+// Each kind of request has one global limiter and a per-player cooldown, neither keyed on the
+// caller's address, so a refusal of one never touches the other. The queue-length caps are
+// enforced by requestSessionPoll and requestHistoryCrawl. See poll-request-limits.ts for the
 // per-process (2x under PM2 cluster x2) caveat.
 const limits = createPollRequestLimits();
+const historyLimits = createHistoryCrawlLimits();
 
 function parsePlayer(value: unknown): PlayerRef | null {
     // Anything that is not an object has no ids to read, and fails the checks below.
@@ -29,11 +32,12 @@ function json(body: Record<string, unknown>, status = 200): NextResponse {
 }
 
 /**
- * "Profile viewed": the profile page asks the crawler to poll the viewed player and, when the
- * raid was read from a teammate, that one teammate. Ids only (ADR 0010): any other field in the
- * body is ignored, and the route writes no session row and no player row. What it does is
- * `requestSessionPoll`, which marks a listed session for re-verify or queues the player; the
- * crawler does the looking on its next cycle.
+ * "Profile viewed": the one request a profile view sends. It asks the crawler to poll the viewed
+ * player and, when the raid was read from a teammate, that one teammate (`poll`, default true);
+ * and to crawl the viewed player's raid history, never the teammate's (`history`, default true).
+ * Ids and those two flags only (ADR 0010): any other field in the body is ignored, and the route
+ * writes no session row and no player row. The two queues stay separate, each with its own
+ * limits, so a refusal of one kind leaves the other as it was.
  */
 export async function POST(request: NextRequest) {
     if (!isTrustedClientWrite(request)) {
@@ -50,6 +54,16 @@ export async function POST(request: NextRequest) {
     const viewed = parsePlayer(body);
     if (!viewed) return json({ error: 'Invalid membershipId or membershipType' }, 400);
 
+    // A flag that is present must be a boolean, and at least one kind must be asked for.
+    const flags: Record<'poll' | 'history', boolean> = { poll: true, history: true };
+    for (const name of ['poll', 'history'] as const) {
+        const value = body[name];
+        if (value === undefined) continue;
+        if (typeof value !== 'boolean') return json({ error: `Invalid ${name}` }, 400);
+        flags[name] = value;
+    }
+    if (!flags.poll && !flags.history) return json({ error: 'Nothing to ask for' }, 400);
+
     // At most one teammate. An array under either name is a body naming several.
     const teammates = body.teammates;
     if (Array.isArray(teammates) && teammates.length > 1) {
@@ -63,12 +77,12 @@ export async function POST(request: NextRequest) {
 
     // A teammate who is the viewed player is harmless: the cooldown the first one starts skips the
     // second, whatever type each was sent under.
-    const players = teammate ? [viewed, teammate] : [viewed];
+    const polled = flags.poll ? (teammate ? [viewed, teammate] : [viewed]) : [];
 
     let accepted = 0;
     let refusal: { reason: string; status: number } | null = null;
     try {
-        for (const player of players) {
+        for (const player of polled) {
             if (limits.isCoolingDown(player)) {
                 refusal ??= { reason: 'recently_refreshed', status: 200 };
                 continue;
@@ -88,6 +102,24 @@ export async function POST(request: NextRequest) {
                 refusal ??= { reason: 'privacy_backoff', status: 200 };
             }
         }
+
+        if (flags.history) {
+            if (historyLimits.isCoolingDown(viewed)) {
+                refusal ??= { reason: 'recently_refreshed', status: 200 };
+            } else if (historyLimits.isOverGlobalLimit()) {
+                refusal = { reason: 'rate_limited', status: 429 };
+            } else {
+                const result = requestHistoryCrawl(viewed.membershipId, viewed.membershipType);
+                if (result === 'accepted') {
+                    historyLimits.recordAccepted(viewed);
+                    accepted += 1;
+                } else if (result === 'queue_full') {
+                    refusal = { reason: 'queue_full', status: 429 };
+                } else {
+                    refusal ??= { reason: 'backing_off', status: 200 };
+                }
+            }
+        }
     } catch (error) {
         if (isDatabaseMaintenanceError(error)) {
             return json({ queued: false, reason: 'maintenance' }, 503);
@@ -97,6 +129,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (accepted > 0) return json({ queued: true }, 202);
-    // refusal is always set when nothing was accepted: every player either queued or was refused.
+    // refusal is always set when nothing was accepted: every ask either queued or was refused.
     return json({ queued: false, reason: refusal!.reason }, refusal!.status);
 }

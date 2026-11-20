@@ -214,19 +214,19 @@ describe('the limits', () => {
         post = await loadRoute({ ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN: '3' });
         const statuses: number[] = [];
         for (let i = 0; i < 5; i++) {
-            const response = await post({ membershipId: `46116860184889100${i}0`, membershipType: 3 }, { ip: `10.1.0.${i}` });
+            const response = await post({ membershipId: `46116860184889100${i}0`, membershipType: 3, history: false }, { ip: `10.1.0.${i}` });
             statuses.push(response.status);
         }
         expect(statuses).toEqual([202, 202, 202, 429, 429]);
         expect(queued()).toHaveLength(3);
-        const refused = await post({ membershipId: '4611686018488910099', membershipType: 3 }, { ip: '10.1.0.99' });
+        const refused = await post({ membershipId: '4611686018488910099', membershipType: 3, history: false }, { ip: '10.1.0.99' });
         expect(await refused.json()).toEqual({ queued: false, reason: 'rate_limited' });
     });
 
     it('counts each id as one hit against the global limit', async () => {
         post = await loadRoute({ ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN: '2' });
-        await post({ membershipId: VIEWED, membershipType: 3, teammate: { membershipId: MATE, membershipType: 3 } });
-        const response = await post({ membershipId: '4611686018488900003', membershipType: 3 });
+        await post({ membershipId: VIEWED, membershipType: 3, history: false, teammate: { membershipId: MATE, membershipType: 3 } });
+        const response = await post({ membershipId: '4611686018488900003', membershipType: 3, history: false });
         expect(response.status).toBe(429);
     });
 
@@ -283,14 +283,14 @@ describe('the limits', () => {
 
     it('429s with the queue full, and does not start a cooldown for the refused player', async () => {
         post = await loadRoute({ ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX: '1' });
-        await post({ membershipId: VIEWED, membershipType: 3 });
-        const full = await post({ membershipId: MATE, membershipType: 3 });
+        await post({ membershipId: VIEWED, membershipType: 3, history: false });
+        const full = await post({ membershipId: MATE, membershipType: 3, history: false });
         expect(full.status).toBe(429);
         expect(await full.json()).toEqual({ queued: false, reason: 'queue_full' });
         expect(queued()).toEqual([VIEWED]);
 
         testDb().prepare('DELETE FROM session_poll_requests').run();
-        const retry = await post({ membershipId: MATE, membershipType: 3 });
+        const retry = await post({ membershipId: MATE, membershipType: 3, history: false });
         expect(retry.status).toBe(202);
     });
 
@@ -298,7 +298,7 @@ describe('the limits', () => {
         seedPrivacyBackoff(VIEWED);
         expect(requestSessionPoll(VIEWED, 3)).toBe('privacy_backoff');
 
-        const response = await post({ membershipId: VIEWED, membershipType: 3 });
+        const response = await post({ membershipId: VIEWED, membershipType: 3, history: false });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ queued: false, reason: 'privacy_backoff' });
         expect(queued()).toEqual([]);

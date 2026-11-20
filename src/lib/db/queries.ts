@@ -480,9 +480,27 @@ export function drainCrawlQueue(limit: number): CrawlQueueRow[] {
 
 export type HistoryCrawlRequestResult = 'accepted' | 'queue_full' | 'backing_off';
 
-/** Stub: a profile view's history-crawl request, capped (#9004). */
-export function requestHistoryCrawl(_membershipId: string, _membershipType: number): HistoryCrawlRequestResult {
-    throw new Error('not implemented');
+/**
+ * A profile view's request to crawl a player's raid history. Declined while the player is in
+ * crawl backoff; refused when the profile-view rows already queued reach
+ * HISTORY_CRAWL_REQUEST_QUEUE_MAX (default 200). Only those rows count: the crawler's own
+ * session_end enqueues are uncapped and must not crowd out profile views, and a session_end
+ * upsert over a profile-view row only lowers the count. A player already queued answers
+ * 'accepted' and the row is left as it was, so repeated views don't jump the line.
+ */
+export function requestHistoryCrawl(membershipId: string, membershipType: number): HistoryCrawlRequestResult {
+    if (isPlayerCrawlBackingOff(membershipId)) return 'backing_off';
+    const db = getDb();
+    const queueMax = Math.max(0, parseInt(process.env.HISTORY_CRAWL_REQUEST_QUEUE_MAX || '200', 10));
+    // One statement, so two web processes can't both pass the count and overfill the queue.
+    db.prepare(`
+    INSERT INTO crawl_queue (membership_id, membership_type, display_name, source, priority, enqueued_at)
+    SELECT ?, ?, NULL, 'profile-view', 0, unixepoch()
+    WHERE (SELECT COUNT(*) FROM crawl_queue WHERE source = 'profile-view') < ?
+    ON CONFLICT(membership_id) DO NOTHING
+  `).run(membershipId, membershipType, queueMax);
+    const pending = db.prepare('SELECT 1 FROM crawl_queue WHERE membership_id = ?').get(membershipId);
+    return pending ? 'accepted' : 'queue_full';
 }
 
 /** True when the player's crawl backoff (failure or privacy) has not yet expired. */

@@ -3,7 +3,7 @@ import { ANY_AGE_SECONDS, RAID_A, seedPlayerWithSession } from './support/seed-w
 import { seedPlayer } from '../tests/helpers/seed';
 import { buildActiveProfile, buildInactiveProfile, buildPrivateProfile } from '../tests/helpers/bungie-profile-builder';
 import { getActiveSessionContainingPlayer, getActiveSessionForPlayer, getPlayerIdentity } from '../src/lib/db/queries';
-import { interceptApiCalls, waitForProfileViewed, waitForQueueCrawl } from './support/network-log';
+import { interceptApiCalls, waitForProfileViewed } from './support/network-log';
 import { fulfillBungie } from './support/bungie-stub';
 
 /**
@@ -81,7 +81,6 @@ test.describe('profile live card', () => {
             partyMembers: [{ membershipId: RAIDING_ID, displayName: RAIDING_NAME, status: 1 }],
         });
         await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, profile));
-        const queueCrawlDone = waitForQueueCrawl(page);
         const profileViewedDone = waitForProfileViewed(page);
 
         await page.goto(`/player/3/${RAIDING_ID}`);
@@ -90,16 +89,15 @@ test.describe('profile live card', () => {
         // An unknown player's heading comes from the same Bungie response.
         await expect(page.getByRole('heading', { level: 1, name: `${RAIDING_NAME}#${RAIDING_CODE}` })).toBeVisible();
 
-        await queueCrawlDone;
         await profileViewedDone;
         await expect(page.getByText('Checking live status…')).toHaveCount(0);
 
         expect(getActiveSessionContainingPlayer(RAIDING_ID, ANY_AGE_SECONDS)).toBeNull();
         expect(getPlayerIdentity(RAIDING_ID)).toBeNull();
 
-        // The two requests that ask the crawler to look are the only writes, and both carry the page token.
+        // The one request that asks the crawler to look is the only write, and it carries the page token.
         const posts = log.filter((entry) => entry.method === 'POST');
-        expect(posts.map((entry) => entry.path)).toEqual(['/api/players/queue-crawl', '/api/players/profile-viewed']);
+        expect(posts.map((entry) => entry.path)).toEqual(['/api/players/profile-viewed']);
         expect(posts.every((entry) => entry.hasPageToken)).toBe(true);
         expect(log.some((e) => e.method === 'GET' && e.path.includes('part=active'))).toBe(true);
     });
@@ -112,7 +110,7 @@ test.describe('profile live card', () => {
             bungieGlobalDisplayNameCode: LEFT_CODE,
         });
         await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, inactive));
-        const queueCrawlDone = waitForQueueCrawl(page);
+        const profileViewedDone = waitForProfileViewed(page);
 
         await page.goto(`/player/3/${LEFT_ID}`);
 
@@ -120,7 +118,7 @@ test.describe('profile live card', () => {
         await expect(page.getByRole('heading', { level: 2, name: 'Active Session' })).toHaveCount(0, { timeout: 10_000 });
         await expect(raidHeading(page)).toHaveCount(0);
 
-        await queueCrawlDone;
+        await profileViewedDone;
         await expect(page.getByText('Checking live status…')).toHaveCount(0);
 
         // Removing it is the crawler's job, on its own Bungie call (ADR 0005).
@@ -174,10 +172,7 @@ test.describe('profile live card', () => {
 
         expect(getActiveSessionContainingPlayer(HIDDEN_ID, ANY_AGE_SECONDS)).toBeNull();
         expect(getActiveSessionContainingPlayer(TEAMMATE_ID, ANY_AGE_SECONDS)).toBeNull();
-        expect(log.filter((e) => e.method === 'POST').map((e) => e.path)).toEqual([
-            '/api/players/queue-crawl',
-            '/api/players/profile-viewed',
-        ]);
+        expect(log.filter((e) => e.method === 'POST').map((e) => e.path)).toEqual(['/api/players/profile-viewed']);
     });
 
     test('an account-wide private player shows the stored session containing them', async ({ page }) => {

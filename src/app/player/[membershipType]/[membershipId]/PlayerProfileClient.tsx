@@ -169,35 +169,22 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
         direction: 'asc',
     });
     const [expandedTeammateRaids, setExpandedTeammateRaids] = useState<Set<string>>(new Set());
-    const hasQueuedOnIdentity = useRef<string | null>(null);
     const hasAskedOnIdentity = useRef<string | null>(null);
 
-    // Fire-and-forget: queue a background crawl once per profile visit so the next visitor
-    // (and the next load) sees fresher data. Deferred until the live privacy check settles:
-    // account-wide-private (1665) players are skipped since their history crawl is guaranteed
-    // to fail. Server enforces a per-player cooldown + crawl backoff.
-    const queueCrawlOnce = useCallback((opts?: { skip?: boolean }) => {
-        if (!membershipId || !membershipType) return;
-
-        const identityKey = `${membershipType}:${membershipId}`;
-        if (hasQueuedOnIdentity.current === identityKey) return;
-        hasQueuedOnIdentity.current = identityKey;
-        if (opts?.skip) return;
-
-        postClientWrite('/api/players/queue-crawl', { membershipType: Number(membershipType), membershipId }, pageToken);
-    }, [membershipId, membershipType, pageToken]);
-
-    // Fire-and-forget: ask the crawler to poll this player (and the teammate the raid was read
-    // from, if any) on its next cycle. Ids only (ADR 0010); the answer, a refusal or a failure
-    // changes nothing on screen. Once per profile visit, and only when there is something to ask:
-    // the browser's own check found a raid, or the stored baseline had a session for this player.
-    const askCrawlerToLook = useCallback((storedSession: boolean, raid: RaidSource) => {
+    // Fire-and-forget: the one request a profile view sends. It asks the crawler to poll this
+    // player (and the teammate the raid was read from, if any) on its next cycle, and to refresh
+    // the player's raid history in the background. Ids and two flags only (ADR 0010); the answer,
+    // a refusal or a failure changes nothing on screen. Once per profile visit, after the live
+    // check settles: the history crawl is skipped for an account-wide-private (1665) player, whose
+    // crawl is guaranteed to fail, and the poll only when the browser's own check found a raid or
+    // the stored baseline had a session. The server enforces its limits and the crawl backoff.
+    const askCrawlerToLook = useCallback((storedSession: boolean, raid: RaidSource, accountPrivate: boolean) => {
         if (!membershipId || !membershipType) return;
         const identityKey = `${membershipType}:${membershipId}`;
         if (hasAskedOnIdentity.current === identityKey) return;
-        const body = profileViewedBody({ membershipId, membershipType: Number(membershipType) }, storedSession, raid);
-        if (!body) return;
         hasAskedOnIdentity.current = identityKey;
+        const body = profileViewedBody({ membershipId, membershipType: Number(membershipType) }, storedSession, raid, accountPrivate);
+        if (!body) return;
 
         postClientWrite('/api/players/profile-viewed', body, pageToken);
     }, [membershipId, membershipType, pageToken]);
@@ -226,9 +213,8 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                 setLiveChecking(true);
                 void checkLiveCard(Number(membershipType), membershipId, data.player, setActiveSession)
                     .then((live) => {
-                        // Privacy status is now known — safe to decide on the background crawl.
-                        queueCrawlOnce({ skip: live.accountPrivate });
-                        void live.raid.then((raid) => askCrawlerToLook(storedSession, raid));
+                        // Privacy status is now known; the raid (and any teammate probe) settles after it.
+                        void live.raid.then((raid) => askCrawlerToLook(storedSession, raid, live.accountPrivate));
                         if (live.player) setHeaderPlayer(live.player);
                         if (live.privacyRestricted) {
                             setPrivacyRestricted(true);
@@ -236,9 +222,8 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
                     })
                     .catch((err) => {
                         // Keep the DB baseline already on screen. Non-privacy failure
-                        // (network etc.) → still queue the crawl (fail open).
-                        queueCrawlOnce();
-                        askCrawlerToLook(storedSession, null);
+                        // (network etc.) → still ask for the crawl (fail open).
+                        askCrawlerToLook(storedSession, null, false);
                         console.error("Failed to check the profile's live card:", err);
                     })
                     .finally(() => setLiveChecking(false));
@@ -249,7 +234,7 @@ export default function PlayerProfileClient({ pageToken }: { pageToken: string }
         } finally {
             setActiveLoading(false);
         }
-    }, [membershipId, membershipType, queueCrawlOnce, askCrawlerToLook]);
+    }, [membershipId, membershipType, askCrawlerToLook]);
 
     const fetchProfile = useCallback(async (opts?: { refresh?: boolean }) => {
         if (!membershipType || !membershipId) return;

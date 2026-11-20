@@ -6,8 +6,8 @@ import { PAGE_TOKEN_HEADER } from '../../src/lib/http/request-auth';
  *
  * What Vitest cannot provide: which requests the profile page actually makes, in
  * what order. Since #9001 the claim that matters most is a negative one, that the
- * only write a profile view sends is the history-crawl request (ids only) and
- * every other call is a read. `hasPageToken` is recorded per entry because the
+ * only write a profile view sends is the one "profile viewed" request (ids and two
+ * flags) and every other call is a read. `hasPageToken` is recorded per entry because the
  * token surviving the RSC boundary into a real header is itself an assertion no
  * unit test can make.
  *
@@ -45,17 +45,9 @@ export function interceptApiCalls(page: Page): NetworkEntry[] {
 }
 
 /**
- * The profile specs wait on queue-crawl, which is fire-and-forget — the
- * waiter has to be armed before navigating or it can miss the response.
- */
-export function waitForQueueCrawl(page: Page) {
-    return waitForPost(page, '/api/players/queue-crawl');
-}
-
-/**
- * The "profile viewed" request (#9003) is fire-and-forget too, and it can follow the page's
- * live check by a probe or two, so the waiter is armed before navigating, as for queue-crawl.
- * Resolves on the response, whatever its status.
+ * The "profile viewed" request (#9003, #9004) is fire-and-forget, and it can follow the page's
+ * live check by a probe or two, so the waiter is armed before navigating or it can miss the
+ * response. Resolves on the response, whatever its status.
  */
 export function waitForProfileViewed(page: Page) {
     return waitForPost(page, '/api/players/profile-viewed');

@@ -20,11 +20,10 @@ export interface WriteHeaderOptions {
      *  no-origin-at-all case isSameOrigin() falls through to. */
     origin: string | null;
     /**
-     * Sets x-forwarded-for. Both middleware.ts and src/lib/http/request-ip.ts
-     * resolve the client IP the same way (cf-connecting-ip, then the first
-     * x-forwarded-for entry), so this one header isolates a test case from every
-     * rate limiter in the stack. Give each case its own value: the limiters are
-     * per-process singletons in the server that no database reset can reach.
+     * Sets x-forwarded-for. middleware.ts resolves the client IP from
+     * cf-connecting-ip, then the first x-forwarded-for entry, so this one header
+     * isolates a test case from every address-keyed rate limiter in the stack.
+     * Give each case its own value: the limiters are per-process singletons in the server that no database reset can reach.
      */
     ip: string;
     /** Sends no page-token header at all. Otherwise a freshly minted valid one

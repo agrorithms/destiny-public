@@ -90,7 +90,7 @@ describe('CooldownGate', () => {
 
 describe('FixedWindowLimiter', () => {
     it('allows exactly `limit` hits inside one window', () => {
-        // A per-IP window of 10 a minute, as the retired history-crawl route used.
+        // A per-IP window of 10 a minute.
         const limiter = new FixedWindowLimiter(10, 60_000);
         for (let i = 0; i < 10; i++) {
             expect(limiter.isRateLimited('1.2.3.4')).toBe(false);

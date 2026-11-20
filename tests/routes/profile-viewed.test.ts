@@ -345,7 +345,10 @@ describe('the history crawl (#9004)', () => {
         for (const body of [
             { poll: false, history: false }, { poll: 'false' }, { history: 0 }, { poll: null }, { history: 'no' },
         ]) {
-            expect((await post({ membershipId: VIEWED, membershipType: 3, ...body })).status).toBe(400);
+            const response = await post({ membershipId: VIEWED, membershipType: 3, ...body });
+            expect(response.status).toBe(400);
+            // The refusal says why in the body, as every other 400 here does.
+            expect((await response.json()).error).toEqual(expect.stringMatching(/\S/));
         }
         expect(queued()).toEqual([]);
         expect(crawlQueued()).toEqual([]);

@@ -1,4 +1,4 @@
-import { createRequestLimits, readNonNegativeInt, type RequestLimits } from './poll-request-limits';
+import { createRequestLimits, readNonNegativeInt, type RequestLimits } from './request-limits';
 
 /**
  * The two limits on history-crawl requests that sit in the web process (#9004): one limiter

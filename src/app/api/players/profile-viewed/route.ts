@@ -6,12 +6,13 @@ import { requestHistoryCrawl, requestSessionPoll } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { createHistoryCrawlLimits } from '@/lib/http/history-crawl-limits';
-import { createPollRequestLimits, type RequestLimits } from '@/lib/http/poll-request-limits';
+import { createPollRequestLimits } from '@/lib/http/poll-request-limits';
+import type { RequestLimits } from '@/lib/http/request-limits';
 import { isTrustedClientWrite } from '@/lib/http/request-auth';
 
 // Each kind of request has one global limiter and a per-player cooldown, neither keyed on the
 // caller's address, so a refusal of one never touches the other. The queue-length caps are
-// enforced by requestSessionPoll and requestHistoryCrawl. See poll-request-limits.ts for the
+// enforced by requestSessionPoll and requestHistoryCrawl. See request-limits.ts for the
 // per-process (2x under PM2 cluster x2) caveat.
 const limits = createPollRequestLimits();
 const historyLimits = createHistoryCrawlLimits();

@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { PlayerRef } from '@/lib/active-session/profile-viewed';
 import { isMembershipId } from '@/lib/active-session/roster';
 import { VALID_MEMBERSHIP_TYPES } from '@/lib/bungie/search-mapping';
-import { requestHistoryCrawl, requestSessionPoll } from '@/lib/db/queries';
+import {
+    requestHistoryCrawl,
+    requestSessionPoll,
+    type HistoryCrawlRequestResult,
+    type SessionPollRequestResult,
+} from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
 import { createHistoryCrawlLimits } from '@/lib/http/history-crawl-limits';
@@ -38,11 +43,11 @@ interface Refusal {
  * the ask was accepted, or why it was refused: a 429 for the global limit or a full queue, a 200
  * for the cooldown or `declinedReason` (the queue's own decline).
  */
-function ask(
+function ask<Result extends HistoryCrawlRequestResult | SessionPollRequestResult>(
     kindLimits: RequestLimits,
     player: PlayerRef,
-    enqueue: (membershipId: string, membershipType: number) => string,
-    declinedReason: string,
+    enqueue: (membershipId: string, membershipType: number) => Result,
+    declinedReason: NoInfer<Exclude<Result, 'accepted' | 'queue_full'>>,
 ): Refusal | null {
     if (kindLimits.isCoolingDown(player)) return { reason: 'recently_refreshed', status: 200 };
     if (kindLimits.isOverGlobalLimit()) return { reason: 'rate_limited', status: 429 };

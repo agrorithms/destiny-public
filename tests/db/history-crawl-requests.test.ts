@@ -1,7 +1,19 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { enqueueCrawl, requestHistoryCrawl } from '@/lib/db/queries';
 import { resetTestDb, testDb } from '../helpers/db';
-import { seedCrawlBackoff, seedPlayer } from '../helpers/seed';
+import { seedCrawlBackoff } from '../helpers/seed';
+
+// The crawl backoff is written and checked against SQLite's own clock, which fake timers can't
+// move, so the case that waits one out does so in real time. A two-second backoff keeps that
+// wait short and still leaves a full second for the cases that check a backoff still running.
+// queries.ts reads the knob at import, so it is set before any import runs.
+const BACKOFF_SEC = vi.hoisted(() => {
+    process.env.CRAWLER_PRIVACY_BACKOFF_SEC = '2';
+    return 2;
+});
+afterAll(() => {
+    delete process.env.CRAWLER_PRIVACY_BACKOFF_SEC;
+});
 
 /**
  * History-crawl requests (#9004): a profile view asks the crawler to crawl a player's raid
@@ -30,10 +42,12 @@ describe('requestHistoryCrawl', () => {
         expect(rows()).toEqual([]);
     });
 
-    it('queues a player whose backoff has run out', () => {
-        seedPlayer(ID, 'Backoff#0001', 1);
-        testDb().prepare('UPDATE players SET next_eligible_at = unixepoch() - 5 WHERE membership_id = ?').run(ID);
+    it('queues a player whose backoff has run out', async () => {
+        seedCrawlBackoff(ID);
+        expect(requestHistoryCrawl(ID, 3)).toBe('backing_off');
+        await new Promise((resolve) => setTimeout(resolve, BACKOFF_SEC * 1000));
         expect(requestHistoryCrawl(ID, 3)).toBe('accepted');
+        expect(rows()).toEqual([{ membership_id: ID, source: 'profile-view', priority: 0 }]);
     });
 
     it('refuses at the cap, counting profile-view rows only', () => {

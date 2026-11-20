@@ -2907,6 +2907,164 @@ Both reverted; green at HEAD.
 - The 30-day range's per-raid estimates: the 3-hour grid can leave no whole Provisional step.
 - The values of the per-raid estimates: hour-of-day dependent; Vitest pins them.
 
+## 2026-11-07 — #204 the Raid Activity Scope (`?scope=`)
+
+`e2e/activity-scope.spec.ts` — **new**, nine specs, kept out of the 1,166-line `activity.spec.ts`. The
+suite is now **thirty-four flows, 221 tests including the two canary setups**. No existing spec changed
+and none changed its expectations: the full suite went 212 passed before the page changed (the red run)
+and 221 after.
+
+**What the page gained:** a second row of links under the range presets (`activity-scope`, `nav`
+labelled Scope): **All · Fresh · Full Clears**, each with `aria-current` and a one-sentence `title`,
+written as `?scope=fresh|full` and left out for All. The range links, the raid picker and the `raids`
+clean-up redirect carry the scope. The intro (`activity-intro`) says which runs are counted in its
+second sentence. The chart, the per-raid panel, its default raids and the per-raid estimates follow
+the scope; one cache entry per range holds all three.
+
+**Seed:** no run was added. `seedActivityRuns` re-flags runs 36 hours back or more, so All Attempts is
+exactly what it was: of the 48-hour peak's three Salvation's Edge runs one is a Full Clear and one an
+unfinished Fresh Run, as is the daily run 54 hours back; both Last Wish runs are Full Clears; Vault of
+Glass's run 40 hours back is an unfinished Fresh Run. Over 7 days the busiest hour is then 3 / 2 / 1
+(`ACTIVITY_SCOPE_PEAKS`), the default raids are SE·KF·VoG / SE·LW·VoG / LW·SE
+(`ACTIVITY_SCOPE_TOP_RAIDS`), and Salvation's Edge has one Full Clear in the training week against the
+server's minimum of 6. The Full Clears are Completions by members with no `players` row, all 44 hours
+back or more, past the 24-hour default window every leaderboard, Fastest Clears and Difficulty spec reads.
+
+1. **Each link sets `?scope=` and redraws the total line** (peak 3 → 2 → 1, three different `d`s), and
+   All goes back to `?range=7d` with no `scope`.
+2. **Each link's `title`, and the intro** follows the scope (and names no other).
+3. **The scope survives a range switch and a reload** (`?range=30d&scope=full`).
+4. **Picked raids survive a scope switch, and a raid pick keeps the scope.**
+5. **An unreadable or repeated scope reads as All Attempts, with no redirect** (`nonsense`, `Full`,
+   `fresh&full`).
+6. **The default raids follow the scope.**
+7. **Salvation's Edge's estimate** is dashed under All Attempts and gone under Full Clears, with the
+   note naming it.
+8. **JavaScript off:** the links are plain links that load their scope.
+9. **At 360px:** both rows inside the viewport, the scope row under the presets, `expectNoOverflow`
+   under each scope.
+
+**Bite proof — the red run.** The seed and the spec were committed before the page changed (`1b655c0`):
+the full suite went **9 failed, 212 passed**. All nine new specs failed and nothing else did. Most
+failed on the missing control, so the assertions after it were broken on purpose, in three builds
+(`npm run e2e -- e2e/activity-scope.spec.ts`). Three, because `expectScopeDrawn` checks the intro
+before the peak, so an intro break hides a data break:
+
+| Build | Break | Spec that failed, and on what |
+| --- | --- | --- |
+| A | the intro always All Attempts' sentence | 2 ("each link carries its tooltip…"), at Fresh's intro |
+| A | the range links drop the scope | 3, `?range=30d` without `scope=full` |
+| A | `parseActivityScope` takes the first of a repeated value | 5, Fresh marked for `?scope=fresh&scope=full` |
+| A | Full Clears served All Attempts' series | 6 (`kings_fall, vault_of_glass` drawn), 7 (the dashed segment still there) |
+| B | Full Clears served All Attempts' series | 1 and 8, `Busiest hour: 3` where 1 was expected (JavaScript off too) |
+| B | the raid picker drops the scope | 4, `?range=7d&raids=…` without `scope=fresh` |
+| C | the scope row given `min-w-[400px]` | 9, `elements overflow the viewport` |
+
+All reverted; green at HEAD.
+
+### What is still NOT covered
+
+- The scope control during maintenance: it sits outside the maintenance branch, but no spec puts the
+  server into maintenance on `/activity`.
+- The Morgeth Pantheon's zero under the narrower scopes: Vitest's (a finished Checkpoint Run is never
+  a Full Clear). The seed has no Pantheon run.
+- The values of each scope's Provisional estimate: hour-of-day dependent; Vitest pins them.
+
+## 2026-11-12 — #200 the Raid Activity page's Raid Stats tab (`?view=stats`)
+
+`e2e/activity-stats.spec.ts` — **new**, seventeen specs (sixteen at first, the seventeenth from review
+fix loop 1, below). The suite is now **thirty-five flows, 238 tests including the two canary setups**. No existing spec changed and none changed its expectations: the
+full suite went 221 passed and 16 failed before the page changed (the red run, `fa899ef`), with the
+re-statted seed already in.
+
+**What the page gained:** a tab strip above the range presets (`activity-view`, `nav` labelled View):
+**Raids in Progress · Raid Stats**, links with `aria-current`, `?view=stats` written only for the
+stats tab. Every link on the page is now one `ActivityUrlState` with a field changed
+(`activity-url.ts`), landed first as a refactor with every `/activity` spec unchanged (`aa21bf2`). The
+stats tab hides the raid picker; its tab links drop `raids`, and a `?view=stats&raids=…` is
+redirected without them. Its board (`raid-stats-board`) has one card per raid with instances in the
+range (`raid-stats-card`, `data-raid`), in the raid table's order: Clear Time over Full Clears
+(`raid-stats-clear-time`), KDA (`raid-stats-kda`) and a class line (`raid-stats-classes`) under the
+scope, each panel's sample muted beside it (`raid-stats-sample`), or "N runs, too few to show" under
+three. At 30 days one line (`activity-full-clears-only`) replaces the scope links whatever the scope,
+and the tab shows Full Clears. The board streams on a cold cache behind two `Suspense` boundaries; a
+warm one is in the first HTML.
+
+**Seed:** no run was added. `seedActivityRuns` gives each kind of run's one member its own class and
+stats (`ACTIVITY_MEMBER_BY_KIND`): Checkpoint Runs a Titan at KDA 5, unfinished Fresh Runs a Hunter at
+30, Full Clears the seeder's default Warlock at 70. Raids in Progress counts instances, so no chart
+moved. Salvation's Edge over 7 days is then 19 / 9 / 7 Player-Runs under All / Fresh / Full Clears, with
+seven Full Clears (`RAID_STATS_WEEK`). The Desert Perpetual's one Difficulty-world run is the too-few
+card (`RAID_STATS_TOO_FEW`).
+
+1. **Maintenance**, first in the file: the 24-hour stats tab with the Tracker quiesced
+   (`withDbQuiesced`, the production flag) says Raid Stats is unavailable and keeps the tabs and links.
+   It throws a named precondition error if that URL's frame was already cached, since a cached frame is
+   served through maintenance (as the chart's series is).
+2. **The tab strip**: the chart current on a plain link; Raid Stats sets `?view=stats`, survives a
+   reload, and the chart tab goes back.
+3. **An unreadable or repeated `view`** shows the chart, with no redirect.
+4. **The cards in the raid table's order**, one per raid that ran in the range.
+5. **The range and scope links keep the tab**, and the intro follows both.
+6. **A tab switch drops the raids**, and the chart tab lands on the range's top raids.
+7. **A stats link with raids is redirected** to the same link without them.
+8. **A scope switch changes KDA and Classes and leaves Clear Time alone** (All → Full Clears → Fresh).
+9. **The too-few card** reads "1 run, too few to show" in both panels, with no figures and no class line.
+10–12. **At 30 days under `all`, `fresh` and `full`**: the line, no scope links, the Full Clears intro and
+   Full Clears' figures.
+13. **The chart tab keeps the scope** chosen before a 30-day stats visit.
+14. **JavaScript off, warm:** every panel, no skeleton and no `<noscript>` line (warmed by one earlier
+   request to the same server).
+15. **JavaScript off, warm, at 30 days** (`?range=30d&scope=fresh&view=stats`): the "30 days shows
+   Full Clears only" line in place of the scope links, and Salvation's Edge's Full Clears card, with no
+   skeleton and no `<noscript>` line (warmed as 14 is).
+16. **JavaScript off:** the tabs are plain links, the chart is drawn, and a stats link with raids is
+   cleaned up.
+17. **At 360px**, at 7 and 30 days: the strip and a card inside the viewport, `expectNoOverflow`.
+
+The spec reads only visible cards: on a cold load React keeps the finished board in a hidden segment
+beside the fallback until it reveals it, which can be after `load`.
+
+**Bite proof — the red run, then one build of breaks.** The seed and the spec were committed before
+the page (`fa899ef`): **16 failed, 221 passed**, every new spec and nothing else. Most failed on the
+missing strip, so the assertions behind it were broken on purpose in one build
+(`npx playwright test e2e/activity-stats.spec.ts`, 10 failed, 8 passed), then reverted:
+
+| Break | Spec that failed, and on what |
+| --- | --- |
+| the 24h stats URL requested once before the quiesce | 1, with the precondition error |
+| a repeated `view` read as its first value | 3, `view=stats&view=stats` drew the board |
+| the tab links keep `raids` | 6, the Raid Stats tab's `href` |
+| no redirect on the stats tab | 7 and 16, the URL kept `raids` |
+| Full Clears at 7 days served All Attempts' stats | 8 and 14, "KDA under full" |
+| too few below one run instead of three | 9, The Desert Perpetual showed figures |
+| the 30-day line only under `all` and `fresh` (the spec's literal reading) | 12, no line under `full` |
+| the tab strip given `min-w-[400px]` | 17, "the tab strip … ends inside the viewport" |
+
+A first green attempt also failed 14 and the 30-day `all` spec on their own: a warm board still
+arrived as a fallback plus a hidden segment, because React outlines every async component. The page
+now peeks at both reads after one turn of the event loop and renders what has settled in place
+(`peek`, red at `f1e7793`).
+
+**Review fix loop 1 (spec 15).** Added after the review found no spec loading the 30-day line with
+JavaScript off. It passed on the code as it was, so its bite proof is one deliberate break: the line
+drawn by a client component only after hydration (`useSyncExternalStore`, empty on the server). In
+one build, `npm run e2e -- e2e/activity-stats.spec.ts` gave **1 failed, 18 passed**: spec 15 alone,
+on `activity-full-clears-only` received `""`, while 10–12, which run with JavaScript on, passed.
+Reverted.
+
+### What is still NOT covered
+
+- **The empty state** (no raid with an instance in the range): the e2e Tracker has runs in every
+  window. `raid-stats-view.test.ts` proves an empty frame gives it; the rendered sentence is unverified
+  in a browser. An accepted deviation (#200, 2026-11-12).
+- **The streaming order on a cold miss**: the seed's queries take milliseconds. Measured on a prod
+  backup copy instead (docs/progress/200-raid-stats-tab.md).
+- **A cold stats tab with JavaScript off** (the skeleton and its `<noscript>` line): no spec can keep a
+  cache cold across a request in this server.
+- Maintenance mid-stream (the frame read but the scope's read refused): the board shows the cards with
+  "Unavailable during database maintenance." in each KDA slot; no spec times a quiesce between the two.
+
 ## 2026-11-14 — #9001 the profile page's live card is drawn in the browser
 
 A browser no longer writes session or identity data to the Tracker (ADR 0010). The profile page
@@ -2977,4 +3135,3 @@ short name so it measures the card.
   all private: Vitest pins `includesPlayer` and `teammatesToProbe`; the browser sees the happy path.
 - The Refresh button's re-check: the same function as the first load.
 - A GetLinkedProfiles answer that resolves to a different (cross-save primary) membership.
-

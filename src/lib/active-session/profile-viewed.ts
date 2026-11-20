@@ -33,6 +33,7 @@ export function profileViewedBody(
     viewed: PlayerRef,
     storedSession: boolean,
     raid: RaidSource,
+    _accountPrivate = false,
 ): ProfileViewedBody | null {
     const body: ProfileViewedBody = { membershipId: viewed.membershipId, membershipType: viewed.membershipType };
     if (raid?.from === 'teammate') {

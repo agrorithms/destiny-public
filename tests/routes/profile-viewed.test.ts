@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { requestSessionPoll } from '@/lib/db/queries';
+import { enqueueCrawl, requestSessionPoll } from '@/lib/db/queries';
 import { buildWriteRequest, type WriteRequestOptions } from '../helpers/build-write-request';
 import { testDb } from '../helpers/db';
 import { withDbQuiesced } from '../helpers/db-quiesce';
-import { seedActiveSession, seedPrivacyBackoff } from '../helpers/seed';
+import { seedActiveSession, seedPlayer, seedPrivacyBackoff } from '../helpers/seed';
 import { installWriteRouteEnv } from './write-route-setup';
 
 installWriteRouteEnv();
@@ -18,6 +18,7 @@ installWriteRouteEnv();
 
 const VIEWED = '4611686018488900001';
 const MATE = '4611686018488900002';
+const mate = { membershipId: MATE, membershipType: 1 };
 
 type Post = (body: Record<string, unknown> | string, options?: WriteRequestOptions) => Promise<Response>;
 
@@ -30,6 +31,11 @@ async function loadRoute(env: Record<string, string> = {}): Promise<Post> {
 
 function queued(): string[] {
     return (testDb().prepare('SELECT membership_id FROM session_poll_requests ORDER BY membership_id').all() as
+        { membership_id: string }[]).map((r) => r.membership_id);
+}
+
+function crawlQueued(): string[] {
+    return (testDb().prepare("SELECT membership_id FROM crawl_queue WHERE source = 'profile-view' ORDER BY membership_id").all() as
         { membership_id: string }[]).map((r) => r.membership_id);
 }
 
@@ -303,5 +309,129 @@ describe('the limits', () => {
         const response = await post({ membershipId: VIEWED, membershipType: 3, teammate: { membershipId: MATE, membershipType: 3 } });
         expect(response.status).toBe(202);
         expect(queued()).toEqual([MATE]);
+    });
+});
+
+describe('the history crawl (#9004)', () => {
+    it('queues the viewed player for a history crawl and for a poll in one request', async () => {
+        const response = await post({ membershipId: VIEWED, membershipType: 3 });
+        expect(response.status).toBe(202);
+        expect(crawlQueued()).toEqual([VIEWED]);
+        expect(queued()).toEqual([VIEWED]);
+        expect(testDb().prepare('SELECT membership_type FROM crawl_queue WHERE membership_id = ?').get(VIEWED)).toEqual({ membership_type: 3 });
+    });
+
+    it('polls a teammate and never queues one for a history crawl', async () => {
+        await post({ membershipId: VIEWED, membershipType: 3, teammate: mate });
+        expect(queued()).toEqual([VIEWED, MATE]);
+        expect(crawlQueued()).toEqual([VIEWED]);
+    });
+
+    it('honours history:false: the poll only', async () => {
+        const response = await post({ membershipId: VIEWED, membershipType: 3, history: false });
+        expect(response.status).toBe(202);
+        expect(queued()).toEqual([VIEWED]);
+        expect(crawlQueued()).toEqual([]);
+    });
+
+    it('honours poll:false: the history crawl only, teammate included', async () => {
+        const response = await post({ membershipId: VIEWED, membershipType: 3, poll: false, teammate: mate });
+        expect(response.status).toBe(202);
+        expect(queued()).toEqual([]);
+        expect(crawlQueued()).toEqual([VIEWED]);
+    });
+
+    it('400s both flags false and a flag that is not a boolean, queueing nothing', async () => {
+        for (const body of [
+            { poll: false, history: false }, { poll: 'false' }, { history: 0 }, { poll: null }, { history: 'no' },
+        ]) {
+            expect((await post({ membershipId: VIEWED, membershipType: 3, ...body })).status).toBe(400);
+        }
+        expect(queued()).toEqual([]);
+        expect(crawlQueued()).toEqual([]);
+    });
+
+    it('writes no session row and no player row for the history crawl', async () => {
+        await post({ membershipId: VIEWED, membershipType: 3, poll: false });
+        expect(counts()).toEqual({ sessions: 0, players: 0 });
+    });
+
+    it('declines a player in crawl backoff for the crawl, and still polls', async () => {
+        seedPlayer(VIEWED, 'Backoff#0001', 1);
+        testDb().prepare('UPDATE players SET next_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(VIEWED);
+        const response = await post({ membershipId: VIEWED, membershipType: 3 });
+        expect(response.status).toBe(202);
+        expect(crawlQueued()).toEqual([]);
+        expect(queued()).toEqual([VIEWED]);
+    });
+
+    it('answers backing_off when the crawl is all that was asked and the player is in crawl backoff', async () => {
+        seedPlayer(VIEWED, 'Backoff#0001', 1);
+        testDb().prepare('UPDATE players SET next_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(VIEWED);
+        const response = await post({ membershipId: VIEWED, membershipType: 3, poll: false });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ queued: false, reason: 'backing_off' });
+        expect(crawlQueued()).toEqual([]);
+    });
+
+    it('enqueues no second crawl for the same player inside 120 seconds, from any address', async () => {
+        await post({ membershipId: VIEWED, membershipType: 3, poll: false }, { ip: '10.3.0.1' });
+        testDb().prepare('DELETE FROM crawl_queue').run();
+        const response = await post({ membershipId: VIEWED, membershipType: 3, poll: false }, { ip: '10.3.0.2' });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ queued: false, reason: 'recently_refreshed' });
+        expect(crawlQueued()).toEqual([]);
+        vi.advanceTimersByTime(121_000);
+        expect((await post({ membershipId: VIEWED, membershipType: 3, poll: false })).status).toBe(202);
+        expect(crawlQueued()).toEqual([VIEWED]);
+    });
+
+    it('refuses crawl enqueues over the global limit from any mix of addresses, without touching the polls', async () => {
+        post = await loadRoute({ HISTORY_CRAWL_REQUEST_GLOBAL_PER_MIN: '2' });
+        const statuses: number[] = [];
+        for (let i = 0; i < 4; i++) {
+            const response = await post({ membershipId: `46116860184892${i}0`.padEnd(19, '0'), membershipType: 3 }, { ip: `10.4.0.${i}` });
+            statuses.push(response.status);
+        }
+        // The poll of each request is accepted, so the call still answers 202.
+        expect(statuses).toEqual([202, 202, 202, 202]);
+        expect(crawlQueued()).toHaveLength(2);
+        expect(queued()).toHaveLength(4);
+        const refused = await post({ membershipId: '4611686018488929999', membershipType: 3, poll: false }, { ip: '10.4.0.99' });
+        expect(refused.status).toBe(429);
+        expect(await refused.json()).toEqual({ queued: false, reason: 'rate_limited' });
+    });
+
+    it('refuses polls over their own limit without touching the history crawl', async () => {
+        post = await loadRoute({ ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN: '1' });
+        await post({ membershipId: VIEWED, membershipType: 3 });
+        const response = await post({ membershipId: MATE, membershipType: 3 });
+        expect(response.status).toBe(202);
+        expect(queued()).toEqual([VIEWED]);
+        expect(crawlQueued()).toEqual([MATE, VIEWED].sort());
+        const pollOnly = await post({ membershipId: '4611686018488900009', membershipType: 3, history: false });
+        expect(pollOnly.status).toBe(429);
+    });
+
+    it('429s with the crawl queue at its cap, still polling, while a crawler enqueue still succeeds', async () => {
+        post = await loadRoute({ HISTORY_CRAWL_REQUEST_QUEUE_MAX: '1' });
+        await post({ membershipId: VIEWED, membershipType: 3, poll: false });
+        const full = await post({ membershipId: MATE, membershipType: 3, poll: false });
+        expect(full.status).toBe(429);
+        expect(await full.json()).toEqual({ queued: false, reason: 'queue_full' });
+        const both = await post({ membershipId: MATE, membershipType: 3 });
+        expect(both.status).toBe(202);
+        expect(queued()).toEqual([MATE]);
+        expect(crawlQueued()).toEqual([VIEWED]);
+        enqueueCrawl([{ membershipId: MATE, membershipType: 3 }], 'session_end', 100);
+        expect(testDb().prepare('SELECT COUNT(*) AS n FROM crawl_queue').get()).toEqual({ n: 2 });
+    });
+
+    it('a cap refusal starts no cooldown for the refused player', async () => {
+        post = await loadRoute({ HISTORY_CRAWL_REQUEST_QUEUE_MAX: '1' });
+        await post({ membershipId: VIEWED, membershipType: 3, poll: false });
+        await post({ membershipId: MATE, membershipType: 3, poll: false });
+        testDb().prepare('DELETE FROM crawl_queue').run();
+        expect((await post({ membershipId: MATE, membershipType: 3, poll: false })).status).toBe(202);
     });
 });

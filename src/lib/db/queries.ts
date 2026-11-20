@@ -478,6 +478,13 @@ export function drainCrawlQueue(limit: number): CrawlQueueRow[] {
   `).all(limit) as CrawlQueueRow[];
 }
 
+export type HistoryCrawlRequestResult = 'accepted' | 'queue_full' | 'backing_off';
+
+/** Stub: a profile view's history-crawl request, capped (#9004). */
+export function requestHistoryCrawl(_membershipId: string, _membershipType: number): HistoryCrawlRequestResult {
+    throw new Error('not implemented');
+}
+
 /** True when the player's crawl backoff (failure or privacy) has not yet expired. */
 export function isPlayerCrawlBackingOff(membershipId: string): boolean {
     const db = getDb();

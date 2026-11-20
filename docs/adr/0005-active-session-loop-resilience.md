@@ -33,3 +33,6 @@ Four guards close this off (`src/lib/crawler/index.ts` `activeSessionLoop`,
   `MAX_ACTIVE_SESSION_AGE_SECONDS` force-delete is the backstop) and stops the candidate poll from
   **benching live raiders** on offline backoff. It also skips the doomed teammate probes on a
   failed anchor, cutting wasted storm API calls.
+- **The rule covers every writer** (2026-11-14): no path removes an Active Session without a positive
+  confirmation from the crawler's own Bungie call. No browser request removes an Active Session
+  (ADR 0010).

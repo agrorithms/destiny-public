@@ -55,12 +55,8 @@ type RunnableStatement = {
     run: (...params: unknown[]) => unknown;
 };
 type SqlValue = string | number | null;
-export interface BungieDisplayNameParts {
-    membershipId: string;
-    displayName: string | null;
-    bungieGlobalDisplayName: string | null;
-    bungieGlobalDisplayNameCode: number | null;
-}
+// Pure, so it lives where the browser can import it too (#9001); re-exported for the callers here.
+export { formatBungieDisplayName, type BungieDisplayNameParts } from '../bungie/display-name';
 
 let playerUpsertDbRef: ReturnType<typeof getDb> | null = null;
 let playerUpsertStmt: RunnableStatement | null = null;
@@ -74,18 +70,6 @@ let insertFullPGCRTx: ((pgcrData: InsertFullPGCRData, players: InsertFullPGCRPla
 
 function isValidMembershipType(type: unknown): boolean {
     return VALID_MEMBERSHIP_TYPES.has(Number(type));
-}
-
-export function formatBungieDisplayName(player: BungieDisplayNameParts): string {
-    if (player.bungieGlobalDisplayName && player.bungieGlobalDisplayNameCode !== null) {
-        return `${player.bungieGlobalDisplayName}#${String(player.bungieGlobalDisplayNameCode).padStart(4, '0')}`;
-    }
-
-    return player.bungieGlobalDisplayName || player.displayName || player.membershipId;
-}
-
-export function hasCompleteBungieDisplayName(player: Pick<BungieDisplayNameParts, 'bungieGlobalDisplayName' | 'bungieGlobalDisplayNameCode'>): boolean {
-    return Boolean(player.bungieGlobalDisplayName) && player.bungieGlobalDisplayNameCode !== null;
 }
 
 function getPlayerUpsertResources(): {
@@ -168,42 +152,6 @@ export function upsertPlayer(player: PlayerInfo): void {
 export function bulkUpsertPlayers(players: PlayerInfo[]): void {
     const { bulkTx } = getPlayerUpsertResources();
     bulkTx(players);
-}
-
-/**
- * Untrusted (browser-supplied) identity write, used by the client-write endpoints
- * (players/identity, active-session-update). Inserts unknown players, but only fills
- * fields the DB doesn't already know — it never overwrites an existing display name,
- * so a forged request can't rename a player already on the leaderboard.
- * Name and code are written as a pair (gated on the name being NULL) so a mismatched
- * Name#Code can't be assembled from two writes. The crawler's trusted
- * upsertPlayer/bulkUpsertPlayers remain the authoritative, overwriting writers.
- */
-export function upsertPlayerFillOnly(player: PlayerInfo): void {
-    // Callers feed this client-supplied data (e.g. profileResponse.userInfo), so the
-    // membership-type check lives here rather than trusting every route to pre-validate.
-    if (!isValidMembershipType(player.membershipType)) return;
-    const db = getDb();
-    db.prepare(`
-    INSERT INTO players (membership_id, membership_type, display_name, bungie_global_display_name, bungie_global_display_name_code)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(membership_id) DO UPDATE SET
-      display_name = COALESCE(display_name, excluded.display_name),
-      bungie_global_display_name = CASE
-        WHEN bungie_global_display_name IS NULL THEN excluded.bungie_global_display_name
-        ELSE bungie_global_display_name
-      END,
-      bungie_global_display_name_code = CASE
-        WHEN bungie_global_display_name IS NULL THEN excluded.bungie_global_display_name_code
-        ELSE bungie_global_display_name_code
-      END
-  `).run(
-        player.membershipId,
-        player.membershipType,
-        player.displayName ?? null,
-        player.bungieGlobalDisplayName || null,
-        player.bungieGlobalDisplayNameCode ?? null
-    );
 }
 
 /** Return the subset of the given membershipIds that already exist in the players table. */
@@ -765,20 +713,33 @@ export interface PlayerIdentity {
     bungieGlobalDisplayNameCode: number | null;
 }
 
-export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
-    const db = getDb();
-    const row = db.prepare(`
-    SELECT
+/** The `players` columns a `PlayerIdentity` reads, under its field names. */
+const PLAYER_IDENTITY_COLUMNS = `
       membership_id as membershipId,
       membership_type as membershipType,
       display_name as displayName,
       bungie_global_display_name as bungieGlobalDisplayName,
-      bungie_global_display_name_code as bungieGlobalDisplayNameCode
+      bungie_global_display_name_code as bungieGlobalDisplayNameCode`;
+
+export function getPlayerIdentity(membershipId: string): PlayerIdentity | null {
+    const db = getDb();
+    const row = db.prepare(`
+    SELECT ${PLAYER_IDENTITY_COLUMNS}
     FROM players
     WHERE membership_id = ?
   `).get(membershipId) as PlayerIdentity | undefined;
 
     return row || null;
+}
+
+/** The identities of whichever of `membershipIds` the Tracker knows. Unknown ids have no entry. */
+export function getPlayerIdentities(membershipIds: string[]): PlayerIdentity[] {
+    const db = getDb();
+    return db.prepare(`
+    SELECT ${PLAYER_IDENTITY_COLUMNS}
+    FROM players
+    WHERE membership_id IN (SELECT value FROM json_each(?))
+  `).all(JSON.stringify(membershipIds)) as PlayerIdentity[];
 }
 
 export interface PlayerRaidCompletionSummary {

@@ -2,8 +2,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { CooldownGate, FixedWindowLimiter } from './rate-limit';
 
 /**
- * These primitives are the abuse dampeners on the three publicly reachable
- * client-write endpoints (active-session-update, identity, queue-crawl), and
+ * These primitives are the abuse dampeners on the publicly reachable
+ * client-write endpoint (queue-crawl), and
  * they had no coverage at all. Everything here is time-dependent, so the whole
  * file runs on fake timers rather than sleeping.
  *

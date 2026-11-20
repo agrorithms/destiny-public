@@ -1,6 +1,5 @@
 /**
- * In-memory rate-limit primitives for the client-write endpoints
- * (active-session-update, identity, queue-crawl). Expired entries are pruned on
+ * In-memory rate-limit primitives for the client-write endpoint (queue-crawl). Expired entries are pruned on
  * access so the maps stay bounded without a timer — previously these routes kept
  * bare Maps that grew forever (one entry per IP:player key, never deleted).
  *

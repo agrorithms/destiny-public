@@ -17,6 +17,12 @@ import { fixtureRunId } from './fixture-db';
  * *after* ./fixture-db.ts has set RAID_TRACKER_DB_PATH — see the note there.
  */
 
+/**
+ * A freshness window for checking the Tracker after a profile view: a day is far longer than
+ * any window the app uses, so "no row" means none at all.
+ */
+export const ANY_AGE_SECONDS = 86_400;
+
 /** Two raids with non-overlapping rosters, so filtering to one is visibly different. */
 export const RAID_A = {
     key: 'salvations_edge',

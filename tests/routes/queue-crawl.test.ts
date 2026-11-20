@@ -2,17 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { POST } from '@/app/api/players/queue-crawl/route';
 import { recordCrawlOutcome } from '@/lib/db/queries';
 import { buildWriteRequest } from '../helpers/build-write-request';
+import { testDb } from '../helpers/db';
 import { withDbQuiesced } from '../helpers/db-quiesce';
 import { seedPlayer } from '../helpers/seed';
 import { installWriteRouteEnv } from './write-route-setup';
 
 installWriteRouteEnv();
 
+// Ids only: the body the profile page sends.
 function validBody(membershipId = '4611686018488200001') {
     return {
         membershipId,
         membershipType: 3,
-        displayName: 'TestGuardian',
     };
 }
 
@@ -86,6 +87,19 @@ describe('POST /api/players/queue-crawl', () => {
         const response = await post(validBody('4611686018488200004'), { ip: '10.0.0.4' });
         expect(response.status).toBe(202);
         expect(await response.json()).toEqual({ queued: true });
+    });
+
+    // No route under the players API takes a player's name from a browser (#9001, ADR 0010):
+    // the crawler names a player from its own Bungie calls.
+    it('queues the ids and ignores a display name sent with them', async () => {
+        const id = '4611686018488200006';
+        const response = await post({ ...validBody(id), displayName: 'Anything#0000' }, { ip: '10.0.0.6' });
+        expect(response.status).toBe(202);
+
+        const row = testDb()
+            .prepare('SELECT membership_id, membership_type, display_name, source FROM crawl_queue WHERE membership_id = ?')
+            .get(id);
+        expect(row).toEqual({ membership_id: id, membership_type: 3, display_name: null, source: 'profile-view' });
     });
 
     it('returns 503 when the database is in maintenance', async () => {

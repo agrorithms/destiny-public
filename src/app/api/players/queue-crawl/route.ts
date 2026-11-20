@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isMembershipId } from '@/lib/active-session/roster';
 import { enqueueCrawl, isPlayerCrawlBackingOff } from '@/lib/db/queries';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { withNoStore } from '@/lib/http/cache';
@@ -14,10 +15,11 @@ const enqueueCooldown = new CooldownGate(120_000);
 // Per-IP fixed window: at most 10 queue requests per minute per IP.
 const ipLimiter = new FixedWindowLimiter(10, 60_000);
 
+// Ids only. A browser never supplies a player's name (ADR 0010): the crawler names a player
+// from its own Bungie calls, so anything else in the body is ignored.
 interface QueueCrawlBody {
     membershipId?: unknown;
     membershipType?: unknown;
-    displayName?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -34,11 +36,8 @@ export async function POST(request: NextRequest) {
 
     const membershipId = typeof body.membershipId === 'string' ? body.membershipId.trim() : '';
     const membershipType = Number(body.membershipType);
-    const displayName = typeof body.displayName === 'string' && body.displayName.trim()
-        ? body.displayName.trim()
-        : null;
 
-    if (!/^\d{1,20}$/.test(membershipId)) {
+    if (!isMembershipId(membershipId)) {
         return withNoStore(NextResponse.json({ error: 'Invalid membershipId' }, { status: 400 }));
     }
     if (!validMembershipTypes.has(membershipType)) {
@@ -66,7 +65,7 @@ export async function POST(request: NextRequest) {
             return withNoStore(NextResponse.json({ queued: false, reason: 'backing_off' }));
         }
 
-        enqueueCrawl([{ membershipId, membershipType, displayName }], 'profile-view');
+        enqueueCrawl([{ membershipId, membershipType }], 'profile-view');
         enqueueCooldown.record(key);
         return withNoStore(NextResponse.json({ queued: true }, { status: 202 }));
     } catch (error) {

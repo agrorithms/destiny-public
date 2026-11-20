@@ -81,7 +81,7 @@ export const test = base.extend<{ blockExternalRequests: void }>({
                 if (isBungie(hostname)) {
                     // Fallback stub: specs that make browser → Bungie calls register
                     // per-test page.route handlers with builder-generated fixtures
-                    // (see client-write-verify.spec.ts), which override this for
+                    // (see profile-live-card.spec.ts), which override this for
                     // their specific endpoints. This success envelope remains the
                     // default for any Bungie request that no per-test handler claims.
                     await route.fulfill({

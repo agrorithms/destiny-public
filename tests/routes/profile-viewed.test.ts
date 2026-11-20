@@ -304,6 +304,18 @@ describe('the limits', () => {
         expect(queued()).toEqual([]);
     });
 
+    it('asks nothing for the teammate once the viewed player is refused with a full queue', async () => {
+        // A 429 stops the poll asks: a teammate with a listed session, who would otherwise be
+        // marked for re-verify, is left alone and the call answers the viewed player's 429.
+        post = await loadRoute({ ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX: '0' });
+        seedActiveSession(MATE);
+        const response = await post({ membershipId: VIEWED, membershipType: 3, history: false, teammate: mate });
+        expect(response.status).toBe(429);
+        expect(await response.json()).toEqual({ queued: false, reason: 'queue_full' });
+        const row = testDb().prepare('SELECT reverify_requested_at FROM active_sessions WHERE membership_id = ?').get(MATE);
+        expect(row).toEqual({ reverify_requested_at: null });
+    });
+
     it('queues the teammate even when the viewed player is declined', async () => {
         seedPrivacyBackoff(VIEWED);
         const response = await post({ membershipId: VIEWED, membershipType: 3, teammate: { membershipId: MATE, membershipType: 3 } });
@@ -426,6 +438,33 @@ describe('the history crawl (#9004)', () => {
         expect(crawlQueued()).toEqual([VIEWED]);
         enqueueCrawl([{ membershipId: MATE, membershipType: 3 }], 'session_end', 100);
         expect(testDb().prepare('SELECT COUNT(*) AS n FROM crawl_queue').get()).toEqual({ n: 2 });
+    });
+
+    describe('the one answer when both kinds are refused', () => {
+        it('answers the poll\'s 429 over the crawl\'s decline', async () => {
+            post = await loadRoute({ ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN: '0' });
+            seedCrawlBackoff(VIEWED);
+            const response = await post({ membershipId: VIEWED, membershipType: 3 });
+            expect(response.status).toBe(429);
+            expect(await response.json()).toEqual({ queued: false, reason: 'rate_limited' });
+        });
+
+        it('answers the crawl\'s 429 over the poll\'s decline', async () => {
+            post = await loadRoute({ HISTORY_CRAWL_REQUEST_GLOBAL_PER_MIN: '0' });
+            seedPrivacyBackoff(VIEWED);
+            const response = await post({ membershipId: VIEWED, membershipType: 3 });
+            expect(response.status).toBe(429);
+            expect(await response.json()).toEqual({ queued: false, reason: 'rate_limited' });
+        });
+
+        it('answers the poll\'s reason when both are declined with a 200', async () => {
+            await post({ membershipId: VIEWED, membershipType: 3, history: false });
+            testDb().prepare('DELETE FROM session_poll_requests').run();
+            seedCrawlBackoff(VIEWED);
+            const response = await post({ membershipId: VIEWED, membershipType: 3 });
+            expect(response.status).toBe(200);
+            expect(await response.json()).toEqual({ queued: false, reason: 'recently_refreshed' });
+        });
     });
 
     it('a cap refusal starts no cooldown for the refused player', async () => {

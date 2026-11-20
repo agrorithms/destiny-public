@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { enqueueCrawl, requestHistoryCrawl } from '@/lib/db/queries';
 import { resetTestDb, testDb } from '../helpers/db';
-import { seedPlayer } from '../helpers/seed';
+import { seedCrawlBackoff, seedPlayer } from '../helpers/seed';
 
 /**
  * History-crawl requests (#9004): a profile view asks the crawler to crawl a player's raid
@@ -25,8 +25,7 @@ describe('requestHistoryCrawl', () => {
     });
 
     it('declines a player in crawl backoff and queues nothing', () => {
-        seedPlayer(ID, 'Backoff#0001', 1);
-        testDb().prepare('UPDATE players SET next_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(ID);
+        seedCrawlBackoff(ID);
         expect(requestHistoryCrawl(ID, 3)).toBe('backing_off');
         expect(rows()).toEqual([]);
     });

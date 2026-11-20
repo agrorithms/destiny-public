@@ -1,5 +1,5 @@
 import { getDb } from '../../src/lib/db';
-import { insertFullPGCR, upsertActiveSession, upsertPlayer } from '../../src/lib/db/queries';
+import { insertFullPGCR, recordCrawlOutcome, upsertActiveSession, upsertPlayer } from '../../src/lib/db/queries';
 import { getRaidKeyFromHash } from '../../src/lib/bungie/manifest';
 import { processPGCR } from '../../src/lib/crawler/pgcr';
 import { readActivityDurationSeconds, readEntryStartSeconds } from '../../src/lib/bungie/pgcr-stats';
@@ -155,6 +155,15 @@ export function seedPrivacyBackoff(membershipId: string, bungieGlobalDisplayName
     getDb()
         .prepare('UPDATE players SET session_privacy_backoff = 1, next_session_eligible_at = unixepoch() + 3600 WHERE membership_id = ?')
         .run(membershipId);
+}
+
+/**
+ * A player in crawl backoff, written by the crawler's own writer (a private-history outcome), so
+ * the row carries everything a real backoff does.
+ */
+export function seedCrawlBackoff(membershipId: string, bungieGlobalDisplayName = 'Backoff#0001'): void {
+    seedPlayer(membershipId, bungieGlobalDisplayName, 1);
+    recordCrawlOutcome(membershipId, 'privacy');
 }
 
 /** The current Unix time in whole seconds, the unit SQLite's `unixepoch()` stores. */

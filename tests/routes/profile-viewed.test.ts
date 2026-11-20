@@ -3,7 +3,7 @@ import { enqueueCrawl, requestSessionPoll } from '@/lib/db/queries';
 import { buildWriteRequest, type WriteRequestOptions } from '../helpers/build-write-request';
 import { testDb } from '../helpers/db';
 import { withDbQuiesced } from '../helpers/db-quiesce';
-import { seedActiveSession, seedPlayer, seedPrivacyBackoff } from '../helpers/seed';
+import { seedActiveSession, seedCrawlBackoff, seedPrivacyBackoff } from '../helpers/seed';
 import { installWriteRouteEnv } from './write-route-setup';
 
 installWriteRouteEnv();
@@ -360,8 +360,7 @@ describe('the history crawl (#9004)', () => {
     });
 
     it('declines a player in crawl backoff for the crawl, and still polls', async () => {
-        seedPlayer(VIEWED, 'Backoff#0001', 1);
-        testDb().prepare('UPDATE players SET next_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(VIEWED);
+        seedCrawlBackoff(VIEWED);
         const response = await post({ membershipId: VIEWED, membershipType: 3 });
         expect(response.status).toBe(202);
         expect(crawlQueued()).toEqual([]);
@@ -369,8 +368,7 @@ describe('the history crawl (#9004)', () => {
     });
 
     it('answers backing_off when the crawl is all that was asked and the player is in crawl backoff', async () => {
-        seedPlayer(VIEWED, 'Backoff#0001', 1);
-        testDb().prepare('UPDATE players SET next_eligible_at = unixepoch() + 3600 WHERE membership_id = ?').run(VIEWED);
+        seedCrawlBackoff(VIEWED);
         const response = await post({ membershipId: VIEWED, membershipType: 3, poll: false });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ queued: false, reason: 'backing_off' });

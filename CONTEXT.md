@@ -80,7 +80,8 @@ _Avoid_: join link, invite code (and "join code" outside user-facing copy)
 
 **Tracked Player**:
 A player the system knows about and will poll for activity. Identified by `Name#Code`; a player
-becomes tracked by being discovered in a raid alongside someone already tracked.
+becomes tracked by being discovered in a raid alongside someone already tracked, or confirmed by
+the crawler after a profile view.
 _Avoid_: user, account, member
 
 **Raid**:

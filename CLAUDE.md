@@ -97,6 +97,8 @@ Active-session display (`/active-sessions` + the StatsBar/OG count): `ACTIVE_SES
 
 Active-session poll backoff (players found offline/private are snoozed instead of re-polled every cycle; maintained by `recordSessionCheck` on `players.next_session_eligible_at`): `SESSION_OFFLINE_BACKOFF_BASE_SEC` (default 120), `SESSION_OFFLINE_BACKOFF_CAP_SEC` (default 960 ≈ 16 min), `SESSION_PRIVACY_BACKOFF_SEC` (default 21600 = 6h).
 
+Active-session poll requests (a player the crawler checks on its next cycle; nothing sends them yet): `ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE` (default 20 — requested players with no session row polled per cycle, one GetProfile each, on top of `CRAWLER_SESSION_POLLING_LIMIT`) and `ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX` (default 200 — pending no-row requests; an enqueue beyond it is refused). A request on a player who already has a row only marks it due for re-verify, inside `ACTIVE_SESSION_STALE_REVERIFY_LIMIT`; a player in session privacy backoff is declined.
+
 Full list: `scripts/start-crawler.ts`, `scripts/start-scanner.ts`, `scripts/discover.ts`.
 
 ## Active-session loop resilience

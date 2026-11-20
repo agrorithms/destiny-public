@@ -1,7 +1,20 @@
 import { getBungieClient, BungieAPIError, type BungieClient } from '../bungie/client';
 import { isBungieSystemDisabledError } from '../bungie/maintenance';
 import { getRaidKeyFromHash, getRaidNameFromHash } from '../bungie/manifest';
-import { deleteActiveSessionForPlayer, upsertActiveSession, enqueueCrawl, resolveMembershipTypes, getExistingPlayerIds, upsertPlayer, recordSessionCheck } from '../db/queries';
+import {
+    deleteActiveSessionForPlayer,
+    upsertActiveSession,
+    enqueueCrawl,
+    resolveMembershipTypes,
+    getExistingPlayerIds,
+    upsertPlayer,
+    recordSessionCheck,
+    claimSessionPollRequests,
+    deleteSessionPollRequests,
+    // How long before a session is force-deleted even if re-verification fails. Shared with
+    // the poll-request queries, which mark only rows the re-verify will still look at.
+    MAX_SESSION_AGE_SECONDS,
+} from '../db/queries';
 import { getDb } from '../db';
 import { pickPrimaryLinkedProfile } from '../bungie/linked-profiles';
 import { readProfileActivity } from '../active-session/live-profile';
@@ -11,11 +24,6 @@ import type { DestinyProfileResponse, PlayerInfo, RaidSession } from '../bungie/
 // How long before a session is considered "stale" and needs re-verification
 const STALE_THRESHOLD_SECONDS = 300; // 5 minutes
 
-// How long before a session is force-deleted even if re-verification fails
-const MAX_SESSION_AGE_SECONDS = Math.max(
-    1,
-    parseInt(process.env.MAX_ACTIVE_SESSION_AGE_SECONDS || '7200', 10)
-);
 const DEFAULT_ACTIVE_SESSION_CONCURRENCY = Math.max(
     1,
     parseInt(process.env.ACTIVE_SESSION_CONCURRENCY || process.env.CRAWLER_CONCURRENCY || '4', 10)
@@ -45,6 +53,14 @@ const DEFAULT_MEMBER_RESOLVE_LIMIT = Math.max(
 const DEFAULT_MEMBER_RESOLVE_CONCURRENCY = Math.max(
     1,
     parseInt(process.env.CRAWLER_MEMBER_RESOLVE_CONCURRENCY || '4', 10)
+);
+
+// Poll requests (#9002) for players with no session row, polled per cycle on top of the normal
+// batch. Each is one GetProfile call; requests on players who have a row cost nothing extra,
+// since they only move the row up the re-verify order. The loop's config reads it from here.
+export const DEFAULT_POLL_REQUEST_MAX_PER_CYCLE = Math.max(
+    0,
+    parseInt(process.env.ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE || '20', 10)
 );
 
 interface StaleSessionRow {
@@ -109,33 +125,69 @@ export async function checkPlayerActivityDetailed(
         const profileResponse = await fetchPlayerActivityProfile(player, client);
         return parseAndStoreActivity(player, profileResponse);
     } catch (error) {
-        if (isBungieSystemDisabledError(error)) {
-            throw error;
-        }
+        return classifyCheckFailure(error, player.membershipId);
+    }
+}
 
-        if (isBungiePrivacyRestrictionError(error)) {
-            return { status: 'privacyRestricted', session: null };
+function classifyCheckFailure(error: unknown, membershipId: string): PlayerActivityCheckResult {
+    if (isBungieSystemDisabledError(error)) {
+        throw error;
+    }
+
+    if (isBungiePrivacyRestrictionError(error)) {
+        return { status: 'privacyRestricted', session: null };
+    }
+    // Transient failure (timeout / 5xx / network). Report 'error', not 'inactive',
+    // so callers don't mistake a Bungie hiccup for the player being offline.
+    // Stryker disable next-line CallExpression,StringLiteral: log output only, no behaviour reads it
+    console.error(`[ERROR] Unexpected error checking activity for ${membershipId}:`, (error as Error).message);
+    return { status: 'error', session: null };
+}
+
+/**
+ * The session check for a requested player the poll batch doesn't hold (#9002). The same one
+ * GetProfile call, also asking for the profile component (100): when Bungie reports the player
+ * in an activity, the crawler stores the row and makes them a Tracked Player, named from its
+ * own call. A browser's word never creates a player (ADR 0010); inactive or rejected writes nothing.
+ */
+async function checkRequestedPlayer(requested: PlayerInfo, client: BungieClient): Promise<PlayerActivityCheckResult> {
+    try {
+        const profile = await fetchPlayerActivityProfile(requested, client, [100, 204, 1000]);
+        const userInfo = profile.profile?.data?.userInfo;
+        const player: PlayerInfo = userInfo
+            ? {
+                membershipId: requested.membershipId,
+                membershipType: userInfo.membershipType,
+                displayName: userInfo.bungieGlobalDisplayName || userInfo.displayName,
+                bungieGlobalDisplayName: userInfo.bungieGlobalDisplayName,
+                bungieGlobalDisplayNameCode: userInfo.bungieGlobalDisplayNameCode,
+            }
+            : requested;
+        const result = parseAndStoreActivity(player, profile);
+        if (result.status === 'active' && userInfo) {
+            upsertPlayer(player);
         }
-        // Transient failure (timeout / 5xx / network). Report 'error', not 'inactive',
-        // so callers don't mistake a Bungie hiccup for the player being offline.
-        console.error(`[ERROR] Unexpected error checking activity for ${player.membershipId}:`, (error as Error).message);
-        return { status: 'error', session: null };
+        return result;
+    } catch (error) {
+        return classifyCheckFailure(error, requested.membershipId);
     }
 }
 
 /**
- * Fetch the raw profile components (204 + 1000) used to determine current activity.
+ * Fetch the raw profile components (204 + 1000) used to determine current activity, plus any
+ * a caller adds (a requested check also asks for 100, the profile's own name).
  * Returns the `.Response` payload. Throws on Bungie errors (privacy, maintenance, etc.).
  */
 export async function fetchPlayerActivityProfile(
     player: PlayerInfo,
-    clientOverride?: ReturnType<typeof getBungieClient>
+    clientOverride?: ReturnType<typeof getBungieClient>,
+    components: number[] = [204, 1000]
 ): Promise<DestinyProfileResponse> {
     const client = clientOverride || getBungieClient();
     const profile = await client.getProfile(
         player.membershipType,
         player.membershipId,
-        [204, 1000]
+        components
     );
     return profile.Response;
 }
@@ -234,7 +286,10 @@ export async function refreshStaleSessionsWithOptions(options?: {
     const limit = Math.max(1, options?.limit || DEFAULT_STALE_SESSION_REVERIFY_LIMIT);
     const client = getBungieClient();
 
-    // Find sessions that are stale (not checked recently) but not ancient
+    // Find sessions that are stale (not checked recently) but not ancient, and rows a poll
+    // request marked due for re-verify (#9002), whatever their age. Marked rows go first and
+    // share the one limit, so requests add no Bungie budget. The mark is cleared when the row
+    // is next observed (upsertActiveSession) or removed; a row kept on no signal keeps it.
     const inOrbitPlaceholders = IN_ORBIT_MODE_HASHES.map(() => '?').join(',');
     const staleSessions = db.prepare(`
     SELECT 
@@ -249,9 +304,10 @@ export async function refreshStaleSessionsWithOptions(options?: {
       checked_at,
       party_members_json
     FROM active_sessions
-    WHERE checked_at < ?
+    WHERE (checked_at < ? OR reverify_requested_at IS NOT NULL)
       AND checked_at >= ?
     ORDER BY
+      reverify_requested_at IS NULL ASC,
       CASE
         WHEN activity_mode_type = 4 OR raid_key IS NOT NULL THEN 0
         WHEN activity_mode_hash IN (${inOrbitPlaceholders}) AND player_count >= 3 THEN 1
@@ -422,29 +478,20 @@ function getTeammateMembershipIds(partyMembersJson: string | null | undefined, e
     }
 }
 
+/**
+ * Teammates the re-verify can probe, in Roster order. Bungie's transitory party members carry
+ * no membership type and GetProfile needs one, so it comes from the players table, as
+ * enqueueEndedSession's does; a teammate the Tracker doesn't know yet can't be probed.
+ */
 function getTeammateCandidates(partyMembersJson: string | null | undefined, excludeMembershipId: string): PlayerInfo[] {
-    if (!partyMembersJson) {
-        return [];
-    }
-
-    try {
-        const partyMembers = JSON.parse(partyMembersJson) as Array<{
-            membershipId?: string;
-            membershipType?: number;
-            displayName?: string;
-        }>;
-
-        return partyMembers
-            .filter((m) => !!m.membershipId && m.membershipId !== excludeMembershipId)
-            .map((m) => ({
-                membershipId: String(m.membershipId),
-                membershipType: Number.isFinite(Number(m.membershipType)) ? Number(m.membershipType) : 0,
-                displayName: m.displayName || String(m.membershipId),
-            }))
-            .filter((m) => m.membershipType > 0);
-    } catch {
-        return [];
-    }
+    const teammateIds = getTeammateMembershipIds(partyMembersJson, excludeMembershipId);
+    const known = resolveMembershipTypes(teammateIds);
+    return teammateIds.flatMap((membershipId) => {
+        const info = known.get(membershipId);
+        return info
+            ? [{ membershipId, membershipType: info.membershipType, displayName: info.displayName || membershipId }]
+            : [];
+    });
 }
 
 /**
@@ -458,6 +505,7 @@ export async function pollActiveSessions(
         playerCheckConcurrency?: number;
         staleCheckConcurrency?: number;
         staleReverifyLimit?: number;
+        pollRequestMaxPerCycle?: number;
     }
 ): Promise<RaidSession[]> {
     const playerCheckConcurrency = Math.max(
@@ -472,10 +520,18 @@ export async function pollActiveSessions(
         1,
         options?.staleReverifyLimit || DEFAULT_STALE_SESSION_REVERIFY_LIMIT
     );
+    const pollRequestMaxPerCycle = Math.max(
+        0,
+        options?.pollRequestMaxPerCycle ?? DEFAULT_POLL_REQUEST_MAX_PER_CYCLE
+    );
 
     const toCheck = players.slice(0, maxToCheck);
     const sessions = new Map<string, RaidSession>();
     const client = getBungieClient();
+
+    // Step 0: poll requests (#9002). Claimed before the re-verify, because claiming turns a
+    // request whose player has a row by now into that row's re-verify mark, picked up below.
+    const requests = claimSessionPollRequests(pollRequestMaxPerCycle);
 
     // Step 1: Re-verify stale sessions instead of blindly deleting
     await refreshStaleSessionsWithOptions({
@@ -492,12 +548,24 @@ export async function pollActiveSessions(
     const batchById = new Map<string, PlayerInfo>();
     for (const p of toCheck) batchById.set(p.membershipId, p);
 
+    // A requested player already in the batch is polled once, as part of it. The rest are
+    // checked on top of the batch; they are never in batchById, so never skipped as covered.
+    // A tracked player starts with the Tracker's name for them, which their row keeps if
+    // Bungie's answer carries none; an untracked one has none until Bungie gives one.
+    const unbatchedRequests = requests.filter((r) => !batchById.has(r.membershipId));
+    const trackedNames = resolveMembershipTypes(unbatchedRequests.map((r) => r.membershipId));
+    const requestedChecks = unbatchedRequests.map((r): PlayerInfo => ({
+        ...r,
+        displayName: trackedNames.get(r.membershipId)?.displayName ?? '',
+    }));
+    const requestedIds = new Set(requestedChecks.map((p) => p.membershipId));
+
     const covered = new Set<string>();
     const coveredBy = new Map<string, RaidSession>();
     let skippedViaFireteam = 0;
 
     const sessionResults = await processWithConcurrency(
-        toCheck,
+        [...requestedChecks, ...toCheck],
         playerCheckConcurrency,
         async (player): Promise<RaidSession | null> => {
             const covering = coveredBy.get(player.membershipId);
@@ -508,7 +576,9 @@ export async function pollActiveSessions(
                 return covering;
             }
 
-            const result = await checkPlayerActivityDetailed(player, client);
+            const result = requestedIds.has(player.membershipId)
+                ? await checkRequestedPlayer(player, client)
+                : await checkPlayerActivityDetailed(player, client);
 
             if (result.status === 'active' && result.session) {
                 recordSessionCheck(player.membershipId, 'online');
@@ -543,6 +613,10 @@ export async function pollActiveSessions(
         }
     );
 
+    // A request is consumed once handled, whatever the outcome: an error is not retried, as
+    // that would spend budget again on an id that may be made up.
+    deleteSessionPollRequests(requests.map((r) => r.membershipId));
+
     let checked = 0;
     for (const result of sessionResults) {
         if (!result.success) {
@@ -559,7 +633,10 @@ export async function pollActiveSessions(
     }
 
     console.log(
-        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length} players checked` +
+        // Stryker disable next-line StringLiteral,ArithmeticOperator: log output only, no behaviour reads it
+        `[SESSIONS] Active session poll complete: ${checked}/${toCheck.length + requestedChecks.length} players checked` +
+        // Stryker disable next-line StringLiteral: log output only, no behaviour reads it
+        ` (${requestedChecks.length} by request)` +
         ` (${skippedViaFireteam} skipped via fireteam), ${sessions.size} sessions found`
     );
 

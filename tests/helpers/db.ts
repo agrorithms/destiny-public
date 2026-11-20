@@ -32,5 +32,7 @@ export function resetTestDb(): void {
         DELETE FROM active_sessions;
         DELETE FROM crawler_state;
         DELETE FROM session_snapshots;
+        DELETE FROM crawl_queue;
+        DELETE FROM session_poll_requests;
     `);
 }

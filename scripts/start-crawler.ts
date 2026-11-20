@@ -18,6 +18,12 @@ const CRAWLER_CONFIG = {
     cleanupMaxAgeHours: parseInt(process.env.CRAWLER_CLEANUP_MAX_AGE_HOURS || '48', 10),
     // CRAWLER_MEMBER_RESOLVE_LIMIT (default 25): max unknown fireteam members resolved to
     // Name#Code per active-session cycle via GetLinkedProfiles. Read in src/lib/crawler/active-sessions.ts.
+    // ACTIVE_SESSION_POLL_REQUEST_MAX_PER_CYCLE (default 20): poll requests for players with no
+    // session row checked per active-session cycle, one GetProfile each, on top of
+    // CRAWLER_SESSION_POLLING_LIMIT. Requests on players with a row only mark it for re-verify,
+    // inside ACTIVE_SESSION_STALE_REVERIFY_LIMIT. Read in src/lib/crawler/active-sessions.ts.
+    // ACTIVE_SESSION_POLL_REQUEST_QUEUE_MAX (default 200): pending poll requests for players with
+    // no session row; a request beyond it is refused. Read in src/lib/db/queries.ts.
 };
 
 // ============================================

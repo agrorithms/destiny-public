@@ -6,13 +6,16 @@ import { seedCrawlBackoff } from '../helpers/seed';
 // The crawl backoff is written and checked against SQLite's own clock, which fake timers can't
 // move, so the case that waits one out does so in real time. A two-second backoff keeps that
 // wait short and still leaves a full second for the cases that check a backoff still running.
-// queries.ts reads the knob at import, so it is set before any import runs.
-const BACKOFF_SEC = vi.hoisted(() => {
+// queries.ts reads the knob at import, so it is set before any import runs. A value the shell
+// exported is kept and put back afterwards, so the files after this one see what they would have.
+const { BACKOFF_SEC, priorBackoff } = vi.hoisted(() => {
+    const priorBackoff = process.env.CRAWLER_PRIVACY_BACKOFF_SEC;
     process.env.CRAWLER_PRIVACY_BACKOFF_SEC = '2';
-    return 2;
+    return { BACKOFF_SEC: 2, priorBackoff };
 });
 afterAll(() => {
-    delete process.env.CRAWLER_PRIVACY_BACKOFF_SEC;
+    if (priorBackoff === undefined) delete process.env.CRAWLER_PRIVACY_BACKOFF_SEC;
+    else process.env.CRAWLER_PRIVACY_BACKOFF_SEC = priorBackoff;
 });
 
 /**
@@ -45,7 +48,10 @@ describe('requestHistoryCrawl', () => {
     it('queues a player whose backoff has run out', async () => {
         seedCrawlBackoff(ID);
         expect(requestHistoryCrawl(ID, 3)).toBe('backing_off');
-        await new Promise((resolve) => setTimeout(resolve, BACKOFF_SEC * 1000));
+        // unixepoch() counts whole seconds and a Node timer can fire a millisecond or so early, so
+        // a wait of exactly the backoff, seeded just after a second ticked over, can end with the
+        // clock one second short. The margin puts the wait safely past the backoff's last second.
+        await new Promise((resolve) => setTimeout(resolve, BACKOFF_SEC * 1000 + 250));
         expect(requestHistoryCrawl(ID, 3)).toBe('accepted');
         expect(rows()).toEqual([{ membership_id: ID, source: 'profile-view', priority: 0 }]);
     });

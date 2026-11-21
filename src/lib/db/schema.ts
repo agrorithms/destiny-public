@@ -273,12 +273,14 @@ export function initializeSchema(db: Database.Database): void {
   `);
 
     // Indexes on the players columns the crawler's bucket picks read. The hot/warm picks
-    // filter by last_seen_at range and order by last_attempt_at; the planner answers them
-    // from idx_players_session_poll (leading on last_seen_at) and sorts the result.
-    // idx_players_last_seen and idx_players_last_seen_attempt are kept but not chosen for
-    // them. The cold pick orders by last_attempt_at alone and walks idx_players_last_attempt,
+    // filter by last_seen_at range and order by last_attempt_at. With ANALYZE stats (prod,
+    // maintenance.ts) the planner answers them from idx_players_session_poll and sorts the
+    // result; on a Tracker with no sqlite_stat1 the hot pick walks idx_players_last_attempt
+    // instead. idx_players_last_seen and idx_players_last_seen_attempt are kept but not chosen
+    // for them. The cold pick orders by last_attempt_at alone and walks idx_players_last_attempt,
     // stopping at the LIMIT. idx_players_priority (priority was never written) is dropped:
-    // it was the only index led by priority and the cold pick never used it.
+    // the old cold pick walked it for its priority DESC prefix but still sorted every row by
+    // last_attempt_at, and no other query orders by players.priority.
     db.exec(`
     CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at, last_crawled_at);
     CREATE INDEX IF NOT EXISTS idx_players_last_seen_attempt ON players(last_seen_at, last_attempt_at);

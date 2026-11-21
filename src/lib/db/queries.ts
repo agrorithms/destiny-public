@@ -686,7 +686,7 @@ export function getPlayersInRecentBucket(
     // pgcr_players ⋈ pgcrs join every cycle. Ordered by last_attempt_at (the
     // scheduling clock, bumped on every attempt) so backing-off players don't
     // get re-picked instantly; next_eligible_at gates players still in backoff.
-    // The planner answers it from idx_players_session_poll and sorts the result.
+    // Which index serves it depends on ANALYZE stats: see the players index block in schema.ts.
     return db.prepare(`
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,

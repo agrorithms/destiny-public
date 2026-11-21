@@ -5,6 +5,19 @@ codebase (infrastructure, Cloudflare config) where a code comment can't reach th
 
 ---
 
+## Backups: Tracker snapshots and the Archive
+
+> Moved from `CLAUDE.md` on 2026-11-21.
+
+There is **no continuous replication.** Backups are manual snapshots: `npx tsx scripts/backup-db.ts` checkpoints the WAL and `VACUUM INTO`s a dated copy alongside the live DB (`data/raid-tracker.backup-YYYY-MM-DD.db`). It needs ~1 DB size of free disk. Restoring is a file move: stop the processes, swap the snapshot into `data/raid-tracker.db` (remove stale `-wal`/`-shm` files), restart. Crawled data is re-crawlable, which is why this is tolerable.
+
+**That reasoning does not transfer to an Archive.** Re-deriving the GoS 10k master means re-crawling
+13,420 PGCRs from Bungie, and its history is not guaranteed to stay fetchable. Both the master
+(`gos10k/destiny_pgcrs.db`) and the serving copy are copied to the Oracle box by hand — runbook in
+the 2026-09-04 entry below ("Copy runbook: two files, by hand, no CI check").
+
+---
+
 ## 2026-07-26 — HTTP caching for the real-time API routes
 
 ### Symptom

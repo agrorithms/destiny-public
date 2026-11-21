@@ -124,5 +124,6 @@ this codebase called "full clear"; all four are named apart on purpose.
   at the page level, and the fixture cannot reproduce it at all — its longest name contains spaces
   and wraps on its own. Those specs are regression guards, not reproductions.
 
-  The per-flow inventory is deliberately not here: it lives in `CLAUDE.md`'s browser-suite list and,
-  per ticket, in `docs/e2e-coverage.md`.
+  The per-flow inventory is deliberately not here: it lives under "Current browser coverage" at the
+  top of `docs/e2e-coverage.md` (moved out of `CLAUDE.md` on 2026-11-21), and per ticket in that
+  file's journal.

@@ -28,6 +28,12 @@ const CRAWLER_CONFIG = {
     // ACTIVE_SESSION_POLL_REQUEST_GLOBAL_PER_MIN (default 60) and
     // ACTIVE_SESSION_POLL_REQUEST_COOLDOWN_SEC (default 300), in src/lib/http/poll-request-limits.ts.
     // Both are per web process, so under PM2 cluster x2 the effective ceilings are up to twice the knobs.
+    // History-crawl requests from a profile view have limits of their own, apart from the poll's:
+    // HISTORY_CRAWL_REQUEST_QUEUE_MAX (default 200): profile-view rows in crawl_queue; a request
+    // beyond it is refused. Enforced in SQLite, so it holds across processes. The crawler's own
+    // session-end enqueues are neither counted nor capped. Read in src/lib/db/queries.ts.
+    // HISTORY_CRAWL_REQUEST_GLOBAL_PER_MIN (default 60): read by the web processes, not here, in
+    // src/lib/http/history-crawl-limits.ts; in memory and per web process, like the poll's.
 };
 
 // ============================================

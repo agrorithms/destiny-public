@@ -86,7 +86,7 @@ const QUIET_MS = 500;
  * shows a spinner.
  *
  * Not `waitUntil: 'networkidle'`, which also waits for every response *body* to be read.
- * The player page's queue-crawl POST is fire-and-forget (queueCrawlOnce in
+ * The player page's profile-viewed POST is fire-and-forget (askCrawlerToLook in
  * PlayerProfileClient.tsx never reads the reply), so Chromium never counts it finished
  * and networkidle never comes, though the 202 arrives in milliseconds. A response
  * arriving is what this wait needs; the body is the page's business.

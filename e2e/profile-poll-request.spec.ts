@@ -4,7 +4,7 @@ import { seedPlayer } from '../tests/helpers/seed';
 import { buildActiveProfile, buildInactiveProfile, buildPrivateProfile } from '../tests/helpers/bungie-profile-builder';
 import { getActiveSessionContainingPlayer, getPlayerIdentity } from '../src/lib/db/queries';
 import { getDb } from '../src/lib/db';
-import { interceptApiCalls, recordProfileViewed, waitForProfileViewed, waitForQueueCrawl } from './support/network-log';
+import { interceptApiCalls, recordProfileViewed, waitForProfileViewed } from './support/network-log';
 import { fulfillBungie } from './support/bungie-stub';
 import { isolatePollCycle, stubCrawlerBungie } from './support/crawler-bungie';
 import { expectNoOverflow } from './support/viewport';
@@ -20,7 +20,10 @@ import { expectNoOverflow } from './support/viewport';
  *   - a private player found through a public teammate: the request also names that teammate;
  *   - a player with a stored session while Bungie says no activity: the request is still sent, so
  *     the crawler re-checks the row;
- *   - a player with no stored session and no activity: no request;
+ *   - a player with no stored session and no activity: the same single request, asking for the
+ *     history crawl alone (`poll:false`), queued in `crawl_queue` and not in the poll queue;
+ *   - an account-wide private player: no history crawl (`history:false`), and no request at all
+ *     with nothing stored;
  *   - a refused (429) or failed request: the card is left as it was;
  *   - the end to end half: after the request, one poll cycle run in this process against the
  *     fixture Tracker (the e2e server has no crawler; see support/crawler-bungie.ts) lists the
@@ -56,6 +59,11 @@ const LISTED_ID = '4611686018488600008';
 const LISTED_NAME = 'ListedAfterCycle86';
 const LISTED_CODE = 8608;
 
+const PRIV_SESSION_ID = '4611686018488600009';
+const PRIV_SESSION_NAME = 'PrivateAsker86';
+const PRIV_SESSION_CODE = 8609;
+const PRIV_NONE_ID = '4611686018488600010';
+
 const raidHeading = (page: import('@playwright/test').Page) =>
     page.getByRole('heading', { level: 3, name: RAID_A.name });
 
@@ -70,6 +78,12 @@ function raidingProfile(membershipId: string, name: string, code: number) {
     });
 }
 
+/** The players whose raid history is queued for a crawl by a profile view. */
+function crawlQueuedIds(): string[] {
+    return (getDb().prepare("SELECT membership_id FROM crawl_queue WHERE source = 'profile-view'").all() as { membership_id: string }[])
+        .map((row) => row.membership_id);
+}
+
 function pendingPollRequests(): string[] {
     return (getDb().prepare('SELECT membership_id FROM session_poll_requests').all() as { membership_id: string }[])
         .map((row) => row.membership_id);
@@ -82,6 +96,9 @@ test.beforeAll(() => {
     seedPlayerWithSession({ membershipId: LEFT_ID, name: LEFT_NAME, code: LEFT_CODE, raid: RAID_A });
     // The quiet player is known, with no session.
     seedPlayer(QUIET_ID, 'QuietAsker86', 8605);
+    // Account-wide private: one has a stored session of their own, the other has nothing.
+    seedPlayerWithSession({ membershipId: PRIV_SESSION_ID, name: PRIV_SESSION_NAME, code: PRIV_SESSION_CODE, raid: RAID_A });
+    seedPlayer(PRIV_NONE_ID, 'PrivateNone86', 8610);
 });
 
 test.describe('profile view asks the crawler to look', () => {
@@ -98,6 +115,9 @@ test.describe('profile view asks the crawler to look', () => {
         expect(bodies).toEqual([{ membershipId: RAIDING_ID, membershipType: 3 }]);
         const post = log.find((e) => e.method === 'POST' && e.path === '/api/players/profile-viewed');
         expect(post?.hasPageToken).toBe(true);
+        // One view, one client write: the history crawl rides in the same request.
+        expect(log.filter((e) => e.method === 'POST')).toHaveLength(1);
+        expect(crawlQueuedIds()).toContain(RAIDING_ID);
 
         // Asking is not writing: the crawler lists them, not the browser (ADR 0010).
         expect(getActiveSessionContainingPlayer(RAIDING_ID, ANY_AGE_SECONDS)).toBeNull();
@@ -138,6 +158,10 @@ test.describe('profile view asks the crawler to look', () => {
             teammate: { membershipId: TEAMMATE_ID, membershipType: 3 },
         }]);
         expect(getActiveSessionContainingPlayer(HIDDEN_ID, ANY_AGE_SECONDS)).toBeNull();
+        // Polled through the teammate; the history crawl is the viewed player's alone.
+        expect(pendingPollRequests()).toEqual(expect.arrayContaining([HIDDEN_ID, TEAMMATE_ID]));
+        expect(crawlQueuedIds()).toContain(HIDDEN_ID);
+        expect(crawlQueuedIds()).not.toContain(TEAMMATE_ID);
     });
 
     test('a stored session while Bungie reports no activity still asks, so the crawler re-checks it', async ({ page }) => {
@@ -158,21 +182,51 @@ test.describe('profile view asks the crawler to look', () => {
         expect(marked?.reverify_requested_at).toEqual(expect.any(Number));
     });
 
-    test('a player with no stored session and no activity sends no request', async ({ page }) => {
+    test('a player with no stored session and no activity asks for the history crawl alone', async ({ page }) => {
         const log = interceptApiCalls(page);
         const bodies = recordProfileViewed(page);
         await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, buildInactiveProfile({
             membershipId: QUIET_ID, displayName: 'QuietAsker86', bungieGlobalDisplayName: 'QuietAsker86', bungieGlobalDisplayNameCode: 8605,
         })));
-        const crawlQueued = waitForQueueCrawl(page);
+        const sent = waitForProfileViewed(page);
 
         await page.goto(`/player/3/${QUIET_ID}`);
-        // The history crawl is requested once the live check has settled, so it is the page's "done".
-        await crawlQueued;
+        expect((await sent).status()).toBe(202);
         await expect(page.getByText('Checking live status…')).toHaveCount(0);
 
-        expect(bodies).toEqual([]);
-        expect(log.filter((e) => e.method === 'POST').map((e) => e.path)).toEqual(['/api/players/queue-crawl']);
+        expect(bodies).toEqual([{ membershipId: QUIET_ID, membershipType: 3, poll: false }]);
+        expect(log.filter((e) => e.method === 'POST').map((e) => e.path)).toEqual(['/api/players/profile-viewed']);
+        // Nothing to poll, so no poll request; the history refresh is still queued.
+        expect(pendingPollRequests()).not.toContain(QUIET_ID);
+        expect(crawlQueuedIds()).toContain(QUIET_ID);
+    });
+
+    test('an account-wide private player with a stored session asks for the poll without the history crawl', async ({ page }) => {
+        const bodies = recordProfileViewed(page);
+        await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, {}, {
+            ErrorCode: 1665, ErrorStatus: 'DestinyPrivacyRestriction', Message: 'No peeking.',
+        }));
+        const sent = waitForProfileViewed(page);
+
+        await page.goto(`/player/3/${PRIV_SESSION_ID}`);
+        expect((await sent).status()).toBe(202);
+
+        expect(bodies).toEqual([{ membershipId: PRIV_SESSION_ID, membershipType: 3, history: false }]);
+        expect(crawlQueuedIds()).not.toContain(PRIV_SESSION_ID);
+    });
+
+    test('an account-wide private player with nothing stored sends no request', async ({ page }) => {
+        const log = interceptApiCalls(page);
+        await page.route('**/Platform/Destiny2/**', (route) => fulfillBungie(route, {}, {
+            ErrorCode: 1665, ErrorStatus: 'DestinyPrivacyRestriction', Message: 'No peeking.',
+        }));
+
+        await page.goto(`/player/3/${PRIV_NONE_ID}`);
+        await expect(page.getByText('The user has chosen for this data to be private')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText('Checking live status…')).toHaveCount(0);
+
+        expect(log.filter((e) => e.method === 'POST')).toEqual([]);
+        expect(crawlQueuedIds()).not.toContain(PRIV_NONE_ID);
     });
 
     test('a 429 on the request leaves the card as it was', async ({ page }) => {

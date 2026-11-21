@@ -3,7 +3,7 @@ import { CooldownGate, FixedWindowLimiter } from './rate-limit';
 
 /**
  * These primitives are the abuse dampeners on the publicly reachable
- * client-write endpoint (queue-crawl), and
+ * client-write endpoint (profile-viewed), and
  * they had no coverage at all. Everything here is time-dependent, so the whole
  * file runs on fake timers rather than sleeping.
  *
@@ -90,7 +90,7 @@ describe('CooldownGate', () => {
 
 describe('FixedWindowLimiter', () => {
     it('allows exactly `limit` hits inside one window', () => {
-        // queue-crawl's real configuration: 10 per minute per IP.
+        // A per-IP window of 10 a minute.
         const limiter = new FixedWindowLimiter(10, 60_000);
         for (let i = 0; i < 10; i++) {
             expect(limiter.isRateLimited('1.2.3.4')).toBe(false);

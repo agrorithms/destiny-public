@@ -168,8 +168,8 @@ export default function PlayerSearch() {
                 setSelectedIndex(nextResults.length > 0 ? 0 : -1);
 
                 // NOTE: we intentionally do NOT queue crawls here. A prefix search returns
-                // many players and re-runs as the user types, which would flood queue-crawl.
-                // The crawl is queued instead when the user actually opens a profile.
+                // many players and re-runs as the user types, which would flood the crawl queue.
+                // The crawl is requested instead when the user actually opens a profile.
             } catch (err) {
                 if (cancelled) return;
                 if (requestId !== fallbackRequestSeqRef.current || trimmed !== trimmedRef.current) return;

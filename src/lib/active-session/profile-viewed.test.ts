@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { profileViewedBody } from './profile-viewed';
 
 /**
- * When the profile page asks the crawler to look, and what the request carries (#9003): the
+ * When the profile page asks the crawler to look, and what the request carries (#9003, #9004): the
  * viewed player's id and type, at most one teammate's, and no other field.
  */
 
@@ -11,31 +11,36 @@ const MATE = { membershipId: '4611686018488940002', membershipType: 1 };
 
 describe('profileViewedBody', () => {
     it('names only the viewed player when the raid was read from their own profile', () => {
-        expect(profileViewedBody(VIEWED, false, { from: 'self' })).toEqual(VIEWED);
+        expect(profileViewedBody(VIEWED, false, { from: 'self' }, false)).toEqual(VIEWED);
     });
 
     it('adds the teammate the raid was read from, with their type', () => {
-        expect(profileViewedBody(VIEWED, false, { from: 'teammate', teammate: MATE })).toEqual({ ...VIEWED, teammate: MATE });
+        expect(profileViewedBody(VIEWED, false, { from: 'teammate', teammate: MATE }, false)).toEqual({ ...VIEWED, teammate: MATE });
     });
 
-    it('carries nothing but ids, even if the objects handed in carry more', () => {
+    it('carries nothing but ids and flags, even if the objects handed in carry more', () => {
         const noisy = { ...VIEWED, displayName: 'Anything#0000' };
         const mate = { ...MATE, displayName: 'Other#1111' };
-        const body = profileViewedBody(noisy, false, { from: 'teammate', teammate: mate });
-        expect(body).toEqual({ ...VIEWED, teammate: MATE });
-        expect(Object.keys(body!).sort()).toEqual(['membershipId', 'membershipType', 'teammate']);
+        const body = profileViewedBody(noisy, false, { from: 'teammate', teammate: mate }, true);
+        expect(body).toEqual({ ...VIEWED, teammate: MATE, history: false });
         expect(Object.keys(body!.teammate!).sort()).toEqual(['membershipId', 'membershipType']);
     });
 
-    it('sends for a stored session even when the browser found no raid, so the crawler re-checks it', () => {
-        expect(profileViewedBody(VIEWED, true, null)).toEqual(VIEWED);
+    it('asks for the poll for a stored session even when the browser found no raid', () => {
+        expect(profileViewedBody(VIEWED, true, null, false)).toEqual(VIEWED);
     });
 
-    it('still names the teammate when the stored baseline had a session too', () => {
-        expect(profileViewedBody(VIEWED, true, { from: 'teammate', teammate: MATE })).toEqual({ ...VIEWED, teammate: MATE });
+    it('asks for the history crawl alone for a player with no stored session and no raid', () => {
+        expect(profileViewedBody(VIEWED, false, null, false)).toEqual({ ...VIEWED, poll: false });
     });
 
-    it('sends nothing for a player with no stored session and no raid', () => {
-        expect(profileViewedBody(VIEWED, false, null)).toBeNull();
+    it('asks for the poll without the history crawl for an account-wide-private player with a raid or a session', () => {
+        expect(profileViewedBody(VIEWED, true, null, true)).toEqual({ ...VIEWED, history: false });
+        expect(profileViewedBody(VIEWED, false, { from: 'teammate', teammate: MATE }, true))
+            .toEqual({ ...VIEWED, teammate: MATE, history: false });
+    });
+
+    it('sends nothing for an account-wide-private player with no stored session and no raid', () => {
+        expect(profileViewedBody(VIEWED, false, null, true)).toBeNull();
     });
 });

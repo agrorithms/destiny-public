@@ -46,7 +46,7 @@ const REQUEST_COUNT_LOG_INTERVAL_MS = 60_000;
 const REQUEST_COUNT_LOG_LABELS: Record<keyof RequestCounts, string> = {
     activityHistory: 'activity',
     pgcr: 'pgcr',
-    profileIdsOnly: 'profile_characters_only',
+    profileIdsOnly: 'profile_ids_only',
     profileOther: 'profile_other',
     linkedProfiles: 'linked_profiles',
     other: 'other',

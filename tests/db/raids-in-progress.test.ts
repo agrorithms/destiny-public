@@ -3,6 +3,7 @@ import {
     DATA_START_MARGIN_SECONDS,
     deleteExpiredPGCRBatch,
     getRaidsInProgress,
+    type RaidsInProgressOptions,
     type RaidsInProgressSeries,
 } from '@/lib/db/queries';
 import { resetTestDb } from '../helpers/db';
@@ -25,6 +26,15 @@ import { NON_RAID_HASH } from '../helpers/pgcr-builder';
 const HOUR = 3600;
 const NOW = Math.floor(Date.now() / 1000 / HOUR) * HOUR - HOUR;
 const SEVEN_DAYS = { rangeSeconds: 7 * 24 * HOUR, stepSeconds: HOUR, now: NOW };
+
+/**
+ * The All Attempts series (#204): what every test written before the Scope existed reads.
+ * Every run `seedRaid` makes is a Full Clear unless told otherwise, so it is in every scope,
+ * and only the scope tests below tell them apart.
+ */
+function allAttempts(options: RaidsInProgressOptions): RaidsInProgressSeries {
+    return getRaidsInProgress(options).allAttempts;
+}
 
 /** The instant `hours` before NOW. Whole numbers land on a step boundary. */
 function hoursBeforeNow(hours: number): number {
@@ -67,7 +77,7 @@ describe('step averaging', () => {
         // in progress. The neighbours prove it is not smeared into the steps beside it.
         seedRaid(hoursBeforeNow(10), HOUR);
 
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(valueAt(series, hoursBeforeNow(10))).toBe(1);
         expect(valueAt(series, hoursBeforeNow(11))).toBe(0);
@@ -79,7 +89,7 @@ describe('step averaging', () => {
         // of one raid is half a raid in progress, wherever in the step it falls.
         seedRaid(hoursBeforeNow(10) + 15 * 60, HOUR / 2);
 
-        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0.5);
+        expect(valueAt(allAttempts(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0.5);
     });
 
     it('counts two overlapping runs as 2', () => {
@@ -88,7 +98,7 @@ describe('step averaging', () => {
         seedRaid(hoursBeforeNow(10), HOUR);
         seedRaid(hoursBeforeNow(10), HOUR);
 
-        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(2);
+        expect(valueAt(allAttempts(SEVEN_DAYS), hoursBeforeNow(10))).toBe(2);
     });
 
     it('splits a run across every step it overlaps, whole steps included', () => {
@@ -96,7 +106,7 @@ describe('step averaging', () => {
         // a long run must reach every hour it spans, not only the ones it starts and ends in.
         seedRaid(hoursBeforeNow(10) + 30 * 60, 30 * 60 + 3 * HOUR + 15 * 60);
 
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect([10, 9, 8, 7, 6, 5].map((hours) => valueAt(series, hoursBeforeNow(hours))))
             .toEqual([0.5, 1, 1, 1, 0.25, 0]);
@@ -108,7 +118,7 @@ describe('step averaging', () => {
         const firstStep = NOW - 7 * 24 * HOUR;
         seedRaid(firstStep - HOUR, HOUR + 30 * 60);
 
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(series.points[0]).toEqual({ start: firstStep, end: firstStep + HOUR, total: 0.5, provisional: false });
     });
@@ -121,7 +131,7 @@ describe('which runs count', () => {
         seedRaid(hoursBeforeNow(10), HOUR, { startedFromBeginning: false });
         seedRaid(hoursBeforeNow(10), HOUR, { completedBy: [], incompleteBy: ['p2'] });
 
-        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(2);
+        expect(valueAt(allAttempts(SEVEN_DAYS), hoursBeforeNow(10))).toBe(2);
     });
 
     it('does not count a PGCR that is not a raid', () => {
@@ -129,7 +139,7 @@ describe('which runs count', () => {
         // is stored with no raid key and must not lift the line.
         seedRaid(hoursBeforeNow(10), HOUR, { activityHash: NON_RAID_HASH });
 
-        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0);
+        expect(valueAt(allAttempts(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0);
     });
 });
 
@@ -141,14 +151,14 @@ describe('which steps come back', () => {
         seedRaid(hoursBeforeNow(10), HOUR);
         getDb().prepare('UPDATE pgcrs SET ended_at = ? WHERE instance_id = ?').run(NOW + HOUR, String(nextInstance - 1));
 
-        expect(valueAt(getRaidsInProgress(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0);
+        expect(valueAt(allAttempts(SEVEN_DAYS), hoursBeforeNow(10))).toBe(0);
     });
 
     it('returns hourly steps over the last 7 days, ending at the last step 2 hours old', () => {
         // With NOW on the hour, the window's steps run from exactly 7 days back to the step
         // ending 2 hours ago: 166 of the range's 168 hours. The newer two are absent, not
         // zero — a raid still running there has no PGCR yet, so a zero would be a lie.
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(series.points).toHaveLength(166);
         expect(series.points[0].start).toBe(NOW - 7 * 24 * HOUR);
@@ -163,7 +173,7 @@ describe('which steps come back', () => {
         seedRaid(hoursBeforeNow(2), HOUR);
         seedRaid(hoursBeforeNow(3), HOUR);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now });
+        const series = allAttempts({ ...SEVEN_DAYS, now });
 
         expect(series.points.at(-1)).toEqual({ start: hoursBeforeNow(3), end: hoursBeforeNow(2), total: 1, provisional: false });
     });
@@ -176,7 +186,7 @@ describe('which steps come back', () => {
         // estimate fills from exactly this boundary.
         const now = NOW + 59 * 60;
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now });
+        const series = allAttempts({ ...SEVEN_DAYS, now });
 
         expect(series.points.at(-1)?.end).toBe(hoursBeforeNow(2));
         expect(series.countedUntil).toBe(hoursBeforeNow(2));
@@ -187,7 +197,7 @@ describe('which steps come back', () => {
         // mid-hour and the first point at the next hour — never a step reaching outside it.
         const now = NOW + HOUR / 2;
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now });
+        const series = allAttempts({ ...SEVEN_DAYS, now });
 
         expect(series.from).toBe(now - 7 * 24 * HOUR);
         expect(series.points[0].start).toBe(NOW - 7 * 24 * HOUR + HOUR);
@@ -206,7 +216,7 @@ describe('each range', () => {
     it('returns 10-minute steps over the last 24 hours, the newest two hours aside', () => {
         // #195's 24h preset: 144 ten-minute steps fit the window, and the 12 ending in the
         // last two hours are not counted yet, so 132 come back.
-        const series = getRaidsInProgress(TWENTY_FOUR_HOURS);
+        const series = allAttempts(TWENTY_FOUR_HOURS);
 
         expect(series.stepSeconds).toBe(10 * MINUTE);
         expect(series.points).toHaveLength(132);
@@ -219,7 +229,7 @@ describe('each range', () => {
         // #195's 30d preset: 240 three-hour steps fit the window. With "now" on a 3-hour
         // boundary the step ending 2 hours ago is not whole yet, so counting ends 3 hours
         // back and 239 come back.
-        const series = getRaidsInProgress(THIRTY_DAYS);
+        const series = allAttempts(THIRTY_DAYS);
 
         expect(series.stepSeconds).toBe(3 * HOUR);
         expect(series.points).toHaveLength(239);
@@ -233,7 +243,7 @@ describe('each range', () => {
         const boundary = hoursBeforeNow(10);
         seedRaid(boundary - 4 * MINUTE, 10 * MINUTE);
 
-        const series = getRaidsInProgress(TWENTY_FOUR_HOURS);
+        const series = allAttempts(TWENTY_FOUR_HOURS);
 
         expect(valueAt(series, boundary - 10 * MINUTE)).toBeCloseTo(0.4, 10);
         expect(valueAt(series, boundary)).toBeCloseTo(0.6, 10);
@@ -244,7 +254,7 @@ describe('each range', () => {
         const boundary = NOW_3H - 4 * DAY;
         seedRaid(boundary - HOUR, 2 * HOUR);
 
-        const series = getRaidsInProgress(THIRTY_DAYS);
+        const series = allAttempts(THIRTY_DAYS);
 
         expect(valueAt(series, boundary - 3 * HOUR)).toBeCloseTo(1 / 3, 10);
         expect(valueAt(series, boundary)).toBeCloseTo(1 / 3, 10);
@@ -270,7 +280,7 @@ describe('where the data starts', () => {
         }
         expect(deleteExpiredPGCRBatch(from, 1000).pgcrsDeleted).toBe(4);
 
-        const series = getRaidsInProgress(THIRTY_DAYS);
+        const series = allAttempts(THIRTY_DAYS);
 
         expect(DATA_START_MARGIN_SECONDS).toBe(6 * HOUR);
         expect(series.from).toBe(from);
@@ -284,7 +294,7 @@ describe('where the data starts', () => {
         // could still be stored, so the window starts where it always does.
         seedRaid(NOW - 7 * DAY - 6 * HOUR, HOUR);
 
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY);
         expect(countedPoints(series)).toHaveLength(166);
@@ -296,7 +306,7 @@ describe('where the data starts', () => {
         // returned.
         seedRaid(NOW - 7 * DAY - 5.5 * HOUR, HOUR);
 
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY + HOUR);
         expect(series.points[0].start).toBe(NOW - 7 * DAY + HOUR);
@@ -308,7 +318,7 @@ describe('where the data starts', () => {
         // how far back the stored history goes.
         seedRaid(NOW - 3 * DAY, HOUR, { activityHash: NON_RAID_HASH });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).countedFrom).toBe(NOW - 3 * DAY + 6 * HOUR);
+        expect(allAttempts(SEVEN_DAYS).countedFrom).toBe(NOW - 3 * DAY + 6 * HOUR);
     });
 
     it('returns no steps, and keeps where counting ends, when the data starts too recently', () => {
@@ -317,7 +327,7 @@ describe('where the data starts', () => {
         // starts, rather than moving to meet the data.
         seedRaid(hoursBeforeNow(1), 30 * MINUTE);
 
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(series.points).toEqual([]);
         expect(series.countedUntil).toBe(hoursBeforeNow(2));
@@ -327,7 +337,7 @@ describe('where the data starts', () => {
     it('does not clamp an empty database', () => {
         // Nothing stored says nothing about where history starts: the window is drawn whole,
         // at zero, as #194 drew it.
-        const series = getRaidsInProgress(SEVEN_DAYS);
+        const series = allAttempts(SEVEN_DAYS);
 
         expect(series.countedFrom).toBe(NOW - 7 * DAY);
         expect(series.points).toHaveLength(166);
@@ -357,10 +367,13 @@ function clock(hour: number, minute = 0): number {
     return MIDNIGHT + hour * HOUR + minute * MINUTE;
 }
 
-/** The daily runs described above, as `[hour, minute, seconds]` triples. */
-function seedTrainingWeek(runs: Array<[number, number, number]>): void {
+/**
+ * The daily runs described above, as `[hour, minute, seconds]` triples, each with `seedRaid`
+ * options of its own if it needs them (#204's scopes).
+ */
+function seedTrainingWeek(runs: Array<[number, number, number, Partial<SeedRunOptions>?]>): void {
     for (let day = 2; day <= 7; day++) {
-        for (const [hour, minute, seconds] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds);
+        for (const [hour, minute, seconds, extra] of runs) seedRaid(clock(hour, minute) - day * DAY, seconds, extra);
     }
 }
 
@@ -381,7 +394,7 @@ describe('the Provisional estimate', () => {
         // is absent. Every point says which it is.
         seedTrainingWeek(STANDARD_WEEK);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         const tail = series.points.slice(-3);
         expect(tail.map((point) => [point.end, point.provisional])).toEqual([
@@ -402,7 +415,7 @@ describe('the Provisional estimate', () => {
         seedRaid(clock(9), 30 * MINUTE);
         seedRaid(clock(10), 30 * MINUTE);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(provisionalAt(series, clock(9))?.total).toBeCloseTo(0.5, 10);
         expect(provisionalAt(series, clock(10))?.total).toBeCloseTo(0.625, 10);
@@ -418,8 +431,8 @@ describe('the Provisional estimate', () => {
         seedRaid(clock(9), 30 * MINUTE);
         seedRaid(clock(10), 30 * MINUTE);
 
-        const ninth = provisionalAt(getRaidsInProgress({ ...SEVEN_DAYS, now: clock(10, 30) }), clock(9))?.total;
-        const tenth = provisionalAt(getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN }), clock(10))?.total;
+        const ninth = provisionalAt(allAttempts({ ...SEVEN_DAYS, now: clock(10, 30) }), clock(9))?.total;
+        const tenth = provisionalAt(allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN }), clock(10))?.total;
 
         expect(ninth).toBeCloseTo(0.5, 10);
         expect(tenth).toBeCloseTo(0.625, 10);
@@ -431,7 +444,7 @@ describe('the Provisional estimate', () => {
         seedTrainingWeek(STANDARD_WEEK);
         seedRaid(clock(10, 50), 30 * MINUTE);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(provisionalAt(series, clock(10))?.total).toBeCloseTo(10 / 60 / 0.8, 10);
     });
@@ -443,7 +456,7 @@ describe('the Provisional estimate', () => {
         seedRaid(clock(10), HOUR);
         getDb().prepare('UPDATE pgcrs SET ended_at = ? WHERE instance_id = ?').run(HALF_PAST_ELEVEN + HOUR, String(nextInstance - 1));
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(provisionalAt(series, clock(10))?.total).toBe(0);
     });
@@ -453,8 +466,8 @@ describe('the Provisional estimate', () => {
         // old at 11:15:00.
         seedTrainingWeek(STANDARD_WEEK);
 
-        const early = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(11, 15) - 1 });
-        const exact = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(11, 15) });
+        const early = allAttempts({ ...SEVEN_DAYS, now: clock(11, 15) - 1 });
+        const exact = allAttempts({ ...SEVEN_DAYS, now: clock(11, 15) });
 
         expect(early.points.at(-1)?.end).toBe(clock(10));
         expect(exact.points.at(-1)?.end).toBe(clock(11));
@@ -465,8 +478,8 @@ describe('the Provisional estimate', () => {
         // The step ending at 10:00: counted at 12:00:00, still an estimate at 11:59:59.
         seedTrainingWeek(STANDARD_WEEK);
 
-        const counted = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(12) });
-        const estimated = getRaidsInProgress({ ...SEVEN_DAYS, now: clock(12) - 1 });
+        const counted = allAttempts({ ...SEVEN_DAYS, now: clock(12) });
+        const estimated = allAttempts({ ...SEVEN_DAYS, now: clock(12) - 1 });
 
         expect(counted.points.find((point) => point.end === clock(10))?.provisional).toBe(false);
         expect(estimated.points.find((point) => point.end === clock(10))?.provisional).toBe(true);
@@ -485,7 +498,7 @@ describe('the Provisional estimate', () => {
         ];
 
         for (const { rangeSeconds, stepSeconds, counted, until, estimates } of cases) {
-            const series = getRaidsInProgress({ rangeSeconds, stepSeconds, now });
+            const series = allAttempts({ rangeSeconds, stepSeconds, now });
             const estimated = series.points.filter((point) => point.provisional);
 
             expect(series.countedUntil, `${stepSeconds}s counted boundary`).toBe(counted);
@@ -503,7 +516,7 @@ describe('the Provisional estimate', () => {
         // line ends where the last estimate does.
         seedTrainingWeek([[10, 45, HOUR]]);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(series.points.at(-1)?.end).toBe(clock(10));
         expect(series.points.at(-1)?.provisional).toBe(true);
@@ -523,7 +536,7 @@ describe('the Provisional estimate', () => {
         ]);
         seedRaid(clock(10), 30 * MINUTE);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(series.points.some((point) => point.provisional)).toBe(false);
         expect(series.points.at(-1)?.end).toBe(clock(9));
@@ -535,7 +548,7 @@ describe('the Provisional estimate', () => {
         // before #196, and the cutoff sits at the counted boundary.
         seedRaid(clock(10), HOUR);
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const series = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(series.points.some((point) => point.provisional)).toBe(false);
         expect(series.points.at(-1)?.end).toBe(clock(9));
@@ -546,9 +559,9 @@ describe('the Provisional estimate', () => {
         // Adding the estimate must not move a counted step: a run in a counted hour reads
         // the same whether or not there is a curve.
         seedRaid(clock(7), 30 * MINUTE);
-        const without = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const without = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
         seedTrainingWeek(STANDARD_WEEK);
-        const withCurve = getRaidsInProgress({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
+        const withCurve = allAttempts({ ...SEVEN_DAYS, now: HALF_PAST_ELEVEN });
 
         expect(valueAt(without, clock(7))).toBe(0.5);
         expect(valueAt(withCurve, clock(7))).toBe(0.5);
@@ -566,7 +579,7 @@ describe('the per-raid split (#198)', () => {
         seedRaid(hoursBeforeNow(10), 2 * HOUR, { raidKey: 'vault_of_glass' });
         seedRaid(hoursBeforeNow(9), HOUR / 4, { raidKey: 'salvations_edge' });
 
-        const series = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ALL });
+        const series = allAttempts({ ...SEVEN_DAYS, raidKeys: ALL });
 
         const at = (hours: number) => series.points.find((point) => point.start === hoursBeforeNow(hours))!;
         expect(at(10).raids).toEqual({ last_wish: 1, vault_of_glass: 1.5, salvations_edge: 0 });
@@ -582,8 +595,8 @@ describe('the per-raid split (#198)', () => {
         seedRaid(hoursBeforeNow(10), HOUR, { raidKey: 'last_wish' });
         seedRaid(hoursBeforeNow(10), HOUR, { raidKey: 'vault_of_glass' });
 
-        const asked = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ['vault_of_glass', 'kings_fall'] });
-        const none = getRaidsInProgress(SEVEN_DAYS);
+        const asked = allAttempts({ ...SEVEN_DAYS, raidKeys: ['vault_of_glass', 'kings_fall'] });
+        const none = allAttempts(SEVEN_DAYS);
 
         const step = asked.points.find((point) => point.start === hoursBeforeNow(10))!;
         expect(step.raids).toEqual({ vault_of_glass: 1, kings_fall: 0 });
@@ -598,8 +611,8 @@ describe('the per-raid split (#198)', () => {
         for (let day = 2; day <= 7; day++) seedRaid(hoursBeforeNow(day * 24 + 3), HOUR, { raidKey: 'last_wish' });
         seedRaid(hoursBeforeNow(1), HOUR / 2, { raidKey: 'last_wish' });
 
-        const asked = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ALL, minRaidRuns: 1 });
-        const none = getRaidsInProgress(SEVEN_DAYS);
+        const asked = allAttempts({ ...SEVEN_DAYS, raidKeys: ALL, minRaidRuns: 1 });
+        const none = allAttempts(SEVEN_DAYS);
 
         const estimated = asked.points.filter((point) => point.provisional);
         expect(estimated.length, 'the fixture has an estimated step').toBeGreaterThan(0);
@@ -648,7 +661,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 1 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 1 });
 
         const raids = raidsAt(series, clock(10))!;
         // Last Wish reports all of its hour at once: 0.5 / 1. Vault of Glass only 80% of it
@@ -666,7 +679,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 7 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 7 });
 
         expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['vault_of_glass']);
         expect(Object.keys(raidsAt(series, clock(9))!)).toEqual(['vault_of_glass']);
@@ -678,7 +691,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
     it('takes a raid at exactly the minimum', () => {
         seedWeekOf('last_wish', [[10, 0, HOUR]]);
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 6 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 6 });
 
         expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['last_wish']);
     });
@@ -687,7 +700,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
         // Eighteen training runs are far short of it: the total is estimated, no raid is.
         seedWeekOf('last_wish', [[9, 0, HOUR], [10, 0, HOUR], [10, 45, HOUR]]);
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'] });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ['last_wish'] });
 
         expect(provisionalAt(series, clock(10))).toBeDefined();
         expect(raidsAt(series, clock(10))).toEqual({});
@@ -696,7 +709,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
     it('leaves a raid with no runs in the training week without an estimate, whatever the minimum', () => {
         seedWeekOf('last_wish', [[10, 0, HOUR]]);
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish', 'kings_fall'], minRaidRuns: 0 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ['last_wish', 'kings_fall'], minRaidRuns: 0 });
 
         expect(Object.keys(raidsAt(series, clock(10))!)).toEqual(['last_wish']);
     });
@@ -708,7 +721,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
         seedWeekOf('vault_of_glass', [[10, 45, HOUR], [10, 45, HOUR]]);
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 1 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 1 });
 
         expect(raidsAt(series, clock(10))!.last_wish).toBeCloseTo(0.5, 10);
     });
@@ -716,7 +729,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
     it('estimates a raid that ran nothing in the step as 0', () => {
         seedWeekOf('last_wish', [[10, 0, HOUR]]);
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 1 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 1 });
 
         expect(raidsAt(series, clock(10))!.last_wish).toBe(0);
     });
@@ -731,7 +744,7 @@ describe('the per-raid Provisional estimate (#199)', () => {
         seedRaid(clock(9), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'vault_of_glass' });
 
-        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish', 'vault_of_glass'], minRaidRuns: 1 });
+        const series = allAttempts({ ...NOW_11_30, raidKeys: ['last_wish', 'vault_of_glass'], minRaidRuns: 1 });
 
         expect(provisionalAt(series, clock(9))).toBeDefined();
         expect(provisionalAt(series, clock(10))).toBeDefined();
@@ -744,8 +757,8 @@ describe('the per-raid Provisional estimate (#199)', () => {
         seedRaid(clock(10), 30 * MINUTE, { raidKey: 'last_wish' });
         seedRaid(clock(8), 30 * MINUTE, { raidKey: 'vault_of_glass' });
 
-        const plain = getRaidsInProgress(NOW_11_30);
-        const split = getRaidsInProgress({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 1 });
+        const plain = allAttempts(NOW_11_30);
+        const split = allAttempts({ ...NOW_11_30, raidKeys: ASKED, minRaidRuns: 1 });
 
         const shape = (series: RaidsInProgressSeries) =>
             series.points.map(({ start, end, total, provisional }) => ({ start, end, total, provisional }));
@@ -761,13 +774,13 @@ describe('the top raids in range (#198)', () => {
         seedRaid(hoursBeforeNow(40), 5 * HOUR, { raidKey: 'kings_fall' });
         seedRaid(hoursBeforeNow(50), HOUR / 2, { raidKey: 'crotas_end' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['kings_fall', 'vault_of_glass', 'last_wish']);
+        expect(allAttempts(SEVEN_DAYS).topRaids).toEqual(['kings_fall', 'vault_of_glass', 'last_wish']);
     });
 
     it('is returned whichever raids were asked for', () => {
         seedRaid(hoursBeforeNow(20), 3 * HOUR, { raidKey: 'vault_of_glass' });
 
-        const asked = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys: ['last_wish'] });
+        const asked = allAttempts({ ...SEVEN_DAYS, raidKeys: ['last_wish'] });
 
         expect(asked.topRaids).toEqual(['vault_of_glass']);
     });
@@ -782,7 +795,7 @@ describe('the top raids in range (#198)', () => {
         // keeps it off the list.
         seedRaid(hoursBeforeNow(2), HOUR, { raidKey: 'crotas_end' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['vault_of_glass', 'last_wish']);
+        expect(allAttempts(SEVEN_DAYS).topRaids).toEqual(['vault_of_glass', 'last_wish']);
     });
 
     it('breaks a tie in the raid list\'s order, not the order the runs were stored in', () => {
@@ -791,7 +804,7 @@ describe('the top raids in range (#198)', () => {
         seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'vault_of_glass' });
         seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'salvations_edge' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['salvations_edge', 'vault_of_glass', 'last_wish']);
+        expect(allAttempts(SEVEN_DAYS).topRaids).toEqual(['salvations_edge', 'vault_of_glass', 'last_wish']);
     });
 
     it('puts a tied raid key the raid list does not name after the raids it does', () => {
@@ -801,7 +814,7 @@ describe('the top raids in range (#198)', () => {
         seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'aaa_unlisted_raid' });
         seedRaid(hoursBeforeNow(20), HOUR, { raidKey: 'last_wish' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'aaa_unlisted_raid']);
+        expect(allAttempts(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'aaa_unlisted_raid']);
     });
 
     it('ranks by the time inside the counted window, not the length of the run', () => {
@@ -810,7 +823,7 @@ describe('the top raids in range (#198)', () => {
         seedRaid(firstStep - 3 * HOUR, 4 * HOUR, { raidKey: 'kings_fall' });
         seedRaid(hoursBeforeNow(20), 2 * HOUR, { raidKey: 'last_wish' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'kings_fall']);
+        expect(allAttempts(SEVEN_DAYS).topRaids).toEqual(['last_wish', 'kings_fall']);
     });
 
     it('does not rank by raid time that is not counted yet', () => {
@@ -818,6 +831,166 @@ describe('the top raids in range (#198)', () => {
         seedRaid(hoursBeforeNow(2), HOUR + HOUR / 2, { raidKey: 'kings_fall' });
         seedRaid(hoursBeforeNow(20), HOUR / 2, { raidKey: 'last_wish' });
 
-        expect(getRaidsInProgress(SEVEN_DAYS).topRaids).toEqual(['last_wish']);
+        expect(allAttempts(SEVEN_DAYS).topRaids).toEqual(['last_wish']);
+    });
+});
+
+/**
+ * The three Scopes (#204, CONTEXT.md **Scope**): one sweep returns a series for All Attempts,
+ * Fresh Runs and Full Clears, each a subset of the one before. A run is in every scope it
+ * belongs to: a Checkpoint Run, finished or not, is in All Attempts only; a Fresh Run nobody
+ * finished is in All Attempts and Fresh Runs; a Full Clear is in all three. Only Bungie's
+ * fresh-start flag makes a run fresh, so a finished Checkpoint Run — every Morgeth Pantheon run
+ * on prod — is never a Full Clear. A narrower scope's line that read the same as a wider one's
+ * would look entirely plausible, so these pin each scope's numbers.
+ */
+describe('scopes (#204)', () => {
+    /** The four kinds of run, as seedRaid options. Its default is a Full Clear. */
+    const CHECKPOINT: Partial<SeedRunOptions> = { startedFromBeginning: false, completedBy: [], incompleteBy: ['p1'] };
+    const FINISHED_CHECKPOINT: Partial<SeedRunOptions> = { startedFromBeginning: false };
+    const FRESH: Partial<SeedRunOptions> = { completedBy: [], incompleteBy: ['p1'] };
+    const FULL_CLEAR: Partial<SeedRunOptions> = {};
+
+    const SCOPES = ['allAttempts', 'freshRuns', 'fullClear'] as const;
+
+    /** Each scope's value at the step starting at `start`. */
+    function scopeValuesAt(start: number, options: RaidsInProgressOptions = SEVEN_DAYS) {
+        const series = getRaidsInProgress(options);
+        return SCOPES.map((scope) => valueAt(series[scope], start));
+    }
+
+    it('counts each run in every scope it belongs to, and in no other', () => {
+        seedRaid(hoursBeforeNow(10), HOUR, CHECKPOINT);
+        seedRaid(hoursBeforeNow(10), HOUR, FINISHED_CHECKPOINT);
+        seedRaid(hoursBeforeNow(10), HOUR, FRESH);
+        seedRaid(hoursBeforeNow(10), HOUR, FULL_CLEAR);
+
+        expect(scopeValuesAt(hoursBeforeNow(10))).toEqual([4, 2, 1]);
+        expect(scopeValuesAt(hoursBeforeNow(11))).toEqual([0, 0, 0]);
+    });
+
+    it('never counts a finished Checkpoint Run as a Full Clear, so a raid with no fresh-start flag reads zero', () => {
+        // The Morgeth Pantheon: finished, but Bungie never says it began at the start.
+        seedRaid(hoursBeforeNow(10), HOUR, FINISHED_CHECKPOINT);
+        seedRaid(hoursBeforeNow(10), HOUR / 2, FINISHED_CHECKPOINT);
+
+        expect(scopeValuesAt(hoursBeforeNow(10))).toEqual([1.5, 0, 0]);
+    });
+
+    it('averages each scope over the step, as All Attempts does', () => {
+        // A Full Clear covering half the step and a Fresh Run a quarter of it.
+        seedRaid(hoursBeforeNow(10) + 15 * MINUTE, HOUR / 2, FULL_CLEAR);
+        seedRaid(hoursBeforeNow(10), HOUR / 4, FRESH);
+        seedRaid(hoursBeforeNow(10), HOUR, CHECKPOINT);
+
+        expect(scopeValuesAt(hoursBeforeNow(10))).toEqual([1.75, 0.75, 0.5]);
+    });
+
+    it('puts every scope on the same step grid and window', () => {
+        seedRaid(hoursBeforeNow(10), HOUR, FRESH);
+
+        const series = getRaidsInProgress(SEVEN_DAYS);
+
+        const grid = (scope: (typeof SCOPES)[number]) => {
+            const { from, to, stepSeconds, countedFrom, countedUntil, points } = series[scope];
+            return { from, to, stepSeconds, countedFrom, countedUntil, starts: points.filter((p) => !p.provisional).map((p) => p.start) };
+        };
+        expect(grid('freshRuns')).toEqual(grid('allAttempts'));
+        expect(grid('fullClear')).toEqual(grid('allAttempts'));
+    });
+
+    it('splits each scope between its raids, and each scope\'s parts add up to its own total at every counted step', () => {
+        const raidKeys = ['last_wish', 'vault_of_glass', 'kings_fall'];
+        seedRaid(hoursBeforeNow(10), HOUR, { ...FULL_CLEAR, raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(10) + 15 * MINUTE, HOUR / 2, { ...FRESH, raidKey: 'vault_of_glass' });
+        seedRaid(hoursBeforeNow(10), 2 * HOUR, { ...FULL_CLEAR, raidKey: 'vault_of_glass' });
+        seedRaid(hoursBeforeNow(10), HOUR, { ...CHECKPOINT, raidKey: 'kings_fall' });
+        seedRaid(hoursBeforeNow(9), HOUR / 4, { ...FINISHED_CHECKPOINT, raidKey: 'last_wish' });
+
+        const series = getRaidsInProgress({ ...SEVEN_DAYS, raidKeys });
+
+        const raidsAt = (scope: (typeof SCOPES)[number], hours: number) =>
+            series[scope].points.find((point) => point.start === hoursBeforeNow(hours))!.raids;
+        expect(raidsAt('allAttempts', 10)).toEqual({ last_wish: 1, vault_of_glass: 1.5, kings_fall: 1 });
+        expect(raidsAt('freshRuns', 10)).toEqual({ last_wish: 1, vault_of_glass: 1.5, kings_fall: 0 });
+        expect(raidsAt('fullClear', 10)).toEqual({ last_wish: 1, vault_of_glass: 1, kings_fall: 0 });
+        expect(raidsAt('allAttempts', 9)).toEqual({ last_wish: 0.25, vault_of_glass: 1, kings_fall: 0 });
+        expect(raidsAt('fullClear', 9)).toEqual({ last_wish: 0, vault_of_glass: 1, kings_fall: 0 });
+        for (const scope of SCOPES) {
+            for (const point of countedPoints(series[scope])) {
+                const sum = Object.values(point.raids!).reduce((a, b) => a + b, 0);
+                expect(sum, `${scope}, step at ${point.start}`).toBeCloseTo(point.total, 9);
+            }
+        }
+    });
+
+    it('ranks the top raids within each scope', () => {
+        // King's Fall has the most raid time but none of it fresh; Last Wish has the most
+        // fresh time but none of it finished.
+        seedRaid(hoursBeforeNow(30), 3 * HOUR, { ...CHECKPOINT, raidKey: 'kings_fall' });
+        seedRaid(hoursBeforeNow(20), 2 * HOUR, { ...FRESH, raidKey: 'last_wish' });
+        seedRaid(hoursBeforeNow(10), HOUR, { ...FULL_CLEAR, raidKey: 'vault_of_glass' });
+
+        const series = getRaidsInProgress(SEVEN_DAYS);
+
+        expect(series.allAttempts.topRaids).toEqual(['kings_fall', 'last_wish', 'vault_of_glass']);
+        expect(series.freshRuns.topRaids).toEqual(['last_wish', 'vault_of_glass']);
+        expect(series.fullClear.topRaids).toEqual(['vault_of_glass']);
+    });
+
+    /**
+     * The Provisional estimate per scope: each scope's partial count over the share *its own*
+     * runs report by then (ADR 0009, amendment 2026-11-07). Same clock as the estimate tests
+     * above, "now" 11:30 and the 10:00 step read 30 minutes after it ends. Each training day
+     * holds two Full Clears in hour 10, 10:00-11:00 and 10:45-11:45 (hour 10's share 0.8, as in
+     * STANDARD_WEEK), and a Checkpoint Run 10:00-11:00 reported at once. All Attempts' hour 10
+     * is then 8,100 s of which 7,200 are reported at 30 minutes: 8/9.
+     */
+    const NOW_11_30 = { ...SEVEN_DAYS, now: HALF_PAST_ELEVEN };
+
+    it('estimates each scope by the curve learned from that scope\'s runs', () => {
+        seedTrainingWeek([[10, 0, HOUR, FULL_CLEAR], [10, 45, HOUR, FULL_CLEAR], [10, 0, HOUR, CHECKPOINT]]);
+        // Half an hour of a Full Clear and half an hour of a Checkpoint Run in the 10:00 step.
+        seedRaid(clock(10), 30 * MINUTE, FULL_CLEAR);
+        seedRaid(clock(10), 30 * MINUTE, CHECKPOINT);
+
+        const series = getRaidsInProgress(NOW_11_30);
+
+        // All Attempts: 1 / (8/9). Fresh Runs and Full Clears: 0.5 / 0.8 — not 0.5 / (8/9),
+        // which dividing by every run's pace would give.
+        expect(provisionalAt(series.allAttempts, clock(10))?.total).toBeCloseTo(1.125, 10);
+        expect(provisionalAt(series.freshRuns, clock(10))?.total).toBeCloseTo(0.625, 10);
+        expect(provisionalAt(series.fullClear, clock(10))?.total).toBeCloseTo(0.625, 10);
+    });
+
+    it('estimates nothing in a scope with no runs in the training week, while a wider scope with some is estimated', () => {
+        seedTrainingWeek([[10, 0, HOUR, CHECKPOINT], [10, 0, HOUR, FRESH]]);
+        seedRaid(clock(10), 30 * MINUTE, FULL_CLEAR);
+
+        const series = getRaidsInProgress(NOW_11_30);
+
+        expect(provisionalAt(series.allAttempts, clock(10))).toBeDefined();
+        expect(provisionalAt(series.freshRuns, clock(10))).toBeDefined();
+        expect(series.fullClear.points.some((point) => point.provisional)).toBe(false);
+        expect(series.fullClear.provisionalUntil).toBe(series.fullClear.countedUntil);
+        expect(series.allAttempts.provisionalUntil).toBe(clock(11));
+    });
+
+    it('counts only a scope\'s own runs toward a raid\'s minimum', () => {
+        // Last Wish's training week: six runs each of Full Clears, unfinished Fresh Runs and
+        // Checkpoint Runs, so 18 in All Attempts, 12 in Fresh Runs and 6 in Full Clears. At a
+        // minimum of 12 it is estimated under the first two and not under Full Clears.
+        seedTrainingWeek([
+            [10, 0, HOUR, { ...FULL_CLEAR, raidKey: 'last_wish' }],
+            [10, 0, HOUR, { ...FRESH, raidKey: 'last_wish' }],
+            [10, 0, HOUR, { ...CHECKPOINT, raidKey: 'last_wish' }],
+        ]);
+        seedRaid(clock(10), 30 * MINUTE, { ...FULL_CLEAR, raidKey: 'last_wish' });
+
+        const series = getRaidsInProgress({ ...NOW_11_30, raidKeys: ['last_wish'], minRaidRuns: 12 });
+
+        expect(Object.keys(provisionalAt(series.allAttempts, clock(10))!.raids!)).toEqual(['last_wish']);
+        expect(Object.keys(provisionalAt(series.freshRuns, clock(10))!.raids!)).toEqual(['last_wish']);
+        expect(provisionalAt(series.fullClear, clock(10))!.raids).toEqual({});
     });
 });

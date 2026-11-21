@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_RAIDS, isRaidsParamClean, parseActivityRaids, pickRaids, raidColour } from './activity-raids';
-import { activityRangeHref } from './activity-range';
+import { activityHref } from './activity-url';
 
 /**
  * The raids the Raid Activity page draws (#198): which `?raids=` keys count, which raids the
@@ -70,11 +70,11 @@ describe('raidColour', () => {
 
 describe('the link to a range with raids', () => {
     it('spells the raids out after the range when it is given some', () => {
-        expect(activityRangeHref('30d', ['last_wish', 'kings_fall'])).toBe('/activity?range=30d&raids=last_wish,kings_fall');
+        expect(activityHref({ range: '30d', scope: 'all', raids: ['last_wish', 'kings_fall'], view: 'chart' })).toBe('/activity?range=30d&raids=last_wish,kings_fall');
     });
 
     it('is the range alone when it is given none', () => {
-        expect(activityRangeHref('24h', [])).toBe('/activity?range=24h');
+        expect(activityHref({ range: '24h', scope: 'all', raids: [], view: 'chart' })).toBe('/activity?range=24h');
     });
 });
 

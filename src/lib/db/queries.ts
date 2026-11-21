@@ -686,7 +686,7 @@ export function getPlayersInRecentBucket(
     // pgcr_players ⋈ pgcrs join every cycle. Ordered by last_attempt_at (the
     // scheduling clock, bumped on every attempt) so backing-off players don't
     // get re-picked instantly; next_eligible_at gates players still in backoff.
-    // Served by idx_players_last_seen_attempt.
+    // The planner answers it from idx_players_session_poll and sorts the result.
     return db.prepare(`
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,
@@ -716,9 +716,9 @@ export function getPlayersInColdBucket(
     const db = getDb();
     const excludeJson = JSON.stringify(excludeIds);
     // Cold = seen before warmCutoff OR never seen (NULL last_seen_at). Ordered by
-    // priority then staleness (last_attempt_at); next_eligible_at gates players
-    // still in backoff. Served by idx_players_priority (the planner scans in
-    // priority order and stops at LIMIT once enough cold players are found).
+    // staleness (last_attempt_at); next_eligible_at gates players still in backoff.
+    // Served by idx_players_last_attempt (the planner walks it in order and stops
+    // at LIMIT once enough cold players are found).
     return db.prepare(`
     SELECT p.membership_id AS membershipId,
            p.membership_type AS membershipType,
@@ -730,7 +730,7 @@ export function getPlayersInColdBucket(
       AND (p.last_seen_at IS NULL OR p.last_seen_at < ?)
       AND (p.next_eligible_at IS NULL OR p.next_eligible_at <= unixepoch())
       AND p.membership_id NOT IN (SELECT value FROM json_each(?))
-    ORDER BY p.priority DESC, p.last_attempt_at ASC
+    ORDER BY p.last_attempt_at ASC
     LIMIT ?
   `).all(warmCutoffUnix, excludeJson, limit) as PlayerInfo[];
 }

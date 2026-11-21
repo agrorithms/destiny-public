@@ -70,7 +70,6 @@ export function initializeSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_pgcrs_raid_key ON pgcrs(raid_key);
     CREATE INDEX IF NOT EXISTS idx_pgcr_players_membership ON pgcr_players(membership_id);
     CREATE INDEX IF NOT EXISTS idx_players_last_crawled ON players(last_crawled_at);
-    CREATE INDEX IF NOT EXISTS idx_players_priority ON players(priority DESC, last_crawled_at ASC);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_raid ON active_sessions(raid_key);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_checked_at ON active_sessions(checked_at);
 
@@ -273,14 +272,18 @@ export function initializeSchema(db: Database.Database): void {
       ON pgcrs(ended_at, period, raid_key, completed, activity_was_started_from_beginning);
   `);
 
-    // Indexes for tiered bucket selection on the denormalized last_seen_at.
-    // hot/warm filter by last_seen_at range and order by last_attempt_at ASC
-    // (idx_players_last_seen_attempt). idx_players_last_seen is retained for the
-    // active-session polling candidate scan (orders by last_seen_at DESC).
-    // (The cold bucket orders by priority and reuses idx_players_priority.)
+    // Indexes on the players columns the crawler's bucket picks read. The hot/warm picks
+    // filter by last_seen_at range and order by last_attempt_at; the planner answers them
+    // from idx_players_session_poll (leading on last_seen_at) and sorts the result.
+    // idx_players_last_seen and idx_players_last_seen_attempt are kept but not chosen for
+    // them. The cold pick orders by last_attempt_at alone and walks idx_players_last_attempt,
+    // stopping at the LIMIT. idx_players_priority (priority was never written) is dropped:
+    // it was the only index led by priority and the cold pick never used it.
     db.exec(`
     CREATE INDEX IF NOT EXISTS idx_players_last_seen ON players(last_seen_at, last_crawled_at);
     CREATE INDEX IF NOT EXISTS idx_players_last_seen_attempt ON players(last_seen_at, last_attempt_at);
+    DROP INDEX IF EXISTS idx_players_priority;
+    CREATE INDEX IF NOT EXISTS idx_players_last_attempt ON players(last_attempt_at);
   `);
 
     // Index for active-session candidate selection: the recency-window scan orders by

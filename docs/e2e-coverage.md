@@ -1,7 +1,61 @@
 > Moved from `docs/handoffs/260803-playwright-e2e.md` on 2026-10-08 (#137), which is gitignored.
 > This file is a dated journal, oldest entry first: the first section is the 2026-08-03 handoff,
 > and each later entry records what one ticket covered and what it didn't. References to
-> `.claude/plans/` point at a local-only file. Rewriting it into a coverage list is tracked in #151.
+> `.claude/plans/` point at a local-only file. Rewriting it into a coverage list is tracked in #151; until then, the current list is the
+> section directly below, and the journal starts after it.
+
+## Current browser coverage
+
+> Moved from `CLAUDE.md`'s Verification section on 2026-11-21. This is the current list; the
+> dated journal below records how each entry got here. Add a line here when a ticket adds a spec.
+
+Playwright flows:
+
+- Leaderboard filtering
+- The active-session fireteam cap (counted in list rows)
+- `Name#Code` rendering
+- Theme persistence
+- The profile page's live card drawn in the browser — a raiding player's card with no session or player row written, a stored row kept while Bungie reports no activity, a partly private player found through a public teammate, an account-wide private player's stored session, known Roster members linked from the read-only names lookup and the rest named on screen only, markup in names shown as text, and the card at phone width
+- A `/gos10k` smoke test
+- The `/gos10k` page shell
+- The `/gos10k` range filter with its collapsed phone bar and `xl` rail
+- The `/gos10k` fastest-clears chip wrapping
+- The `/gos10k` median speed board at phone width
+- The `/gos10k` timeline's zoom to the range with its shaded whole-Archive overview strip
+- The `/gos10k` timeline's hover and tap tooltips with the chart still drawn when JavaScript is off
+- The `/gos10k` timeline's mouse drag setting the range from the main chart or the overview strip, with a touch swipe still scrolling the page
+- The `/gos10k` Helper board's time-column toggle, show-all expansion and phone width
+- The `/gos10k` presence strip's empty state and phone width
+- The `/gos10k` Resets panel's empty state and phone width
+- The `/gos10k` participants panel's empty state, column label and phone width alongside the class split
+- The `/gos10k` tabs — each tab's panels, the range and the tab surviving each other, and the strip at phone width
+- The leaderboard's Fastest Clears tab — `?board=fastest` and the tab switches held in the URL, the View toggle hidden with a stored Total Clears preference kept, the `board=fastest` request rendering one board per raid ranked by Clear Time, the Clear Time's raid.report link and its date tooltip on hover and keyboard focus, and the strip at phone width
+- The leaderboard's Difficulty dropdown — All / Normal / Master / Epic on both tabs, the `difficulty=` request with its answer on screen, a raid with no version at the chosen Difficulty losing its card while one with the version but no clears keeps its empty card, the choice surviving a reload with a stored pre-Epic value still loading and an unreadable one read as All, and the cards at phone width
+- The `/active-sessions` raid sections' fixed order — the raid list's order whatever their fireteam counts, an unlisted raid key last, and two raids sharing a display name kept apart
+- The `/active-sessions` list view — List as the default, the List | Tiles toggle's tooltips, pressed state and choice surviving a reload, rows titled after the Fireteam Leader with player count and elapsed time in the API's order, the tracked-player fallback, and the toggle and a row at phone width
+- The `/active-sessions` expandable rows — a click anywhere on a row toggling it with the chevron following, the chevron from the keyboard, the title link navigating without toggling, several rows open at once, an open row kept open across Refresh, across a maintenance response and across a Roster that grows, a fireteam of one with no chevron and nothing to open, and an open row of full-length names at phone width
+- The `/active-sessions` collapsible raid sections — a click on the header or Enter/Space on its button folding a section in list and tile view with its name and count kept, and kept across a switch between the two, a collapsed section kept across Refresh and a maintenance response but not a reload, Collapse all reading Expand all only when every visible section is collapsed and disabled with none, a section the raid filter brings in or brings back, or a refresh brings back, starting expanded, an open row still open when its section expands, and the control bar at phone width
+- The `/active-sessions` copy join code button — the Fireteam Leader's join code copied and read back from the clipboard, a leader with no code falling back to another member's, the button disabled with "Fireteam full" at 6/6 and absent when nobody has a full `Name#Code`, a copy that doesn't open or close its row, the icon changing and the copied command showing, then both reverting after about two seconds, a refused copy showing the join code to copy by hand until dismissed, a fireteam of one's button in line with the others, and the button and its feedback at phone width
+- The `/active-sessions` fireteam-size chips — all six on for a first visit, each toggled on its own, a switched-off size hidden in list view and in tile view (tiles counted per section), a section with no match gone and the combination with the raid filter (both in list view), the choice surviving a reload (pressed state included) and a failed save, an unreadable stored value read as all six, every chip off showing the empty state, a section the chips or a refresh empty coming back expanded, a collapsed section kept when a chip is toggled during a maintenance response, an open row still open when its size comes back, and the chips sharing one line with the View toggle at phone width (360 and 375px)
+- The `/activity` Raid Activity page — the nav's Activity link beside Leaderboard and Active Sessions, the total Raids in Progress line drawn from the seeded Tracker with its busiest hour and the shade over the last 15 minutes or so, the chart drawn with JavaScript off, and the nav link and the chart at phone width with nothing overflowing
+- The `/activity` range presets — 24h / 7d / 30d each setting `?range=` and redrawing that range's chart with its hour or day labels and the too-recent shade at that range's width, the 30-day chart's data-start shade and its dated legend, the range surviving a reload, an unreadable range showing 7 days, the presets working as plain links with JavaScript off, and the control at phone width
+- The `/activity` Provisional estimate — the dashed segment starting on the last counted point and stopping before the shaded last 15 minutes, its legend and the shade's, at 24h and 7d with the 30-day range allowed to have none, and an estimate raised off the baseline at 24h, with the chart still drawn with JavaScript off and at phone width
+- The `/activity` tooltips in local time — hover on a counted step and on a dashed one (its wording "estimate, still arriving"), none over a shaded span, a tap showing it and a tap elsewhere dismissing it with nothing overflowing at 360px, a swipe still scrolling, the gridlines, tick labels, caption and legend on the reader's clock in a pinned non-UTC zone (Asia/Kathmandu), and with JavaScript off, or in a browser that names no zone, every label still in UTC and saying so
+- The `/activity` per-raid panel — the three busiest raids drawn on a first visit (and per range), a y-axis of its own, picking and unpicking raids held in `?raids=` and kept across a reload, a sixth raid refused with its reason, unknown or surplus keys redirected clean (also with JavaScript off), the range links carrying `raids` only when the URL named some, five distinct line colours in light and dark, one hover or tap naming the total and each raid for the same moment with one marker through both panels, and the picker, the refused-sixth message and a five-raid tooltip at phone width
+- The `/activity` per-raid Provisional estimate — a dashed segment in the bottom panel for a raid with enough history and none for one without, joined on to its last counted point and stopping before the shade the two panels share, the note naming the raids with no estimate, the tooltip line `estimate, still arriving` or `no estimate` over an estimated step, one marker through both panels, the dashed segment and the note with JavaScript off, and the note and a five-raid estimate tooltip at phone width
+- The `/activity` Scope links — All / Fresh / Full Clears each setting `?scope=` (left out for All) and redrawing the total line, each link's tooltip and the intro following the scope, the scope surviving a range switch, a reload and a raid pick, picked raids surviving a scope switch, an unreadable or repeated scope read as All Attempts with no redirect, the default raids following the scope, a raid estimated under All with no estimate under Full Clears and the note naming it, the links with JavaScript off, and both rows of links at phone width
+- The `/activity` Raid Stats tab — the Raids in Progress | Raid Stats strip with `?view=stats` held across a reload and an unreadable or repeated view showing the chart, the range and scope links keeping the tab, the raids dropped on a tab switch and a stats link with raids redirected clean (also with JavaScript off), a scope switch moving KDA and Classes and leaving Clear Time alone, the too-few card, the 30-day line replacing the scope links under every scope with the chart tab keeping the scope, maintenance on a cold 24-hour stats tab through `withDbQuiesced` (first in its file, and it says so if not), a warm tab with JavaScript off in the first HTML with no skeleton, at 7 days and at 30 days with its Full Clears only line, and the strip and a card at 360px, with the empty state proven in Vitest only
+- The profile page's poll request — a raiding player's id and type posted to `profile-viewed` with no other field than the `poll`/`history` flags, the viewed player's history crawl queued in the same single request (and `poll:false` alone for a player with no raid and no session, `history:false` for an account-wide-private player, nothing at all for one with nothing stored), a private player found through a teammate also naming that teammate (polled, never crawled), a stored session with no live activity still asking, a 429 or a lost request leaving the card as it was, and a viewed raiding player with no row listed on `/active-sessions` after one poll cycle (run in the test process against the fixture Tracker)
+
+Caveats:
+
+- Tile view itself has had no per-fireteam coverage since #157 (#153).
+- One server-side spec, with no browser page, drives the client-write guard on `profile-viewed`, the middleware's per-address limit on it, and the retired write paths' (including `queue-crawl`) 404/405 over HTTP.
+
+Outside those, browser behaviour is unverified. Say so plainly rather than implying the
+server-side checks covered it.
+
+---
 
 # Playwright e2e — what landed, what didn't
 
@@ -121,7 +175,7 @@ The operational part: **if the canary fails, the problem is never the specs.** I
 means the running server is not reading this run's fixture database — either the
 env did not reach the `next start` child, or a server is up from an earlier run.
 Both are wiring, and both would otherwise end with test fixtures written into the
-live 5.5 GB database, which has no continuous replication and only manual
+live database, which has no continuous replication and only manual
 snapshots. Do not disable it to get a green run.
 
 ### Seeding is two-tier

@@ -53,13 +53,27 @@ expect test.describe() to be called here` — rather than like a misplaced file.
 not being ported or absorbed into Vitest. It was only renamed, from `test-maintenance-cycle` to
 `e2e:maintenance`, so that `npm test` unambiguously means "fast, hermetic, no network".
 
+## Bite proofs: the rules
+
+> Moved from `CLAUDE.md`'s Verification section on 2026-11-21. `CLAUDE.md` keeps a pointer and
+> the line that says which calls are the user's.
+
+Showing that a test catches a break is a tool's job, not a hand edit:
+
+- Logic Vitest reaches: `npm run mutate:diff` is the bite proof. Every survivor ends one of two ways: a new test kills it, or it is equivalent — no test can tell the mutant from the original. An equivalent mutant often marks redundant code, so simplify first; only what stays equivalent gets `// Stryker disable next-line <Mutator>: <why no test can tell them apart>` on the line above. `next-line` only, never file-wide; the mutator named, never `all`. Each disable comment is the user's decision, like a third-loop survivor: it is the easiest way to game the score. The comment is the record; `## Surviving mutants` in the ticket's progress file lists only its `file:line`.
+- A test written to kill a mutant asserts observable behaviour: return values, rows written, HTTP responses, what the page shows. Internal call counts, private structure and exact wording stay out of its assertions, unless the wording is the spec.
+- Three kill-and-rerun loops at most (`--incremental` on reruns). Whatever survives the third goes to the user as a decision. The score reported at the end comes from a full run, not an incremental one, with `--typecheck` on.
+- The mutation score is reported as a number. The threshold is **62.5% overall** (5 of 8), where no-coverage mutants count against it, and it applies only to a run with at least 8 scored mutants; below that, killing or justifying every survivor is the only bar. The covered-code score is reported next to it and never in its place. `mutate:diff` prints the verdict and exits non-zero on a FAIL.
+- Playwright: a spec seen red before its fix needs no further bite proof; record the red run. Otherwise one deliberate break per new spec, all batched into one build.
+- UI tickets run `npm run visual:check`. Its overflow gate must pass; the screenshots are for the user's review. Overflow that only appears after an interaction (a row opened, a tooltip, a copy confirmation) is that spec's job: call `expectNoOverflow(page)` from `e2e/support/viewport.ts` once the interaction has happened.
+
 ## Mutation testing (`npm run mutate:diff`)
 
 Stryker breaks the code a branch changed in small ways — `<` to `<=`, a condition to `true`, a
 string to `""` — and runs the Vitest tests that execute each break (a *mutant*). A mutant some
 test fails on is *killed*; one every test passes on *survived*, which means no test would notice
 that bug. It is the old hand-made bite proof, done for every changed line. The rules for acting
-on survivors are in CLAUDE.md's Verification section.
+on survivors are in [Bite proofs: the rules](#bite-proofs-the-rules) above.
 
 ```bash
 npm run mutate:diff                                  # this branch's changed lines (main...HEAD)
@@ -107,7 +121,7 @@ if (subset.length > superset.length) return false;
 ```
 
 The mutant is then reported as Ignored with that reason and leaves both scores. `next-line` only,
-the mutator named (never `all`), and each one is the user's decision (CLAUDE.md). `grep -rn
+the mutator named (never `all`), and each one is the user's decision (see the rules above). `grep -rn
 "Stryker disable" src/` lists them all.
 
 Only `.ts` under `src/` is mutated: Vitest runs with no DOM (above), so a `.tsx` component or a

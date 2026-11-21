@@ -136,7 +136,7 @@ Every pass has the same frame:
    mutation line is filled in (or `n/a` because no `.ts` under `src/` changed), and `visual:check`
    passed if the ticket is UI. Record its Suite line in `checks` and its Mutation line in `mutation`
    with `pass: "implement"`.
-4. CLAUDE.md wording it proposes (the e2e flow list) is a **decision stop**. On the user's yes, you
+4. CLAUDE.md wording it proposes is a **decision stop** (the e2e flow list now lives in `docs/e2e-coverage.md`, which the implementer updates itself). On the user's yes, you
    make the edit and commit it as `WIP #NNN: CLAUDE.md — <what>`.
 
 ### 2. Simplify

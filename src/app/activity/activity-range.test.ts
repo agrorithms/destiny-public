@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVITY_RANGES, DAY, HOUR, MINUTE, activityRangeHref, parseActivityRange, rangeOfSeries } from './activity-range';
+import { ACTIVITY_RANGES, DAY, HOUR, MINUTE, parseActivityRange, rangeOfSeries } from './activity-range';
+import { activityHref } from './activity-url';
 
 /**
  * The Raid Activity range presets (#195): which chart a URL asks for, and the links that
@@ -47,11 +48,30 @@ describe('the presets', () => {
     it('links to each preset with its range spelled out, 7 days included', () => {
         // Every preset sets `?range=`, so the URL always says which chart it is — the
         // default too, rather than a bare /activity that depends on what the default is.
-        expect(ACTIVITY_RANGES.map((range) => activityRangeHref(range.id))).toEqual([
+        expect(ACTIVITY_RANGES.map((range) => activityHref({ range: range.id, scope: 'all', raids: [], view: 'chart' }))).toEqual([
             '/activity?range=24h',
             '/activity?range=7d',
             '/activity?range=30d',
         ]);
+    });
+});
+
+describe('the scope in a link (#204)', () => {
+    it('leaves All Attempts out, so a link written before #204 and one written after say the same', () => {
+        expect(activityHref({ range: '7d', scope: 'all', raids: [], view: 'chart' })).toBe('/activity?range=7d');
+        expect(activityHref({ range: '24h', scope: 'all', raids: ['last_wish'], view: 'chart' })).toBe('/activity?range=24h&raids=last_wish');
+    });
+
+    it('writes a narrower scope after the range', () => {
+        expect(activityHref({ range: '30d', scope: 'fresh', raids: [], view: 'chart' })).toBe('/activity?range=30d&scope=fresh');
+        expect(activityHref({ range: '24h', scope: 'full', raids: [], view: 'chart' })).toBe('/activity?range=24h&scope=full');
+    });
+
+    it('keeps the raids, after the scope, when the link carries both', () => {
+        // A range or scope switch keeps the reader's comparison.
+        expect(activityHref({ range: '7d', scope: 'full', raids: ['last_wish', 'kings_fall'], view: 'chart' })).toBe(
+            '/activity?range=7d&scope=full&raids=last_wish,kings_fall'
+        );
     });
 });
 

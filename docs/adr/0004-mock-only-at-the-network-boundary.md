@@ -55,8 +55,13 @@ and a re-read enriches it. That is the same argument this ADR makes about
 response (`maintenance: true`, no sessions). Two specs use it, the expand spec (#158)
 and the collapse spec (#159). Each proves that page state (open rows, collapsed
 sections) survives that response. The e2e server reads a real SQLite file that is
-never in maintenance, and nothing a spec can seed puts it there, so a stub is the
-only way to get that response in a browser.
+never in maintenance, and no spec put it there when these two were written, so a stub
+was the way to get that response in a browser. *(Corrected 2026-11-12, #200: this said
+nothing a spec can seed puts the server in maintenance. `withDbQuiesced`
+(tests/helpers/db-quiesce.ts) does, through the production flag `getDb()` reads, and
+e2e/activity-stats.spec.ts uses it for a server-rendered page on a cold cache. The two
+stubs here are kept as they are, pending a follow-up issue that decides whether to move them onto
+the quiesce.)*
 
 That is the whole exception: a stub of our own API is allowed only for a response the
 e2e server can't be put into. Anything it *can* be driven into is seeded, not stubbed.
@@ -66,6 +71,11 @@ permission. The cost is the one this ADR names: the stub is our fixture, so if t
 route's maintenance shape changed, these specs would still pass against the old one.
 Keep every such stub in one helper, so there is one copy to check against the route.
 A second kind of own-API stub is the signal to revisit this exception, not to extend it.
+*(Since 2026-11-12, #200, the server can be put into maintenance, so `serveMaintenance`
+no longer meets this exception's rule that a stub of our own API is allowed only for a
+response the e2e server can't be put into. It is kept, with the specs that use it, pending
+the follow-up issue the correction above mentions; until that issue lands it is the one
+known exception to that rule.)*
 
 ## Consequences
 

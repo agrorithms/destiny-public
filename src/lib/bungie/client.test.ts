@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { bungieEnvelope } from '../../../tests/helpers/bungie-profile-builder';
 import { BungieAPIError, BungieClient, diffRequestCounts, type RequestCounts } from './client';
 
 /**
@@ -204,7 +205,7 @@ describe('throttle handling pauses the whole key', () => {
 });
 
 describe('request counts', () => {
-    const OK = { Response: {}, ErrorCode: 1, ErrorStatus: 'Success', Message: 'Ok', ThrottleSeconds: 0 };
+    const OK = bungieEnvelope({});
 
     function stubOk(): void {
         vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse(OK)));
@@ -284,7 +285,6 @@ describe('request counts', () => {
     });
 
     it('counts ErrorCode 1672 in its endpoint and in the 1672 bucket only', async () => {
-        vi.useFakeTimers();
         vi.stubGlobal(
             'fetch',
             vi.fn().mockResolvedValue(
@@ -301,7 +301,6 @@ describe('request counts', () => {
     });
 
     it('counts a Bungie ThrottleSeconds in its endpoint and in the Bungie bucket only', async () => {
-        vi.useFakeTimers();
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...OK, ThrottleSeconds: 3 })));
         const client = makeClient();
 

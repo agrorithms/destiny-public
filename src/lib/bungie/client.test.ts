@@ -204,6 +204,65 @@ describe('throttle handling pauses the whole key', () => {
     });
 });
 
+/**
+ * The warning text is the spec here. The operator finds throttling in prod by
+ * grepping `pm2 logs crawler` for exactly these three phrases, and counts lines
+ * (`grep -c`), so each throttle must log one line carrying its phrase. Only the
+ * grep phrase and the pause length are asserted, not the whole sentence.
+ */
+describe('each throttle logs one warning carrying the phrase the operator greps for', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function spyOnWarn() {
+        return vi.spyOn(console, 'warn').mockImplementation(() => {});
+    }
+
+    it('HTTP 429, with the pause length', async () => {
+        const warn = spyOnWarn();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                new Response('rate limited', { status: 429, headers: { 'Retry-After': '7' } })
+            )
+        );
+
+        await makeClient().getPGCR('123').catch(() => {});
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('HTTP 429');
+        expect(warn.mock.calls[0][0]).toContain('7s');
+    });
+
+    it('Game server throttle (1672), with the pause length', async () => {
+        const warn = spyOnWarn();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                new Response(JSON.stringify({ ErrorCode: 1672, ThrottleSeconds: 9 }), { status: 503 })
+            )
+        );
+
+        await makeClient().getPGCR('123').catch(() => {});
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('Game server throttle (1672)');
+        expect(warn.mock.calls[0][0]).toContain('9s');
+    });
+
+    it('Throttled by Bungie, with the pause length', async () => {
+        const warn = spyOnWarn();
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...PGCR_BODY, ThrottleSeconds: 4 })));
+
+        await makeClient().getPGCR('123');
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('Throttled by Bungie');
+        expect(warn.mock.calls[0][0]).toContain('4s');
+    });
+});
+
 describe('request counts', () => {
     const OK = bungieEnvelope({});
 

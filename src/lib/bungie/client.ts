@@ -36,6 +36,30 @@ export class BungieAPIError extends Error {
     }
 }
 
+/**
+ * Cumulative request counts for one BungieClient instance. Endpoint fields count
+ * requests issued; the throttle fields count outcomes, so a throttled response
+ * is in both its endpoint field and exactly one throttle field.
+ */
+export interface RequestCounts {
+    activityHistory: number;
+    pgcr: number;
+    /** getProfile asking for exactly [100]: the History Crawl's character-id refresh. */
+    profileIdsOnly: number;
+    /** getProfile asking for anything else: the session poll. */
+    profileOther: number;
+    linkedProfiles: number;
+    /** Manifest and player search: not in the budget question, counted so the fields sum to the total. */
+    other: number;
+    throttled429: number;
+    throttled1672: number;
+    throttledBungie: number;
+}
+
+export function diffRequestCounts(prev: RequestCounts, next: RequestCounts): RequestCounts {
+    throw new Error('not implemented');
+}
+
 export class BungieClient {
     private apiKey: string;
     private rateLimiter: RateLimiter;
@@ -103,6 +127,10 @@ export class BungieClient {
         }
 
         return data;
+    }
+
+    getRequestCounts(): RequestCounts {
+        throw new Error('not implemented');
     }
 
     async getProfile(

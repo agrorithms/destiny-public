@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { startCrawler, stopCrawler } from '../src/lib/crawler';
 import { getDbStats, getPlayerCount } from '../src/lib/db/queries';
 import { closeDb } from '../src/lib/db';
+import { diffRequestCounts, getBungieClient } from '../src/lib/bungie/client';
 
 // ============================================
 // CONFIGURATION
@@ -36,6 +37,29 @@ const CRAWLER_CONFIG = {
     // src/lib/http/history-crawl-limits.ts; in memory and per web process, like the poll's.
 };
 
+// One line a minute with how many Bungie requests this process's shared client made.
+// The scanner and discovery run their own processes and clients, so they are not in it.
+const REQUEST_COUNT_LOG_INTERVAL_MS = 60_000;
+
+function startRequestCountLog(): NodeJS.Timeout {
+    const client = getBungieClient();
+    let previous = client.getRequestCounts();
+    const timer = setInterval(() => {
+        const current = client.getRequestCounts();
+        const d = diffRequestCounts(previous, current);
+        previous = current;
+        console.log(
+            `[bungie-requests/min] activity=${d.activityHistory} pgcr=${d.pgcr} ` +
+            `profile_characters_only=${d.profileIdsOnly} profile_other=${d.profileOther} ` +
+            `linked_profiles=${d.linkedProfiles} other=${d.other} ` +
+            `throttled_429=${d.throttled429} throttled_1672=${d.throttled1672} throttled_bungie=${d.throttledBungie}`
+        );
+    }, REQUEST_COUNT_LOG_INTERVAL_MS);
+    // Never the reason the process stays alive.
+    timer.unref();
+    return timer;
+}
+
 // ============================================
 // SCRIPT
 // ============================================
@@ -61,9 +85,12 @@ async function main() {
     console.log('');
     console.log('Starting crawler... Press Ctrl+C to stop.\n');
 
+    const requestCountTimer = startRequestCountLog();
+
     // Handle graceful shutdown
     process.on('SIGINT', () => {
         console.log('\n[INFO] Received SIGINT. Shutting down gracefully...');
+        clearInterval(requestCountTimer);
         stopCrawler();
         setTimeout(() => {
             closeDb();
@@ -74,6 +101,7 @@ async function main() {
 
     process.on('SIGTERM', () => {
         console.log('\n[INFO] Received SIGTERM. Shutting down gracefully...');
+        clearInterval(requestCountTimer);
         stopCrawler();
         setTimeout(() => {
             closeDb();

@@ -55,20 +55,26 @@ const REQUEST_COUNT_LOG_LABELS: Record<keyof RequestCounts, string> = {
     throttledBungie: 'throttled_bungie',
 };
 
-function startRequestCountLog(): NodeJS.Timeout {
+// Returns the function that stops the log. It logs the counts since the last tick first, in the same
+// format, so a restart or deploy does not drop up to a minute from the day's totals.
+function startRequestCountLog(): () => void {
     const client = getBungieClient();
     let previous = client.getRequestCounts();
-    const timer = setInterval(() => {
+    const logSincePrevious = () => {
         const current = client.getRequestCounts();
-        const d = diffRequestCounts(previous, current);
+        const lastMinute = diffRequestCounts(previous, current);
         previous = current;
         const fields = (Object.keys(REQUEST_COUNT_LOG_LABELS) as (keyof RequestCounts)[])
-            .map((key) => `${REQUEST_COUNT_LOG_LABELS[key]}=${d[key]}`);
+            .map((key) => `${REQUEST_COUNT_LOG_LABELS[key]}=${lastMinute[key]}`);
         console.log(`[bungie-requests/min] ${fields.join(' ')}`);
-    }, REQUEST_COUNT_LOG_INTERVAL_MS);
+    };
+    const timer = setInterval(logSincePrevious, REQUEST_COUNT_LOG_INTERVAL_MS);
     // Never the reason the process stays alive.
     timer.unref();
-    return timer;
+    return () => {
+        logSincePrevious();
+        clearInterval(timer);
+    };
 }
 
 // ============================================
@@ -96,12 +102,13 @@ async function main() {
     console.log('');
     console.log('Starting crawler... Press Ctrl+C to stop.\n');
 
-    const requestCountTimer = startRequestCountLog();
+    const stopRequestCountLog = startRequestCountLog();
 
     // Handle graceful shutdown
     const shutdown = (signal: NodeJS.Signals) => {
         console.log(`\n[INFO] Received ${signal}. Shutting down gracefully...`);
-        clearInterval(requestCountTimer);
+        // Straight away, not after the grace below: pm2 sends SIGKILL 1.6 s after SIGTERM by default.
+        stopRequestCountLog();
         stopCrawler();
         setTimeout(() => {
             closeDb();

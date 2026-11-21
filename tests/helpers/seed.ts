@@ -145,6 +145,18 @@ export function seedPlayer(
     });
 }
 
+/**
+ * A known player the crawler is holding off because their profile was private when it last
+ * looked: a `players` row in session privacy backoff for the next hour. No production writer
+ * outside the crawler's `recordSessionCheck` sets this, so the test sets it directly.
+ */
+export function seedPrivacyBackoff(membershipId: string, bungieGlobalDisplayName = 'Private#0001'): void {
+    seedPlayer(membershipId, bungieGlobalDisplayName, 1);
+    getDb()
+        .prepare('UPDATE players SET session_privacy_backoff = 1, next_session_eligible_at = unixepoch() + 3600 WHERE membership_id = ?')
+        .run(membershipId);
+}
+
 /** The current Unix time in whole seconds, the unit SQLite's `unixepoch()` stores. */
 export function nowSec(): number {
     return Math.floor(Date.now() / 1000);

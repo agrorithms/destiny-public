@@ -49,8 +49,32 @@ export function interceptApiCalls(page: Page): NetworkEntry[] {
  * waiter has to be armed before navigating or it can miss the response.
  */
 export function waitForQueueCrawl(page: Page) {
+    return waitForPost(page, '/api/players/queue-crawl');
+}
+
+/**
+ * The "profile viewed" request (#9003) is fire-and-forget too, and it can follow the page's
+ * live check by a probe or two, so the waiter is armed before navigating, as for queue-crawl.
+ * Resolves on the response, whatever its status.
+ */
+export function waitForProfileViewed(page: Page) {
+    return waitForPost(page, '/api/players/profile-viewed');
+}
+
+/** The response to the page's next POST to `path`, whatever its status. */
+function waitForPost(page: Page, path: string) {
     return page.waitForResponse(
-        (res) => res.url().includes('/api/players/queue-crawl') && res.request().method() === 'POST',
+        (res) => res.url().includes(path) && res.request().method() === 'POST',
         { timeout: 15_000 },
     );
+}
+
+/** The bodies the page POSTed to profile-viewed, parsed, in call order. A pure observer, like interceptApiCalls. */
+export function recordProfileViewed(page: Page): Array<Record<string, unknown>> {
+    const bodies: Array<Record<string, unknown>> = [];
+    page.on('request', (request) => {
+        if (request.method() !== 'POST' || !request.url().includes('/api/players/profile-viewed')) return;
+        bodies.push(JSON.parse(request.postData() ?? 'null'));
+    });
+    return bodies;
 }

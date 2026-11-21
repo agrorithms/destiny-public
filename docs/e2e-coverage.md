@@ -3135,3 +3135,85 @@ short name so it measures the card.
   all private: Vitest pins `includesPlayer` and `teammatesToProbe`; the browser sees the happy path.
 - The Refresh button's re-check: the same function as the first load.
 - A GetLinkedProfiles answer that resolves to a different (cross-save primary) membership.
+
+## 2026-11-19 — #9003 a profile view asks the crawler to look
+
+`e2e/profile-poll-request.spec.ts` — **new**, seven specs. The suite is now **thirty-six flows**.
+The profile page sends one more request, `POST /api/players/profile-viewed`, with ids and nothing
+else (ADR 0010): the viewed player's id and type and, for a private player found through a public
+teammate, that one teammate's. It is sent once per visit, after the live check settles, when the
+page's own Bungie check found a raid or the stored baseline had a session for the viewed player.
+The route writes no session row and no `players` row; the crawler lists or re-checks the Fireteam
+on its next poll cycle.
+
+1. **A raiding player** (no stored session, not in `players`): exactly `{membershipId, membershipType}`
+   is posted, with the page token; afterwards the Tracker has no session row and no `players` row,
+   and the player is waiting in `session_poll_requests`.
+2. **A private player found through a public teammate:** the body also carries
+   `teammate: {membershipId, membershipType}`.
+3. **A stored session while Bungie reports no activity:** the request is still sent, so the crawler
+   re-checks the row, which is still there.
+4. **No stored session and no activity:** no request. The history crawl is the only POST.
+5. **A fulfilled 429** and 6. **an aborted request:** the card, the heading and the
+   Checking-live-status line are as they were, and `expectNoOverflow` holds.
+7. **End to end:** after the request, one poll cycle (`pollActiveSessions`) is run in the Playwright
+   worker against the fixture Tracker, with the worker's `fetch` answering for Bungie
+   (`e2e/support/crawler-bungie.ts`), and `/active-sessions` lists "Name#Code's fireteam" for the
+   viewed player. The e2e server has no crawler, so this is the cycle's body, not the loop.
+
+`e2e/players-api-guard.spec.ts` gains two: `profile-viewed` rejects a spoofed origin, no origin and
+no page token with the guard's `{error:'Forbidden'}`; and the 61st POST in a minute from one address
+is the middleware's 429 (its body is not the route's), so the `players-read` bucket covers the route.
+`profile-live-card.spec.ts` and `profile-roster-names.spec.ts` now expect the second POST, in order,
+for a raiding or teammate-found player.
+
+**Bite proof — the red run.** The new spec was committed first and run against a build without the
+page change (`52f6b18`): 6 of 7 failed (the request never came, `waitForResponse` timed out); the
+"no request" spec passes on any page that sends nothing, so it has a break instead. The two guard
+specs test unchanged code, so they do too. One build, three breaks:
+
+| Break | Spec that failed |
+| --- | --- |
+| `profileViewedBody` returns the body even with no raid and no stored session | "a player with no stored session and no activity sends no request" (received the six-line list of POSTs) |
+| the route's `isTrustedClientWrite` check skipped | "profile-viewed: a spoofed origin, no origin and no page token…" (expected 403, received 202) |
+| the middleware returns no rule for `/api/players/profile-viewed` | "profile-viewed: the 61st request in a minute…" (61st was the route's 400, not the middleware's 429) |
+
+All reverted; green at HEAD.
+
+### Review fixes (loop 1)
+
+No spec added; two assertions tightened and the in-process poll cycle narrowed. Still seven specs.
+
+- **Spec 3, "a stored session while Bungie reports no activity…"** (O2). It asserted only that the
+  row was still there, which holds whether or not the route marked it. It now asserts the row's
+  `reverify_requested_at` is set. The seeded row is checked now, inside `MAX_SESSION_AGE_SECONDS` (two hours by default), so
+  #9002's rule marks it.
+- **Spec 7, the poll cycle** (S1). The worker's Bungie stub threw on an unanswered request, but
+  the crawler swallows that as a transient error, so the throw failed nothing. The stub now
+  records every unanswered URL in `unexpected`, and the spec asserts it is empty and that Bungie
+  was asked about the listed player only. The cycle also claimed up to 20 queued requests and
+  re-verified any stale or marked row, other specs' included; `isolatePollCycle` sets those aside
+  for the cycle and puts each back as it was afterwards.
+
+**Bite proof** (`npm run e2e -- e2e/profile-poll-request.spec.ts`, one break per run; the spec-file
+break needed no build of its own):
+
+| Break | Result |
+| --- | --- |
+| `requestSessionPoll`'s mark sets `reverify_requested_at` to itself (the row matches, so it still answers `accepted`) | spec 3 failed: expected `Any<Number>`, received `null`; the other eight passed |
+| spec 7 without `isolatePollCycle` | spec 7 failed at `unexpected`: four GetProfile calls, for spec 3's marked row and for specs 1 and 2's three queued requests |
+
+Both reverted; green at HEAD.
+
+### What is still NOT covered
+
+- The real crawler loop. Spec 7 runs one cycle's function in the test process. The loop's own
+  scheduling is #9002's `poll-loop.test.ts`. A local check against the dev Tracker, with the real
+  crawler: `npm run crawler`, open a raiding player's profile in `npm run dev` (the dev server needs
+  `NEXT_PUBLIC_BUNGIE_PUBLIC_API_KEY`), then within a cycle or two `/active-sessions` lists the
+  Fireteam. A second view within five minutes sends nothing new (the per-player cooldown, answered
+  `200 {queued:false}`).
+- The global limiter and the cooldown are per web process: the e2e server is one process, PM2 runs
+  two, so the 2x ceiling is stated in ADR 0010 and pinned in Vitest only.
+- The queue-full 429 and the privacy-backoff decline from the browser: Vitest
+  (`tests/routes/profile-viewed.test.ts`) pins both; the page ignores every response.

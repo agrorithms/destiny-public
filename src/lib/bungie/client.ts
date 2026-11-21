@@ -56,7 +56,8 @@ export interface RequestCounts {
     throttledBungie: number;
 }
 
-type EndpointBucket = 'activityHistory' | 'pgcr' | 'profileIdsOnly' | 'profileOther' | 'linkedProfiles' | 'other';
+type ThrottleBucket = 'throttled429' | 'throttled1672' | 'throttledBungie';
+type EndpointBucket = Exclude<keyof RequestCounts, ThrottleBucket>;
 
 function emptyRequestCounts(): RequestCounts {
     return {
@@ -108,20 +109,16 @@ export class BungieClient {
             const text = await response.text();
 
             if (response.status === 429) {
-                this.counts.throttled429++;
                 const retryAfter = parseInt(response.headers.get('Retry-After') || '', 10);
                 const pauseSec = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 5;
-                console.warn(`⚠️ HTTP 429 from Bungie — pausing key for ${pauseSec}s`);
-                this.rateLimiter.pauseFor(pauseSec);
+                this.pauseKey('throttled429', pauseSec, `⚠️ HTTP 429 from Bungie — pausing key for ${pauseSec}s`);
             } else {
                 // Bungie error bodies are JSON even on 5xx; Cloudflare pages are not.
                 try {
                     const body = JSON.parse(text) as Partial<BungieResponse<unknown>>;
                     if (body.ErrorCode === 1672) {
-                        this.counts.throttled1672++;
                         const pauseSec = Math.max(body.ThrottleSeconds || 0, getGameServerBackoffSec());
-                        console.warn(`⚠️ Game server throttle (1672) — pausing key for ${pauseSec}s`);
-                        this.rateLimiter.pauseFor(pauseSec);
+                        this.pauseKey('throttled1672', pauseSec, `⚠️ Game server throttle (1672) — pausing key for ${pauseSec}s`);
                     }
                 } catch {
                     // Non-JSON body (e.g. Cloudflare HTML) — nothing to inspect.
@@ -137,9 +134,11 @@ export class BungieClient {
         // request — pause the shared limiter and fail fast; the ErrorCode
         // check below throws and callers treat it as a transient error.
         if (data.ThrottleSeconds > 0) {
-            this.counts.throttledBungie++;
-            console.warn(`⚠️ Throttled by Bungie for ${data.ThrottleSeconds}s — pausing key`);
-            this.rateLimiter.pauseFor(data.ThrottleSeconds);
+            this.pauseKey(
+                'throttledBungie',
+                data.ThrottleSeconds,
+                `⚠️ Throttled by Bungie for ${data.ThrottleSeconds}s — pausing key`
+            );
         }
 
         if (data.ErrorCode !== 1) {
@@ -151,6 +150,13 @@ export class BungieClient {
         }
 
         return data;
+    }
+
+    /** Every throttle signal pauses the whole key, and is counted where it pauses it. */
+    private pauseKey(bucket: ThrottleBucket, seconds: number, warning: string): void {
+        this.counts[bucket]++;
+        console.warn(warning);
+        this.rateLimiter.pauseFor(seconds);
     }
 
     /** A copy: callers can keep it as a baseline without the client's counters moving under them. */

@@ -333,7 +333,7 @@ describe('request counts', () => {
         expect(client.getRequestCounts().pgcr).toBe(1);
     });
 
-    it('diffRequestCounts subtracts field by field', () => {
+    it('a minute\'s counts are the later snapshot minus the earlier, in every field', () => {
         const prev: RequestCounts = {
             activityHistory: 1, pgcr: 2, profileIdsOnly: 3, profileOther: 4, linkedProfiles: 5,
             other: 6, throttled429: 7, throttled1672: 8, throttledBungie: 9,

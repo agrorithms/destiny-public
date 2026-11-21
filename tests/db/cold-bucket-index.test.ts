@@ -40,7 +40,11 @@ describe('the cold pick index', () => {
         // Mirrors getPlayersInColdBucket's SQL in src/lib/db/queries.ts.
         const plan = db.prepare(`
             EXPLAIN QUERY PLAN
-            SELECT p.membership_id AS membershipId
+            SELECT p.membership_id AS membershipId,
+                   p.membership_type AS membershipType,
+                   p.display_name AS displayName,
+                   p.bungie_global_display_name AS bungieGlobalDisplayName,
+                   p.last_crawled_at AS lastCrawledAt
             FROM players p
             WHERE p.is_active = 1
               AND (p.last_seen_at IS NULL OR p.last_seen_at < ?)
@@ -52,6 +56,7 @@ describe('the cold pick index', () => {
         const details = plan.map((r) => r.detail).join('\n');
 
         expect(details).toContain('idx_players_last_attempt');
-        expect(details).not.toContain('USE TEMP B-TREE FOR ORDER BY');
+        // Matches the partial sort too: the old plan said 'USE TEMP B-TREE FOR LAST TERM OF ORDER BY'.
+        expect(details).not.toContain('TEMP B-TREE');
     });
 });

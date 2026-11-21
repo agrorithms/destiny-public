@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { startCrawler, stopCrawler } from '../src/lib/crawler';
 import { getDbStats, getPlayerCount } from '../src/lib/db/queries';
 import { closeDb } from '../src/lib/db';
-import { diffRequestCounts, getBungieClient } from '../src/lib/bungie/client';
+import { diffRequestCounts, getBungieClient, type RequestCounts } from '../src/lib/bungie/client';
 
 // ============================================
 // CONFIGURATION
@@ -41,6 +41,20 @@ const CRAWLER_CONFIG = {
 // The scanner and discovery run their own processes and clients, so they are not in it.
 const REQUEST_COUNT_LOG_INTERVAL_MS = 60_000;
 
+// Each field's label in the log line, in print order. A Record, so a new field is a compile error here
+// rather than a count the log silently leaves out.
+const REQUEST_COUNT_LOG_LABELS: Record<keyof RequestCounts, string> = {
+    activityHistory: 'activity',
+    pgcr: 'pgcr',
+    profileIdsOnly: 'profile_characters_only',
+    profileOther: 'profile_other',
+    linkedProfiles: 'linked_profiles',
+    other: 'other',
+    throttled429: 'throttled_429',
+    throttled1672: 'throttled_1672',
+    throttledBungie: 'throttled_bungie',
+};
+
 function startRequestCountLog(): NodeJS.Timeout {
     const client = getBungieClient();
     let previous = client.getRequestCounts();
@@ -48,12 +62,9 @@ function startRequestCountLog(): NodeJS.Timeout {
         const current = client.getRequestCounts();
         const d = diffRequestCounts(previous, current);
         previous = current;
-        console.log(
-            `[bungie-requests/min] activity=${d.activityHistory} pgcr=${d.pgcr} ` +
-            `profile_characters_only=${d.profileIdsOnly} profile_other=${d.profileOther} ` +
-            `linked_profiles=${d.linkedProfiles} other=${d.other} ` +
-            `throttled_429=${d.throttled429} throttled_1672=${d.throttled1672} throttled_bungie=${d.throttledBungie}`
-        );
+        const fields = (Object.keys(REQUEST_COUNT_LOG_LABELS) as (keyof RequestCounts)[])
+            .map((key) => `${REQUEST_COUNT_LOG_LABELS[key]}=${d[key]}`);
+        console.log(`[bungie-requests/min] ${fields.join(' ')}`);
     }, REQUEST_COUNT_LOG_INTERVAL_MS);
     // Never the reason the process stays alive.
     timer.unref();
@@ -88,8 +99,8 @@ async function main() {
     const requestCountTimer = startRequestCountLog();
 
     // Handle graceful shutdown
-    process.on('SIGINT', () => {
-        console.log('\n[INFO] Received SIGINT. Shutting down gracefully...');
+    const shutdown = (signal: NodeJS.Signals) => {
+        console.log(`\n[INFO] Received ${signal}. Shutting down gracefully...`);
         clearInterval(requestCountTimer);
         stopCrawler();
         setTimeout(() => {
@@ -97,18 +108,9 @@ async function main() {
             console.log('[INFO] Shutdown complete.');
             process.exit(0);
         }, 2000);
-    });
-
-    process.on('SIGTERM', () => {
-        console.log('\n[INFO] Received SIGTERM. Shutting down gracefully...');
-        clearInterval(requestCountTimer);
-        stopCrawler();
-        setTimeout(() => {
-            closeDb();
-            console.log('[INFO] Shutdown complete.');
-            process.exit(0);
-        }, 2000);
-    });
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
 
     // Start the crawler
     await startCrawler(CRAWLER_CONFIG);

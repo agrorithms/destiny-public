@@ -40,3 +40,12 @@ Four guards close this off (`src/lib/crawler/index.ts` `activeSessionLoop`,
   membership type, so until then the re-verify found no teammate it could probe, and a cleanly
   gone player's row was removed unprobed. Each teammate's type now comes from the `players`
   table; a teammate the Tracker doesn't know is still skipped.
+- **A slow poll is not a hung request** (2026-11-21, noted while planning ADR 0011). Option A
+  assumes the work the watchdog abandons is one hung request. A poll that is only *slow* (more
+  players than fit in the budget) keeps running in full after it is abandoned, alongside the next
+  poll, so the two share the key and each runs slower, and the next is likelier to trip too. The
+  watchdog is fixed at 600s while the interval (`CRAWLER_ACTIVE_SESSION_INTERVAL_MS`, 120s) is
+  start-to-start: past 120s polls run back-to-back, and shortening the interval below a poll's
+  duration changes nothing. Before raising `CRAWLER_SESSION_POLLING_LIMIT`, measure poll duration
+  (`Poll took` in the crawler log) and keep its p95 under about a third of the watchdog. Raise the
+  frequency first, then the limit in steps. If p95 nears that bound, Option B stops being optional.

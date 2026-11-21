@@ -183,8 +183,9 @@ lapses, the site reports itself as no longer live.
 _Avoid_: ping, health check, status
 
 **Data Freshness**:
-How long ago the crawler last confirmed it was working — the age of what the site knows. The only
-freshness that says anything about whether a leaderboard or an active session can be trusted.
+How long ago the crawler last confirmed it was working — the age of what the site knows. Says the
+crawler is alive, not that new raids are arriving: a stopped scanner leaves it fresh, which is what
+Scanner Lag is for.
 _Avoid_: last updated, uptime
 
 **Page Freshness**:
@@ -224,6 +225,20 @@ _Avoid_: gap, missed queue entry
 One run through the Missed Ids after a catch-up pause. A pass can be cut short, and any Missed Id it
 didn't reach simply stays queued.
 _Avoid_: retry loop, retry cycle
+
+**Scanner Lag**:
+How long ago the newest raid the scanner stored ended. The Tracker's measure of whether the scanner
+is keeping up with the Leading Edge; it grows the same way whether the scanner is slow or stopped.
+During Bungie maintenance no raids end, so the lag grows without the scanner being at fault. Once it
+passes its threshold the site reports itself degraded, as a stale Heartbeat does.
+_Avoid_: scanner delay, behind by N ids, backlog
+
+**History Crawl**:
+Reading one Tracked Player's recent activity history from Bungie to find raids the Tracker hasn't
+stored. Yields many raids per call, but only for players already known, so it backs the scanner up
+rather than replacing it: it runs at full rate only while Scanner Lag is high. Otherwise it runs
+only for a player whose profile is viewed, plus a small trickle that keeps it working.
+_Avoid_: player crawl, bucket crawl, hot/warm/cold crawl, recrawl
 
 **Farm**:
 Repeatedly replaying a single raid encounter or checkpoint for rewards, rather than progressing

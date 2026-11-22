@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { startCrawler, stopCrawler } from '../src/lib/crawler';
 import { getDbStats, getPlayerCount } from '../src/lib/db/queries';
 import { closeDb } from '../src/lib/db';
+import { diffRequestCounts, getBungieClient, type RequestCounts } from '../src/lib/bungie/client';
 
 // ============================================
 // CONFIGURATION
@@ -36,6 +37,46 @@ const CRAWLER_CONFIG = {
     // src/lib/http/history-crawl-limits.ts; in memory and per web process, like the poll's.
 };
 
+// One line a minute with how many Bungie requests this process's shared client made.
+// The scanner and discovery run their own processes and clients, so they are not in it.
+const REQUEST_COUNT_LOG_INTERVAL_MS = 60_000;
+
+// Each field's label in the log line, in print order. A Record, so a new field is a compile error here
+// rather than a count the log silently leaves out.
+const REQUEST_COUNT_LOG_LABELS: Record<keyof RequestCounts, string> = {
+    activityHistory: 'activity',
+    pgcr: 'pgcr',
+    profileIdsOnly: 'profile_ids_only',
+    profileOther: 'profile_other',
+    linkedProfiles: 'linked_profiles',
+    other: 'other',
+    throttled429: 'throttled_429',
+    throttled1672: 'throttled_1672',
+    throttledBungie: 'throttled_bungie',
+};
+
+// Returns the function that stops the log. It logs the counts since the last tick first, in the same
+// format, so a restart or deploy does not drop up to a minute from the day's totals.
+function startRequestCountLog(): () => void {
+    const client = getBungieClient();
+    let previous = client.getRequestCounts();
+    const logSincePrevious = () => {
+        const current = client.getRequestCounts();
+        const lastMinute = diffRequestCounts(previous, current);
+        previous = current;
+        const fields = (Object.keys(REQUEST_COUNT_LOG_LABELS) as (keyof RequestCounts)[])
+            .map((key) => `${REQUEST_COUNT_LOG_LABELS[key]}=${lastMinute[key]}`);
+        console.log(`[bungie-requests/min] ${fields.join(' ')}`);
+    };
+    const timer = setInterval(logSincePrevious, REQUEST_COUNT_LOG_INTERVAL_MS);
+    // Never the reason the process stays alive.
+    timer.unref();
+    return () => {
+        logSincePrevious();
+        clearInterval(timer);
+    };
+}
+
 // ============================================
 // SCRIPT
 // ============================================
@@ -61,26 +102,22 @@ async function main() {
     console.log('');
     console.log('Starting crawler... Press Ctrl+C to stop.\n');
 
-    // Handle graceful shutdown
-    process.on('SIGINT', () => {
-        console.log('\n[INFO] Received SIGINT. Shutting down gracefully...');
-        stopCrawler();
-        setTimeout(() => {
-            closeDb();
-            console.log('[INFO] Shutdown complete.');
-            process.exit(0);
-        }, 2000);
-    });
+    const stopRequestCountLog = startRequestCountLog();
 
-    process.on('SIGTERM', () => {
-        console.log('\n[INFO] Received SIGTERM. Shutting down gracefully...');
+    // Handle graceful shutdown
+    const shutdown = (signal: NodeJS.Signals) => {
+        console.log(`\n[INFO] Received ${signal}. Shutting down gracefully...`);
+        // Straight away, not after the grace below: pm2 sends SIGKILL 1.6 s after SIGTERM by default.
+        stopRequestCountLog();
         stopCrawler();
         setTimeout(() => {
             closeDb();
             console.log('[INFO] Shutdown complete.');
             process.exit(0);
         }, 2000);
-    });
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
 
     // Start the crawler
     await startCrawler(CRAWLER_CONFIG);

@@ -36,17 +36,63 @@ export class BungieAPIError extends Error {
     }
 }
 
+/**
+ * Cumulative request counts for one BungieClient instance. Endpoint fields count
+ * requests issued; the throttle fields count outcomes, so a throttled response
+ * is in both its endpoint field and exactly one throttle field.
+ */
+export interface RequestCounts {
+    activityHistory: number;
+    pgcr: number;
+    /** getProfile asking for exactly [100]: the History Crawl's character-id refresh. */
+    profileIdsOnly: number;
+    /** getProfile asking for anything else: the session poll. */
+    profileOther: number;
+    linkedProfiles: number;
+    /** Manifest and player search: not in the budget question, counted so the fields sum to the total. */
+    other: number;
+    throttled429: number;
+    throttled1672: number;
+    throttledBungie: number;
+}
+
+type ThrottleBucket = 'throttled429' | 'throttled1672' | 'throttledBungie';
+type EndpointBucket = Exclude<keyof RequestCounts, ThrottleBucket>;
+
+function emptyRequestCounts(): RequestCounts {
+    return {
+        activityHistory: 0, pgcr: 0, profileIdsOnly: 0, profileOther: 0, linkedProfiles: 0,
+        other: 0, throttled429: 0, throttled1672: 0, throttledBungie: 0,
+    };
+}
+
+/** What happened between two snapshots of the same client, field by field. */
+export function diffRequestCounts(prev: RequestCounts, next: RequestCounts): RequestCounts {
+    const diff = emptyRequestCounts();
+    for (const key of Object.keys(diff) as (keyof RequestCounts)[]) {
+        diff[key] = next[key] - prev[key];
+    }
+    return diff;
+}
+
 export class BungieClient {
     private apiKey: string;
     private rateLimiter: RateLimiter;
+    private counts: RequestCounts = emptyRequestCounts();
 
     constructor(apiKey: string, maxRequestsPerSecond: number = 25) {
         this.apiKey = apiKey;
         this.rateLimiter = new RateLimiter(maxRequestsPerSecond);
     }
 
-    private async request<T>(url: string, options?: RequestInit): Promise<BungieResponse<T>> {
+    private async request<T>(
+        bucket: EndpointBucket,
+        url: string,
+        options?: RequestInit
+    ): Promise<BungieResponse<T>> {
         await this.rateLimiter.wait();
+        // Counted once the limiter lets the request out, before it can fail.
+        this.counts[bucket]++;
 
         const response = await fetch(url, {
             ...options,
@@ -65,16 +111,14 @@ export class BungieClient {
             if (response.status === 429) {
                 const retryAfter = parseInt(response.headers.get('Retry-After') || '', 10);
                 const pauseSec = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 5;
-                console.warn(`⚠️ HTTP 429 from Bungie — pausing key for ${pauseSec}s`);
-                this.rateLimiter.pauseFor(pauseSec);
+                this.pauseKey('throttled429', pauseSec, `⚠️ HTTP 429 from Bungie — pausing key for ${pauseSec}s`);
             } else {
                 // Bungie error bodies are JSON even on 5xx; Cloudflare pages are not.
                 try {
                     const body = JSON.parse(text) as Partial<BungieResponse<unknown>>;
                     if (body.ErrorCode === 1672) {
                         const pauseSec = Math.max(body.ThrottleSeconds || 0, getGameServerBackoffSec());
-                        console.warn(`⚠️ Game server throttle (1672) — pausing key for ${pauseSec}s`);
-                        this.rateLimiter.pauseFor(pauseSec);
+                        this.pauseKey('throttled1672', pauseSec, `⚠️ Game server throttle (1672) — pausing key for ${pauseSec}s`);
                     }
                 } catch {
                     // Non-JSON body (e.g. Cloudflare HTML) — nothing to inspect.
@@ -90,8 +134,11 @@ export class BungieClient {
         // request — pause the shared limiter and fail fast; the ErrorCode
         // check below throws and callers treat it as a transient error.
         if (data.ThrottleSeconds > 0) {
-            console.warn(`⚠️ Throttled by Bungie for ${data.ThrottleSeconds}s — pausing key`);
-            this.rateLimiter.pauseFor(data.ThrottleSeconds);
+            this.pauseKey(
+                'throttledBungie',
+                data.ThrottleSeconds,
+                `⚠️ Throttled by Bungie for ${data.ThrottleSeconds}s — pausing key`
+            );
         }
 
         if (data.ErrorCode !== 1) {
@@ -105,13 +152,26 @@ export class BungieClient {
         return data;
     }
 
+    /** Every throttle signal pauses the whole key, and is counted where it pauses it. */
+    private pauseKey(bucket: ThrottleBucket, seconds: number, warning: string): void {
+        this.counts[bucket]++;
+        console.warn(warning);
+        this.rateLimiter.pauseFor(seconds);
+    }
+
+    /** A copy: callers can keep it as a baseline without the client's counters moving under them. */
+    getRequestCounts(): RequestCounts {
+        return { ...this.counts };
+    }
+
     async getProfile(
         membershipType: number,
         membershipId: string,
         components: number[]
     ): Promise<BungieResponse<DestinyProfileResponse>> {
         const url = BungieEndpoints.getProfile(membershipType, membershipId, components);
-        return this.request<DestinyProfileResponse>(url);
+        const isIdsOnly = components.length === 1 && components[0] === 100;
+        return this.request<DestinyProfileResponse>(isIdsOnly ? 'profileIdsOnly' : 'profileOther', url);
     }
 
     async getLinkedProfiles(
@@ -119,7 +179,7 @@ export class BungieClient {
         membershipType: number = -1
     ): Promise<BungieResponse<DestinyLinkedProfilesResponse>> {
         const url = BungieEndpoints.getLinkedProfiles(membershipId, membershipType);
-        return this.request<DestinyLinkedProfilesResponse>(url);
+        return this.request<DestinyLinkedProfilesResponse>('linkedProfiles', url);
     }
 
     async getActivityHistory(
@@ -134,19 +194,19 @@ export class BungieClient {
             characterId,
             params
         );
-        return this.request<DestinyActivityHistoryResults>(url);
+        return this.request<DestinyActivityHistoryResults>('activityHistory', url);
     }
 
     async getPGCR(
         activityId: string
     ): Promise<BungieResponse<DestinyPostGameCarnageReportData>> {
         const url = BungieEndpoints.getPGCR(activityId);
-        return this.request<DestinyPostGameCarnageReportData>(url);
+        return this.request<DestinyPostGameCarnageReportData>('pgcr', url);
     }
 
     async getManifest(): Promise<BungieResponse<DestinyManifestResponse>> {
         const url = BungieEndpoints.getManifest();
-        return this.request<DestinyManifestResponse>(url);
+        return this.request<DestinyManifestResponse>('other', url);
     }
 
     async searchDestinyPlayerByBungieName(
@@ -155,7 +215,7 @@ export class BungieClient {
         membershipType: number = -1
     ): Promise<BungieResponse<DestinyExactPlayerSearchResponse>> {
         const url = BungieEndpoints.searchDestinyPlayerByBungieName(membershipType);
-        return this.request<DestinyExactPlayerSearchResponse>(url, {
+        return this.request<DestinyExactPlayerSearchResponse>('other', url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ displayName, displayNameCode }),
@@ -167,7 +227,7 @@ export class BungieClient {
         page: number = 0
     ): Promise<BungieResponse<DestinyUserSearchResponse>> {
         const url = BungieEndpoints.searchByGlobalName(page);
-        return this.request<DestinyUserSearchResponse>(url, {
+        return this.request<DestinyUserSearchResponse>('other', url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ displayNamePrefix }),

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BungieAPIError, BungieClient } from './client';
+import { bungieEnvelope } from '../../../tests/helpers/bungie-profile-builder';
+import { BungieAPIError, BungieClient, diffRequestCounts, type RequestCounts } from './client';
 
 /**
  * Mocked at the fetch boundary only — never at our own module boundaries.
@@ -200,6 +201,211 @@ describe('throttle handling pauses the whole key', () => {
 
         await vi.advanceTimersByTimeAsync(20);
         expect(second.settled).toBe(true);
+    });
+});
+
+/**
+ * The warning text is the spec here. The operator finds throttling in prod by
+ * grepping `pm2 logs crawler` for exactly these three phrases, and counts lines
+ * (`grep -c`), so each throttle must log one line carrying its phrase. Only the
+ * grep phrase and the pause length are asserted, not the whole sentence.
+ */
+describe('each throttle logs one warning carrying the phrase the operator greps for', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    function spyOnWarn() {
+        return vi.spyOn(console, 'warn').mockImplementation(() => {});
+    }
+
+    it('HTTP 429, with the pause length', async () => {
+        const warn = spyOnWarn();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                new Response('rate limited', { status: 429, headers: { 'Retry-After': '7' } })
+            )
+        );
+
+        await makeClient().getPGCR('123').catch(() => {});
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('HTTP 429');
+        expect(warn.mock.calls[0][0]).toContain('7s');
+    });
+
+    it('Game server throttle (1672), with the pause length', async () => {
+        const warn = spyOnWarn();
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                new Response(JSON.stringify({ ErrorCode: 1672, ThrottleSeconds: 9 }), { status: 503 })
+            )
+        );
+
+        await makeClient().getPGCR('123').catch(() => {});
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('Game server throttle (1672)');
+        expect(warn.mock.calls[0][0]).toContain('9s');
+    });
+
+    it('Throttled by Bungie, with the pause length', async () => {
+        const warn = spyOnWarn();
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...PGCR_BODY, ThrottleSeconds: 4 })));
+
+        await makeClient().getPGCR('123');
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('Throttled by Bungie');
+        expect(warn.mock.calls[0][0]).toContain('4s');
+    });
+});
+
+describe('request counts', () => {
+    const OK = bungieEnvelope({});
+
+    function stubOk(): void {
+        vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => jsonResponse(OK)));
+    }
+
+    it('starts at zero in every field', () => {
+        expect(makeClient().getRequestCounts()).toEqual({
+            activityHistory: 0, pgcr: 0, profileIdsOnly: 0, profileOther: 0, linkedProfiles: 0,
+            other: 0, throttled429: 0, throttled1672: 0, throttledBungie: 0,
+        });
+    });
+
+    it('counts each endpoint on its own', async () => {
+        stubOk();
+        const client = makeClient();
+
+        await client.getActivityHistory(3, '1', '2', { mode: 4 });
+        await client.getActivityHistory(3, '1', '2', { mode: 4 });
+        await client.getPGCR('9');
+        await client.getLinkedProfiles('1');
+        await client.getLinkedProfiles('1');
+        await client.getLinkedProfiles('1');
+        await client.getManifest();
+        await client.searchDestinyPlayerByBungieName('a', 1);
+
+        expect(client.getRequestCounts()).toMatchObject({
+            activityHistory: 2, pgcr: 1, linkedProfiles: 3, other: 2,
+            profileIdsOnly: 0, profileOther: 0,
+        });
+    });
+
+    it('splits profile calls: exactly [100] is the id refresh, anything else is the poll', async () => {
+        stubOk();
+        const client = makeClient();
+
+        await client.getProfile(3, '1', [100]);
+        await client.getProfile(3, '1', [100]);
+        await client.getProfile(3, '1', [204, 1000]);
+        await client.getProfile(3, '1', [100, 200]);
+        await client.getProfile(3, '1', [200]);
+        await client.getProfile(3, '1', []);
+
+        expect(client.getRequestCounts()).toMatchObject({ profileIdsOnly: 2, profileOther: 4 });
+    });
+
+    it('counts a request that fails, in its endpoint and in no throttle bucket', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>bad gateway</html>', { status: 502 })));
+        const client = makeClient();
+
+        await client.getPGCR('1').catch(() => {});
+
+        expect(client.getRequestCounts()).toMatchObject({
+            pgcr: 1, throttled429: 0, throttled1672: 0, throttledBungie: 0,
+        });
+    });
+
+    it('counts a Bungie-level error that carries no throttle as an ordinary request', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...OK, ErrorCode: 5 })));
+        const client = makeClient();
+
+        await client.getPGCR('1').catch(() => {});
+
+        expect(client.getRequestCounts()).toMatchObject({
+            pgcr: 1, throttled429: 0, throttled1672: 0, throttledBungie: 0,
+        });
+    });
+
+    it('counts an HTTP 429 in its endpoint and in the 429 bucket only', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('slow down', { status: 429 })));
+        const client = makeClient();
+
+        await client.getPGCR('1').catch(() => {});
+
+        expect(client.getRequestCounts()).toMatchObject({
+            pgcr: 1, throttled429: 1, throttled1672: 0, throttledBungie: 0,
+        });
+    });
+
+    it('counts ErrorCode 1672 in its endpoint and in the 1672 bucket only', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn().mockResolvedValue(
+                new Response(JSON.stringify({ ErrorCode: 1672, ThrottleSeconds: 0 }), { status: 503 })
+            )
+        );
+        const client = makeClient();
+
+        await client.getProfile(3, '1', [204]).catch(() => {});
+
+        expect(client.getRequestCounts()).toMatchObject({
+            profileOther: 1, throttled429: 0, throttled1672: 1, throttledBungie: 0,
+        });
+    });
+
+    it('counts a Bungie ThrottleSeconds in its endpoint and in the Bungie bucket only', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ ...OK, ThrottleSeconds: 3 })));
+        const client = makeClient();
+
+        await client.getLinkedProfiles('1');
+
+        expect(client.getRequestCounts()).toMatchObject({
+            linkedProfiles: 1, throttled429: 0, throttled1672: 0, throttledBungie: 1,
+        });
+    });
+
+    it('keeps instances apart', async () => {
+        stubOk();
+        const a = makeClient();
+        const b = makeClient();
+
+        await a.getPGCR('1');
+
+        expect(a.getRequestCounts().pgcr).toBe(1);
+        expect(b.getRequestCounts().pgcr).toBe(0);
+    });
+
+    it('hands out a copy: mutating a snapshot does not change the next one', async () => {
+        stubOk();
+        const client = makeClient();
+        await client.getPGCR('1');
+
+        const first = client.getRequestCounts();
+        first.pgcr = 99;
+
+        expect(client.getRequestCounts().pgcr).toBe(1);
+    });
+
+    it('a minute\'s counts are the later snapshot minus the earlier, in every field', () => {
+        const prev: RequestCounts = {
+            activityHistory: 1, pgcr: 2, profileIdsOnly: 3, profileOther: 4, linkedProfiles: 5,
+            other: 6, throttled429: 7, throttled1672: 8, throttledBungie: 9,
+        };
+        const next: RequestCounts = {
+            activityHistory: 11, pgcr: 12, profileIdsOnly: 13, profileOther: 14, linkedProfiles: 15,
+            other: 16, throttled429: 17, throttled1672: 18, throttledBungie: 19,
+        };
+
+        expect(diffRequestCounts(prev, next)).toEqual({
+            activityHistory: 10, pgcr: 10, profileIdsOnly: 10, profileOther: 10, linkedProfiles: 10,
+            other: 10, throttled429: 10, throttled1672: 10, throttledBungie: 10,
+        });
     });
 });
 

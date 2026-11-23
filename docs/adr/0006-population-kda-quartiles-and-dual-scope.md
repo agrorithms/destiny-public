@@ -324,3 +324,40 @@ cold meaning the file evicted from the page cache (`posix_fadvise(DONTNEED)`, ch
   at 1.7–3.7 s and KDA at 11.6–20.6 s, in that order every run. On a freshly started server's first
   request, loading the route's code outlasted the pause in two of three runs and the header arrived
   with Clear Time.
+
+## Amendment (2026-11-23): a Player-Run is folded from all its Entries (C-01, #43)
+
+The Consequence above that calls the first-observed character a harmless approximation is wrong
+on two counts, both found by the 26-11-13 scan (`docs/26-11-13-scan/04-correctness.md`, C-01) on
+the 2026-11-05 backup.
+
+- **It is not ~0.5% of PGCRs.** 333,360 of 1,868,741 PGCRs (17.8%) have more Entries than
+  players (`player_count > unique_player_count`), and 25,977 of 165,717 Full Clears (15.7%). The
+  figure is if anything low: `unique_player_count` is NULL on rows `discover.ts` wrote.
+- **It does not cost only kills, deaths and assists.** The dropped Entry takes its `completed`
+  flag with it, while `pgcrs.completed` is computed from every Entry, so a Full Clear can store
+  the player who finished it as not finishing. 34 Full Clears had no Completion row at all, every
+  one multi-Entry. That reaches the leaderboards and the player page, not only this endpoint.
+
+**Decided (2026-11-23):** every write folds a player's Entries into one `pgcr_players` row
+before inserting, inside `insertFullPGCR` so no caller can skip it:
+
+- `completed` if **any** Entry completed. Entry order is not time order (in the Archive the
+  first-stored row of a multi-character player who finished is the non-finishing one in 40% of
+  cases), so any rule that picks one Entry's flag depends on an order that means nothing.
+- `kills`, `deaths`, `assists`, `time_played_seconds` **summed**. Per-Player-Run KDA then covers
+  every character, which moves the quartiles above slightly, in the right direction.
+- `character_class` and `light_level` from **one** Entry, the one with the most time played
+  (ties to the first), so the row still describes a character that existed.
+
+This keeps the Player-Run as the stored unit, so no reader changes. #43's per-character table
+was the alternative; it would have made every reader of `pgcr_players` re-aggregate per player,
+and a reader that missed it would be wrong in a new way. It stays open as an *additive* change
+for per-character analytics (#42), no longer a prerequisite for anything here. The fold is
+cheap to reverse: with PGCRs kept 30 days (`CRAWLER_CLEANUP_MAX_AGE_HOURS`), a per-character
+table added later is complete within one retention window.
+
+Rows written before the fold are not repaired; they age out within the same 30 days. The scale
+of what was lost is measured after deploy, not by refetching: the non-finishing share in
+multi-Entry Full Clears was 21.1% against 10.5% in single-Entry ones, and the fold should bring
+the first toward the second on new rows.

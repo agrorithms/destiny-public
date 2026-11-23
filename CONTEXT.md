@@ -312,10 +312,18 @@ _Avoid_: teammate, fireteam member, participant (but see **Participant** (Archiv
 **Player-Run**:
 One player in one raid instance — the datum every population statistic is counted in. Distinct
 from a Completion, which requires the run to be a finished Full Clear: a Player-Run counts whether
-they cleared, joined at a checkpoint, or dropped out. A player who brought two characters to the
-same instance is still one Player-Run, and today only their first-observed character's kills,
-deaths and assists are kept.
+they cleared, joined at a checkpoint, or dropped out. A player with several **Entries** in the
+same instance is still one Player-Run: they finished it if any of their Entries did, its kills,
+deaths, assists and time played are summed over those Entries, and its class and light level are
+those of the Entry they played longest. *(Until the fold in ADR 0006's 2026-11-23 amendment ships,
+the Tracker keeps only the first-observed Entry, which can record a finisher as not finishing.)*
 _Avoid_: participant, entry, appearance (but see **Participant** (Archive))
+
+**Entry**:
+One character's line in a PGCR, carrying that character's own finished flag and stats. A player
+who swaps character mid-raid has several, and their order says nothing about which came first.
+A Player-Run is folded from all of one player's Entries; the Archive keeps Entries as they are.
+_Avoid_: character (for this), appearance, player row
 
 **Participant** (Archive):
 One of the distinct people who *entered* a given Run — the Archive's unit for "who was in this

@@ -18,12 +18,16 @@ function setState(key: string, ageSec: number): void {
         .run(key, nowSec() - ageSec);
 }
 
+/** seedRun derives ended_at = period + activityDurationSeconds. */
+const DURATION = 1800;
+
 /** One scanner-stored raid that ended `lagSec` ago. */
 function seedScannerRaid(lagSec: number): void {
     seedRun({
         instanceId: '9001',
         source: 'scanner',
-        period: nowSec() - lagSec - 1800,
+        period: nowSec() - lagSec - DURATION,
+        activityDurationSeconds: DURATION,
         completedBy: ['4611000000000001'],
     });
 }
@@ -71,7 +75,14 @@ describe('Scanner Lag', () => {
 
     it('is not rescued by newer crawler rows', async () => {
         seedScannerRaid(1000);
-        seedRun({ instanceId: '9002', source: 'crawler', period: nowSec() - 1900, completedBy: ['4611000000000002'] });
+        // A crawler raid that ended 100s ago, newer than the scanner's.
+        seedRun({
+            instanceId: '9002',
+            source: 'crawler',
+            period: nowSec() - 100 - DURATION,
+            activityDurationSeconds: DURATION,
+            completedBy: ['4611000000000002'],
+        });
         expect((await verdict()).body.status).toBe('degraded');
     });
 

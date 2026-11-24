@@ -9,7 +9,8 @@ import { nowSec, seedRun } from '../helpers/seed';
  * The read has to ignore every other source, because after an outage the History Crawl keeps
  * storing newer raids and would otherwise make a stopped scanner look healthy.
  *
- * seedRun derives ended_at = period + duration, so each run's end time is period + 1800 here.
+ * seedRun derives ended_at = period + activityDurationSeconds, so each run's end time is
+ * period + DURATION here.
  */
 
 const DURATION = 1800;
@@ -18,7 +19,7 @@ const endedAt = (period: number) => period + DURATION;
 let n = 0;
 function seed(source: string, period: number): void {
     n += 1;
-    seedRun({ instanceId: `${9000 + n}`, source, period, completedBy: [`46110000000000${n}`] });
+    seedRun({ instanceId: `${9000 + n}`, source, period, activityDurationSeconds: DURATION, completedBy: [`46110000000000${n}`] });
 }
 
 beforeEach(() => {

@@ -179,7 +179,8 @@ _Avoid_: speedrun, run time, duration
 
 **Heartbeat**:
 The crawler's periodic signal that it is still observing. Its age is the Data Freshness; once it
-lapses, the site reports itself as no longer live.
+lapses, the site reports itself as no longer live. A Maintenance Pause doesn't count against it: its
+age is measured from the end of the last one when that is later.
 _Avoid_: ping, health check, status
 
 **Data Freshness**:
@@ -229,8 +230,9 @@ _Avoid_: retry loop, retry cycle
 **Scanner Lag**:
 How long ago the newest raid the scanner stored ended. The Tracker's measure of whether the scanner
 is keeping up with the Leading Edge; it grows the same way whether the scanner is slow or stopped.
-During Bungie maintenance no raids end, so the lag grows without the scanner being at fault. Once it
-passes its threshold the site reports itself degraded, as a stale Heartbeat does.
+No raids end during a Maintenance Pause, so the lag is counted from the end of the last one when that
+is later: maintenance never reads as a slow scanner. Once it passes its threshold the site reports
+itself degraded, as a stale Heartbeat does.
 _Avoid_: scanner delay, behind by N ids, backlog
 
 **History Crawl**:
@@ -239,6 +241,19 @@ stored. Yields many raids per call, but only for players already known, so it ba
 rather than replacing it: it runs at full rate only while Scanner Lag is high. Otherwise it runs
 only for a player whose profile is viewed, plus a small trickle that keeps it working.
 _Avoid_: player crawl, bucket crawl, hot/warm/cold crawl, recrawl
+
+**Maintenance Pause**:
+A period in which the Tracker makes no Bungie calls, because Bungie answered that its API is down for
+maintenance. After a fixed time the Tracker asks again, and the pause holds until Bungie answers
+properly or a short grace runs out; another maintenance answer renews it. Nothing observed during it
+is true of the game: sessions aren't shown as live, and neither the Heartbeat nor Scanner Lag counts it.
+_Avoid_: maintenance mode, SystemDisabled pause, Bungie outage, maintenance (alone)
+
+**Downtime Cleanup**:
+The Tracker's own database upkeep (integrity check, compaction, statistics refresh), run during a
+Maintenance Pause because nobody is relying on the site then. The database is closed to every process
+while it runs. Not Bungie's maintenance, though the two happen together.
+_Avoid_: maintenance (alone), vacuum (for the whole job), DB maintenance
 
 **Farm**:
 Repeatedly replaying a single raid encounter or checkpoint for rewards, rather than progressing

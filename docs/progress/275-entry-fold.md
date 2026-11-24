@@ -12,11 +12,11 @@ Branch `feat/275-entry-fold` from `main` @ 5278070. Rules: the ticket and ADR 00
 
 ## Chunk 2 — red: `WIP #275: red — Entry fold rules, finishing Entry second`
 
-- [ ] `src/lib/db/entry-fold.ts` — typed stub that throws
-- [ ] `src/lib/db/entry-fold.test.ts` — one test per fold rule, including a tie on time played
-- [ ] `tests/helpers/pgcr-builder.ts` — `swapEntries`
-- [ ] `tests/db/entry-fold.test.ts` — swapped fixture, builder Full Clear, ended_at guard
-- [ ] `tests/real-pgcrs.test.ts` — Garden test asserts the fold; comments reworded
+- [x] `src/lib/db/entry-fold.ts` — typed stub that throws
+- [x] `src/lib/db/entry-fold.test.ts` — one test per fold rule, including a tie on time played
+- [x] `tests/helpers/pgcr-builder.ts` — `swapEntries`
+- [x] `tests/db/entry-fold.test.ts` — swapped fixture, builder Full Clear, ended_at guard
+- [x] `tests/real-pgcrs.test.ts` — Garden test asserts the fold; comments reworded
 
 ## Chunk 3 — green: `WIP #275: fold a player's Entries inside insertFullPGCR`
 

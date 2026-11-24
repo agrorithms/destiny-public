@@ -165,6 +165,21 @@ export function buildPGCR(options: PGCROptions = {}): DestinyPostGameCarnageRepo
 }
 
 /**
+ * A copy of `pgcr` with Entries `i` and `j` swapped. For permuting a captured fixture rather than
+ * capturing a new one: Entry order is not time order, so a test that depends on which Entry comes
+ * first needs both orders, and Bungie only ever sent us one.
+ */
+export function swapEntries(
+    pgcr: DestinyPostGameCarnageReportData,
+    i: number,
+    j: number
+): DestinyPostGameCarnageReportData {
+    const entries = [...pgcr.entries];
+    [entries[i], entries[j]] = [entries[j], entries[i]];
+    return { ...pgcr, entries };
+}
+
+/**
  * Six distinct players. `completions` sets how many finished, counting from the
  * first entry — so `buildFireteam({ completions: 1 })` is the "only one of six
  * completed" case.

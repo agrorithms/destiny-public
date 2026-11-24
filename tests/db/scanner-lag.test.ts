@@ -37,7 +37,8 @@ describe('getNewestScannerRaidEndedAt', () => {
     it('ignores crawler, discovery and verify rows newer than the newest scanner row', () => {
         seed('scanner', 1_000_000);
         seed('crawler', 5_000_000);
-        seed('discover backscan', 6_000_000);
+        seed('discover', 6_000_000); // the PM2 discovery process (src/lib/discovery/snowball.ts)
+        seed('discover backscan', 6_500_000); // scripts/discover.ts
         seed('verify', 7_000_000);
         expect(getNewestScannerRaidEndedAt()).toBe(endedAt(1_000_000));
     });

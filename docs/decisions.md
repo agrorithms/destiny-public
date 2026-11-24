@@ -721,3 +721,89 @@ change silently.
 This is intended. The board ranks Clear Time, and a tie says nothing new about it. Don't "fix" it by
 flashing on a changed `instanceId`; that would make the tab's movement mean something different
 from the Full Clears tab's.
+
+---
+
+## 2026-11-24 — The cleanup keeps `ANALYZE`; the 30-day leaderboard is pinned before it runs on prod (#9039, #9044)
+
+The Downtime Cleanup and `scripts/run-db-maintenance.ts` both run `wal_checkpoint → VACUUM →
+ANALYZE`. #227 chose `INDEXED BY` over `ANALYZE` so as not to re-plan the site, but the first manual
+VACUUM (#9038's runbook) would re-plan it anyway. #9039 measured what that does on a copy of prod.
+
+**Verdict: keep `ANALYZE`, on one condition: #9044 is deployed first.** A fresh `ANALYZE` makes the
+all-raids 30-day leaderboard about 70% slower. Every other measured query is unchanged or faster.
+#9044 pins that one statement's join order, so it no longer depends on the statistics. Until #9044
+is on prod, **do not run `ANALYZE` there by any route**: not the first manual VACUUM, not
+`run-db-maintenance.ts`, and not the cleanup switch (`BUNGIE_MAINTENANCE_CLEANUP_ENABLED`, #9038).
+
+Removing `ANALYZE` instead was rejected. It would protect this one query only for as long as prod's
+statistics stay out of date. It would also give up the gains below, and need a third change to put
+`ANALYZE` back once the pin landed.
+
+**ADR 0006.** Its second 2026-11-07 amendment (#227) forced raid stats onto the widened index with
+`INDEXED BY`. It rejected `ANALYZE`, "which would re-plan every query on the site from statistics
+nothing tests". This entry keeps that decision: the `INDEXED BY` pins held under a fresh `ANALYZE`.
+What it accepts is the site-wide re-plan that the cleanup already performs, now measured for the
+statements below. #9044 extends the same approach to one more statement.
+
+### Prod's statistics are already out of date, and wrong in the other direction
+
+The copy is `data/raid-tracker.backup-2026-11-21.db`. A `VACUUM INTO` backup carries prod's
+`sqlite_stat1` and `sqlite_stat4`, so it plans as prod does today. Prod has been analysed before,
+probably by a manual `run-db-maintenance.ts` run, and before 2026-11-05: ADR 0006's #227 amendment
+already found 2.66M `pgcrs` in the statistics of the 2026-11-05 backup, against 1.87M rows held.
+The statistics were taken when the tables were larger than they have been since:
+
+| Table | Rows in prod's statistics | Rows actually in the copy |
+|---|---|---|
+| pgcrs | 2,664,160 | 1,593,265 |
+| pgcr_players | 7,824,720 | 4,492,749 |
+| players | 1,178,910 | 1,454,471 |
+| session_snapshots | 13 | 140,457 |
+
+`idx_pgcrs_ended_period_raid_clear` has no statistics on prod at all: it was created after that
+`ANALYZE`. A figure read from `sqlite_stat1` is not a row count. #9037's "2,664,160 pgcrs" for the
+same backup is the statistics figure.
+
+`ANALYZE` took 3.9 s and then 6.6 s on x86 (WSL2). Assume roughly 8–14 s on the ARM box until the
+first real run is timed.
+
+### What changed
+
+Method: two copies of the backup, both brought to the current schema first, because the backup
+predates #9025's index change. `ANALYZE` was run on one of them. A survey of about 26 statements with
+bound parameters ran twice on each copy, alternating between copies, with "now" pinned to the
+backup's newest PGCR. The app's own `runLeaderboardRows`, `getRaidStatsFrame` and
+`getRaidScopeStats` were run the same way. Everything ran through better-sqlite3 / SQLite 3.51.2,
+which is built with `ENABLE_STAT4`. Plans were identical across passes within each copy. Timings are
+warm, in ms.
+
+| Statement | Before → after plan | Before | After |
+|---|---|---|---|
+| **Leaderboard, all raids, 720h** | `SEARCH p` (`idx_pgcrs_raid_ended`), then pp by instance → **`SCAN pp`** (`idx_pgcr_players_member_completed_instance`), then p by instance | 5313–6029 | **9434–10555** |
+| Leaderboard, all raids, 168h | `idx_pgcrs_raid_ended` → `idx_pgcrs_ended` | 857–918 | 751–816 |
+| Leaderboard, all raids, 24h | `idx_pgcrs_raid_ended` → `idx_pgcrs_ended_period_raid_clear` | 129–146 | 110–116 |
+| Full Clear count, 24h | `idx_pgcrs_raid_ended` → covering `idx_pgcrs_ended_period_raid_clear` | 14–17 | 3–4 |
+| Cleanup's expiry select | `SCAN pgcrs` → `SEARCH idx_pgcrs_period` | 88–118 | 0 |
+| Raid-stats, unpinned scopes, 168h | `idx_pgcrs_raid_ended` → `idx_pgcrs_ended` | within noise (±7%) | |
+| Active sessions, one raid | `idx_active_sessions_checked_at` → `idx_active_sessions_raid` | about 1 | about 0 |
+
+The following were unchanged within noise: per-raid 720h leaderboards (Last Wish, Vault of Glass),
+player stats, session polls, crawler bucket picks, and search. The same was true of every statement
+pinned by `INDEXED BY` (raid-stats frame and Full Clears, at 168h and 720h).
+
+**Why the 30-day board flips.** Prod keeps PGCRs for 720h; this copy spans 30.3 days. With accurate
+statistics the planner sees that the window covers the whole table. Starting from `pgcrs` then
+looks no cheaper than walking `pgcr_players` in member order, which saves the GROUP BY sort. The
+planner underestimates the millions of lookups back into `pgcrs` that this walk costs. The plan is
+correct for the statistics and still slower, so no refresh of the statistics fixes it. 720h is in
+`WARM_WINDOWS`, so the cache warmer runs this query about every 10 minutes whether or not anyone
+visits. better-sqlite3 is synchronous, so at about 2× on ARM that would block a web worker for about
+20 s each time.
+
+**Not measured:** the Fastest Clears board's query (`leaderboard-cache.ts`, `runFastestClearRows`).
+It has the same shape and is unpinned. #9044 measures it.
+
+Evidence (outside the repo, in `~/r07-analyze`): `stat1-{before,after}.txt`,
+`survey-{before,after}-{1,2}.txt`, `survey.js`, `live-{before,after}.txt`, `live-plans.ts`. The two
+`.db` copies are kept there until #9044 has measured its pin on them.

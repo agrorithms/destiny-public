@@ -12,6 +12,7 @@ import {
     type CompletenessCurve,
     type CurveTally,
 } from './completeness-curve';
+import { foldEntriesIntoPlayerRuns } from './entry-fold';
 import { getDb } from './index';
 import type { PlayerInfo } from '../bungie/types';
 import { getAllRaidDefinitions, getHashesWithDifficulty } from '../bungie/manifest';
@@ -1708,7 +1709,9 @@ function getInsertFullPGCRTransaction(): (pgcrData: InsertFullPGCRData, players:
                 pgcrData.uniquePlayerCount ?? null
             );
 
-            for (const player of players) {
+            // One row per player, folded from all their Entries (ADR 0006, 2026-11-23). After
+            // the duration above, which needs every Entry's own join offset and time played.
+            for (const player of foldEntriesIntoPlayerRuns(players)) {
                 playerStmt.run(
                     player.instanceId,
                     player.membershipId,

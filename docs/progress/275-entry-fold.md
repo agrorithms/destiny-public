@@ -20,8 +20,8 @@ Branch `feat/275-entry-fold` from `main` @ 5278070. Rules: the ticket and ADR 00
 
 ## Chunk 3 — green: `WIP #275: fold a player's Entries inside insertFullPGCR`
 
-- [ ] `src/lib/db/entry-fold.ts` — the fold
-- [ ] `src/lib/db/queries.ts` — `insertFullPGCR` inserts folded rows; duration still reads Entries
+- [x] `src/lib/db/entry-fold.ts` — the fold
+- [x] `src/lib/db/queries.ts` — `insertFullPGCR` inserts folded rows; duration still reads Entries
 
 ## Red run
 

@@ -325,7 +325,7 @@ cold meaning the file evicted from the page cache (`posix_fadvise(DONTNEED)`, ch
   request, loading the route's code outlasted the pause in two of three runs and the header arrived
   with Clear Time.
 
-## Amendment (2026-11-23): a Player-Run is folded from all its Entries (C-01, #43)
+## Amendment (2026-11-23): a Player-Run is folded from all its Entries (C-01, #43, #275)
 
 The Consequence above that calls the first-observed character a harmless approximation is wrong
 on two counts, both found by the 26-11-13 scan (`docs/26-11-13-scan/04-correctness.md`, C-01) on

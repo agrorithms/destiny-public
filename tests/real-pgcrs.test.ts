@@ -99,10 +99,9 @@ describe('a player who brought several characters', () => {
     });
 
     it('collapses to one stored row per player', () => {
-        // pgcr_players is keyed (instance_id, membership_id) and inserts use
-        // INSERT OR IGNORE, so the second and third characters are dropped. The
-        // leaderboard's COUNT(DISTINCT instance_id) would handle duplicates anyway,
-        // but they never reach it.
+        // pgcr_players is keyed (instance_id, membership_id): one row is one
+        // Player-Run, so insertFullPGCR folds each player's three Entries into one
+        // row before inserting (#275).
         seedFromFixture(as(multiCharacter));
 
         const row = testDb()
@@ -112,24 +111,33 @@ describe('a player who brought several characters', () => {
         expect(row.c).toBe(2);
     });
 
-    it('keeps only the first character\'s stats, not the largest or the sum', () => {
-        // Documented, not endorsed. The first entry for this player reports 981s
-        // played; their longest character reports 1494s. Nothing reads these
-        // columns today, so this is latent rather than user-visible.
+    it('folds each player\'s characters into one row of summed stats and their longest character', () => {
+        // Real Entries, folded per ADR 0006's 2026-11-23 amendment. Nobody here
+        // finished, so this checks the sums and the longest-Entry pick. For each
+        // player the longest character is not the first one listed: the middle
+        // Warlock (1494s) for one, the last-listed Titan (1916s) for the other.
         seedFromFixture(as(multiCharacter));
 
-        const row = testDb()
+        const rows = testDb()
             .prepare(
-                'SELECT time_played_seconds AS t FROM pgcr_players WHERE instance_id = ? AND membership_id = ?'
+                `SELECT membership_id AS id, completed, kills, deaths, assists,
+                        time_played_seconds AS t, character_class AS cls, light_level AS light
+                 FROM pgcr_players WHERE instance_id = ? ORDER BY membership_id`
             )
-            .get(as(multiCharacter).activityDetails.instanceId, '4611686018462874397') as { t: number };
+            .all(as(multiCharacter).activityDetails.instanceId);
 
-        expect(row.t).toBe(981);
+        expect(rows).toEqual([
+            { id: '4611686018462874397', completed: 0, kills: 0, deaths: 9, assists: 0, t: 3024, cls: 'Warlock', light: 543 },
+            { id: '4611686018473876278', completed: 0, kills: 25, deaths: 4, assists: 0, t: 3461, cls: 'Titan', light: 538 },
+        ]);
     });
 
     it('still measures the activity across all characters', () => {
-        // Duration is computed from the in-memory entries, before the dedupe, so
-        // the dropped rows do not shorten the run.
+        // The duration tiers, fed every raw Entry of a report where players switched
+        // characters, measure the run across all of them. This calls the tiers
+        // directly and never reaches insertFullPGCR, so it cannot see the fold. The
+        // guard that insertFullPGCR measures duration before folding is "the run end
+        // time" in tests/db/entry-fold.test.ts.
         const entries = as(multiCharacter).entries;
         const players = entries.map((e) => ({
             startSeconds: readEntryStartSeconds(e),

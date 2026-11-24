@@ -315,8 +315,9 @@ from a Completion, which requires the run to be a finished Full Clear: a Player-
 they cleared, joined at a checkpoint, or dropped out. A player with several **Entries** in the
 same instance is still one Player-Run: they finished it if any of their Entries did, its kills,
 deaths, assists and time played are summed over those Entries, and its class and light level are
-those of the Entry they played longest. *(Until the fold in ADR 0006's 2026-11-23 amendment ships,
-the Tracker keeps only the first-observed Entry, which can record a finisher as not finishing.)*
+those of the Entry they played longest. *(Rows the Tracker wrote before the fold in ADR 0006's
+2026-11-23 amendment kept only the first-observed Entry, which can record a finisher as not
+finishing. They are not repaired; they age out within the retention window.)*
 _Avoid_: participant, entry, appearance (but see **Participant** (Archive))
 
 **Entry**:

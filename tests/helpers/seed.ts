@@ -51,6 +51,8 @@ export interface SeedRunOptions {
     activityDurationSeconds?: number | null;
     timePlayedSeconds?: number;
     startSeconds?: number | null;
+    /** The pgcrs.source label; the writers use 'scanner', 'crawler', and others. Defaults to 'test'. */
+    source?: string;
     /** Raw Bungie difficulty tier integer. */
     difficultyTier?: number;
     /** Count of distinct membership IDs across entries. */
@@ -74,6 +76,7 @@ export function seedRun(options: SeedRunOptions): void {
         activityDurationSeconds = 1800,
         timePlayedSeconds = 1800,
         startSeconds = 0,
+        source = 'test',
         difficultyTier,
         uniquePlayerCount,
         kills: runKills = 100,
@@ -99,7 +102,7 @@ export function seedRun(options: SeedRunOptions): void {
             activityWasStartedFromBeginning: startedFromBeginning,
             completed,
             playerCount: members.length,
-            source: 'test',
+            source,
             activityDurationSeconds,
             difficultyTier,
             uniquePlayerCount,

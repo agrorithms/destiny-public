@@ -2593,6 +2593,14 @@ export function getDbStatsLite(): {
 // CRAWLER STATE QUERIES
 // =====================
 
+/**
+ * Scanner Lag's input: `ended_at` (Unix seconds) of the newest raid the scanner stored, or null
+ * when it has stored none. Crawler, discovery and verify rows are ignored however new they are.
+ */
+export function getNewestScannerRaidEndedAt(): number | null {
+    throw new Error('not implemented');
+}
+
 export function getCrawlerStatus(): {
     isRunning: boolean;
     lastHeartbeat: string | null;

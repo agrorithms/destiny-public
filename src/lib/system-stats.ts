@@ -19,6 +19,8 @@ export interface SystemStats {
     secondsSinceHeartbeat: number | null;
     secondsSinceSessionHeartbeat: number | null;
     sessionWatchdogTrips: number;
+    /** Scanner Lag: seconds since the newest scanner-stored raid ended; null when it has stored none. */
+    secondsSinceScannerRaid: number | null;
     bungieMaintenanceActive: boolean;
     bungieMaintenanceUntil: number | null;
     bungieMaintenanceRemainingMs: number;
@@ -79,6 +81,7 @@ export function getStatusStats(): StatusStats {
         secondsSinceHeartbeat: crawlerStatus.secondsSinceHeartbeat,
         secondsSinceSessionHeartbeat: crawlerStatus.secondsSinceSessionHeartbeat,
         sessionWatchdogTrips: crawlerStatus.sessionWatchdogTrips,
+        secondsSinceScannerRaid: null,
         bungieMaintenanceActive: bungieMaintenance.active,
         bungieMaintenanceUntil: bungieMaintenance.until,
         bungieMaintenanceRemainingMs: bungieMaintenance.remainingMs,

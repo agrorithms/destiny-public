@@ -23,6 +23,11 @@ Branch `feat/275-entry-fold` from `main` @ 5278070. Rules: the ticket and ADR 00
 - [x] `src/lib/db/entry-fold.ts` — the fold
 - [x] `src/lib/db/queries.ts` — `insertFullPGCR` inserts folded rows; duration still reads Entries
 
+## Chunk 4 — `/simplify` pass
+
+- [x] /simplify pass — 4 cleanup agents over `5278070..HEAD`; no fixes applied. Suite at
+  `a15075d`: lint pass (29 warnings, all `gos10k/`), tsc app + scripts pass, build pass, vitest 1237/1237
+
 ## Red run
 
 At `ba3a5ad`, before `insertFullPGCR` called the fold, 15 of the 34 tests in the three files failed:

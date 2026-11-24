@@ -2598,7 +2598,10 @@ export function getDbStatsLite(): {
  * when it has stored none. Crawler, discovery and verify rows are ignored however new they are.
  */
 export function getNewestScannerRaidEndedAt(): number | null {
-    throw new Error('not implemented');
+    const row = getDb().prepare(
+        "SELECT MAX(ended_at) AS ended_at FROM pgcrs WHERE source = 'scanner'"
+    ).get() as { ended_at: number | null };
+    return row.ended_at;
 }
 
 export function getCrawlerStatus(): {

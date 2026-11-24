@@ -60,3 +60,9 @@ None.
 - tsc for the app and for `scripts/`: pass
 - `npm run build`: pass
 - `npm test`: 1237/1237
+
+## Review fixes (loop 1)
+
+- [x] S1 — `tests/real-pgcrs.test.ts`: the duration test's comment says only what it checks and
+  points to "the run end time" in `tests/db/entry-fold.test.ts` for the fold-after-duration guard
+- [ ] S2 — `src/lib/db/entry-fold.ts`: `seen` → `existing`, `longest` → `longestEntrySeconds`

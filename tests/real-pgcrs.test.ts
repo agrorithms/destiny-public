@@ -133,8 +133,11 @@ describe('a player who brought several characters', () => {
     });
 
     it('still measures the activity across all characters', () => {
-        // Duration is computed from every Entry before the fold, so folding a
-        // player's characters into one row does not change how long the run was.
+        // The duration tiers, fed every raw Entry of a report where players switched
+        // characters, measure the run across all of them. This calls the tiers
+        // directly and never reaches insertFullPGCR, so it cannot see the fold. The
+        // guard that insertFullPGCR measures duration before folding is "the run end
+        // time" in tests/db/entry-fold.test.ts.
         const entries = as(multiCharacter).entries;
         const players = entries.map((e) => ({
             startSeconds: readEntryStartSeconds(e),

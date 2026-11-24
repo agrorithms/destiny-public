@@ -16,10 +16,19 @@ import { nowSec, seedRun } from '../helpers/seed';
 const DURATION = 1800;
 const endedAt = (period: number) => period + DURATION;
 
-let n = 0;
-function seed(source: string, period: number): void {
-    n += 1;
-    seedRun({ instanceId: `${9000 + n}`, source, period, activityDurationSeconds: DURATION, completedBy: [`46110000000000${n}`] });
+/** Raids seeded so far in this file; gives each one a distinct instance id and player. */
+let seededRuns = 0;
+
+/** One raid stored by `source` that ended at endedAt(period). */
+function seedEndingAt(source: string, period: number): void {
+    seededRuns += 1;
+    seedRun({
+        instanceId: `${9000 + seededRuns}`,
+        source,
+        period,
+        activityDurationSeconds: DURATION,
+        completedBy: [`46110000000000${seededRuns}`],
+    });
 }
 
 beforeEach(() => {
@@ -28,23 +37,23 @@ beforeEach(() => {
 
 describe('getNewestScannerRaidEndedAt', () => {
     it('returns the newest ended_at among scanner-stored raids', () => {
-        seed('scanner', 1_000_000);
-        seed('scanner', 3_000_000);
-        seed('scanner', 2_000_000);
+        seedEndingAt('scanner', 1_000_000);
+        seedEndingAt('scanner', 3_000_000);
+        seedEndingAt('scanner', 2_000_000);
         expect(getNewestScannerRaidEndedAt()).toBe(endedAt(3_000_000));
     });
 
     it('ignores crawler, discovery and verify rows newer than the newest scanner row', () => {
-        seed('scanner', 1_000_000);
-        seed('crawler', 5_000_000);
-        seed('discover', 6_000_000); // the PM2 discovery process (src/lib/discovery/snowball.ts)
-        seed('discover backscan', 6_500_000); // scripts/discover.ts
-        seed('verify', 7_000_000);
+        seedEndingAt('scanner', 1_000_000);
+        seedEndingAt('crawler', 5_000_000);
+        seedEndingAt('discover', 6_000_000); // the PM2 discovery process (src/lib/discovery/snowball.ts)
+        seedEndingAt('discover backscan', 6_500_000); // scripts/discover.ts
+        seedEndingAt('verify', 7_000_000);
         expect(getNewestScannerRaidEndedAt()).toBe(endedAt(1_000_000));
     });
 
     it('returns null when only other sources have stored raids', () => {
-        seed('crawler', 5_000_000);
+        seedEndingAt('crawler', 5_000_000);
         expect(getNewestScannerRaidEndedAt()).toBeNull();
     });
 
@@ -55,15 +64,15 @@ describe('getNewestScannerRaidEndedAt', () => {
 
 describe('getStatusStats().secondsSinceScannerRaid', () => {
     it('is the age in whole seconds of the newest scanner-stored raid', () => {
-        seed('scanner', nowSec() - 1000 - DURATION);
+        seedEndingAt('scanner', nowSec() - 1000 - DURATION);
         const lag = getStatusStats().secondsSinceScannerRaid;
         expect(lag).toBeGreaterThanOrEqual(1000);
         expect(lag).toBeLessThanOrEqual(1002);
     });
 
     it('measures from the scanner row, not a newer crawler row', () => {
-        seed('scanner', nowSec() - 5000 - DURATION);
-        seed('crawler', nowSec() - 10 - DURATION);
+        seedEndingAt('scanner', nowSec() - 5000 - DURATION);
+        seedEndingAt('crawler', nowSec() - 10 - DURATION);
         expect(getStatusStats().secondsSinceScannerRaid).toBeGreaterThanOrEqual(5000);
     });
 

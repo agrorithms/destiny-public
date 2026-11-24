@@ -104,10 +104,18 @@ describe('Scanner Lag', () => {
     });
 
     it('honours SCANNER_LAG_THRESHOLD_SEC', async () => {
-        seedScannerRaid(100);
-        vi.stubEnv('SCANNER_LAG_THRESHOLD_SEC', '50');
+        seedScannerRaid(200);
+        vi.stubEnv('SCANNER_LAG_THRESHOLD_SEC', '120');
         expect((await verdict()).body.status).toBe('degraded');
         vi.stubEnv('SCANNER_LAG_THRESHOLD_SEC', '5000');
+        expect((await verdict()).body.status).toBe('ok');
+    });
+
+    // docs/env-vars.md says the threshold is floored at 60: a 45s lag under a configured 30s
+    // threshold is still ok, because the check uses 60.
+    it('floors SCANNER_LAG_THRESHOLD_SEC at 60', async () => {
+        seedScannerRaid(45);
+        vi.stubEnv('SCANNER_LAG_THRESHOLD_SEC', '30');
         expect((await verdict()).body.status).toBe('ok');
     });
 });

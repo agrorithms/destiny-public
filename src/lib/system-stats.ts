@@ -1,4 +1,4 @@
-import { getDbStats, getCrawlerStatus } from './db/queries';
+import { getDbStats, getCrawlerStatus, getNewestScannerRaidEndedAt } from './db/queries';
 import { getDb } from './db';
 import { getBungieMaintenanceStatus } from './bungie/maintenance';
 
@@ -19,6 +19,8 @@ export interface SystemStats {
     secondsSinceHeartbeat: number | null;
     secondsSinceSessionHeartbeat: number | null;
     sessionWatchdogTrips: number;
+    /** Scanner Lag: seconds since the newest scanner-stored raid ended; null when it has stored none. */
+    secondsSinceScannerRaid: number | null;
     bungieMaintenanceActive: boolean;
     bungieMaintenanceUntil: number | null;
     bungieMaintenanceRemainingMs: number;
@@ -52,6 +54,7 @@ export function getStatusStats(): StatusStats {
     const crawlerStatus = getCrawlerStatus();
     const bungieMaintenance = getBungieMaintenanceStatus();
 
+    const newestScannerRaid = getNewestScannerRaidEndedAt();
     const db = getDb();
     const scannerStatsRow = db.prepare(
         "SELECT value, updated_at FROM crawler_state WHERE key = 'scanner_stats'"
@@ -79,6 +82,8 @@ export function getStatusStats(): StatusStats {
         secondsSinceHeartbeat: crawlerStatus.secondsSinceHeartbeat,
         secondsSinceSessionHeartbeat: crawlerStatus.secondsSinceSessionHeartbeat,
         sessionWatchdogTrips: crawlerStatus.sessionWatchdogTrips,
+        secondsSinceScannerRaid:
+            newestScannerRaid === null ? null : Math.floor(Date.now() / 1000) - newestScannerRaid,
         bungieMaintenanceActive: bungieMaintenance.active,
         bungieMaintenanceUntil: bungieMaintenance.until,
         bungieMaintenanceRemainingMs: bungieMaintenance.remainingMs,

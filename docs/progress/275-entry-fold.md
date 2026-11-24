@@ -25,6 +25,33 @@ Branch `feat/275-entry-fold` from `main` @ 5278070. Rules: the ticket and ADR 00
 
 ## Red run
 
+At `ba3a5ad`, before `insertFullPGCR` called the fold, 15 of the 34 tests in the three files failed:
+
+- The 12 pure-function tests failed on the stub (`not implemented`).
+- The 3 database tests failed on their assertions, under the old first-Entry-wins insert:
+  - swapped checkpoint fixture: `expected +0 to be 1`, so Vick XCII was stored as not finishing;
+  - builder Full Clear: `expected [] to match object`, so the finisher had no Completion;
+  - Garden fixture: the first character's stats, not the fold.
+- The ended_at guard passed, as intended. It is a guard against folding before the duration is
+  measured, not a red-first test.
+
+All 34 pass at `19ee852`.
+
 ## Bite proof
 
+`npm run mutate:diff -- 5278070...HEAD --typecheck` at `19ee852`, first loop:
+
+- 22 mutants: 13 killed, 0 survived, 0 no coverage, 9 compile errors (discarded).
+- 100.0% overall, 100.0% covered. PASS against 62.5%.
+- All mutants were in `src/lib/db/entry-fold.ts`. The one-line change in `queries.ts` produced none.
+
 ## Surviving mutants
+
+None.
+
+## Suite at `19ee852`
+
+- lint: pass (0 errors; 29 warnings, all in `gos10k/`, untouched)
+- tsc for the app and for `scripts/`: pass
+- `npm run build`: pass
+- `npm test`: 1237/1237

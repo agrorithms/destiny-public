@@ -19,11 +19,11 @@ export type FoldedPlayerRun = Omit<InsertFullPGCRPlayer, 'startSeconds'>;
  * - membership and name fields come from the first Entry.
  */
 export function foldEntriesIntoPlayerRuns(entries: readonly InsertFullPGCRPlayer[]): FoldedPlayerRun[] {
-    const folded = new Map<string, { row: FoldedPlayerRun; longest: number }>();
+    const folded = new Map<string, { row: FoldedPlayerRun; longestEntrySeconds: number }>();
 
     for (const entry of entries) {
-        const seen = folded.get(entry.membershipId);
-        if (!seen) {
+        const existing = folded.get(entry.membershipId);
+        if (!existing) {
             const row: FoldedPlayerRun = {
                 instanceId: entry.instanceId,
                 membershipId: entry.membershipId,
@@ -38,18 +38,18 @@ export function foldEntriesIntoPlayerRuns(entries: readonly InsertFullPGCRPlayer
                 assists: entry.assists,
                 timePlayedSeconds: entry.timePlayedSeconds,
             };
-            folded.set(entry.membershipId, { row, longest: entry.timePlayedSeconds });
+            folded.set(entry.membershipId, { row, longestEntrySeconds: entry.timePlayedSeconds });
             continue;
         }
 
-        const { row } = seen;
+        const { row } = existing;
         row.completed = row.completed || entry.completed;
         row.kills += entry.kills;
         row.deaths += entry.deaths;
         row.assists += entry.assists;
         row.timePlayedSeconds += entry.timePlayedSeconds;
-        if (entry.timePlayedSeconds > seen.longest) {
-            seen.longest = entry.timePlayedSeconds;
+        if (entry.timePlayedSeconds > existing.longestEntrySeconds) {
+            existing.longestEntrySeconds = entry.timePlayedSeconds;
             row.characterClass = entry.characterClass;
             row.lightLevel = entry.lightLevel;
         }

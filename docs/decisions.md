@@ -801,8 +801,8 @@ correct for the statistics and still slower, so no refresh of the statistics fix
 visits. better-sqlite3 is synchronous, so at about 2× on ARM that would block a web worker for about
 20 s each time.
 
-**Not measured:** the Fastest Clears board's query (`leaderboard-cache.ts`, `runFastestClearRows`).
-It has the same shape and is unpinned. #9044 measures it.
+**Fastest Clears:** the board's query (`leaderboard-cache.ts`, `runFastestClearRows`) has the same
+shape and is unpinned. #9044 measured it and left it unpinned; see "Pinned by #9044" below.
 
 ### Pinned by #9044
 
@@ -815,14 +815,18 @@ each, alternating, with the method above. Warm ms:
 | **All raids, 720h** | 5452–6042 | 5831–6208 | 9392–11280 (`SCAN pp`) | **4525–4739** (`SCAN p`) |
 | All raids, trio, 720h | 1128–1339 | 1158–1416 | 6065–6522 (`SCAN pp`) | 313–426 (`SCAN p`) |
 | All raids, 168h | 932–1147 | 874–915 | 740–790 | 771–872 |
+| All raids, trio, 168h | 164–182 | 178–227 | 106–117 | 112–321 |
 | All raids, 24h | 125–132 | 131–162 | 106–126 | 109–126 |
 
-The pin doesn't change `before.db`'s plans: they already read `pgcrs` first. On `after.db` it turns
-both 720h all-raids statements into a full read of `pgcrs` (`SCAN p`), then `pgcr_players` by
-instance. That is faster than either copy's unpinned plan. The trio filter had the same flip under
-`ANALYZE`, about 5× slower, which #9039 didn't measure. At 24h and 168h the pinned plans are the
-plans `ANALYZE` chose, and they keep its gains. Per-raid 720h boards (Last Wish, Vault of Glass)
-kept the same plan on both copies, pinned or not.
+The pin doesn't change `before.db`'s plans: they already read `pgcrs` first. Its pinned and unpinned
+columns are the same plan, so their differences, 720h's included, are run-to-run noise. On
+`after.db` the pin turns both 720h all-raids statements into a full read of `pgcrs` (`SCAN p`), then
+`pgcr_players` by instance. That is faster than either copy's unpinned plan. The trio filter had the
+same flip under `ANALYZE`, about 5× slower, which #9039 didn't measure. At 24h and 168h the pinned
+plans are the plans `ANALYZE` chose, and they keep its gains. The trio 168h case's 321 ms on
+`after.db` is noise too: that copy plans it through `idx_pgcrs_ended` pinned or not, and the 321 and
+197 ms came from the first pass; the second took 112–116 ms. Per-raid 720h boards (Last Wish, Vault
+of Glass) kept the same plan on both copies, pinned or not.
 
 **Fastest Clears is checked, not pinned.** `runFastestClearRows` reads `pgcrs` first through
 `idx_pgcrs_raid_ended` on both copies (Vault of Glass and Salvation's Edge, 168h and 720h), and its

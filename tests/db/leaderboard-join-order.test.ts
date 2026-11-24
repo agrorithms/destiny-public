@@ -7,7 +7,7 @@ import { resetTestDb, testDb } from '../helpers/db';
  * The all-raids leaderboard must read `pgcrs` before `pgcr_players`. A join order changes no
  * result, so no leaderboard test can see it: the plan is the spec. With accurate statistics
  * (after `ANALYZE`) the planner would rather walk `pgcr_players` in member order, which made
- * the 720h board 64–78% slower on a copy of prod. `runLeaderboardRows` pins the order with
+ * the 720h board slower on a copy of prod. `runLeaderboardRows` pins the order with
  * `CROSS JOIN`. See docs/decisions.md, 2026-11-24 ("The cleanup keeps `ANALYZE`…").
  *
  * Unlike the index tests (raids-in-progress-index, cold-bucket-index), this one EXPLAINs the
@@ -53,7 +53,8 @@ describe('the all-raids leaderboard join order', () => {
 
         const pgcrs = readPosition(details, 'p');
         const pgcrPlayers = readPosition(details, 'pp');
-        expect(pgcrs, details.join('\n')).toBeGreaterThanOrEqual(0);
-        expect(pgcrPlayers, details.join('\n')).toBeGreaterThan(pgcrs);
+        const plan = details.join('\n');
+        expect(pgcrs, plan).toBeGreaterThanOrEqual(0);
+        expect(pgcrPlayers, plan).toBeGreaterThan(pgcrs);
     });
 });

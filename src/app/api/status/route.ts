@@ -4,6 +4,7 @@ import { getBungieMaintenanceStatus } from '@/lib/bungie/maintenance';
 import { isDatabaseMaintenanceError } from '@/lib/db';
 import { readStatusSnapshot } from '@/lib/maintenance/snapshots';
 import { withCache, withNoStore } from '@/lib/http/cache';
+import { envSeconds } from '@/lib/env';
 
 export async function GET() {
     try {
@@ -26,7 +27,7 @@ export async function GET() {
         // than the threshold. null (the scanner has stored nothing) is not degraded, like a fresh
         // session heartbeat. No maintenance exemption: no raids end during Bungie maintenance, so
         // this reads degraded then until maintenance detection is fixed.
-        const scannerLagThresholdSec = Math.max(60, Number(process.env.SCANNER_LAG_THRESHOLD_SEC) || 900);
+        const scannerLagThresholdSec = Math.max(60, envSeconds('SCANNER_LAG_THRESHOLD_SEC', 900));
         const scannerLagStale = (stats.secondsSinceScannerRaid ?? 0) > scannerLagThresholdSec;
 
         const stale = crawlHeartbeatStale || sessionHeartbeatStale || scannerLagStale;

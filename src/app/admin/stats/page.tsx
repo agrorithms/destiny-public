@@ -62,6 +62,8 @@ export default async function AdminStatsPage() {
         snapshotGeneratedAt = snapshot.snapshotGeneratedAt;
     }
 
+    // Scanner Lag: how long ago the newest scanner-stored raid ended. Absent from snapshots
+    // saved before the field existed, hence the ?? null.
     const scannerLag = stats.secondsSinceScannerRaid ?? null;
 
     return (
@@ -134,8 +136,6 @@ export default async function AdminStatsPage() {
 
             <section className="ui-card p-4">
                 <h2 className="text-lg font-semibold ui-text-primary mb-3">Scanner</h2>
-                {/* Scanner Lag: how long ago the newest scanner-stored raid ended. Absent from
-                    snapshots saved before the field existed, hence the ?? null. */}
                 <div className="text-sm ui-text-secondary mb-3">
                     Scanner Lag: <span className="ui-text-primary">{scannerLag === null ? 'none stored yet' : formatDuration(scannerLag)}</span>
                 </div>

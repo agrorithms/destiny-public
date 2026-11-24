@@ -26,13 +26,8 @@ export async function GET() {
         // than the threshold. null (the scanner has stored nothing) is not degraded, like a fresh
         // session heartbeat. No maintenance exemption: no raids end during Bungie maintenance, so
         // this reads degraded then until maintenance detection is fixed.
-        const scannerLagThresholdSec = Math.max(
-            60,
-            parseInt(process.env.SCANNER_LAG_THRESHOLD_SEC || '900', 10) || 900
-        );
-        const scannerLagStale =
-            stats.secondsSinceScannerRaid !== null &&
-            stats.secondsSinceScannerRaid > scannerLagThresholdSec;
+        const scannerLagThresholdSec = Math.max(60, Number(process.env.SCANNER_LAG_THRESHOLD_SEC) || 900);
+        const scannerLagStale = (stats.secondsSinceScannerRaid ?? 0) > scannerLagThresholdSec;
 
         const stale = crawlHeartbeatStale || sessionHeartbeatStale || scannerLagStale;
 

@@ -75,6 +75,23 @@ describe('Scanner Lag', () => {
         expect((await verdict()).body.status).toBe('degraded');
     });
 
+    it('treats a lag exactly at the threshold as ok and one second more as degraded', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-11-24T12:00:00Z'));
+            setState('heartbeat', 10);
+            setState('session_heartbeat', 10);
+            seedScannerRaid(900);
+            expect((await verdict()).body.status).toBe('ok');
+            vi.setSystemTime(new Date('2026-11-24T12:00:01Z'));
+            setState('heartbeat', 10);
+            setState('session_heartbeat', 10);
+            expect((await verdict()).body.status).toBe('degraded');
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('honours SCANNER_LAG_THRESHOLD_SEC', async () => {
         seedScannerRaid(100);
         vi.stubEnv('SCANNER_LAG_THRESHOLD_SEC', '50');

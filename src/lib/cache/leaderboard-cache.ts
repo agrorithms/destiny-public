@@ -167,6 +167,7 @@ export function runLeaderboardRows(hours: number, raidKeys: string[], limit: num
           COUNT(DISTINCT pp.instance_id) as completions,
           MAX(p.ended_at) as lastClearAt
         FROM pgcrs p
+        -- CROSS JOIN fixes pgcrs as the outer table on purpose: see the comment above the query.
         CROSS JOIN pgcr_players pp ON pp.instance_id = p.instance_id
         LEFT JOIN players pl ON pp.membership_id = pl.membership_id
         WHERE p.ended_at >= ?

@@ -24,9 +24,9 @@ function readPosition(details: string[], alias: string): number {
 let prepareSpy: MockInstance<Database.Database['prepare']>;
 
 beforeEach(() => {
+    // resetTestDb() opens the connection (the first getDb() also runs the schema setup) and
+    // clears the tables. The spy goes on only after it, so none of those statements are recorded.
     resetTestDb();
-    // Open the connection before spying: the first getDb() runs the schema setup, which
-    // prepares statements of its own that would otherwise be recorded too.
     const db = testDb();
     // Record-only: no mockImplementation, so every call passes through to the real prepare and
     // the real SQL still runs against the real database. ADR 0004's reason for not mocking our

@@ -152,6 +152,11 @@ export function runLeaderboardRows(hours: number, raidKeys: string[], limit: num
     const db = getDb();
     const cutoff = Math.floor((Date.now() - hours * 60 * 60 * 1000) / 1000);
 
+    // CROSS JOIN, not JOIN: in SQLite it fixes `pgcrs` as the outer table and still lets the
+    // planner pick its index. With fresh statistics (ANALYZE) the planner would rather walk
+    // pgcr_players in member order, which made the all-raids 720h board ~70% slower on a copy
+    // of prod. Results are the same either way: it is an inner join. See docs/decisions.md,
+    // 2026-11-24 ("The cleanup keeps `ANALYZE`…"), and tests/db/leaderboard-join-order.test.ts.
     let query = `
         SELECT
           pp.membership_id as membershipId,
@@ -161,8 +166,9 @@ export function runLeaderboardRows(hours: number, raidKeys: string[], limit: num
           pl.bungie_global_display_name_code as bungieGlobalDisplayNameCode,
           COUNT(DISTINCT pp.instance_id) as completions,
           MAX(p.ended_at) as lastClearAt
-        FROM pgcr_players pp
-        JOIN pgcrs p ON pp.instance_id = p.instance_id
+        FROM pgcrs p
+        -- CROSS JOIN fixes pgcrs as the outer table on purpose: see the comment above the query.
+        CROSS JOIN pgcr_players pp ON pp.instance_id = p.instance_id
         LEFT JOIN players pl ON pp.membership_id = pl.membership_id
         WHERE p.ended_at >= ?
           AND ${COMPLETION}

@@ -180,6 +180,10 @@ the code it covers. Put it under `tests/` when it needs a database, a fixture, o
 — `better-sqlite3` opens one in about a millisecond, faster than the mock scaffolding it replaces,
 and it validates the actual SQL. See [ADR 0004](../docs/adr/0004-mock-only-at-the-network-boundary.md).
 
+A record-only spy on the connection (`vi.spyOn(testDb(), 'prepare')` with no implementation) is
+not a mock: the real SQL still runs. Use one to capture the statement a function prepared so a test
+can EXPLAIN it; call `testDb()` before spying and restore it in `afterEach`.
+
 **Mock `fetch`, and only `fetch`.** `tests/setup/no-network.ts` replaces it with a thrower before
 every test, so a test reaching the real internet fails loudly rather than quietly burning Bungie
 API quota. Stub it deliberately when you need a response:
